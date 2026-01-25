@@ -1,0 +1,52 @@
+{
+  "name": "magic-patterns-vite-template",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx vite",
+    "build": "npx vite build",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "preview": "npx vite preview",
+    "scan": "next dev & npx react-scan@latest localhost:3001",
+    "test-login": "node test-login-integration.js",
+    "test-niche": "node test-niche-agreement-integration.js",
+    "test-errors": "node test-error-handling.js",
+    "test-login-fix": "node test-login-fix.js",
+    "test-integration": "node test-niche-integration-complete.js",
+    "test-modal-pdf": "node test-modal-pdf-integration.js",
+    "test-pdf-new-tab": "node test-pdf-new-tab.js",
+    "test-pdf-template": "node test-pdf-template-integration.js",
+    "test-wake-room": "node test-wake-room-implementation.js"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.9.1",
+    "axios": "^1.4.0",
+    "html2pdf.js": "^0.12.1",
+    "jspdf": "^3.0.3",
+    "lucide-react": "0.522.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-redux": "^9.2.0",
+    "react-router-dom": "^6.26.2",
+    "react-scan": "^0.4.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^20.11.18",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@typescript-eslint/eslint-plugin": "^5.54.0",
+    "@typescript-eslint/parser": "^5.54.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "latest",
+    "eslint": "^8.50.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.1",
+    "postcss": "latest",
+    "tailwindcss": "3.4.17",
+    "typescript": "^5.5.4",
+    "vite": "^5.2.0"
+  }
+}

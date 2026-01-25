@@ -1,0 +1,379 @@
+import api from './api';
+
+// Custom error class for inscription operations
+export class InscriptionError extends Error {
+  type: 'auth' | 'network' | 'server' | 'validation';
+  statusCode?: number;
+  code?: string;
+
+  constructor(
+    message: string,
+    type: 'auth' | 'network' | 'server' | 'validation' = 'server',
+    statusCode?: number,
+    code?: string
+  ) {
+    super(message);
+    this.name = 'InscriptionError';
+    this.type = type;
+    this.statusCode = statusCode;
+    this.code = code;
+  }
+}
+
+// Types for Inscription data
+export interface InscriptionItem {
+  ItemId: number;
+  Name: string;
+  Code: string;
+  Price: number;
+  ChurchId: number;
+  IsRefType: number;
+  DocType: string;
+}
+
+export interface InscriptionItemsResponse {
+  success: boolean;
+  message?: string;
+  data: {
+    inscriptionRequestNo: string;
+    items: InscriptionItem[];
+    applicant: {
+      name: string;
+      nricPassportNo: string;
+      address: {
+        block: string;
+        blockNo: string;
+        street: string;
+        streetName: string;
+        unitNo: string;
+        postalCode: string;
+      };
+      mobile: string;
+      homeTel: string;
+      emailId: string;
+    };
+    deceasedDetails: Array<{
+      name: string;
+      dateOfDeath: string;
+      dateOfBirth: string;
+      internmentDate: string;
+      deathCertificateNo: string;
+      birthYear: string;
+      inscriptionText: string;
+    }>;
+    additionalDetails: {
+      bibleInscriptionChoiceId: number | null;
+      bibleInscriptionText: string;
+      additionalInscriptionPhrase: string;
+      remarks: string;
+      nicheApplicationCode: string;
+      nicheBookingId: number | null;
+    };
+  };
+}
+
+export interface CreateInvoiceResponse {
+  success: boolean;
+  data: {
+    invoiceId: number;
+    invoiceCode: string;
+  };
+  message?: string;
+}
+
+export interface CreateInvoiceRequest {
+  lines?: Array<{
+    itemId: number;
+    quantity: number;
+    unitAmount: number;
+    taxPercent?: number;
+  }>;
+}
+
+// Bible Choice types
+export interface BibleChoice {
+  bibleInscriptionChoiceId: number;
+  bibleInscriptionChoiceNo: string;
+  bibleInscriptionChoiceNoValue: string;
+  churchId: number;
+}
+
+export interface BibleChoicesResponse {
+  success: boolean;
+  message?: string;
+  data: {
+    choices: BibleChoice[];
+    count: number;
+  };
+}
+
+const inscriptionService = {
+  /**
+   * Get task-mapped inscription items for a document
+   * GET /api/inscriptions/:code/items
+   * Returns full response including items, applicant, deceased details, and additional details
+   */
+  async getInscriptionItems(code: string): Promise<InscriptionItemsResponse['data']> {
+    try {
+      const response = await api.get<InscriptionItemsResponse>(
+        `/api/inscriptions/${encodeURIComponent(code)}/items`
+      );
+
+      if (!response.data.success) {
+        throw new InscriptionError(
+          response.data.message || 'Failed to fetch inscription items',
+          'server',
+          response.status
+        );
+      }
+
+      return response.data.data;
+    } catch (error: any) {
+      if (error instanceof InscriptionError) {
+        throw error;
+      }
+
+      // Handle axios errors
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        if (status === 401) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Unauthorized',
+            'auth',
+            status,
+            errorData?.error?.code
+          );
+        }
+
+        if (status === 403) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Access denied',
+            'auth',
+            status,
+            errorData?.error?.code || 'FORBIDDEN'
+          );
+        }
+
+        if (status === 404) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Inscription application not found',
+            'server',
+            status,
+            errorData?.error?.code || 'NOT_FOUND'
+          );
+        }
+
+        throw new InscriptionError(
+          errorData?.error?.message || errorData?.message || 'Failed to fetch inscription items',
+          'server',
+          status,
+          errorData?.error?.code
+        );
+      }
+
+      if (error.request) {
+        throw new InscriptionError(
+          'Network error: Unable to connect to server',
+          'network'
+        );
+      }
+
+      throw new InscriptionError(
+        error.message || 'An unexpected error occurred',
+        'server'
+      );
+    }
+  },
+
+  /**
+   * Create invoice for an inscription application
+   * POST /api/inscriptions/:code/invoice
+   */
+  async createInscriptionInvoice(
+    code: string,
+    body: CreateInvoiceRequest = {}
+  ): Promise<{ invoiceId: number; invoiceCode: string }> {
+    try {
+      const response = await api.post<CreateInvoiceResponse>(
+        `/inscriptions/${encodeURIComponent(code)}/invoice`,
+        body
+      );
+
+      if (!response.data.success) {
+        throw new InscriptionError(
+          response.data.message || 'Failed to create invoice',
+          'server',
+          response.status
+        );
+      }
+
+      return response.data.data;
+    } catch (error: any) {
+      if (error instanceof InscriptionError) {
+        throw error;
+      }
+
+      // Handle axios errors
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        if (status === 401) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Unauthorized',
+            'auth',
+            status,
+            errorData?.error?.code
+          );
+        }
+
+        if (status === 403) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Access denied - Church ID mismatch',
+            'auth',
+            status,
+            errorData?.error?.code || 'ACCESS_DENIED'
+          );
+        }
+
+        if (status === 404) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Inscription application not found',
+            'server',
+            status,
+            errorData?.error?.code || 'NOT_FOUND'
+          );
+        }
+
+        // Handle business error codes
+        const errorCode = errorData?.error?.code;
+        if (errorCode === 'NO_MAPPED_ITEMS') {
+          throw new InscriptionError(
+            errorData?.error?.message || 'No inscription items configured for this application',
+            'validation',
+            status,
+            errorCode
+          );
+        }
+
+        if (errorCode === 'DUPLICATE_INVOICE') {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Duplicate Invoice Found',
+            'validation',
+            status,
+            errorCode
+          );
+        }
+
+        if (errorCode === 'INVALID_REF_DOCUMENT') {
+          throw new InscriptionError(
+            errorData?.error?.message || `Wrong Ref Document Number: ${code}`,
+            'validation',
+            status,
+            errorCode
+          );
+        }
+
+        if (errorCode === 'VALIDATION_ERROR') {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Invoice validation failed',
+            'validation',
+            status,
+            errorCode
+          );
+        }
+
+        throw new InscriptionError(
+          errorData?.error?.message || errorData?.message || 'Failed to create invoice',
+          'server',
+          status,
+          errorCode
+        );
+      }
+
+      if (error.request) {
+        throw new InscriptionError(
+          'Network error: Unable to connect to server',
+          'network'
+        );
+      }
+
+      throw new InscriptionError(
+        error.message || 'An unexpected error occurred',
+        'server'
+      );
+    }
+  },
+
+  /**
+   * Get Bible inscription choices
+   * GET /bible-choices (no /api prefix based on user's endpoint)
+   */
+  async getBibleChoices(): Promise<BibleChoice[]> {
+    try {
+      const response = await api.get<BibleChoicesResponse>('/bible-choices');
+
+      if (!response.data.success) {
+        throw new InscriptionError(
+          response.data.message || 'Failed to fetch bible choices',
+          'server',
+          response.status
+        );
+      }
+
+      return response.data.data.choices;
+    } catch (error: any) {
+      if (error instanceof InscriptionError) {
+        throw error;
+      }
+
+      // Handle axios errors
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        if (status === 401) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Unauthorized',
+            'auth',
+            status,
+            errorData?.error?.code
+          );
+        }
+
+        if (status === 403) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Access denied',
+            'auth',
+            status,
+            errorData?.error?.code || 'FORBIDDEN'
+          );
+        }
+
+        throw new InscriptionError(
+          errorData?.error?.message || errorData?.message || 'Failed to fetch bible choices',
+          'server',
+          status,
+          errorData?.error?.code
+        );
+      }
+
+      if (error.request) {
+        throw new InscriptionError(
+          'Network error: Unable to connect to server',
+          'network'
+        );
+      }
+
+      throw new InscriptionError(
+        error.message || 'An unexpected error occurred',
+        'server'
+      );
+    }
+  }
+};
+
+export default inscriptionService;
+

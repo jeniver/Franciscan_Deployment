@@ -1,0 +1,52 @@
+# ============================================================================
+# Franciscan Application Environment Variables
+# Copy this file to .env and update with your values
+# ============================================================================
+
+# MySQL Database Configuration
+MYSQL_ROOT_PASSWORD=FranciscanRoot@2024
+MYSQL_DATABASE=FransiscanLive
+MYSQL_USER=franciscan_user
+MYSQL_PASSWORD=FranciscanPass@2024
+
+# Backend API Configuration
+NODE_ENV=production
+PORT=3000
+HOST=0.0.0.0
+
+# Database Connection (for backend)
+DB_SERVER=mysql
+DB_PORT=3306
+DB_DATABASE=FransiscanLive
+DB_USER=franciscan_user
+DB_PASSWORD=FranciscanPass@2024
+
+# JWT Configuration
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production-USE-STRONG-RANDOM-KEY
+JWT_EXPIRES_IN=24h
+JWT_REFRESH_EXPIRES_IN=7d
+
+# Security Configuration
+BCRYPT_ROUNDS=12
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# CORS Configuration
+CORS_ORIGIN=http://localhost:3001
+CORS_CREDENTIALS=true
+
+# Logging Configuration
+LOG_LEVEL=info
+LOG_FILE_PATH=./logs/app.log
+
+# Frontend Configuration
+REACT_APP_API_URL=http://localhost:3000
+
+# Mail Configuration (Optional)
+MAIL_HOST=smtp.example.com
+MAIL_PORT=587
+MAIL_SECURE=false
+MAIL_USER=your-smtp-username
+MAIL_PASSWORD=your-smtp-password
+MAIL_FROM="Franciscan Columbarium" <no-reply@example.com>
+

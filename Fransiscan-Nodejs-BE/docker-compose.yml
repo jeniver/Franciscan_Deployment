@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  franciscan-api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DB_SERVER=host.docker.internal\SQLEXPRESS
+      - DB_DATABASE=FransiscanLive
+      - DB_USER=JENIVER\geniv
+      - DB_PASSWORD=
+      - DB_ENCRYPT=true
+      - DB_TRUST_SERVER_CERTIFICATE=true
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - franciscan-network
+    depends_on:
+      - sql-server
+
+  sql-server:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Passw0rd
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - franciscan-network
+    restart: unless-stopped
+
+volumes:
+  sqlserver_data:
+
+networks:
+  franciscan-network:
+    driver: bridge

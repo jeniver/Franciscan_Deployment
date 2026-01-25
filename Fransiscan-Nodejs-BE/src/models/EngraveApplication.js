@@ -1,0 +1,221 @@
+/**
+ * EngraveApplication entity model (NicheInscriptionRequest in ASP.NET)
+ * For engraving/inscription applications
+ */
+class EngraveApplication {
+  constructor(data = {}) {
+    // Primary key
+    this.nicheInscriptionRequestId = data.nicheInscriptionRequestId || data.NicheInscriptionRequestId || null;
+
+    // Application code and status
+    this.code = data.code || data.Code || null;
+    this.status = data.status || data.Status || 1; // 1=Draft, 2=Pending, 3=Confirmed
+
+    // Niche Application relationship
+    this.nicheApplicationCode = data.nicheApplicationCode || data.NicheApplicationCode || null;
+    this.nicheBookingId = data.nicheBookingId || data.NicheBookingId || null;
+
+    // Applicant basic information
+    this.applicantName = data.applicantName || data.ApplicantName || null;
+    this.applicantIDNo = data.applicantIDNo || data.ApplicantIDNo || null;
+    this.applicantEmailID = data.applicantEmailID || data.ApplicantEmailID || null;
+    this.applicantMobileNo = data.applicantMobileNo || data.ApplicantMobileNo || null;
+    this.applicantHomeTelNo = data.applicantHomeTelNo || data.ApplicantHomeTelNo || null;
+    this.applicantOfficeTelNo = data.applicantOfficeTelNo || data.ApplicantOfficeTelNo || null;
+
+    // Applicant address
+    this.applicantAddressNo = data.applicantAddressNo || data.ApplicantAddressNo || null;
+    this.applicantAddressLine1 = data.applicantAddressLine1 || data.ApplicantAddressLine1 || null;
+    this.applicantAddressLine2 = data.applicantAddressLine2 || data.ApplicantAddressLine2 || null;
+    this.applicantAddressCity = data.applicantAddressCity || data.ApplicantAddressCity || null;
+    this.applicantAddressState = data.applicantAddressState || data.ApplicantAddressState || null;
+    this.applicantAddressCountry = data.applicantAddressCountry || data.ApplicantAddressCountry || null;
+
+    // Bible inscription choice
+    this.bibleInscriptionChoiceId = data.bibleInscriptionChoiceId || data.BibleInscriptionChoiceId || null;
+    this.bibleInscriptionText = data.bibleInscriptionText || data.BibleInscriptionText || null;
+    this.additionalInscriptionPhrase = data.additionalInscriptionPhrase || data.AdditionalInscriptionPhrase || null;
+
+    // Deceased details (list)
+    this.deceasedDetails = data.deceasedDetails || data.DeceasedDetails || [];
+
+    // Dates
+    this.applicationDate = data.applicationDate || data.ApplicationDate || null;
+    this.createdDate = data.createdDate || data.CreatedDate || new Date();
+
+    // Administrative
+    this.churchId = data.churchId || data.ChurchId || null;
+    this.userId = data.userId || data.UserId || null;
+    this.remarks = data.remarks || data.Remarks || null;
+  }
+
+  /**
+   * Get formatted applicant address
+   * @returns {string} Complete address
+   */
+  getApplicantAddress() {
+    const parts = [
+      this.applicantAddressNo,
+      this.applicantAddressLine1,
+      this.applicantAddressLine2,
+      this.applicantAddressCity,
+      this.applicantAddressState,
+      this.applicantAddressCountry
+    ].filter(part => part && part.trim() !== '');
+
+    return parts.join(', ');
+  }
+
+  /**
+   * Convert to JSON format
+   * @returns {Object} JSON representation
+   */
+  toJSON() {
+    return {
+      nicheInscriptionRequestId: this.nicheInscriptionRequestId,
+      code: this.code,
+      status: this.status,
+      statusText: this.getStatusText(),
+
+      // Applicant information
+      applicant: {
+        name: this.applicantName,
+        idNo: this.applicantIDNo,
+        email: this.applicantEmailID,
+        mobileNo: this.applicantMobileNo,
+        homeTelNo: this.applicantHomeTelNo,
+        officeTelNo: this.applicantOfficeTelNo,
+        address: this.getApplicantAddress(),
+        addressDetails: {
+          no: this.applicantAddressNo,
+          line1: this.applicantAddressLine1,
+          line2: this.applicantAddressLine2,
+          city: this.applicantAddressCity,
+          state: this.applicantAddressState,
+          country: this.applicantAddressCountry
+        }
+      },
+
+      // Inscription details
+      inscription: {
+        bibleInscriptionChoiceId: this.bibleInscriptionChoiceId,
+        bibleInscriptionText: this.bibleInscriptionText,
+        nicheApplicationCode: this.nicheApplicationCode,
+        nicheBookingId: this.nicheBookingId
+      },
+
+      // Deceased details
+      deceasedDetails: this.deceasedDetails,
+
+      // Dates
+      applicationDate: this.applicationDate,
+      createdDate: this.createdDate,
+
+      // Administrative
+      churchId: this.churchId,
+      userId: this.userId,
+      remarks: this.remarks
+    };
+  }
+
+  /**
+   * Get status text
+   * @returns {string} Human-readable status
+   */
+  getStatusText() {
+    const statusMap = {
+      0: 'Deleted',
+      1: 'Draft',
+      2: 'Pending',
+      3: 'Confirmed',
+      4: 'Completed'
+    };
+    return statusMap[this.status] || 'Unknown';
+  }
+
+  /**
+   * Validate application data
+   * @returns {Object} Validation result
+   */
+  validate() {
+    const errors = [];
+
+    if (!this.applicantName || this.applicantName.trim() === '') {
+      errors.push('Applicant name is required');
+    }
+
+    if (!this.nicheApplicationCode || this.nicheApplicationCode.trim() === '') {
+      errors.push('Niche application code is required');
+    }
+
+    if (!this.churchId) {
+      errors.push('Church ID is required');
+    }
+
+    if (!this.deceasedDetails || this.deceasedDetails.length === 0) {
+      errors.push('At least one deceased detail is required');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * Check if application can be modified
+   * @returns {boolean} True if can be modified
+   */
+  canModify() {
+    return this.status === 1 || this.status === 2; // Draft or Pending
+  }
+}
+
+/**
+ * EngraveApplicationDetail (Deceased person details)
+ */
+class EngraveApplicationDetail {
+  constructor(data = {}) {
+    this.nicheInscriptionRequestDecesedId = data.nicheInscriptionRequestDecesedId || data.NicheInscriptionRequestDecesedId || null;
+    this.nicheInscriptionRequestId = data.nicheInscriptionRequestId || data.NicheInscriptionRequestId || null;
+
+    this.name = data.name || data.Name || null;
+    this.dateOfDeath = data.dateOfDeath || data.DateOfDeath || data.DateDied || null;
+    this.dateOfBirth = data.dateOfBirth || data.DateOfBirth || null;
+    this.internmentDate = data.internmentDate || data.InternmentDate || null;
+    this.deathCertificateNo = data.deathCertificateNo || data.DeathCertificateNo || null;
+    this.birthYear = data.birthYear || data.BirthYear || null;
+    this.inscriptionText = data.inscriptionText || data.InscriptionText || null;
+    this.sequence = data.sequence || data.Sequence || 1;
+  }
+
+  toJSON() {
+    return {
+      nicheInscriptionRequestDecesedId: this.nicheInscriptionRequestDecesedId,
+      nicheInscriptionRequestId: this.nicheInscriptionRequestId,
+      name: this.name,
+      dateOfDeath: this.dateOfDeath,
+      inscriptionText: this.inscriptionText,
+      sequence: this.sequence
+    };
+  }
+
+  validate() {
+    const errors = [];
+
+    if (!this.name || this.name.trim() === '') {
+      errors.push('Deceased name is required');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+}
+
+module.exports = {
+  EngraveApplication,
+  EngraveApplicationDetail
+};
+
