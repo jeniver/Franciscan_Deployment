@@ -1,31 +1,88 @@
 version: '3.8'
 
 services:
-  # MySQL Database
-  mysql:
-    image: mysql:8.0
-    container_name: franciscan-mysql
+  # SQL Server Database
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: franciscan-mssql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-FranciscanRoot@2024}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-FransiscanLive}
-      MYSQL_USER: ${MYSQL_USER:-franciscan_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-FranciscanPass@2024}
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-FranciscanSA@2024}
+      MSSQL_PID: ${MSSQL_PID:-Developer}
     ports:
-      - "3306:3306"
+      - "1433:1433"
     volumes:
-      - mysql_data:/var/lib/mysql
-      - ./mysql-init:/docker-entrypoint-initdb.d
-      - ./mysql-backups:/backups
+      - mssql_data:/var/opt/mssql
+      - ./mssql-backups:/var/opt/mssql/backups
     networks:
       - franciscan-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-FranciscanRoot@2024}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # Database initialization (restore backup + create app user)
+  mssql-init:
+    image: mcr.microsoft.com/mssql-tools
+    container_name: franciscan-mssql-init
+    depends_on:
+      - mssql
+    environment:
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-FranciscanSA@2024}
+      - DB_DATABASE=${DB_DATABASE:-FransiscanLive}
+      - DB_USER=${DB_USER:-franciscan_app}
+      - DB_PASSWORD=${DB_PASSWORD:-FranciscanApp@2024}
+      - MSSQL_BACKUP_FILE=${MSSQL_BACKUP_FILE:-FransiscanLive.bak}
+    volumes:
+      - ./mssql-backups:/backups
+    networks:
+      - franciscan-network
+    restart: "no"
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -euo pipefail
+        echo "[INFO] Waiting for SQL Server to accept connections..."
+        for i in {1..60}; do
+          if /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P "$MSSQL_SA_PASSWORD" -Q "SELECT 1" >/dev/null 2>&1; then
+            echo "[INFO] SQL Server is ready."
+            break
+          fi
+          sleep 2
+        done
+
+        if ! /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P "$MSSQL_SA_PASSWORD" -Q "SELECT 1" >/dev/null 2>&1; then
+          echo "[ERROR] SQL Server not reachable after waiting."
+          exit 1
+        fi
+
+        DB_EXISTS=$(/opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P "$MSSQL_SA_PASSWORD" -h -1 -W -Q "SET NOCOUNT ON; SELECT DB_ID(N'${DB_DATABASE}')" | tr -d '\r' | tr -d ' ')
+        if [ -n "$DB_EXISTS" ] && [ "$DB_EXISTS" != "NULL" ]; then
+          echo "[INFO] Database '${DB_DATABASE}' already exists. Skipping restore."
+        else
+          if [ -f "/backups/${MSSQL_BACKUP_FILE}" ]; then
+            echo "[INFO] Restoring database from /backups/${MSSQL_BACKUP_FILE}..."
+            FILELIST=$(/opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P "$MSSQL_SA_PASSWORD" -s '|' -W -Q "SET NOCOUNT ON; RESTORE FILELISTONLY FROM DISK = N'/backups/${MSSQL_BACKUP_FILE}';" | tr -d '\r')
+            DATA_LOGICAL=$(echo "$FILELIST" | awk -F'|' '$3=="D"{print $1; exit}')
+            LOG_LOGICAL=$(echo "$FILELIST" | awk -F'|' '$3=="L"{print $1; exit}')
+            if [ -z "$DATA_LOGICAL" ] || [ -z "$LOG_LOGICAL" ]; then
+              echo "[ERROR] Unable to determine logical file names from backup."
+              exit 1
+            fi
+            /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P "$MSSQL_SA_PASSWORD" -Q "RESTORE DATABASE [${DB_DATABASE}] FROM DISK = N'/backups/${MSSQL_BACKUP_FILE}' WITH MOVE N'${DATA_LOGICAL}' TO N'/var/opt/mssql/data/${DB_DATABASE}.mdf', MOVE N'${LOG_LOGICAL}' TO N'/var/opt/mssql/data/${DB_DATABASE}_log.ldf', REPLACE;"
+            echo "[INFO] Restore completed."
+          else
+            echo "[WARN] Backup file not found: /backups/${MSSQL_BACKUP_FILE}"
+            echo "[WARN] Creating empty database '${DB_DATABASE}'..."
+            /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P "$MSSQL_SA_PASSWORD" -Q "CREATE DATABASE [${DB_DATABASE}];"
+          fi
+        fi
+
+        if [ "${DB_USER}" != "sa" ]; then
+          echo "[INFO] Ensuring login/user '${DB_USER}' exists..."
+          /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P "$MSSQL_SA_PASSWORD" -Q "IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'${DB_USER}') BEGIN CREATE LOGIN [${DB_USER}] WITH PASSWORD=N'${DB_PASSWORD}', CHECK_POLICY=ON; END; USE [${DB_DATABASE}]; IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${DB_USER}') BEGIN CREATE USER [${DB_USER}] FOR LOGIN [${DB_USER}]; EXEC sp_addrolemember N'db_owner', N'${DB_USER}'; END;"
+          echo "[INFO] App user ready."
+        else
+          echo "[INFO] DB_USER is 'sa'; skipping app user creation."
+        fi
 
   # Node.js Backend API
   backend:
@@ -39,27 +96,28 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HOST=0.0.0.0
-      - DB_SERVER=mysql
-      - DB_PORT=3306
-      - DB_DATABASE=${MYSQL_DATABASE:-FransiscanLive}
-      - DB_USER=${MYSQL_USER:-franciscan_user}
-      - DB_PASSWORD=${MYSQL_PASSWORD:-FranciscanPass@2024}
+      - DB_SERVER=${DB_SERVER:-mssql}
+      - DB_PORT=${DB_PORT:-1433}
+      - DB_DATABASE=${DB_DATABASE:-FransiscanLive}
+      - DB_USER=${DB_USER:-franciscan_app}
+      - DB_PASSWORD=${DB_PASSWORD:-FranciscanApp@2024}
+      - DB_ENCRYPT=${DB_ENCRYPT:-false}
+      - DB_TRUST_SERVER_CERTIFICATE=${DB_TRUST_SERVER_CERTIFICATE:-true}
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
       - JWT_EXPIRES_IN=24h
       - JWT_REFRESH_EXPIRES_IN=7d
-      - CORS_ORIGIN=http://localhost:3001
-      - LOG_LEVEL=info
-      - BCRYPT_ROUNDS=12
-      - RATE_LIMIT_WINDOW_MS=900000
-      - RATE_LIMIT_MAX_REQUESTS=100
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-12}
+      - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-900000}
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-100}
     volumes:
       - ./Fransiscan-Nodejs-BE/logs:/app/logs
       - ./Fransiscan-Nodejs-BE/public:/app/public
     networks:
       - franciscan-network
     depends_on:
-      mysql:
-        condition: service_healthy
+      - mssql
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "healthcheck.js"]
@@ -73,11 +131,11 @@ services:
     build:
       context: ./francisicon-react-front-end
       dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3000}
     container_name: franciscan-frontend
     ports:
       - "3001:80"
-    environment:
-      - REACT_APP_API_URL=http://localhost:3000
     networks:
       - franciscan-network
     depends_on:
@@ -85,7 +143,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  mysql_data:
+  mssql_data:
     driver: local
 
 networks:

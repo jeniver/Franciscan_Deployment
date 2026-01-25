@@ -36,8 +36,9 @@ if not exist .env (
         copy env-template.txt .env >nul
         echo [SUCCESS] .env file created
         echo [WARNING] Please edit .env file and update:
-        echo           - MYSQL_ROOT_PASSWORD
-        echo           - MYSQL_PASSWORD
+        echo           - MSSQL_SA_PASSWORD
+        echo           - MSSQL_BACKUP_FILE (place .bak in mssql-backups/)
+        echo           - DB_USER / DB_PASSWORD
         echo           - JWT_SECRET
         echo.
         pause
@@ -50,17 +51,10 @@ if not exist .env (
     echo [INFO] .env file already exists
 )
 
-REM Create mysql-init directory if it doesn't exist
-if not exist mysql-init (
-    echo [INFO] Creating mysql-init directory...
-    mkdir mysql-init
-    echo [INFO] Place SQL initialization scripts here
-)
-
-REM Create mysql-backups directory
-if not exist mysql-backups (
-    echo [INFO] Creating mysql-backups directory...
-    mkdir mysql-backups
+REM Create mssql-backups directory
+if not exist mssql-backups (
+    echo [INFO] Creating mssql-backups directory...
+    mkdir mssql-backups
 )
 
 echo.
@@ -99,7 +93,7 @@ echo.
 echo 1. Check logs: docker-compose logs -f
 echo 2. Backend API: http://localhost:3000
 echo 3. Frontend: http://localhost:3001
-echo 4. MySQL: localhost:3306
+echo 4. SQL Server: localhost:1433
 echo.
 echo [SUCCESS] Setup complete!
 echo.

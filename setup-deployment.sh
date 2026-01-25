@@ -34,8 +34,9 @@ if [ ! -f .env ]; then
         cp env-template.txt .env
         echo "[SUCCESS] .env file created"
         echo "[WARNING] Please edit .env file and update:"
-        echo "          - MYSQL_ROOT_PASSWORD"
-        echo "          - MYSQL_PASSWORD"
+        echo "          - MSSQL_SA_PASSWORD"
+        echo "          - MSSQL_BACKUP_FILE (place .bak in mssql-backups/)"
+        echo "          - DB_USER / DB_PASSWORD"
         echo "          - JWT_SECRET"
         echo ""
         read -p "Press Enter to continue after editing .env file..."
@@ -47,17 +48,10 @@ else
     echo "[INFO] .env file already exists"
 fi
 
-# Create mysql-init directory if it doesn't exist
-if [ ! -d "mysql-init" ]; then
-    echo "[INFO] Creating mysql-init directory..."
-    mkdir -p mysql-init
-    echo "[INFO] Place SQL initialization scripts here"
-fi
-
-# Create mysql-backups directory
-if [ ! -d "mysql-backups" ]; then
-    echo "[INFO] Creating mysql-backups directory..."
-    mkdir -p mysql-backups
+# Create mssql-backups directory
+if [ ! -d "mssql-backups" ]; then
+    echo "[INFO] Creating mssql-backups directory..."
+    mkdir -p mssql-backups
 fi
 
 echo ""
@@ -90,7 +84,7 @@ echo ""
 echo "1. Check logs: docker-compose logs -f"
 echo "2. Backend API: http://localhost:3000"
 echo "3. Frontend: http://localhost:3001"
-echo "4. MySQL: localhost:3306"
+echo "4. SQL Server: localhost:1433"
 echo ""
 echo "[SUCCESS] Setup complete!"
 echo ""

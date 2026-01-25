@@ -3,6 +3,10 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Build-time API base URL for Vite
+ARG VITE_API_BASE=http://localhost:3000
+ENV VITE_API_BASE=$VITE_API_BASE
+
 # Copy package files
 COPY package*.json ./
 COPY pnpm-lock.yaml* ./

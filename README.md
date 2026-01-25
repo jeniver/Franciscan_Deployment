@@ -1,6 +1,6 @@
 # Franciscan Application - Docker Deployment
 
-Complete Docker setup for deploying the Franciscan React + Node.js application with MySQL database.
+Complete Docker setup for deploying the Franciscan React + Node.js application with SQL Server database.
 
 ## 🚀 Quick Start
 
@@ -18,9 +18,14 @@ Complete Docker setup for deploying the Franciscan React + Node.js application w
 
 2. **Configure Environment**
    ```bash
-   cp .env.example .env
+   cp env-template.txt .env
    # Edit .env and update passwords and JWT_SECRET
    ```
+   Critical values:
+   - `MSSQL_SA_PASSWORD`
+   - `DB_USER` / `DB_PASSWORD`
+   - `MSSQL_BACKUP_FILE`
+   - `JWT_SECRET`
 
 3. **Backup Current Database** (on current machine)
    ```bash
@@ -39,7 +44,7 @@ Complete Docker setup for deploying the Franciscan React + Node.js application w
 5. **Access Application**
    - Frontend: http://localhost:3001
    - Backend API: http://localhost:3000
-   - MySQL: localhost:3306
+   - SQL Server: localhost:1433
 
 ## 📚 Documentation
 
@@ -48,17 +53,16 @@ Complete Docker setup for deploying the Franciscan React + Node.js application w
 - **[backup-database.ps1](./backup-database.ps1)** - Database backup script (PowerShell)
 - **[backup-database.bat](./backup-database.bat)** - Database backup script (CMD)
 
-## ⚠️ Important: Database Migration
+## ⚠️ Important: Database Restore
 
-**Current Status**: Application uses SQL Server, but Docker setup uses MySQL.
+**Current Status**: Application uses SQL Server. The Docker stack includes SQL Server.
 
 **You need to**:
 1. Backup your current SQL Server database (use backup scripts)
-2. Either:
-   - **Option A**: Update backend code to use MySQL (recommended)
-   - **Option B**: Migrate database schema to MySQL
+2. Place the `.bak` file in `mssql-backups/`
+3. Start the stack — the init container restores the DB and creates the app user
 
-See [DEPLOYMENT_ROADMAP.md](./DEPLOYMENT_ROADMAP.md) for detailed migration steps.
+See [DEPLOYMENT_ROADMAP.md](./DEPLOYMENT_ROADMAP.md) for detailed restore steps.
 
 ## 🛠️ Common Commands
 
@@ -78,8 +82,8 @@ docker-compose up -d --build
 # Check status
 docker-compose ps
 
-# Backup database
-docker exec franciscan-mysql mysqldump -ufranciscan_user -p FransiscanLive > backup.sql
+# Database backup/restore
+# Use backup-database.ps1 / backup-database.bat, then restore into the SQL Server container
 ```
 
 ## 📁 Project Structure
@@ -87,7 +91,7 @@ docker exec franciscan-mysql mysqldump -ufranciscan_user -p FransiscanLive > bac
 ```
 Franciscan_Deployment/
 ├── docker-compose.yml          # Main orchestration
-├── .env.example                # Environment template
+├── env-template.txt            # Environment template
 ├── backup-database.ps1         # Database backup (PowerShell)
 ├── backup-database.bat          # Database backup (CMD)
 ├── DEPLOYMENT_ROADMAP.md       # Complete deployment guide
@@ -99,7 +103,7 @@ Franciscan_Deployment/
 │   ├── Dockerfile
 │   ├── nginx.conf
 │   └── ...
-└── mysql-init/                 # SQL initialization scripts (optional)
+└── mssql-backups/              # SQL Server backups (optional)
 ```
 
 ## 🔐 Security
@@ -107,7 +111,7 @@ Franciscan_Deployment/
 - Change all default passwords in `.env` file
 - Generate strong JWT_SECRET: `openssl rand -base64 32`
 - Don't commit `.env` to Git
-- Use strong MySQL passwords
+- Use strong SQL Server passwords
 
 ## 🆘 Troubleshooting
 
