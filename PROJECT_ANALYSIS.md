@@ -2,7 +2,9 @@
 
 ## 📊 Executive Summary
 
-This document provides a comprehensive analysis of the Franciscan application, including frontend, backend, and database structure, to facilitate Docker deployment with MySQL.
+This document provides a comprehensive analysis of the Franciscan application, including frontend, backend, and database structure, to facilitate Docker deployment.
+
+> **Update (Docker)**: The current Docker setup in this repo uses **SQL Server** (not MySQL). Sections that discuss MySQL migration are kept for historical context.
 
 ---
 
@@ -12,7 +14,7 @@ This document provides a comprehensive analysis of the Franciscan application, i
 - **Frontend**: React 18.3 + TypeScript + Vite
 - **Backend**: Node.js 18+ + Express.js
 - **Current Database**: Microsoft SQL Server (FransiscanLive)
-- **Target Database**: MySQL 8.0 (for Docker deployment)
+- **Target Database**: Microsoft SQL Server (Docker)
 
 ---
 

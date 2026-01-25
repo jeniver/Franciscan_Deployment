@@ -1,10 +1,24 @@
-FROM node:18-alpine
+FROM node:20-bullseye
 
 # Set working directory
 WORKDIR /app
 
-# Install build dependencies for native modules (if needed)
-RUN apk add --no-cache python3 make g++
+# Install build dependencies and ODBC driver for msnodesqlv8
+ENV ACCEPT_EULA=Y
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    gnupg \
+    apt-transport-https \
+    python3 \
+    make \
+    g++ \
+    unixodbc-dev \
+  && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft.gpg \
+  && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/11/prod bullseye main" > /etc/apt/sources.list.d/microsoft-prod.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends msodbcsql18 \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
@@ -24,9 +38,9 @@ RUN mkdir -p logs public/pdfs
 # Remove dev dependencies to reduce image size
 RUN npm prune --production
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+# Create non-root user (Debian useradd/groupadd)
+RUN groupadd -g 1001 nodejs && \
+    useradd -u 1001 -g nodejs -m -s /bin/bash nodejs
 
 # Change ownership of the app directory
 RUN chown -R nodejs:nodejs /app

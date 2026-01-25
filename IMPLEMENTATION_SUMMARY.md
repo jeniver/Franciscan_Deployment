@@ -1,22 +1,24 @@
 # 🎯 Implementation Summary - Franciscan Docker Deployment
 
+> **Update (Docker)**: The current Docker stack uses **SQL Server**. Some MySQL migration notes below are historical and can be ignored unless you plan to switch databases.
+
 ## ✅ What I've Completed
 
 ### 1. Project Analysis ✅
 - **React Frontend**: Analyzed structure, dependencies, build configuration
 - **Node.js Backend**: Analyzed architecture, API endpoints, database connection
-- **Database**: Reviewed SQL Server structure, identified migration requirements
+- **Database**: Reviewed SQL Server structure, identified deployment requirements
 - **Documentation**: Created comprehensive project analysis document
 
 ### 2. Database Backup Scripts ✅
 - **backup-database.ps1**: PowerShell script for Windows (recommended)
 - **backup-database.bat**: Batch script for Windows (alternative)
-- Both scripts help backup current SQL Server database before migration
+- Both scripts help backup current SQL Server database before restore
 
 ### 3. Docker Configuration ✅
-- **docker-compose.yml**: Unified orchestration for MySQL, Backend, Frontend
+- **docker-compose.yml**: Unified orchestration for SQL Server, Backend, Frontend
 - **Frontend Dockerfile**: Already exists, optimized for production
-- **Backend Dockerfile**: Updated for MySQL compatibility
+- **Backend Dockerfile**: Production-ready container setup
 - **nginx.conf**: Frontend web server configuration
 
 ### 4. Deployment Documentation ✅

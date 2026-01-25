@@ -2,7 +2,7 @@
 
 ## 📋 Overview
 
-This roadmap provides a step-by-step guide to deploy the Franciscan React + Node.js application with MySQL database on another machine using Docker and Git.
+This roadmap provides a step-by-step guide to deploy the Franciscan React + Node.js application with SQL Server database on another machine using Docker and Git.
 
 **Estimated Time**: 45-60 minutes (excluding database migration)
 
@@ -49,7 +49,7 @@ cd Franciscan_Deployment
 #### Step 2.2: Configure Environment
 ```bash
 # Copy environment template
-cp .env.example .env
+cp env-template.txt .env
 
 # Edit .env file with your settings
 # Windows: notepad .env
@@ -57,39 +57,20 @@ cp .env.example .env
 ```
 
 **Critical values to update:**
-- `MYSQL_ROOT_PASSWORD` - Strong password for MySQL root
-- `MYSQL_PASSWORD` - Strong password for application user
+- `MSSQL_SA_PASSWORD` - Strong password for SQL Server SA user
+- `DB_USER` / `DB_PASSWORD` - App database user credentials
+- `MSSQL_BACKUP_FILE` - Backup filename placed in `mssql-backups/`
 - `JWT_SECRET` - Generate strong random key: `openssl rand -base64 32`
 
 ---
 
-### Phase 3: Database Migration (20-30 minutes)
+### Phase 3: Database Restore (15-25 minutes)
 
-#### Step 3.1: Choose Migration Approach
-
-**Option A: Update Backend Code for MySQL (Recommended - Faster)**
-1. Install MySQL driver in backend:
-   ```bash
-   cd Fransiscan-Nodejs-BE
-   npm install mysql2
-   ```
-2. Update `src/config/database.js` to use MySQL (see MYSQL_MIGRATION_GUIDE.md)
-3. Convert SQL queries to MySQL syntax
-
-**Option B: Migrate Database Schema**
-1. Export SQL Server schema
-2. Convert to MySQL syntax
-3. Place SQL scripts in `mysql-init/` directory
-4. They will run automatically on first container startup
-
-#### Step 3.2: Create MySQL Initialization Scripts
-```bash
-# Create directory for initialization scripts
-mkdir mysql-init
-
-# Place your converted SQL scripts here
-# They will run automatically when MySQL container starts for the first time
-```
+#### Step 3.1: Restore SQL Server Backup
+1. Ensure you have a recent `.bak` backup (see backup scripts in this repo)
+2. Copy the backup into `mssql-backups/`
+3. Set `MSSQL_BACKUP_FILE` in `.env` to match the filename
+4. Start the stack — the init container restores the DB and creates the app user
 
 ---
 
@@ -107,17 +88,8 @@ docker-compose logs -f
 docker-compose ps
 ```
 
-#### Step 4.2: Initialize Database
-**If you have SQL initialization scripts:**
-```bash
-# Scripts in mysql-init/ run automatically on first startup
-# Or manually import:
-docker exec -i franciscan-mysql mysql -ufranciscan_user -p${MYSQL_PASSWORD} FransiscanLive < your-backup.sql
-```
-
-**If migrating from SQL Server backup:**
-1. Convert SQL Server backup to MySQL format
-2. Import using the command above
+#### Step 4.2: Verify Database Connectivity
+Confirm the backend can connect to SQL Server after the restore. If the API health check returns `200`, the database is reachable.
 
 ---
 
@@ -129,7 +101,7 @@ docker exec -i franciscan-mysql mysql -ufranciscan_user -p${MYSQL_PASSWORD} Fran
 docker-compose ps
 
 # Should show:
-# - franciscan-mysql (Up)
+# - franciscan-mssql (Up)
 # - franciscan-backend (Up)
 # - franciscan-frontend (Up)
 ```
@@ -143,9 +115,8 @@ curl http://localhost:3000/health
 # Frontend
 # Open browser: http://localhost:3001
 
-# MySQL connection
-docker exec -it franciscan-mysql mysql -ufranciscan_user -p
-# Enter password from .env
+# SQL Server connection
+# Use SSMS or sqlcmd to connect to localhost:1433
 ```
 
 ---
@@ -153,7 +124,7 @@ docker exec -it franciscan-mysql mysql -ufranciscan_user -p
 ## 📦 What Gets Deployed
 
 ### Services
-1. **MySQL 8.0** - Database server (port 3306)
+1. **SQL Server 2022** - Database server (port 1433)
 2. **Node.js Backend** - API server (port 3000)
 3. **React Frontend** - Web application (port 3001, served via nginx)
 
@@ -187,14 +158,14 @@ docker-compose logs -f
 # Specific service
 docker-compose logs -f backend
 docker-compose logs -f frontend
-docker-compose logs -f mysql
+docker-compose logs -f mssql
 ```
 
 ### Restart a Service
 ```bash
 docker-compose restart backend
 docker-compose restart frontend
-docker-compose restart mysql
+docker-compose restart mssql
 ```
 
 ### Rebuild After Code Changes
@@ -211,19 +182,15 @@ docker-compose up -d --build
 # Backend container
 docker exec -it franciscan-backend sh
 
-# MySQL container
-docker exec -it franciscan-mysql bash
+# SQL Server container
+docker exec -it franciscan-mssql bash
 ```
 
 ### Backup Database
-```bash
-docker exec franciscan-mysql mysqldump -ufranciscan_user -p${MYSQL_PASSWORD} FransiscanLive > backup_$(date +%Y%m%d_%H%M%S).sql
-```
+Use `backup-database.ps1` or `backup-database.bat` to generate a SQL Server backup, then place the `.bak` file in `mssql-backups/`.
 
 ### Restore Database
-```bash
-docker exec -i franciscan-mysql mysql -ufranciscan_user -p${MYSQL_PASSWORD} FransiscanLive < backup.sql
-```
+Set `MSSQL_BACKUP_FILE` in `.env` and start the stack — the init container handles restore.
 
 ---
 
@@ -240,11 +207,11 @@ docker exec -i franciscan-mysql mysql -ufranciscan_user -p${MYSQL_PASSWORD} Fran
 
 ### Database Connection Issues
 ```bash
-# Check MySQL logs
-docker-compose logs mysql
+# Check SQL Server logs
+docker-compose logs mssql
 
-# Test MySQL connection
-docker exec -it franciscan-mysql mysql -uroot -p
+# Test SQL Server connection
+# Use SSMS or sqlcmd to connect to localhost:1433
 ```
 
 ### Backend Won't Start
@@ -256,7 +223,7 @@ docker-compose logs backend
 docker-compose config
 
 # Verify database is healthy
-docker-compose ps mysql
+docker-compose ps mssql
 ```
 
 ### Frontend Not Loading
@@ -297,7 +264,7 @@ docker-compose up -d --build
 
 ### 🔄 Next Steps (For You)
 1. **Backup Current Database** - Run backup scripts on current machine
-2. **Update Backend Code** - Install mysql2 and update database.js (or I can help)
+2. **Restore Database** - Restore the SQL Server backup into the container
 3. **Test Locally** - Run `docker-compose up` on your machine first
 4. **Deploy to Target** - Follow Phase 2-5 on target machine
 
@@ -309,7 +276,7 @@ Deployment is successful when:
 - ✅ All containers show "Up" status: `docker-compose ps`
 - ✅ Backend health check returns 200: `curl http://localhost:3000/health`
 - ✅ Frontend loads in browser: http://localhost:3001
-- ✅ Can connect to MySQL: `docker exec -it franciscan-mysql mysql -ufranciscan_user -p`
+- ✅ Can connect to SQL Server on localhost:1433
 - ✅ Application login works
 - ✅ Database queries return data
 
@@ -318,24 +285,21 @@ Deployment is successful when:
 ## 📚 Additional Resources
 
 - **Project Analysis**: [PROJECT_ANALYSIS.md](./PROJECT_ANALYSIS.md)
-- **MySQL Migration**: [MYSQL_MIGRATION_GUIDE.md](./MYSQL_MIGRATION_GUIDE.md) (to be created)
 - **Docker Documentation**: https://docs.docker.com/
 
 ---
 
 ## ⚠️ Important Notes
 
-1. **Database Migration Required**: Current code uses SQL Server. You need to either:
-   - Update backend code to use MySQL (recommended)
-   - Or migrate database schema to MySQL
+1. **Database Restore Required**: Restore your SQL Server backup into the container before using the app.
 
-2. **First Startup**: MySQL container takes 30-60 seconds to initialize
+2. **First Startup**: SQL Server container takes 30-60 seconds to initialize
 
-3. **Data Persistence**: Database data is stored in Docker volume `mysql_data` and persists across restarts
+3. **Data Persistence**: Database data is stored in Docker volume `mssql_data` and persists across restarts
 
 4. **Security**: Always change default passwords in `.env` file before deployment
 
-5. **Backup Strategy**: Set up regular database backups (see backup commands above)
+5. **Backup Strategy**: Set up regular database backups (see backup scripts)
 
 ---
 
