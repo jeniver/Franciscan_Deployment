@@ -8,7 +8,7 @@ const useWindowsAuth = !process.env.DB_PASSWORD || process.env.DB_PASSWORD === '
 // Get configuration from environment
 const server = process.env.DB_SERVER || 'localhost';
 const instance = process.env.DB_INSTANCE || '';
-const database = process.env.DB_DATABASE || 'FransiscanLive';
+const database = process.env.DB_DATABASE || 'FransiscanLive2022';
 const port = process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 1433;
 
 // Build server string - handle named instances properly
@@ -52,6 +52,11 @@ if (useWindowsAuth) {
   // If server starts with .\, it's a local named instance - keep as is
   // If server contains backslash, it's already a server\instance format
   // Otherwise, use as-is
+  
+  // Include port in server string if explicitly specified (not default 1433)
+  if (process.env.DB_PORT && process.env.DB_PORT !== '1433') {
+    connectionServerString = `${serverString},${port}`;
+  }
   
   const connectionString = `Server=${connectionServerString};Database=${database};Trusted_Connection=Yes;Driver={ODBC Driver 17 for SQL Server};Connection Timeout=${connectionTimeoutSeconds};`;
 
