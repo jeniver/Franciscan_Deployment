@@ -163,6 +163,140 @@ ELSE
     PRINT '⏭️ Index IX_NicheWall_ChapelId already exists';
 GO
 
+-- Index 9: CRITICAL - Speed up NicheBooking lookups with Person joins (for addNomineeInfo)
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_NicheBooking_NicheApplicationId_WithPersonIds' AND object_id = OBJECT_ID('NicheBooking'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_NicheBooking_NicheApplicationId_WithPersonIds
+    ON NicheBooking(NicheApplicationId)
+    INCLUDE (NicheBookingId, ContactPersonId, NomineeId, NomineeId2, BookingStatus);
+    PRINT '✅ Created index: IX_NicheBooking_NicheApplicationId_WithPersonIds (CRITICAL for nominee queries)';
+END
+ELSE
+    PRINT '⏭️ Index IX_NicheBooking_NicheApplicationId_WithPersonIds already exists';
+GO
+
+-- Index 10: CRITICAL - Speed up Person lookups (if PersonId is not already indexed as PK)
+-- Note: PersonId is typically the primary key, but this ensures Person lookups are fast
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Person_PersonId' AND object_id = OBJECT_ID('Person'))
+BEGIN
+    -- Only create if PersonId is not already the clustered primary key
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name LIKE 'PK_%' AND is_primary_key = 1 AND object_id = OBJECT_ID('Person'))
+    BEGIN
+        CREATE NONCLUSTERED INDEX IX_Person_PersonId
+        ON Person(PersonId)
+        INCLUDE (
+            Name, AddressNo, AddressLine1, AddressLine2, AddressCity, AddressState, AddressCountry,
+            EmailID, IDNo, MobileNo, HomeTelNo, OfficeTelNo, IsCatholic, RelationshipToApplicant
+        );
+        PRINT '✅ Created index: IX_Person_PersonId';
+    END
+    ELSE
+        PRINT '⏭️ Person.PersonId is already indexed as primary key';
+END
+ELSE
+    PRINT '⏭️ Index IX_Person_PersonId already exists';
+GO
+
+-- Index 11: CRITICAL - Speed up NicheInscriptionRequest lookups by BookingId
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_NicheInscriptionRequest_NicheBookingId' AND object_id = OBJECT_ID('NicheInscriptionRequest'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_NicheInscriptionRequest_NicheBookingId
+    ON NicheInscriptionRequest(NicheBookingId)
+    INCLUDE (NicheInscriptionRequestId, StorageFrom, StorageTo, Code);
+    PRINT '✅ Created index: IX_NicheInscriptionRequest_NicheBookingId (CRITICAL for deceased queries)';
+END
+ELSE
+    PRINT '⏭️ Index IX_NicheInscriptionRequest_NicheBookingId already exists';
+GO
+
+-- Index 12: CRITICAL - Speed up NicheInscriptionRequestDecesed lookups
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_NicheInscriptionRequestDecesed_NicheInscriptionRequestId' AND object_id = OBJECT_ID('NicheInscriptionRequestDecesed'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_NicheInscriptionRequestDecesed_NicheInscriptionRequestId
+    ON NicheInscriptionRequestDecesed(NicheInscriptionRequestId)
+    INCLUDE (
+        NicheInscriptionRequestDecesedId,
+        NameOfDeceased,
+        DateDied,
+        InternmentDate,
+        DeathCertificateNo
+    );
+    PRINT '✅ Created index: IX_NicheInscriptionRequestDecesed_NicheInscriptionRequestId (CRITICAL for deceased queries)';
+END
+ELSE
+    PRINT '⏭️ Index IX_NicheInscriptionRequestDecesed_NicheInscriptionRequestId already exists';
+GO
+
+-- Index 13: CRITICAL - Enhanced InvoiceDetail index with Status and ItemId for faster invoice lookups
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_InvoiceDetail_RefDocNumber_Status_ItemId' AND object_id = OBJECT_ID('InvoiceDetail'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_InvoiceDetail_RefDocNumber_Status_ItemId
+    ON InvoiceDetail(RefDocNumber, ItemId)
+    INCLUDE (InvoiceId, TotalPayingAmount, LineTaxAmount, PayingAmount);
+    PRINT '✅ Created index: IX_InvoiceDetail_RefDocNumber_Status_ItemId (CRITICAL for invoice queries)';
+END
+ELSE
+    PRINT '⏭️ Index IX_InvoiceDetail_RefDocNumber_Status_ItemId already exists';
+GO
+
+-- Index 14: CRITICAL - Speed up Invoice lookups by InvoiceId with Status
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Invoice_InvoiceId_Status' AND object_id = OBJECT_ID('Invoice'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_Invoice_InvoiceId_Status
+    ON Invoice(InvoiceId, Status)
+    INCLUDE (Code, TransactionDate, TaxAmount, PayingAmount);
+    PRINT '✅ Created index: IX_Invoice_InvoiceId_Status (CRITICAL for invoice queries)';
+END
+ELSE
+    PRINT '⏭️ Index IX_Invoice_InvoiceId_Status already exists';
+GO
+
+-- Index 15: Speed up MisalaniousReceiptDetail lookups
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_MisalaniousReceiptDetail_RefDocNumber' AND object_id = OBJECT_ID('MisalaniousReceiptDetail'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_MisalaniousReceiptDetail_RefDocNumber
+    ON MisalaniousReceiptDetail(RefDocNumber)
+    INCLUDE (ReceiptDetailId, TotalPayingAmount, PayingAmount);
+    PRINT '✅ Created index: IX_MisalaniousReceiptDetail_RefDocNumber';
+END
+ELSE
+    PRINT '⏭️ Index IX_MisalaniousReceiptDetail_RefDocNumber already exists';
+GO
+
+-- Index 16: CRITICAL - Speed up NicheBookingBeneficiary lookups
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_NicheBookingBeneficiary_NicheBookingId' AND object_id = OBJECT_ID('NicheBookingBeneficiary'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_NicheBookingBeneficiary_NicheBookingId
+    ON NicheBookingBeneficiary(NicheBookingId)
+    INCLUDE (
+        NicheBookingBeneficiaryId,
+        Name, IDNo, IsCatholic, IsMale,
+        RelationshipToApplicant, DateOfBirth, BirthYear,
+        RelationshipToNominee1, RelationshipToNominee2
+    );
+    PRINT '✅ Created index: IX_NicheBookingBeneficiary_NicheBookingId (CRITICAL for beneficiary queries)';
+END
+ELSE
+    PRINT '⏭️ Index IX_NicheBookingBeneficiary_NicheBookingId already exists';
+GO
+
+-- Index 17: Speed up Niche lookups by NicheId (if not already PK)
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Niche_NicheId' AND object_id = OBJECT_ID('Niche'))
+BEGIN
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name LIKE 'PK_%' AND is_primary_key = 1 AND object_id = OBJECT_ID('Niche') AND key_columns LIKE '%NicheId%')
+    BEGIN
+        CREATE NONCLUSTERED INDEX IX_Niche_NicheId
+        ON Niche(NicheId)
+        INCLUDE (Code, NicheRowlId);
+        PRINT '✅ Created index: IX_Niche_NicheId';
+    END
+    ELSE
+        PRINT '⏭️ Niche.NicheId is already indexed as primary key';
+END
+ELSE
+    PRINT '⏭️ Index IX_Niche_NicheId already exists';
+GO
+
 -- ============================================================================
 -- SECTION 2: UPDATE STATISTICS FOR BETTER QUERY OPTIMIZATION
 -- ============================================================================
@@ -206,6 +340,18 @@ PRINT '✅ Updated statistics: NicheBooking';
 
 UPDATE STATISTICS NicheBookingBeneficiary WITH FULLSCAN;
 PRINT '✅ Updated statistics: NicheBookingBeneficiary';
+
+UPDATE STATISTICS Person WITH FULLSCAN;
+PRINT '✅ Updated statistics: Person';
+
+UPDATE STATISTICS NicheInscriptionRequest WITH FULLSCAN;
+PRINT '✅ Updated statistics: NicheInscriptionRequest';
+
+UPDATE STATISTICS NicheInscriptionRequestDecesed WITH FULLSCAN;
+PRINT '✅ Updated statistics: NicheInscriptionRequestDecesed';
+
+UPDATE STATISTICS MisalaniousReceiptDetail WITH FULLSCAN;
+PRINT '✅ Updated statistics: MisalaniousReceiptDetail';
 
 GO
 

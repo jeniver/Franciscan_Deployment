@@ -27,6 +27,28 @@ router.post(
   (req, res) => controller.createInscriptionInvoice(req, res)
 );
 
+/**
+ * @route   POST /api/inscriptions
+ * @desc    Create a new inscription application
+ * @access  Private (JWT required)
+ */
+router.post(
+  '/',
+  authenticateToken,
+  (req, res) => controller.createInscription(req, res)
+);
+
+/**
+ * @route   PUT /api/inscriptions/:code
+ * @desc    Update an existing inscription application
+ * @access  Private (JWT required)
+ */
+router.put(
+  '/:code',
+  authenticateToken,
+  (req, res) => controller.updateInscription(req, res)
+);
+
 module.exports = router;
 
 

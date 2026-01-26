@@ -35,7 +35,7 @@ export interface InscriptionItemsResponse {
   success: boolean;
   message?: string;
   data: {
-    inscriptionRequestNo: string;
+    inscriptionRequestNo: string | null; // null when inscription doesn't exist yet
     items: InscriptionItem[];
     applicant: {
       name: string;
@@ -354,6 +354,290 @@ const inscriptionService = {
 
         throw new InscriptionError(
           errorData?.error?.message || errorData?.message || 'Failed to fetch bible choices',
+          'server',
+          status,
+          errorData?.error?.code
+        );
+      }
+
+      if (error.request) {
+        throw new InscriptionError(
+          'Network error: Unable to connect to server',
+          'network'
+        );
+      }
+
+      throw new InscriptionError(
+        error.message || 'An unexpected error occurred',
+        'server'
+      );
+    }
+  },
+
+  /**
+   * Create a new inscription application
+   * POST /api/inscriptions
+   */
+  async createInscription(data: {
+    applicant: {
+      name: string;
+      nricPassportNo: string;
+      address: {
+        block: string;
+        blockNo: string;
+        street: string;
+        streetName: string;
+        unitNo: string;
+        postalCode: string;
+      };
+      mobile: string;
+      homeTel: string;
+      emailId: string;
+    };
+    deceasedDetails?: Array<{
+      name: string;
+      dateOfDeath: string;
+      dateOfBirth: string;
+      internmentDate: string;
+      deathCertificateNo: string;
+      birthYear: string;
+      inscriptionText: string;
+    }>;
+    inscription?: {
+      bibleInscriptionChoiceId: number | null;
+      bibleInscriptionText: string;
+      additionalInscriptionPhrase: string;
+      remarks: string;
+      nicheApplicationCode: string;
+      nicheBookingId: number | null;
+    };
+  }): Promise<{ code: string; message: string }> {
+    try {
+      // Transform address components back to database format
+      const applicantData = {
+        applicantName: data.applicant.name,
+        applicantIDNo: data.applicant.nricPassportNo,
+        applicantEmailID: data.applicant.emailId,
+        applicantMobileNo: data.applicant.mobile,
+        applicantHomeTelNo: data.applicant.homeTel,
+        applicantOfficeTelNo: '',
+        applicantAddressNo: data.applicant.address.block || '',
+        applicantAddressLine1: data.applicant.address.street || '',
+        applicantAddressLine2: data.applicant.address.unitNo || '',
+        applicantAddressCity: `${data.applicant.address.postalCode || ''}`.trim() || '',
+        applicantAddressState: '',
+        applicantAddressCountry: ''
+      };
+
+      const requestBody = {
+        applicant: applicantData,
+        deceasedDetails: data.deceasedDetails || [],
+        inscription: data.inscription || {}
+      };
+
+      const response = await api.post<{
+        success: boolean;
+        code: string;
+        message: string;
+      }>('/api/inscriptions', requestBody);
+
+      if (!response.data.success) {
+        throw new InscriptionError(
+          response.data.message || 'Failed to create inscription',
+          'server',
+          response.status
+        );
+      }
+
+      return {
+        code: response.data.code,
+        message: response.data.message || 'Inscription created successfully'
+      };
+    } catch (error: any) {
+      if (error instanceof InscriptionError) {
+        throw error;
+      }
+
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        if (status === 401) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Unauthorized',
+            'auth',
+            status,
+            errorData?.error?.code
+          );
+        }
+
+        if (status === 403) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Access denied',
+            'auth',
+            status,
+            errorData?.error?.code || 'FORBIDDEN'
+          );
+        }
+
+        if (status === 400) {
+          throw new InscriptionError(
+            errorData?.error?.message || errorData?.message || 'Validation failed',
+            'validation',
+            status,
+            errorData?.error?.code
+          );
+        }
+
+        throw new InscriptionError(
+          errorData?.error?.message || errorData?.message || 'Failed to create inscription',
+          'server',
+          status,
+          errorData?.error?.code
+        );
+      }
+
+      if (error.request) {
+        throw new InscriptionError(
+          'Network error: Unable to connect to server',
+          'network'
+        );
+      }
+
+      throw new InscriptionError(
+        error.message || 'An unexpected error occurred',
+        'server'
+      );
+    }
+  },
+
+  /**
+   * Update an existing inscription application
+   * PUT /api/inscriptions/:code
+   */
+  async updateInscription(
+    code: string,
+    data: {
+      applicant: {
+        name: string;
+        nricPassportNo: string;
+        address: {
+          block: string;
+          blockNo: string;
+          street: string;
+          streetName: string;
+          unitNo: string;
+          postalCode: string;
+        };
+        mobile: string;
+        homeTel: string;
+        emailId: string;
+      };
+      deceasedDetails?: Array<{
+        name: string;
+        dateOfDeath: string;
+        dateOfBirth: string;
+        internmentDate: string;
+        deathCertificateNo: string;
+        birthYear: string;
+        inscriptionText: string;
+      }>;
+      inscription?: {
+        bibleInscriptionChoiceId: number | null;
+        bibleInscriptionText: string;
+        additionalInscriptionPhrase: string;
+        remarks: string;
+      };
+    }
+  ): Promise<{ code: string; message: string }> {
+    try {
+      // Transform address components back to database format
+      const applicantData = {
+        applicantName: data.applicant.name,
+        applicantIDNo: data.applicant.nricPassportNo,
+        applicantEmailID: data.applicant.emailId,
+        applicantMobileNo: data.applicant.mobile,
+        applicantHomeTelNo: data.applicant.homeTel,
+        applicantOfficeTelNo: '',
+        applicantAddressNo: data.applicant.address.block || '',
+        applicantAddressLine1: data.applicant.address.street || '',
+        applicantAddressLine2: data.applicant.address.unitNo || '',
+        applicantAddressCity: `${data.applicant.address.postalCode || ''}`.trim() || '',
+        applicantAddressState: '',
+        applicantAddressCountry: ''
+      };
+
+      const requestBody = {
+        applicant: applicantData,
+        deceasedDetails: data.deceasedDetails || [],
+        inscription: data.inscription || {}
+      };
+
+      const response = await api.put<{
+        success: boolean;
+        code: string;
+        message: string;
+      }>(`/api/inscriptions/${encodeURIComponent(code)}`, requestBody);
+
+      if (!response.data.success) {
+        throw new InscriptionError(
+          response.data.message || 'Failed to update inscription',
+          'server',
+          response.status
+        );
+      }
+
+      return {
+        code: response.data.code,
+        message: response.data.message || 'Inscription updated successfully'
+      };
+    } catch (error: any) {
+      if (error instanceof InscriptionError) {
+        throw error;
+      }
+
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        if (status === 401) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Unauthorized',
+            'auth',
+            status,
+            errorData?.error?.code
+          );
+        }
+
+        if (status === 403) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Access denied',
+            'auth',
+            status,
+            errorData?.error?.code || 'FORBIDDEN'
+          );
+        }
+
+        if (status === 404) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Inscription not found',
+            'server',
+            status,
+            errorData?.error?.code || 'NOT_FOUND'
+          );
+        }
+
+        if (status === 400) {
+          throw new InscriptionError(
+            errorData?.error?.message || errorData?.message || 'Validation failed',
+            'validation',
+            status,
+            errorData?.error?.code
+          );
+        }
+
+        throw new InscriptionError(
+          errorData?.error?.message || errorData?.message || 'Failed to update inscription',
           'server',
           status,
           errorData?.error?.code

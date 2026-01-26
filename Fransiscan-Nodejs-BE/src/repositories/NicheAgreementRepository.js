@@ -29,138 +29,196 @@ class NicheAgreementRepository extends BaseRepository {
 
       logger.info(`Querying NicheApplication for code: ${applicationCode}`);
 
-      // Enhanced query - Include Chapel, Wall, and Row information
-      const query = `
-        SELECT TOP 1 
-          na.*,
-          n.Code AS NicheCode,
-          n.NicheRowlId,
-          r.Code AS RowCode,
-          r.NicheLevel,
-          r.NicheWallId,
-          w.Code AS WallCode,
-          w.Name AS WallName,
-          w.ChapelId,
-          c.Code AS ChapelCode,
-          c.Name AS ChapelName,
-          c.Description AS ChapelDescription
-        FROM NicheApplication na WITH (NOLOCK)
-        LEFT JOIN Niche n WITH (NOLOCK) ON na.NicheId = n.NicheId
-        LEFT JOIN NicheRow r WITH (NOLOCK) ON n.NicheRowlId = r.NicheRowlId
-        LEFT JOIN NicheWall w WITH (NOLOCK) ON r.NicheWallId = w.NicheWallId
-        LEFT JOIN Chapel c WITH (NOLOCK) ON w.ChapelId = c.ChapelId
+      // CRITICAL OPTIMIZATION: Split complex query into two simpler queries
+      // This avoids expensive JOINs that can cause timeouts
+      // Step 1: Get application data first (fast, indexed lookup)
+      const useIndexHints = process.env.USE_INDEX_HINTS === 'true';
+      const indexHint = useIndexHints ? 'WITH (NOLOCK, INDEX(IX_NicheApplication_Code))' : 'WITH (NOLOCK)';
+      
+      const applicationQuery = `
+        SELECT TOP 1 na.*
+        FROM NicheApplication na ${indexHint}
         WHERE na.Code = @applicationCode
       `;
 
-      // This query can touch several joined tables; give it a slightly higher
-      // timeout than the global default to avoid occasional ETIMEOUT on large
-      // datasets, without changing any functional behaviour.
-      const result = await executeQuery(
-        query,
+      // Fast query with 10s timeout (should be < 1s with proper index)
+      const applicationResult = await executeQuery(
+        applicationQuery,
         { applicationCode },
-        { timeout: 120000 }
+        { timeout: 10000 }
       );
 
-      if (result.recordset.length === 0) {
+      if (applicationResult.recordset.length === 0) {
         logger.warn(`No application found for code: ${applicationCode}`);
         return null;
       }
 
-      const na = result.recordset[0];
-      logger.info(`Found application: ${na.Code} in Chapel: ${na.ChapelCode || 'N/A'}, Wall: ${na.WallCode || 'N/A'}`);
+      const na = applicationResult.recordset[0];
+      
+      // Step 2: Get location hierarchy separately (only if NicheId exists)
+      // This query runs in parallel with other queries, so it doesn't block
+      let locationData = {
+        NicheCode: null,
+        NicheRowlId: null,
+        RowCode: null,
+        NicheLevel: null,
+        NicheWallId: null,
+        WallCode: null,
+        WallName: null,
+        ChapelId: null,
+        ChapelCode: null,
+        ChapelName: null,
+        ChapelDescription: null
+      };
+
+      if (na.NicheId) {
+        try {
+          const locationQuery = `
+            SELECT TOP 1
+              n.Code AS NicheCode,
+              n.NicheRowlId,
+              r.Code AS RowCode,
+              r.NicheLevel,
+              r.NicheWallId,
+              w.Code AS WallCode,
+              w.Name AS WallName,
+              w.ChapelId,
+              c.Code AS ChapelCode,
+              c.Name AS ChapelName,
+              c.Description AS ChapelDescription
+            FROM Niche n WITH (NOLOCK)
+            LEFT JOIN NicheRow r WITH (NOLOCK) ON n.NicheRowlId = r.NicheRowlId
+            LEFT JOIN NicheWall w WITH (NOLOCK) ON r.NicheWallId = w.NicheWallId
+            LEFT JOIN Chapel c WITH (NOLOCK) ON w.ChapelId = c.ChapelId
+            WHERE n.NicheId = @nicheId
+          `;
+
+          const locationResult = await executeQuery(
+            locationQuery,
+            { nicheId: na.NicheId },
+            { timeout: 10000 }
+          );
+
+          if (locationResult.recordset.length > 0) {
+            locationData = locationResult.recordset[0];
+          }
+        } catch (locationError) {
+          logger.warn(`Could not fetch location hierarchy for niche ${na.NicheId}:`, locationError.message);
+          // Continue without location data - it's optional
+        }
+      }
+
+      // Merge location data into application data
+      const mergedData = {
+        ...na,
+        ...locationData
+      };
+
+      logger.info(`Found application: ${mergedData.Code} in Chapel: ${mergedData.ChapelCode || 'N/A'}, Wall: ${mergedData.WallCode || 'N/A'}`);
 
       // Build the niche agreement object using data from NicheApplication
       const nicheAgreement = new NicheAgreement({
-        applicationCode: na.Code,
-        appliedDate: na.AppliedDate,
-        agreementDate: na.AgreementDate,
+        applicationCode: mergedData.Code,
+        appliedDate: mergedData.AppliedDate,
+        agreementDate: mergedData.AgreementDate,
 
         // Applicant (all data is in NicheApplication table)
-        applicantName: na.ApplicantName,
-        applicantAddressNo: na.ApplicantAddressNo,
-        applicantAddressLine1: na.ApplicantAddressLine1,
-        applicantAddressLine2: na.ApplicantAddressLine2,
-        applicantAddressCity: na.ApplicantAddressCity,
-        applicantAddressCountry: na.ApplicantAddressCountry,
-        applicantAddressState: na.ApplicantAddressState,
-        applicantEmailID: na.ApplicantEmailID,
-        applicantIDNo: na.ApplicantIDNo,
-        applicantMobileNo: na.ApplicantMobileNo,
-        applicantHomeTelNo: na.ApplicantHomeTelNo,
-        applicantOfficeTelNo: na.ApplicantOfficeTelNo,
-        applicantIsCatholic: na.ApplicantIsCatholic,
+        applicantName: mergedData.ApplicantName,
+        applicantAddressNo: mergedData.ApplicantAddressNo,
+        applicantAddressLine1: mergedData.ApplicantAddressLine1,
+        applicantAddressLine2: mergedData.ApplicantAddressLine2,
+        applicantAddressCity: mergedData.ApplicantAddressCity,
+        applicantAddressCountry: mergedData.ApplicantAddressCountry,
+        applicantAddressState: mergedData.ApplicantAddressState,
+        applicantEmailID: mergedData.ApplicantEmailID,
+        applicantIDNo: mergedData.ApplicantIDNo,
+        applicantMobileNo: mergedData.ApplicantMobileNo,
+        applicantHomeTelNo: mergedData.ApplicantHomeTelNo,
+        applicantOfficeTelNo: mergedData.ApplicantOfficeTelNo,
+        applicantIsCatholic: mergedData.ApplicantIsCatholic,
 
         // Nominee (all data is in NicheApplication table)
-        nomineeName: na.NomineeName,
-        nomineeAddressNo: na.NomineeAddressNo,
-        nomineeAddressLine1: na.NomineeAddressLine1,
-        nomineeAddressLine2: na.NomineeAddressLine2,
-        nomineeAddressCity: na.NomineeAddressCity,
-        nomineeAddressCountry: na.NomineeAddressCountry,
-        nomineeAddressState: na.NomineeAddressState,
-        nomineeEmailID: na.NomineeEmailID,
-        nomineeIDNo: na.NomineeIDNo,
-        nomineeMobileNo: na.NomineeMobileNo,
-        nomineeHomeTelNo: na.NomineeHomeTelNo,
-        nomineeOfficeTelNo: na.NomineeOfficeTelNo,
-        nomineeRelationship: na.NomineeRelationship,
+        nomineeName: mergedData.NomineeName,
+        nomineeAddressNo: mergedData.NomineeAddressNo,
+        nomineeAddressLine1: mergedData.NomineeAddressLine1,
+        nomineeAddressLine2: mergedData.NomineeAddressLine2,
+        nomineeAddressCity: mergedData.NomineeAddressCity,
+        nomineeAddressCountry: mergedData.NomineeAddressCountry,
+        nomineeAddressState: mergedData.NomineeAddressState,
+        nomineeEmailID: mergedData.NomineeEmailID,
+        nomineeIDNo: mergedData.NomineeIDNo,
+        nomineeMobileNo: mergedData.NomineeMobileNo,
+        nomineeHomeTelNo: mergedData.NomineeHomeTelNo,
+        nomineeOfficeTelNo: mergedData.NomineeOfficeTelNo,
+        nomineeRelationship: mergedData.NomineeRelationship,
 
         // Second Nominee (all data is in NicheApplication table)
-        nominee2Name: na.NomineeName2,
-        nominee2AddressNo: na.NomineeAddressNo2,
-        nominee2AddressLine1: na.NomineeAddressLine12,
-        nominee2AddressLine2: na.NomineeAddressLine22,
-        nominee2AddressCity: na.NomineeAddressCity2,
-        nominee2AddressCountry: na.NomineeAddressCountry2,
-        nominee2AddressState: na.NomineeAddressState2,
-        nominee2EmailID: na.NomineeEmailID2,
-        nominee2IDNo: na.NomineeIDNo2,
-        nominee2MobileNo: na.NomineeMobileNo2,
-        nominee2HomeTelNo: na.NomineeHomeTelNo2,
-        nominee2OfficeTelNo: na.NomineeOfficeTelNo2,
-        nominee2Relationship: na.NomineeRelationship2,
+        nominee2Name: mergedData.NomineeName2,
+        nominee2AddressNo: mergedData.NomineeAddressNo2,
+        nominee2AddressLine1: mergedData.NomineeAddressLine12,
+        nominee2AddressLine2: mergedData.NomineeAddressLine22,
+        nominee2AddressCity: mergedData.NomineeAddressCity2,
+        nominee2AddressCountry: mergedData.NomineeAddressCountry2,
+        nominee2AddressState: mergedData.NomineeAddressState2,
+        nominee2EmailID: mergedData.NomineeEmailID2,
+        nominee2IDNo: mergedData.NomineeIDNo2,
+        nominee2MobileNo: mergedData.NomineeMobileNo2,
+        nominee2HomeTelNo: mergedData.NomineeHomeTelNo2,
+        nominee2OfficeTelNo: mergedData.NomineeOfficeTelNo2,
+        nominee2Relationship: mergedData.NomineeRelationship2,
 
         // Niche details with enhanced location information
-        nicheNumber: na.NicheId ? na.NicheId.toString() : null,
-        nicheCode: na.NicheCode || null,
-        nicheTotalAmount: na.Amount || 0,
-        nicheLineAmount: na.DefaultAmount || 0,
+        nicheNumber: mergedData.NicheId ? mergedData.NicheId.toString() : null,
+        nicheCode: mergedData.NicheCode || null,
+        nicheTotalAmount: mergedData.Amount || 0,
+        nicheLineAmount: mergedData.DefaultAmount || 0,
 
         // Niche location hierarchy (NEW)
         nicheLocation: {
           chapel: {
-            chapelId: na.ChapelId || null,
-            chapelCode: na.ChapelCode || null,
-            chapelName: na.ChapelName || null,
-            description: na.ChapelDescription || null
+            chapelId: mergedData.ChapelId || null,
+            chapelCode: mergedData.ChapelCode || null,
+            chapelName: mergedData.ChapelName || null,
+            description: mergedData.ChapelDescription || null
           },
           wall: {
-            wallId: na.NicheWallId || null,
-            wallCode: na.WallCode || null,
-            wallName: na.WallName || null
+            wallId: mergedData.NicheWallId || null,
+            wallCode: mergedData.WallCode || null,
+            wallName: mergedData.WallName || null
           },
           row: {
-            rowId: na.NicheRowlId || null,
-            rowCode: na.RowCode || null,
-            level: na.NicheLevel || null
+            rowId: mergedData.NicheRowlId || null,
+            rowCode: mergedData.RowCode || null,
+            level: mergedData.NicheLevel || null
           }
         },
 
         // Basic info
-        refDocNumber: na.Code
+        refDocNumber: mergedData.Code
       });
 
-      // Get beneficiaries separately (simple query)
-      await this.addBeneficiaries(na.NicheApplicationId, nicheAgreement);
+      // CRITICAL OPTIMIZATION: Execute all independent queries in parallel
+      // This reduces total time from sum of all queries to max of all queries
+      const [beneficiariesResult, nomineeResult, deceasedResult, invoiceResult] = await Promise.allSettled([
+        this.addBeneficiaries(mergedData.NicheApplicationId, nicheAgreement),
+        this.addNomineeInfo(mergedData.NicheApplicationId, nicheAgreement),
+        this.addDeceasedAndStorageInfo(mergedData.NicheApplicationId, nicheAgreement),
+        this.addInvoiceInfo(applicationCode, nicheAgreement)
+      ]);
 
-      // Get nominee information from Person table via NicheBooking
-      await this.addNomineeInfo(na.NicheApplicationId, nicheAgreement);
-
-      // Get deceased information and storage period
-      await this.addDeceasedAndStorageInfo(na.NicheApplicationId, nicheAgreement);
-
-      // Get invoice info separately (if needed)
-      await this.addInvoiceInfo(applicationCode, nicheAgreement);
+      // Log any failures (non-critical, as these are optional data)
+      if (beneficiariesResult.status === 'rejected') {
+        logger.warn('Failed to fetch beneficiaries:', beneficiariesResult.reason?.message);
+      }
+      if (nomineeResult.status === 'rejected') {
+        logger.warn('Failed to fetch nominee info:', nomineeResult.reason?.message);
+      }
+      if (deceasedResult.status === 'rejected') {
+        logger.warn('Failed to fetch deceased info:', deceasedResult.reason?.message);
+      }
+      if (invoiceResult.status === 'rejected') {
+        logger.warn('Failed to fetch invoice info:', invoiceResult.reason?.message);
+      }
 
       logger.info(`Successfully retrieved agreement for: ${applicationCode}`);
       return nicheAgreement;
@@ -192,7 +250,8 @@ class NicheAgreementRepository extends BaseRepository {
         ORDER BY nbb.NicheBookingBeneficiaryId
       `;
 
-      const result = await executeQuery(query, { nicheApplicationId });
+      // Reduced timeout - should complete in < 2s with proper index on NicheBookingBeneficiary
+      const result = await executeQuery(query, { nicheApplicationId }, { timeout: 10000 });
 
       if (result.recordset.length > 0) {
         const bene1 = result.recordset[0];
@@ -285,7 +344,8 @@ class NicheAgreementRepository extends BaseRepository {
         WHERE nb.NicheApplicationId = @nicheApplicationId
       `;
 
-      const result = await executeQuery(query, { nicheApplicationId });
+      // Reduced timeout - should complete in < 2s with proper indexes on NicheBooking and Person
+      const result = await executeQuery(query, { nicheApplicationId }, { timeout: 10000 });
 
       if (result.recordset.length > 0) {
         const row = result.recordset[0];
@@ -349,44 +409,46 @@ class NicheAgreementRepository extends BaseRepository {
 
   /**
    * Add deceased information and storage period from NicheInscriptionRequest
+   * OPTIMIZED: Combined queries to reduce round trips
    */
   async addDeceasedAndStorageInfo(nicheApplicationId, nicheAgreement) {
     try {
-      // First get NicheBookingId
+      // CRITICAL OPTIMIZATION: Split into two queries to avoid CTE scanning entire table
+      // Step 1: Get booking and inscription info first (fast lookup)
       const bookingQuery = `
-        SELECT TOP 1 NicheBookingId
-        FROM NicheBooking WITH (NOLOCK)
-        WHERE NicheApplicationId = @nicheApplicationId
+        SELECT TOP 1
+          nb.NicheBookingId,
+          nir.StorageFrom,
+          nir.StorageTo,
+          nir.NicheInscriptionRequestId
+        FROM NicheBooking nb WITH (NOLOCK)
+        LEFT JOIN NicheInscriptionRequest nir WITH (NOLOCK) 
+          ON nb.NicheBookingId = nir.NicheBookingId
+        WHERE nb.NicheApplicationId = @nicheApplicationId
+        ORDER BY nir.NicheInscriptionRequestId DESC
       `;
-      const bookingResult = await executeQuery(bookingQuery, { nicheApplicationId });
 
-      if (bookingResult.recordset.length === 0) {
+      const bookingResult = await executeQuery(bookingQuery, { nicheApplicationId }, { timeout: 10000 });
+
+      if (!bookingResult.recordset || bookingResult.recordset.length === 0) {
         logger.info(`No booking found for application: ${nicheApplicationId}`);
         return;
       }
 
-      const nicheBookingId = bookingResult.recordset[0].NicheBookingId;
+      const bookingRow = bookingResult.recordset[0];
+      const inscriptionRequestId = bookingRow.NicheInscriptionRequestId;
 
-      // Get inscription request with storage period
-      const inscriptionQuery = `
-        SELECT TOP 1
-          StorageFrom,
-          StorageTo,
-          NicheInscriptionRequestId
-        FROM NicheInscriptionRequest WITH (NOLOCK)
-        WHERE NicheBookingId = @nicheBookingId
-        ORDER BY NicheInscriptionRequestId DESC
-      `;
+      // Set storage info if available
+      if (bookingRow.StorageFrom) {
+        nicheAgreement.storageFrom = bookingRow.StorageFrom;
+      }
+      if (bookingRow.StorageTo) {
+        nicheAgreement.storageTo = bookingRow.StorageTo;
+      }
 
-      const inscriptionResult = await executeQuery(inscriptionQuery, { nicheBookingId });
-
-      if (inscriptionResult.recordset.length > 0) {
-        const ins = inscriptionResult.recordset[0];
-        nicheAgreement.storageFrom = ins.StorageFrom;
-        nicheAgreement.storageTo = ins.StorageTo;
-
-        // Get deceased information
-        if (ins.NicheInscriptionRequestId) {
+      // Step 2: Get deceased details separately (only if inscription exists)
+      if (inscriptionRequestId) {
+        try {
           const deceasedQuery = `
             SELECT TOP 2
               NameOfDeceased,
@@ -394,29 +456,34 @@ class NicheAgreementRepository extends BaseRepository {
               InternmentDate,
               DeathCertificateNo
             FROM NicheInscriptionRequestDecesed WITH (NOLOCK)
-            WHERE NicheInscriptionRequestId = @nicheInscriptionRequestId
+            WHERE NicheInscriptionRequestId = @inscriptionRequestId
             ORDER BY NicheInscriptionRequestDecesedId
           `;
 
-          const deceasedResult = await executeQuery(deceasedQuery, { 
-            nicheInscriptionRequestId: ins.NicheInscriptionRequestId 
-          });
+          const deceasedResult = await executeQuery(
+            deceasedQuery,
+            { inscriptionRequestId },
+            { timeout: 10000 }
+          );
 
           if (deceasedResult.recordset.length > 0) {
-            const dec1 = deceasedResult.recordset[0];
-            nicheAgreement.nameOfDeceased1 = dec1.NameOfDeceased;
-            nicheAgreement.dateDied1 = dec1.DateDied;
-            nicheAgreement.internmentDate1 = dec1.InternmentDate;
-            nicheAgreement.deathCertificateNo1 = dec1.DeathCertificateNo;
+            const deceased1 = deceasedResult.recordset[0];
+            nicheAgreement.nameOfDeceased1 = deceased1.NameOfDeceased;
+            nicheAgreement.dateDied1 = deceased1.DateDied;
+            nicheAgreement.internmentDate1 = deceased1.InternmentDate;
+            nicheAgreement.deathCertificateNo1 = deceased1.DeathCertificateNo;
           }
 
           if (deceasedResult.recordset.length > 1) {
-            const dec2 = deceasedResult.recordset[1];
-            nicheAgreement.nameOfDeceased2 = dec2.NameOfDeceased;
-            nicheAgreement.dateDied2 = dec2.DateDied;
-            nicheAgreement.internmentDate2 = dec2.InternmentDate;
-            nicheAgreement.deathCertificateNo2 = dec2.DeathCertificateNo;
+            const deceased2 = deceasedResult.recordset[1];
+            nicheAgreement.nameOfDeceased2 = deceased2.NameOfDeceased;
+            nicheAgreement.dateDied2 = deceased2.DateDied;
+            nicheAgreement.internmentDate2 = deceased2.InternmentDate;
+            nicheAgreement.deathCertificateNo2 = deceased2.DeathCertificateNo;
           }
+        } catch (deceasedError) {
+          logger.warn(`Could not fetch deceased details for inscription ${inscriptionRequestId}:`, deceasedError.message);
+          // Continue without deceased details - they're optional
         }
       }
     } catch (error) {
@@ -451,7 +518,8 @@ class NicheAgreementRepository extends BaseRepository {
         ORDER BY inv.TransactionDate DESC
       `;
 
-      const invoiceResult = await executeQuery(invoiceQuery, { applicationCode });
+      // Reduced timeout - should complete in < 2s with proper index on InvoiceDetail.RefDocNumber
+      const invoiceResult = await executeQuery(invoiceQuery, { applicationCode }, { timeout: 10000 });
 
       let inv = null;
       let invoiceId = null;
@@ -473,7 +541,7 @@ class NicheAgreementRepository extends BaseRepository {
           WHERE invdls.RefDocNumber = @applicationCode
           ORDER BY inv.TransactionDate DESC
         `;
-        const invoiceResultNoStatus = await executeQuery(invoiceQueryNoStatus, { applicationCode });
+        const invoiceResultNoStatus = await executeQuery(invoiceQueryNoStatus, { applicationCode }, { timeout: 10000 });
         
         if (invoiceResultNoStatus.recordset.length === 0) {
           logger.info(`No invoice found for application: ${applicationCode}`);
@@ -511,7 +579,7 @@ class NicheAgreementRepository extends BaseRepository {
             ORDER BY ReceiptId DESC
           `;
 
-          const receiptResult = await executeQuery(receiptQuery, { invoiceId });
+          const receiptResult = await executeQuery(receiptQuery, { invoiceId }, { timeout: 10000 });
 
           if (receiptResult.recordset.length > 0) {
             const rec = receiptResult.recordset[0];
@@ -539,7 +607,7 @@ class NicheAgreementRepository extends BaseRepository {
           ORDER BY ReceiptDetailId DESC
         `;
 
-        const miscReceiptResult = await executeQuery(miscReceiptQuery, { applicationCode });
+        const miscReceiptResult = await executeQuery(miscReceiptQuery, { applicationCode }, { timeout: 10000 });
 
         if (miscReceiptResult.recordset.length > 0) {
           const miscRec = miscReceiptResult.recordset[0];
@@ -575,7 +643,7 @@ class NicheAgreementRepository extends BaseRepository {
         ORDER BY Code
       `;
 
-      const result = await executeQuery(query, { prefix });
+      const result = await executeQuery(query, { prefix }, { timeout: 10000 });
 
       const applicationNumbers = result.recordset.map(row => row.Code);
       logger.info(`Found ${applicationNumbers.length} application(s) matching prefix: ${prefix} `);

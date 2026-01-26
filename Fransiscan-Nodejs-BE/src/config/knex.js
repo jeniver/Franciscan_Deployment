@@ -66,7 +66,19 @@ async function executeStoredProcedure(procedureName, params = {}, transaction = 
     const result = await executeProcedure(procedureName, params);
     return result;
   } catch (error) {
-    logger.error(`Stored procedure ${procedureName} failed:`, error);
+    // Check if error is "procedure not found" - this is expected and will fallback
+    const isProcedureNotFound = 
+      error.message?.includes('Could not find stored procedure') ||
+      error.message?.includes('stored procedure') && error.message?.includes('not found') ||
+      (error.originalError?.info?.number === 2812); // SQL Server error 2812 = object not found
+    
+    if (isProcedureNotFound) {
+      // Log as debug/info since this is expected behavior (fallback will be used)
+      logger.debug(`Stored procedure ${procedureName} not found, will use fallback method`);
+    } else {
+      // Log as error for actual failures
+      logger.error(`Stored procedure ${procedureName} failed:`, error);
+    }
     throw error;
   }
 }

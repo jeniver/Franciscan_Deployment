@@ -1,5 +1,6 @@
 const BaseController = require('./BaseController');
 const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+const EngraveApplicationService = require('../services/EngraveApplicationService');
 const logger = require('../utils/logger');
 
 /**
@@ -135,6 +136,92 @@ class InscriptionInvoiceController extends BaseController {
     } catch (error) {
       logger.error('Controller: Failed to create inscription invoice:', error);
       return this.sendError(res, 'Failed to create inscription invoice', 500);
+    }
+  });
+
+  /**
+   * POST /api/inscriptions
+   * Create a new inscription application
+   */
+  createInscription = this.asyncHandler(async (req, res) => {
+    this.logRequest(req, 'Create Inscription');
+
+    try {
+      const userId = req.user?.userId;
+      const churchId = req.user?.churchId;
+
+      if (!userId || !churchId) {
+        return this.sendError(res, 'Authentication with userId and churchId is required', 401);
+      }
+
+      const result = await EngraveApplicationService.createApplication(
+        req.body,
+        userId,
+        churchId
+      );
+
+      return res.status(201).json(result);
+    } catch (error) {
+      logger.error('Controller: Failed to create inscription:', error);
+
+      if (error.message.includes('Church ID mismatch')) {
+        return this.sendError(res, error.message, 403);
+      }
+
+      if (error.message.includes('Validation failed')) {
+        return this.sendError(res, error.message, 400);
+      }
+
+      return this.sendError(res, 'Failed to create inscription', 500);
+    }
+  });
+
+  /**
+   * PUT /api/inscriptions/:code
+   * Update an existing inscription application
+   */
+  updateInscription = this.asyncHandler(async (req, res) => {
+    this.logRequest(req, 'Update Inscription');
+
+    try {
+      const { code } = req.params;
+      const churchId = req.user?.churchId;
+
+      if (!code) {
+        return this.sendError(res, 'Application code is required', 400);
+      }
+
+      if (!churchId) {
+        return this.sendError(res, 'Authentication with churchId is required', 401);
+      }
+
+      const result = await EngraveApplicationService.updateApplication(
+        code,
+        req.body,
+        churchId
+      );
+
+      return this.sendSuccess(res, result, 'Inscription updated successfully');
+    } catch (error) {
+      logger.error('Controller: Failed to update inscription:', error);
+
+      if (error.message === 'Application not found') {
+        return this.sendError(res, error.message, 404);
+      }
+
+      if (error.message.includes('Church ID mismatch') || error.message.includes('Access denied')) {
+        return this.sendError(res, error.message, 403);
+      }
+
+      if (error.message.includes('cannot be modified')) {
+        return this.sendError(res, error.message, 400);
+      }
+
+      if (error.message.includes('Validation failed')) {
+        return this.sendError(res, error.message, 400);
+      }
+
+      return this.sendError(res, 'Failed to update inscription', 500);
     }
   });
 }

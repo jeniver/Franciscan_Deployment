@@ -201,7 +201,7 @@ const generateInvoiceHtmlTemplate = (data: InvoiceData): string => {
   const lineItemsHtml = lineItems.map(item => `
             <tr>
                 <td class="text-left">${item.description}</td>
-                <td class="text-left">${refNo} -</td>
+                <td class="text-left">${refNo}</td>
                 <td>${item.gstPercent.toFixed(1)}</td>
                 <td>${item.quantity.toFixed(2)}</td>
                 <td>$ ${formatCurrency(item.unitPrice)}</td>
@@ -410,7 +410,7 @@ const generateInvoiceHtmlTemplate = (data: InvoiceData): string => {
     <div class="info-grid">
         <div>
             <span class="info-label">Name :</span> ${data.applicantName || 'N/A'}<br>
-            <span class="info-label">Address :</span> Blk: ${data.applicantAddress || ''}, , Singapore
+            <span class="info-label">Address :</span> ${data.applicantAddress || 'Blk:,,, Singapore'}
         </div>
         <div>
             <span class="info-label">Invoice No :</span> ${data.invoiceNo || 'N/A'}<br>
@@ -423,14 +423,14 @@ const generateInvoiceHtmlTemplate = (data: InvoiceData): string => {
             <tr>
                 <th style="width: 30%;">Description</th>
                 <th style="width: 25%;">Reference No.</th>
-                <th>GST %</th>
-                <th>Qty</th>
-                <th>Unit Price</th>
-                <th>Amount</th>
+                <th style="width: 10%;">GST %</th>
+                <th style="width: 10%;">Qty</th>
+                <th style="width: 12%;">Unit Price</th>
+                <th style="width: 13%;">Amount</th>
             </tr>
         </thead>
         <tbody>
-            ${lineItemsHtml}
+            ${lineItemsHtml} 
         </tbody>
     </table>
 
@@ -451,7 +451,7 @@ const generateInvoiceHtmlTemplate = (data: InvoiceData): string => {
 
     <div class="footer-note">
         Dollars: ${totalInWords}<br>
-        <span style="font-size: 0.8em; margin-top: 10px; display: block;">This is a system generated invoice. No signature is required</span>
+        <span style="font-size: 0.8em; margin-top: 10px; display: block;">This is a system generated invoice. No signature is required.</span>
     </div>
 
     <div class="payment-section">

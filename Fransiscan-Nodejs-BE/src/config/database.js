@@ -841,15 +841,28 @@ const executeProcedure = async(procedureName, params = {}, options = {}, retryCo
       error.message?.includes('timeout') ||
       error.message?.includes('Timeout');
 
-    logger.error('Stored procedure execution failed:', {
-      procedure: procedureName,
-      error: error.message,
-      code: error.code,
-      name: error.name,
-      retryCount,
-      isConnectionError,
-      isTimeoutError
-    });
+    // Check if error is "procedure not found" - this is expected and will fallback
+    const isProcedureNotFound = 
+      error.message?.includes('Could not find stored procedure') ||
+      (error.message?.includes('stored procedure') && error.message?.includes('not found')) ||
+      (error.originalError?.info?.number === 2812) || // SQL Server error 2812 = object not found
+      (error.info?.number === 2812);
+    
+    if (isProcedureNotFound) {
+      // Log as debug since this is expected behavior (fallback will be used)
+      logger.debug(`Stored procedure ${procedureName} not found (expected, will use fallback)`);
+    } else {
+      // Log as error for actual failures
+      logger.error('Stored procedure execution failed:', {
+        procedure: procedureName,
+        error: error.message,
+        code: error.code,
+        name: error.name,
+        retryCount,
+        isConnectionError,
+        isTimeoutError
+      });
+    }
 
     // Retry on connection errors (but not timeout errors)
     // Timeout errors mean the procedure is slow, not that connection is broken

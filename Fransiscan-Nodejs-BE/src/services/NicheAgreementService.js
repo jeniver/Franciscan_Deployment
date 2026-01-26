@@ -1,5 +1,11 @@
 const NicheAgreementRepository = require('../repositories/NicheAgreementRepository');
+const { cache } = require('../utils/cache');
 const logger = require('../utils/logger');
+
+// Cache configuration for niche agreements
+const NICHE_AGREEMENT_CACHE_PREFIX = 'nicheAgreement:';
+const NICHE_AGREEMENT_CACHE_TTL = parseInt(process.env.NICHE_AGREEMENT_CACHE_TTL || '300', 10); // 5 minutes default
+const enableCache = process.env.NICHE_AGREEMENT_CACHE !== 'false';
 
 /**
  * Niche Agreement Service
@@ -22,6 +28,18 @@ class NicheAgreementService {
       // Validate input
       if (!applicationNumber || applicationNumber.trim() === '') {
         throw new Error('Application number is required');
+      }
+
+      // CRITICAL OPTIMIZATION: Check cache first
+      const cacheKey = `${NICHE_AGREEMENT_CACHE_PREFIX}${applicationNumber.trim()}`;
+      const bypassCache = process.env.BYPASS_CACHE === 'true';
+      
+      if (enableCache && !bypassCache) {
+        const cached = cache.get(cacheKey);
+        if (cached) {
+          logger.debug(`Cache hit for niche agreement: ${applicationNumber}`);
+          return cached;
+        }
       }
 
       // Clean the application number
@@ -70,6 +88,16 @@ class NicheAgreementService {
 
       // Add additional business logic processing
       const processedAgreement = await this.processNicheAgreementData(nicheAgreement);
+
+      // CRITICAL OPTIMIZATION: Cache the result
+      if (enableCache && !bypassCache) {
+        try {
+          cache.set(cacheKey, processedAgreement, NICHE_AGREEMENT_CACHE_TTL);
+          logger.debug(`Cached niche agreement: ${applicationNumber}`);
+        } catch (cacheError) {
+          logger.warn('Failed to cache niche agreement:', cacheError.message);
+        }
+      }
 
       logger.info(`Successfully retrieved niche agreement details for application: ${applicationNumber}`);
       return processedAgreement;

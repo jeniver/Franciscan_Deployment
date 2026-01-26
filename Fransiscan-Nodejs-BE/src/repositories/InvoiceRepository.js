@@ -248,7 +248,7 @@ class InvoiceRepository extends BaseRepository {
           params.churchId = churchId;
         }
 
-        return executeQuery(query, params);
+        return executeQuery(query, params, { timeout: 10000 });
       };
 
       let result = { recordset: [] };
@@ -313,7 +313,7 @@ class InvoiceRepository extends BaseRepository {
 
         appCodeQuery += ' ORDER BY i.TransactionDate DESC, i.InvoiceId DESC';
 
-        let appResult = await executeQuery(appCodeQuery, appParams);
+        let appResult = await executeQuery(appCodeQuery, appParams, { timeout: 10000 });
 
         if (appResult.recordset.length > 0) {
           invoice = appResult.recordset[0];
@@ -348,7 +348,7 @@ class InvoiceRepository extends BaseRepository {
 
           appHeaderQuery += ' ORDER BY i.TransactionDate DESC, i.InvoiceId DESC';
 
-          appResult = await executeQuery(appHeaderQuery, appHeaderParams);
+          appResult = await executeQuery(appHeaderQuery, appHeaderParams, { timeout: 10000 });
 
           if (appResult.recordset.length > 0) {
             invoice = appResult.recordset[0];
@@ -383,7 +383,7 @@ class InvoiceRepository extends BaseRepository {
 
             fallbackHeaderQuery += ' ORDER BY i.TransactionDate DESC, i.InvoiceId DESC';
 
-            const fallbackHeaderResult = await executeQuery(fallbackHeaderQuery, fallbackParams);
+            const fallbackHeaderResult = await executeQuery(fallbackHeaderQuery, fallbackParams, { timeout: 10000 });
 
             if (fallbackHeaderResult.recordset.length > 0) {
               invoice = fallbackHeaderResult.recordset[0];
@@ -408,7 +408,7 @@ class InvoiceRepository extends BaseRepository {
 
               fallbackDetailQuery += ' ORDER BY i.TransactionDate DESC, i.InvoiceId DESC';
 
-              const fallbackDetailResult = await executeQuery(fallbackDetailQuery, fallbackParams);
+              const fallbackDetailResult = await executeQuery(fallbackDetailQuery, fallbackParams, { timeout: 10000 });
 
               if (fallbackDetailResult.recordset.length > 0) {
                 invoice = fallbackDetailResult.recordset[0];
@@ -440,7 +440,7 @@ class InvoiceRepository extends BaseRepository {
                 }
 
                 try {
-                  const diagnosticResult = await executeQuery(diagnosticQuery, diagnosticParams);
+                  const diagnosticResult = await executeQuery(diagnosticQuery, diagnosticParams, { timeout: 5000 });
                   if (diagnosticResult.recordset.length > 0) {
                     logger.warn(`Invoice exists but RefDocName mismatch. Found:`, diagnosticResult.recordset.map(r => ({
                       invoiceId: r.InvoiceId,
@@ -513,7 +513,7 @@ class InvoiceRepository extends BaseRepository {
             codeUpper: searchCode.toUpperCase().trim()
           };
           
-          const diagnosticResult1 = await executeQuery(diagnosticQuery1, diagnosticParams1);
+          const diagnosticResult1 = await executeQuery(diagnosticQuery1, diagnosticParams1, { timeout: 5000 });
           if (diagnosticResult1.recordset && diagnosticResult1.recordset.length > 0) {
             logger.warn(`DIAGNOSTIC: Found ${diagnosticResult1.recordset.length} invoice(s) with matching RefDocNumber (any status/church):`, 
               diagnosticResult1.recordset.map(r => ({
@@ -564,7 +564,7 @@ class InvoiceRepository extends BaseRepository {
           diagnosticQuery2 += ' ORDER BY i.TransactionDate DESC';
           
           try {
-            const diagnosticResult2 = await executeQuery(diagnosticQuery2, diagnosticParams2);
+            const diagnosticResult2 = await executeQuery(diagnosticQuery2, diagnosticParams2, { timeout: 5000 });
             if (diagnosticResult2.recordset && diagnosticResult2.recordset.length > 0) {
               logger.warn(`DIAGNOSTIC: Found invoices with similar RefDocNumber (contains "${searchCode}"):`, 
                 diagnosticResult2.recordset.map(r => ({
@@ -596,7 +596,7 @@ class InvoiceRepository extends BaseRepository {
               ORDER BY i.TransactionDate DESC, i.InvoiceId DESC
             `;
             
-            const diagnosticResult3 = await executeQuery(diagnosticQuery3, { churchId });
+            const diagnosticResult3 = await executeQuery(diagnosticQuery3, { churchId }, { timeout: 5000 });
             if (diagnosticResult3.recordset && diagnosticResult3.recordset.length > 0) {
               logger.info(`DIAGNOSTIC: Recent invoices for church ${churchId}:`, 
                 diagnosticResult3.recordset.map(r => ({
@@ -624,7 +624,7 @@ class InvoiceRepository extends BaseRepository {
               FROM NicheApplication WITH(NOLOCK)
               WHERE Code = @code
             `;
-            const appResult = await executeQueryDiag(appQuery, { code: searchCode });
+            const appResult = await executeQueryDiag(appQuery, { code: searchCode }, { timeout: 5000 });
             if (appResult.recordset && appResult.recordset.length > 0) {
               logger.info(`DIAGNOSTIC: NicheApplication found for code "${searchCode}":`, appResult.recordset[0]);
             } else {
@@ -667,7 +667,7 @@ class InvoiceRepository extends BaseRepository {
         ORDER BY id.InvoiceDetailId
       `;
 
-      const detailsResult = await executeQuery(detailsQuery, { invoiceId: invoice.InvoiceId });
+      const detailsResult = await executeQuery(detailsQuery, { invoiceId: invoice.InvoiceId }, { timeout: 10000 });
       
       logger.debug(`Retrieved ${detailsResult.recordset?.length || 0} invoice details for InvoiceId: ${invoice.InvoiceId}`);
 
@@ -694,7 +694,7 @@ class InvoiceRepository extends BaseRepository {
         ORDER BY ReceiptId DESC
       `;
 
-      const receiptResult = await executeQuery(receiptQuery, { invoiceId: invoice.InvoiceId });
+      const receiptResult = await executeQuery(receiptQuery, { invoiceId: invoice.InvoiceId }, { timeout: 10000 });
       if (receiptResult.recordset.length > 0) {
         receipt = receiptResult.recordset[0];
       }

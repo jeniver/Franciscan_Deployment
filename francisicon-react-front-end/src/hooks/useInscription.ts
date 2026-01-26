@@ -25,6 +25,8 @@ import {
   fetchInscriptionItems,
   createInscriptionInvoice,
   fetchBibleChoices,
+  createInscription,
+  updateInscription,
   type CreateInvoiceRequest,
   type DeceasedDetail
 } from '../store/inscriptionSlice';
@@ -66,6 +68,10 @@ export function useInscription() {
   const phraseOfChoice = useSelector((state: RootState) => state.inscription.phraseOfChoice);
   
   const deceasedDetails = useSelector((state: RootState) => state.inscription.deceasedDetails);
+  
+  const creatingInscription = useSelector((state: RootState) => state.inscription.creatingInscription);
+  const updatingInscription = useSelector((state: RootState) => state.inscription.updatingInscription);
+  const inscriptionError = useSelector((state: RootState) => state.inscription.inscriptionError);
 
   // Form field setters
   const updateInscriptionRequestNo = useCallback((value: string) => {
@@ -192,6 +198,119 @@ export function useInscription() {
     dispatch(resetForm());
   }, [dispatch]);
 
+  // Create inscription
+  const handleCreateInscription = useCallback(async () => {
+    try {
+      // Transform deceased details to API format
+      const deceasedDetailsApi = deceasedDetails.map(d => ({
+        name: d.nameOfDeceased || '',
+        dateOfDeath: d.dateDied || '',
+        dateOfBirth: d.dateBorn || '',
+        internmentDate: d.internmentDate ? `${d.internmentDate} ${d.internmentTime || '12:00'}` : '',
+        deathCertificateNo: d.deathCertNo || '',
+        birthYear: d.dateBorn ? d.dateBorn.split('-')[0] : '',
+        inscriptionText: ''
+      }));
+
+      const data = {
+        applicant: {
+          name: applicantName,
+          nricPassportNo: nricPassportNo,
+          address: {
+            block: block,
+            blockNo: block,
+            street: street,
+            streetName: street,
+            unitNo: unitNo,
+            postalCode: postalCode
+          },
+          mobile: mobile,
+          homeTel: homeTel,
+          emailId: emailId
+        },
+        deceasedDetails: deceasedDetailsApi,
+        inscription: {
+          bibleInscriptionChoiceId: selectedBibleChoiceId,
+          bibleInscriptionText: phraseOfChoice,
+          additionalInscriptionPhrase: phraseOfChoice,
+          remarks: '',
+          nicheApplicationCode: nicheApplicationCode,
+          nicheBookingId: null // Can be null when no booking exists
+        }
+      };
+
+      const result = await dispatch(createInscription(data)).unwrap();
+      showSuccess(`Inscription created successfully: ${result.code}`);
+      
+      // Refresh inscription items to get the new inscription data
+      if (nicheApplicationCode) {
+        await dispatch(fetchInscriptionItems(nicheApplicationCode));
+      }
+      
+      return result;
+    } catch (error: any) {
+      const errorMessage = error?.message || 'Failed to create inscription';
+      showError(errorMessage);
+      throw error;
+    }
+  }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, nicheApplicationCode]);
+
+  // Update inscription
+  const handleUpdateInscription = useCallback(async (code: string) => {
+    try {
+      // Transform deceased details to API format
+      const deceasedDetailsApi = deceasedDetails.map(d => ({
+        name: d.nameOfDeceased || '',
+        dateOfDeath: d.dateDied || '',
+        dateOfBirth: d.dateBorn || '',
+        internmentDate: d.internmentDate ? `${d.internmentDate} ${d.internmentTime || '12:00'}` : '',
+        deathCertificateNo: d.deathCertNo || '',
+        birthYear: d.dateBorn ? d.dateBorn.split('-')[0] : '',
+        inscriptionText: ''
+      }));
+
+      const data = {
+        code,
+        applicant: {
+          name: applicantName,
+          nricPassportNo: nricPassportNo,
+          address: {
+            block: block,
+            blockNo: block,
+            street: street,
+            streetName: street,
+            unitNo: unitNo,
+            postalCode: postalCode
+          },
+          mobile: mobile,
+          homeTel: homeTel,
+          emailId: emailId
+        },
+        deceasedDetails: deceasedDetailsApi,
+        inscription: {
+          bibleInscriptionChoiceId: selectedBibleChoiceId,
+          bibleInscriptionText: phraseOfChoice,
+          additionalInscriptionPhrase: phraseOfChoice,
+          remarks: ''
+        }
+      };
+
+      const result = await dispatch(updateInscription(data)).unwrap();
+      showSuccess(`Inscription updated successfully: ${result.code}`);
+      
+      // Refresh inscription items to get the updated inscription data
+      if (nicheApplicationCode) {
+        await dispatch(fetchInscriptionItems(nicheApplicationCode));
+      }
+      
+      return result;
+    } catch (error: any) {
+      const errorMessage = error?.message || 'Failed to update inscription';
+      showError(errorMessage);
+      throw error;
+    }
+  }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, nicheApplicationCode]);
+
   // Auto-fetch bible choices on mount
   useEffect(() => {
     if (bibleChoices.length === 0 && !bibleChoicesLoading && !bibleChoicesError) {
@@ -254,7 +373,14 @@ export function useInscription() {
     updateDeceasedDetails,
     addDeceased,
     removeDeceased,
-    updateDeceased
+    updateDeceased,
+    
+    // Create/Update inscription
+    creatingInscription,
+    updatingInscription,
+    inscriptionError,
+    handleCreateInscription,
+    handleUpdateInscription
   };
 }
 

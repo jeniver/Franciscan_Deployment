@@ -22,6 +22,7 @@
   "dependencies": {
     "@reduxjs/toolkit": "^2.9.1",
     "axios": "^1.4.0",
+    "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.12.1",
     "jspdf": "^3.0.3",
     "lucide-react": "0.522.0",

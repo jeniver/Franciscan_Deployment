@@ -200,7 +200,10 @@ const generateReceiptHtmlTemplate = (payload: ReceiptApiPayload, options: Receip
   const receiptNo = receiptInfo.code || options.requestedCode || 'N/A';
   const receiptDate = formatDate(receiptInfo.transactionDate || invoiceInfo.transactionDate || invoiceInfo.invoiceDate);
   const customerName = receiptInfo.customerName || invoiceInfo.customerName || 'N/A';
-  const address = payload.invoice?.details?.[0]?.refDocName || normalizeRefField(payload.details?.[0]?.refDocName) || '';
+  // Get address from invoice or receipt
+  const invoiceAddress = invoiceInfo.address || invoiceInfo.customerAddress || '';
+  const receiptAddress = receiptInfo.address || receiptInfo.customerAddress || '';
+  const address = receiptAddress || invoiceAddress || '';
   
   // Get line items
   const lineItems = collectLineItems(payload);
@@ -234,46 +237,23 @@ const generateReceiptHtmlTemplate = (payload: ReceiptApiPayload, options: Receip
   // Get invoice details from payload for table rows
   const invoiceDetails = payload.invoice?.details ?? payload.details ?? [];
   
-  // Build table rows
+  // Build table rows - receipt shows single row with invoice number and description
   let tableRows = '';
-  if (invoiceDetails.length > 0) {
-    tableRows = invoiceDetails.map((detail: any) => {
-      const invoiceNo = normalizeRefField(detail.refDocNumber) || invoiceInfo.invoiceNo || invoiceInfo.code || '';
-      const description = normalizeRefField(detail.refDocName) || detail.description || '';
-      // Calculate amount from detail - use lineTotalAmount first, then totalAmount, or calculate from unit*quantity
-      const amount = detail.lineTotalAmount ?? detail.totalAmount ?? (detail.unitAmount && detail.quantity ? detail.unitAmount * detail.quantity : totalAmount);
-      return `
-        <tr>
-          <td>${invoiceNo}</td>
-          <td>${description}</td>
-          <td style="text-align: right;">$ ${formatCurrency(amount)}</td>
-        </tr>
-      `;
-    }).join('');
-  } else if (lineItems.length > 0) {
-    // Use line items if available
-    tableRows = lineItems.map((item) => {
-      const invoiceNo = invoiceInfo.invoiceNo || invoiceInfo.code || '';
-      const description = item.description || 'Payment received';
-      const amount = item.total || 0;
-      return `
-        <tr>
-          <td>${invoiceNo}</td>
-          <td>${description}</td>
-          <td style="text-align: right;">$ ${formatCurrency(amount)}</td>
-        </tr>
-      `;
-    }).join('');
-  } else {
-    // If no line items, show default row
-    tableRows = `
-      <tr>
-        <td>${normalizeRefField(invoiceInfo.invoiceNo || invoiceInfo.code)}</td>
-        <td>${normalizeRefField(payload.invoice?.details?.[0]?.refDocName) || 'Payment received'}</td>
-        <td style="text-align: right;">$ ${formatCurrency(totalAmount)}</td>
-      </tr>
-    `;
-  }
+  // Get description from first detail's refDocName (e.g., "St 5585 Bernadine")
+  const description = invoiceDetails.length > 0 
+    ? (normalizeRefField(invoiceDetails[0].refDocName) || invoiceDetails[0].description || '')
+    : (lineItems.length > 0 ? lineItems[0].description : 'Payment received');
+  
+  const invoiceNo = invoiceInfo.invoiceNo || invoiceInfo.code || '';
+  
+  // Receipt shows single row with total amount
+  tableRows = `
+    <tr>
+      <td>${invoiceNo}</td>
+      <td>${description}</td>
+      <td style="text-align: right;">$ ${formatCurrency(totalAmount)}</td>
+    </tr>
+  `;
   
   const html = `
 <!DOCTYPE html>
@@ -447,7 +427,7 @@ const generateReceiptHtmlTemplate = (payload: ReceiptApiPayload, options: Receip
 
     <div class="recipient-info">
         <div><span class="label">Received From :</span> ${customerName}</div>
-        <div><span class="label">Address:</span> ${address ? `Blk: ${address}, Singapore` : 'Singapore'}</div>
+        <div><span class="label">Address:</span> ${address ? `Blk: ${address}, Singapore` : 'Blk:,,, Singapore'}</div>
     </div>
 
     <table class="data-table">
@@ -463,8 +443,12 @@ const generateReceiptHtmlTemplate = (payload: ReceiptApiPayload, options: Receip
         </tbody>
     </table>
 
-    <div style="width: 30%; margin-left: auto;">
-        <div class="total-section">
+    <div style="width: 30%; margin-left: auto; margin-top: 15px;">
+        <div style="border-bottom: 1px solid #000; padding-bottom: 5px; text-align: right; font-weight: normal;">
+            <span>Total Amount</span>
+            <span style="margin-left: 20px;">$ ${formatCurrency(totalAmount)}</span>
+        </div>
+        <div class="total-section" style="margin-top: 5px;">
             <span>Total :</span>
             <span>$ ${formatCurrency(totalAmount)}</span>
         </div>
@@ -474,8 +458,8 @@ const generateReceiptHtmlTemplate = (payload: ReceiptApiPayload, options: Receip
         <strong>Dollars :</strong> ${totalInWords}
     </div>
 
-    <div style="margin-top: 60px; display: flex; justify-content: space-between;">
-        <div style="width: 40%; border-bottom: 1px solid #000; padding-bottom: 5px;">${paymentMode}</div>
+    <div style="margin-top: 60px; display: flex; justify-content: space-between; align-items: flex-end;">
+        <div style="width: 40%; border-bottom: 1px solid #000; padding-bottom: 5px; min-height: 30px;">${paymentMode}</div>
         <div style="width: 40%; text-align: right; font-size: 0.9em;">The Order of Friars Minor (S) Ltd</div>
     </div>
 

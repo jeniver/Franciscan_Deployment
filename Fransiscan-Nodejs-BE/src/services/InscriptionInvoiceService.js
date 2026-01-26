@@ -366,9 +366,14 @@ class InscriptionInvoiceService {
       application = await this.engraveRepo.getByCode(incrCode);
 
       if (application) {
-        logger.info(
-          `InscriptionInvoiceService: Resolved Niche Application code ${code} to inscription ${incrCode}`
-        );
+        logger.info('DIAGNOSTIC: Resolved Niche Application code to inscription:', {
+          nicheApplicationCode: code,
+          inscriptionCode: incrCode,
+          inscriptionId,
+          deceasedDetailsCount: application.deceasedDetails?.length || 0,
+          hasBibleChoiceId: !!application.bibleInscriptionChoiceId,
+          hasAdditionalPhrase: !!application.additionalInscriptionPhrase
+        });
       } else {
         logger.error('DIAGNOSTIC: Found INCR code but repository.getByCode returned null:', {
           incrCode,
@@ -483,7 +488,11 @@ class InscriptionInvoiceService {
       found: !!application,
       applicationCodeFromDb: application?.code || null,
       churchId: application?.churchId || null,
-      nicheBookingId: application?.nicheBookingId || null
+      nicheBookingId: application?.nicheBookingId || null,
+      deceasedDetailsCount: application?.deceasedDetails?.length || 0,
+      hasBibleChoiceId: !!application?.bibleInscriptionChoiceId,
+      hasAdditionalPhrase: !!application?.additionalInscriptionPhrase,
+      hasBibleText: !!application?.bibleInscriptionText
     });
 
     // If not found and it's a niche application code, try auto-creating inscription
@@ -523,70 +532,150 @@ class InscriptionInvoiceService {
           // Check if there's already an inscription linked to this niche application
           // Since NicheInscriptionRequest doesn't have NicheApplicationCode column,
           // we need to find it through NicheBooking -> NicheApplication
-          const existingInscriptionQuery = `
-            SELECT TOP 1 nir.Code, nir.NicheInscriptionRequestId
-            FROM NicheInscriptionRequest nir WITH (NOLOCK)
-            INNER JOIN NicheBooking nb WITH (NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
-            INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
-            WHERE na.Code = @code
-            ORDER BY nir.NicheInscriptionRequestId DESC
+          // Also check by inscription code format: I-{nicheApplicationCode}
+          const inscriptionCodePattern = `I-${applicationCode}`;
+          
+          logger.info('DIAGNOSTIC: Searching for existing inscription:', {
+            nicheApplicationCode: applicationCode,
+            inscriptionCodePattern,
+            churchId
+          });
+          
+          // First, try to find by inscription code pattern (I-7983-0)
+          const directCodeQuery = `
+            SELECT TOP 1 Code, NicheInscriptionRequestId, ChurchId
+            FROM NicheInscriptionRequest WITH (NOLOCK)
+            WHERE Code = @inscriptionCode AND ChurchId = @churchId
+            ORDER BY NicheInscriptionRequestId DESC
           `;
-          const existingResult = await executeQuery(existingInscriptionQuery, { code: applicationCode });
+          const directCodeResult = await executeQuery(directCodeQuery, { 
+            inscriptionCode: inscriptionCodePattern,
+            churchId 
+          });
           
-          // Also check for inscriptions without booking (NicheBookingId IS NULL)
-          // These might be created directly for the application
-          if (!existingResult.recordset || existingResult.recordset.length === 0) {
-            const nullBookingQuery = `
-              SELECT TOP 1 Code, NicheInscriptionRequestId
-              FROM NicheInscriptionRequest WITH (NOLOCK)
-              WHERE NicheBookingId IS NULL
-              ORDER BY NicheInscriptionRequestId DESC
-            `;
-            const nullBookingResult = await executeQuery(nullBookingQuery, {});
-            if (nullBookingResult.recordset && nullBookingResult.recordset.length > 0) {
-              // For inscriptions without booking, we can't verify they're for this application
-              // So we'll skip this and create a new one if needed
-            }
-          }
-          
-          if (existingResult.recordset && existingResult.recordset.length > 0) {
-            const existingCode = existingResult.recordset[0].Code;
-            logger.info('DIAGNOSTIC: Found existing inscription after initial check:', { existingCode });
+          // If found by direct code, use it
+          if (directCodeResult.recordset && directCodeResult.recordset.length > 0) {
+            const existingCode = directCodeResult.recordset[0].Code;
+            logger.info('DIAGNOSTIC: Found inscription by direct code pattern:', { existingCode });
             application = await this.engraveRepo.getByCode(existingCode);
             
             if (application) {
-              logger.info('DIAGNOSTIC: Successfully retrieved existing inscription:', {
+              logger.info('DIAGNOSTIC: Successfully retrieved inscription by code pattern:', {
                 inscriptionCode: existingCode,
-                applicationCode
+                applicationCode,
+                deceasedDetailsCount: application.deceasedDetails?.length || 0,
+                hasBibleChoiceId: !!application.bibleInscriptionChoiceId,
+                hasAdditionalPhrase: !!application.additionalInscriptionPhrase
               });
             }
           }
           
-          // If still not found, create new inscription
+          // If not found by direct code, try through NicheBooking -> NicheApplication chain
           if (!application) {
-            logger.info('DIAGNOSTIC: Auto-creating new inscription application:', {
+            const existingInscriptionQuery = `
+              SELECT TOP 1 nir.Code, nir.NicheInscriptionRequestId, nir.ChurchId
+              FROM NicheInscriptionRequest nir WITH (NOLOCK)
+              INNER JOIN NicheBooking nb WITH (NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+              INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+              WHERE na.Code = @code AND nir.ChurchId = @churchId
+              ORDER BY nir.NicheInscriptionRequestId DESC
+            `;
+            const existingResult = await executeQuery(existingInscriptionQuery, { 
+              code: applicationCode,
+              churchId 
+            });
+            
+            logger.info('DIAGNOSTIC: Chain lookup result:', {
+              found: existingResult.recordset && existingResult.recordset.length > 0,
+              recordCount: existingResult.recordset?.length || 0
+            });
+            
+            if (existingResult.recordset && existingResult.recordset.length > 0) {
+              const existingCode = existingResult.recordset[0].Code;
+              logger.info('DIAGNOSTIC: Found existing inscription via chain lookup:', { existingCode });
+              application = await this.engraveRepo.getByCode(existingCode);
+              
+              if (application) {
+                logger.info('DIAGNOSTIC: Successfully retrieved existing inscription via chain:', {
+                  inscriptionCode: existingCode,
+                  applicationCode,
+                  deceasedDetailsCount: application.deceasedDetails?.length || 0,
+                  hasBibleChoiceId: !!application.bibleInscriptionChoiceId,
+                  hasAdditionalPhrase: !!application.additionalInscriptionPhrase
+                });
+              } else {
+                logger.warn('DIAGNOSTIC: Found inscription code via chain but getByCode returned null:', { existingCode });
+              }
+            }
+          }
+          
+          // If still not found, we'll return applicant details from niche application
+          // without creating an inscription (user can create it later)
+          if (!application) {
+            logger.info('DIAGNOSTIC: No inscription found, returning applicant details from niche application:', {
               applicationCode,
               nicheApplicationId: nicheApp.nicheApplicationId,
               churchId: nicheApp.churchId
             });
             
-            // CRITICAL: NicheBookingId is REQUIRED (NOT NULL in schema)
-            // We cannot create inscriptions without bookings
-            logger.warn('DIAGNOSTIC: Cannot auto-create inscription - NicheBookingId is required but no booking exists:', {
-              applicationCode,
-              nicheApplicationId: nicheApp.nicheApplicationId
-            });
+            // Return applicant details from niche application without inscription
+            // This allows the frontend to show the form for creating an inscription
+            const addressComponents = this._parseAddress(
+              nicheApp.applicantAddressNo,
+              nicheApp.applicantAddressLine1,
+              nicheApp.applicantAddressLine2,
+              nicheApp.applicantAddressCity
+            );
             
-            // Return error - the caller should handle this gracefully
-            // The inscription can only be created after a booking is created
-            const err = new Error('Inscription application cannot be created without a booking. Please create a booking first.');
-            err.code = 'BOOKING_REQUIRED';
-            err.details = { 
-              applicationCode,
-              issue: 'NO_BOOKING',
-              message: 'NicheBookingId is required (NOT NULL) to create an inscription application'
+            // Get items for inscription task
+            const parameters = [
+              { name: '_ForInscriptiond', value: '0' },
+              { name: '_ForUrn', value: '0' }
+            ];
+            const items = await this.taskItemMappingRepo.getItemsForTask(
+              this.INSCRIPTION_TASK_ID,
+              parameters,
+              churchId
+            );
+            
+            // Return response with only applicant details (no inscriptionRequestNo)
+            return {
+              // No inscriptionRequestNo - indicates inscription doesn't exist yet
+              inscriptionRequestNo: null,
+              
+              // Items (available for when inscription is created)
+              items: items,
+              
+              // Edit Contact (Applicant) Details from niche application
+              applicant: {
+                name: nicheApp.applicantName || '',
+                nricPassportNo: nicheApp.applicantIDNo || '',
+                address: {
+                  block: addressComponents.block || '',
+                  blockNo: addressComponents.blockNo || '',
+                  street: addressComponents.street || '',
+                  streetName: addressComponents.streetName || '',
+                  unitNo: addressComponents.unitNo || '',
+                  postalCode: addressComponents.postalCode || ''
+                },
+                mobile: nicheApp.applicantMobileNo || '',
+                homeTel: nicheApp.applicantHomeTelNo || '',
+                emailId: nicheApp.applicantEmailID || ''
+              },
+              
+              // No deceased details yet (will be added when inscription is created)
+              deceasedDetails: [],
+              
+              // Additional Details
+              additionalDetails: {
+                bibleInscriptionChoiceId: null,
+                bibleInscriptionText: '',
+                additionalInscriptionPhrase: '',
+                remarks: '',
+                nicheApplicationCode: applicationCode,
+                nicheBookingId: null
+              }
             };
-            throw err;
           }
         } catch (autoCreateError) {
           logger.error('DIAGNOSTIC: Failed to auto-create inscription in getInscriptionItems:', {
@@ -680,6 +769,26 @@ class InscriptionInvoiceService {
       application.applicantAddressCity
     );
 
+    // Map AdditionalInscriptionPhrase to both bibleInscriptionText and additionalInscriptionPhrase for API compatibility
+    const inscriptionPhrase = application.additionalInscriptionPhrase || application.bibleInscriptionText || application.remarks || '';
+
+    // Log diagnostic information about the data being returned
+    logger.info('DIAGNOSTIC: Building response with application data:', {
+      applicationCode: application.code,
+      deceasedDetailsCount: application.deceasedDetails?.length || 0,
+      deceasedDetails: application.deceasedDetails?.map(d => ({
+        name: d.name,
+        hasDateOfDeath: !!d.dateOfDeath,
+        hasDateOfBirth: !!d.dateOfBirth,
+        hasInternmentDate: !!d.internmentDate
+      })) || [],
+      bibleInscriptionChoiceId: application.bibleInscriptionChoiceId,
+      additionalInscriptionPhrase: application.additionalInscriptionPhrase,
+      bibleInscriptionText: application.bibleInscriptionText,
+      remarks: application.remarks,
+      nicheApplicationCode: application.nicheApplicationCode
+    });
+
     // Build enhanced response
     return {
       // Inscription Request No. (Auto-generated)
@@ -719,8 +828,8 @@ class InscriptionInvoiceService {
       // Additional Details of Inscription
       additionalDetails: {
         bibleInscriptionChoiceId: application.bibleInscriptionChoiceId || null,
-        bibleInscriptionText: application.bibleInscriptionText || '',
-        additionalInscriptionPhrase: application.additionalInscriptionPhrase || application.remarks || '',
+        bibleInscriptionText: inscriptionPhrase,
+        additionalInscriptionPhrase: inscriptionPhrase,
         remarks: application.remarks || '',
         nicheApplicationCode: application.nicheApplicationCode || '',
         nicheBookingId: application.nicheBookingId || null
@@ -770,7 +879,10 @@ class InscriptionInvoiceService {
         };
       }
 
-      const items = await this.getInscriptionItems(application.code, churchId);
+      const itemsResult = await this.getInscriptionItems(application.code, churchId);
+
+      // Handle both array (legacy) and object (enhanced) response formats
+      const items = Array.isArray(itemsResult) ? itemsResult : (itemsResult?.items || []);
 
       if (!items || items.length === 0) {
         return {

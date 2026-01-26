@@ -10,6 +10,7 @@ require('dotenv').config();
 const logger = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
 const notFoundHandler = require('./middleware/notFoundHandler');
+const { responseCache } = require('./middleware/responseCache');
 const { connectDatabase } = require('./config/database');
 const NicheApplicationService = require('./services/NicheApplicationService');
 
@@ -232,32 +233,51 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// API routes
+// Response caching middleware for GET requests (can be disabled per route)
+// Apply to read-only endpoints for better performance
+const cacheMiddleware = responseCache({
+  ttl: parseInt(process.env.RESPONSE_CACHE_TTL || '300', 10), // 5 minutes default
+  shouldCache: (req, res) => {
+    // Only cache successful GET requests
+    // Skip caching for authenticated endpoints that need fresh data
+    const skipCachePaths = [
+      '/api/auth',
+      '/api/login',
+      '/api/utils/cache-stats'
+    ];
+    return req.method === 'GET' && 
+           res.statusCode === 200 && 
+           !skipCachePaths.some(path => req.path.startsWith(path));
+  }
+});
+
+// API routes with optional caching
+// Note: Routes can bypass cache by setting X-Bypass-Cache header or bypassCache query param
 app.use('/api/auth', authRoutes);
 app.use('/api/login', loginRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/churches', churchRoutes);
-app.use('/api/invoices', invoiceRoutes);
-app.use('/api/niches', nicheRoutes);
-app.use('/api/gates-of-life', gatesOfLifeRoutes);
+app.use('/api/users', cacheMiddleware, userRoutes);
+app.use('/api/churches', cacheMiddleware, churchRoutes);
+app.use('/api/invoices', invoiceRoutes); // POST/PUT operations, no cache
+app.use('/api/niches', cacheMiddleware, nicheRoutes);
+app.use('/api/gates-of-life', cacheMiddleware, gatesOfLifeRoutes);
 // Inscription APIs (INCR) - mounted under both /api/inscriptions and /inscriptions for backward compatibility
 app.use('/api/inscriptions', inscriptionRoutes);
 app.use('/inscriptions', inscriptionRoutes);
-app.use('/api/persons', personRoutes);
-app.use('/api/niche-agreements', nicheAgreementRoutes);
-app.use('/api/wake-rooms', wakeRoomRoutes);
-app.use('/api/wake-room-bookings', wakeRoomBookingRoutes);
-app.use('/api/engrave-applications', engraveApplicationRoutes);
-app.use('/api/niche-bookings', nicheBookingRoutes);
-app.use('/api/niche-applications', nicheApplicationRoutes);
-app.use('/api/receipts', receiptRoutes);
-app.use('/api', receiptItemRoutes);
-app.use('/api/items', itemRoutes);
+app.use('/api/persons', cacheMiddleware, personRoutes);
+app.use('/api/niche-agreements', cacheMiddleware, nicheAgreementRoutes);
+app.use('/api/wake-rooms', cacheMiddleware, wakeRoomRoutes);
+app.use('/api/wake-room-bookings', wakeRoomBookingRoutes); // POST/PUT operations
+app.use('/api/engrave-applications', engraveApplicationRoutes); // POST/PUT operations
+app.use('/api/niche-bookings', nicheBookingRoutes); // POST/PUT operations
+app.use('/api/niche-applications', cacheMiddleware, nicheApplicationRoutes);
+app.use('/api/receipts', receiptRoutes); // POST/PUT operations
+app.use('/api', receiptItemRoutes); // POST/PUT operations
+app.use('/api/items', cacheMiddleware, itemRoutes);
 app.use('/api/utils', utilRoutes);
-app.use('/api/reports', reportRoutes);
+app.use('/api/reports', cacheMiddleware, reportRoutes);
 // Bible Choices APIs - mounted under both /api/bible-choices and /bible-choices for backward compatibility
-app.use('/api/bible-choices', bibleChoicesRoutes);
-app.use('/bible-choices', bibleChoicesRoutes);
+app.use('/api/bible-choices', cacheMiddleware, bibleChoicesRoutes);
+app.use('/bible-choices', cacheMiddleware, bibleChoicesRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

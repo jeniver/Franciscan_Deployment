@@ -33,8 +33,10 @@ class EngraveApplication {
 
     // Bible inscription choice
     this.bibleInscriptionChoiceId = data.bibleInscriptionChoiceId || data.BibleInscriptionChoiceId || null;
-    this.bibleInscriptionText = data.bibleInscriptionText || data.BibleInscriptionText || null;
+    // Map AdditionalInscriptionPhrase to both bibleInscriptionText and additionalInscriptionPhrase for backward compatibility
+    // The database column is AdditionalInscriptionPhrase, but we maintain both properties
     this.additionalInscriptionPhrase = data.additionalInscriptionPhrase || data.AdditionalInscriptionPhrase || null;
+    this.bibleInscriptionText = data.bibleInscriptionText || data.BibleInscriptionText || this.additionalInscriptionPhrase || null;
 
     // Deceased details (list)
     this.deceasedDetails = data.deceasedDetails || data.DeceasedDetails || [];
@@ -152,9 +154,10 @@ class EngraveApplication {
       errors.push('Church ID is required');
     }
 
-    if (!this.deceasedDetails || this.deceasedDetails.length === 0) {
-      errors.push('At least one deceased detail is required');
-    }
+    // Deceased details are optional - can be added later
+    // Removed validation: if (!this.deceasedDetails || this.deceasedDetails.length === 0) {
+    //   errors.push('At least one deceased detail is required');
+    // }
 
     return {
       isValid: errors.length === 0,

@@ -31,11 +31,6 @@ export function Sidebar({
       icon: <DoorOpenIcon className="w-5 h-5" />
     },
     {
-      label: 'Inscription',
-      path: '/inscription',
-      icon: <PenToolIcon className="w-5 h-5" />
-    },
-    {
       label: 'Wake Room',
       path: '/wake-room',
       icon: <BedIcon className="w-5 h-5" />

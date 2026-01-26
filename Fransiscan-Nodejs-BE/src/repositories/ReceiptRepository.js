@@ -541,15 +541,32 @@ class ReceiptRepository extends BaseRepository {
    */
   async getLastReceiptNumber() {
     try {
+      // OPTIMIZED: Use TRY_CAST instead of ISNUMERIC for better performance
+      // ISNUMERIC can be very slow on large tables
       const query = `
-        SELECT ISNULL(MAX(CAST(Code AS INT)), 0) AS LastNumber
-        FROM Receipt
-        WHERE ISNUMERIC(Code) = 1
+        SELECT ISNULL(MAX(
+          CASE 
+            WHEN TRY_CAST(Code AS INT) IS NOT NULL THEN TRY_CAST(Code AS INT)
+            ELSE 0
+          END
+        ), 0) AS LastNumber
+        FROM Receipt WITH (NOLOCK)
+        WHERE Code IS NOT NULL AND LEN(LTRIM(RTRIM(Code))) > 0
       `;
-      const result = await executeQuery(query);
+      
+      // CRITICAL: Add timeout to prevent 60s default timeout
+      const result = await executeQuery(query, {}, { timeout: 10000 });
       const lastNumber = result.recordset[0] ? result.recordset[0].LastNumber : 0;
       return (lastNumber + 1).toString().padStart(6, '0');
     } catch (error) {
+      // If timeout, provide helpful error message
+      if (error.code === 'ETIMEOUT' || error.message?.includes('timeout')) {
+        logger.error('Receipt number query timeout - table may be very large. Consider adding index on Code column.');
+        // Return a fallback - use current timestamp as base to avoid conflicts
+        const fallbackNumber = Date.now().toString().slice(-6);
+        logger.warn(`Using fallback receipt number: ${fallbackNumber}`);
+        return fallbackNumber;
+      }
       logger.error('Error getting last receipt number:', error);
       throw error;
     }

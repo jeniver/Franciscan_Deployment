@@ -22,6 +22,11 @@ export interface InscriptionState {
   inscriptionRequestNo: string;
   nicheApplicationCode: string;
   
+  // Create/Update inscription state
+  creatingInscription: boolean;
+  updatingInscription: boolean;
+  inscriptionError: string | null;
+  
   // Applicant/Contact Details
   applicantName: string;
   nricPassportNo: string;
@@ -88,7 +93,10 @@ const initialState: InscriptionState = {
   phraseOfChoice: '',
   loading: false,
   error: null,
-  lastErrorType: null
+  lastErrorType: null,
+  creatingInscription: false,
+  updatingInscription: false,
+  inscriptionError: null
 };
 
 /**
@@ -174,6 +182,129 @@ export const fetchBibleChoices = createAsyncThunk<
       }
       return rejectWithValue({
         message: error?.message || 'Failed to fetch bible choices',
+        type: 'server'
+      });
+    }
+  }
+);
+
+/**
+ * Create a new inscription application
+ */
+export const createInscription = createAsyncThunk<
+  { code: string; message: string },
+  {
+    applicant: {
+      name: string;
+      nricPassportNo: string;
+      address: {
+        block: string;
+        blockNo: string;
+        street: string;
+        streetName: string;
+        unitNo: string;
+        postalCode: string;
+      };
+      mobile: string;
+      homeTel: string;
+      emailId: string;
+    };
+    deceasedDetails?: Array<{
+      name: string;
+      dateOfDeath: string;
+      dateOfBirth: string;
+      internmentDate: string;
+      deathCertificateNo: string;
+      birthYear: string;
+      inscriptionText: string;
+    }>;
+    inscription?: {
+      bibleInscriptionChoiceId: number | null;
+      bibleInscriptionText: string;
+      additionalInscriptionPhrase: string;
+      remarks: string;
+      nicheApplicationCode: string;
+      nicheBookingId: number | null;
+    };
+  },
+  { rejectValue: { message: string; type: string; statusCode?: number } }
+>(
+  'inscription/createInscription',
+  async (data, { rejectWithValue }) => {
+    try {
+      const result = await inscriptionService.createInscription(data);
+      return result;
+    } catch (error: any) {
+      if (error instanceof InscriptionError) {
+        return rejectWithValue({
+          message: error.message,
+          type: error.type,
+          statusCode: error.statusCode
+        });
+      }
+      return rejectWithValue({
+        message: error?.message || 'Failed to create inscription',
+        type: 'server'
+      });
+    }
+  }
+);
+
+/**
+ * Update an existing inscription application
+ */
+export const updateInscription = createAsyncThunk<
+  { code: string; message: string },
+  {
+    code: string;
+    applicant: {
+      name: string;
+      nricPassportNo: string;
+      address: {
+        block: string;
+        blockNo: string;
+        street: string;
+        streetName: string;
+        unitNo: string;
+        postalCode: string;
+      };
+      mobile: string;
+      homeTel: string;
+      emailId: string;
+    };
+    deceasedDetails?: Array<{
+      name: string;
+      dateOfDeath: string;
+      dateOfBirth: string;
+      internmentDate: string;
+      deathCertificateNo: string;
+      birthYear: string;
+      inscriptionText: string;
+    }>;
+    inscription?: {
+      bibleInscriptionChoiceId: number | null;
+      bibleInscriptionText: string;
+      additionalInscriptionPhrase: string;
+      remarks: string;
+    };
+  },
+  { rejectValue: { message: string; type: string; statusCode?: number } }
+>(
+  'inscription/updateInscription',
+  async ({ code, ...data }, { rejectWithValue }) => {
+    try {
+      const result = await inscriptionService.updateInscription(code, data);
+      return result;
+    } catch (error: any) {
+      if (error instanceof InscriptionError) {
+        return rejectWithValue({
+          message: error.message,
+          type: error.type,
+          statusCode: error.statusCode
+        });
+      }
+      return rejectWithValue({
+        message: error?.message || 'Failed to update inscription',
         type: 'server'
       });
     }
@@ -318,21 +449,44 @@ const inscriptionSlice = createSlice({
         // Map deceased details
         if (data.deceasedDetails && Array.isArray(data.deceasedDetails)) {
           state.deceasedDetails = data.deceasedDetails.map((deceased) => {
-            // Parse dates from API format (DD-MMM-YYYY) to input format (YYYY-MM-DD)
+            // Parse dates from API format to input format (YYYY-MM-DD)
+            // API can return: YYYY-MM-DD or DD-MMM-YYYY or YYYY-MM-DD HH:MM
             const parseDate = (dateStr: string): string => {
               if (!dateStr) return '';
               try {
+                // Remove time portion if present (e.g., "2026-01-07 12:00" -> "2026-01-07")
+                const dateOnly = dateStr.split(' ')[0].trim();
+                
+                // Check if already in YYYY-MM-DD format (e.g., "2026-01-07")
+                const ymdPattern = /^\d{4}-\d{2}-\d{2}$/;
+                if (ymdPattern.test(dateOnly)) {
+                  return dateOnly;
+                }
+                
                 // Try parsing DD-MMM-YYYY format (e.g., "02-Jun-2025")
-                const parts = dateStr.split('-');
+                const parts = dateOnly.split('-');
                 if (parts.length === 3) {
-                  const day = parts[0].padStart(2, '0');
+                  // Check if middle part is a month name
                   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                  const month = String(monthNames.indexOf(parts[1]) + 1).padStart(2, '0');
-                  const year = parts[2];
+                  const monthIndex = monthNames.indexOf(parts[1]);
+                  if (monthIndex !== -1) {
+                    const day = parts[0].padStart(2, '0');
+                    const month = String(monthIndex + 1).padStart(2, '0');
+                    const year = parts[2];
+                    return `${year}-${month}-${day}`;
+                  }
+                }
+                
+                // If can't parse, try to use as-is or parse with Date object
+                const parsed = new Date(dateOnly);
+                if (!isNaN(parsed.getTime())) {
+                  const year = parsed.getFullYear();
+                  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+                  const day = String(parsed.getDate()).padStart(2, '0');
                   return `${year}-${month}-${day}`;
                 }
-                // If already in YYYY-MM-DD format, return as is
-                return dateStr;
+                
+                return dateOnly;
               } catch {
                 return dateStr;
               }
@@ -344,7 +498,7 @@ const inscriptionSlice = createSlice({
             let internmentTime = '12:00'; // Default time
             
             if (internmentDateStr) {
-              // Check if it includes time (e.g., "12-Jun-2025 14:30")
+              // Check if it includes time (e.g., "2026-01-07 12:00" or "2056-01-07 12:00")
               const dateTimeParts = internmentDateStr.split(' ');
               internmentDate = parseDate(dateTimeParts[0]);
               if (dateTimeParts.length > 1) {
@@ -404,6 +558,12 @@ const inscriptionSlice = createSlice({
           }
         }
         
+        // CRITICAL: Ensure nicheApplicationCode is set from the code parameter if not already set
+        // This handles cases where the API doesn't return it in additionalDetails
+        if (!state.nicheApplicationCode && action.meta.arg) {
+          state.nicheApplicationCode = action.meta.arg;
+        }
+        
         state.itemsError = null;
       })
       .addCase(fetchInscriptionItems.rejected, (state, action) => {
@@ -443,6 +603,40 @@ const inscriptionSlice = createSlice({
       .addCase(createInscriptionInvoice.rejected, (state, action) => {
         state.creatingInvoice = false;
         state.invoiceError = action.payload?.message || 'Failed to create invoice';
+        state.lastErrorType = (action.payload?.type as any) || 'server';
+      });
+
+    // Create inscription
+    builder
+      .addCase(createInscription.pending, (state) => {
+        state.creatingInscription = true;
+        state.inscriptionError = null;
+      })
+      .addCase(createInscription.fulfilled, (state, action) => {
+        state.creatingInscription = false;
+        state.inscriptionRequestNo = action.payload.code;
+        state.inscriptionError = null;
+      })
+      .addCase(createInscription.rejected, (state, action) => {
+        state.creatingInscription = false;
+        state.inscriptionError = action.payload?.message || 'Failed to create inscription';
+        state.lastErrorType = (action.payload?.type as any) || 'server';
+      });
+
+    // Update inscription
+    builder
+      .addCase(updateInscription.pending, (state) => {
+        state.updatingInscription = true;
+        state.inscriptionError = null;
+      })
+      .addCase(updateInscription.fulfilled, (state, action) => {
+        state.updatingInscription = false;
+        state.inscriptionRequestNo = action.payload.code;
+        state.inscriptionError = null;
+      })
+      .addCase(updateInscription.rejected, (state, action) => {
+        state.updatingInscription = false;
+        state.inscriptionError = action.payload?.message || 'Failed to update inscription';
         state.lastErrorType = (action.payload?.type as any) || 'server';
       });
   }

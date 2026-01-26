@@ -43,22 +43,18 @@ Complete Docker setup for deploying the Franciscan React + Node.js application w
 
 ## 📚 Documentation
 
-- **[DEPLOYMENT_ROADMAP.md](./DEPLOYMENT_ROADMAP.md)** - Complete step-by-step deployment guide
-- **[PROJECT_ANALYSIS.md](./PROJECT_ANALYSIS.md)** - Detailed project analysis
+- **[PROJECT_DOCUMENTATION.md](./PROJECT_DOCUMENTATION.md)** - Complete project documentation (API, architecture, performance, setup)
 - **[backup-database.ps1](./backup-database.ps1)** - Database backup script (PowerShell)
 - **[backup-database.bat](./backup-database.bat)** - Database backup script (CMD)
 
-## ⚠️ Important: Database Migration
+## ⚠️ Important: Database Configuration
 
-**Current Status**: Application uses SQL Server, but Docker setup uses MySQL.
+**Current Status**: Application uses Microsoft SQL Server.
 
-**You need to**:
-1. Backup your current SQL Server database (use backup scripts)
-2. Either:
-   - **Option A**: Update backend code to use MySQL (recommended)
-   - **Option B**: Migrate database schema to MySQL
-
-See [DEPLOYMENT_ROADMAP.md](./DEPLOYMENT_ROADMAP.md) for detailed migration steps.
+**Configuration**:
+- See [PROJECT_DOCUMENTATION.md](./PROJECT_DOCUMENTATION.md) for detailed database setup
+- Supports both Windows Authentication and SQL Server Authentication
+- Connection pooling and query optimization included
 
 ## 🛠️ Common Commands
 
@@ -90,8 +86,7 @@ Franciscan_Deployment/
 ├── .env.example                # Environment template
 ├── backup-database.ps1         # Database backup (PowerShell)
 ├── backup-database.bat          # Database backup (CMD)
-├── DEPLOYMENT_ROADMAP.md       # Complete deployment guide
-├── PROJECT_ANALYSIS.md         # Project analysis
+├── PROJECT_DOCUMENTATION.md    # Complete project documentation
 ├── Fransiscan-Nodejs-BE/       # Backend application
 │   ├── Dockerfile
 │   └── ...
@@ -111,7 +106,7 @@ Franciscan_Deployment/
 
 ## 🆘 Troubleshooting
 
-See [DEPLOYMENT_ROADMAP.md](./DEPLOYMENT_ROADMAP.md) for detailed troubleshooting guide.
+See [PROJECT_DOCUMENTATION.md](./PROJECT_DOCUMENTATION.md) for detailed troubleshooting guide and performance optimization tips.
 
 ## 📞 Support
 

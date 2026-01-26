@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { WizardStepper } from './components/WizardStepper';
 import { ConsentForms } from './pages/ConsentForms';
@@ -11,7 +11,7 @@ import { InvoiceReceipt } from './pages/InvoiceReceipt';
 import { NicheAgreementDetailsModal } from './components/NicheAgreementDetailsModal';
 import { AgreementViewerModal } from './components/AgreementViewerModal';
 import { applicationEmailService } from './services/applicationEmailService';
-import { EyeIcon, PrinterIcon, PlusIcon, ArrowRightIcon, FileTextIcon, HomeIcon, UserIcon, UsersIcon, UserCheckIcon, ReceiptIcon, AlertCircleIcon } from 'lucide-react';
+import { EyeIcon, PrinterIcon, PlusIcon, ArrowRightIcon, FileTextIcon, HomeIcon, UserIcon, UsersIcon, UserCheckIcon, ReceiptIcon, AlertCircleIcon, PenToolIcon } from 'lucide-react';
 import { useApplication } from './hooks/useApplication';
 import { useFormValidation } from './hooks/useFormValidation';
 import { Button } from './components/common/Button';
@@ -56,6 +56,7 @@ const steps = [{
 export function App() {
   const dispatch = useDispatch();
   const location = useLocation();
+  const navigate = useNavigate();
   const {
     currentStep,
     formData,
@@ -786,6 +787,16 @@ You will now be redirected to the Invoice & Receipt page.`);
                   >
                     Go to Invoice & Receipt
                   </Button>
+                  {applicationNumber && (
+                    <Button
+                      variant="secondary"
+                      icon={<PenToolIcon className="w-4 h-4" />}
+                      onClick={() => navigate(`/inscription?applicationCode=${applicationNumber}`)}
+                      title="View Inscription"
+                    >
+                      View Inscription
+                    </Button>
+                  )}
                   <Button
                     variant="secondary"
                     icon={<FileTextIcon className="w-4 h-4" />}
@@ -1052,6 +1063,16 @@ You will now be redirected to the Invoice & Receipt page.`);
                     >
                       Go to Invoice & Receipt
                     </Button>
+                    {applicationNumber && (
+                      <Button
+                        variant="outline"
+                        onClick={() => navigate(`/inscription?applicationCode=${applicationNumber}`)}
+                        className="bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+                        icon={<PenToolIcon className="w-4 h-4" />}
+                      >
+                        View Inscription
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}

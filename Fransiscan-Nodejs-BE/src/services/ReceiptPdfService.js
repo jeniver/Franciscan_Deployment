@@ -114,10 +114,13 @@ class ReceiptPdfService {
     const fileName = `receipt-${receiptCode}-${timestamp}.pdf`;
     const filePath = path.join(this.receiptDir, fileName);
 
+    const logoBase64 = await this.getLogoBase64();
+
     const html = this.buildReceiptTemplate({
       receipt,
       invoice,
-      details
+      details,
+      logoBase64
     });
 
     await this.renderPdf(html, filePath);
@@ -141,7 +144,9 @@ class ReceiptPdfService {
     const fileName = `invoice-${invoiceCode}-${timestamp}.pdf`;
     const filePath = path.join(this.invoiceDir, fileName);
 
-    const html = this.buildInvoiceTemplate(invoice);
+    const logoBase64 = await this.getLogoBase64();
+
+    const html = this.buildInvoiceTemplate(invoice, logoBase64);
     await this.renderPdf(html, filePath);
 
     logger.info(`Generated invoice PDF: ${fileName}`);
@@ -154,25 +159,99 @@ class ReceiptPdfService {
     };
   }
 
-  buildReceiptTemplate({ receipt, invoice, details }) {
+  async getLogoBase64() {
+    try {
+      // Look for logo in peer frontend directory
+      const logoPath = path.join(process.cwd(), '../francisicon-react-front-end/public/logo.png');
+      const imageBuffer = await fs.readFile(logoPath);
+      return `data:image/png;base64,${imageBuffer.toString('base64')}`;
+    } catch (error) {
+      console.warn('Could not load logo from:', path.join(process.cwd(), '../francisicon-react-front-end/public/logo.png'), error.message);
+      return ''; // Return empty string if failed, image tag will just show alt or broken
+    }
+  }
+
+  // Convert number to words (English)
+  convertNumberToWords(amount) {
+    const num = parseFloat(amount);
+    if (isNaN(num)) return '';
+
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const scales = ['', 'Thousand', 'Million', 'Billion'];
+
+    const numToWords = (n) => {
+      if (n === 0) return '';
+      if (n < 20) return ones[n];
+      if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? '-' + ones[n % 10] : '');
+      if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + numToWords(n % 100) : '');
+      return '';
+    };
+
+    // Split integer and decimal
+    const parts = Math.abs(num).toFixed(2).split('.');
+    let integerPart = parseInt(parts[0], 10);
+    const decimalPart = parseInt(parts[1], 10);
+
+    let words = '';
+
+    if (integerPart === 0) {
+      words = 'Zero';
+    } else {
+      let scaleIndex = 0;
+      while (integerPart > 0) {
+        const chunk = integerPart % 1000;
+        if (chunk !== 0) {
+          const chunkWords = numToWords(chunk);
+          words = chunkWords + (scales[scaleIndex] ? ' ' + scales[scaleIndex] : '') + (words ? ' ' + words : '');
+        }
+        integerPart = Math.floor(integerPart / 1000);
+        scaleIndex++;
+      }
+    }
+
+    let result = words.trim();
+
+    // Formatting: "Eight Thousand Three Hundred Five, And Eighty Cents Only"
+    // Add Cents
+    if (decimalPart > 0) {
+      // Need to handle cents wording? Example says "And Eighty Cents Only"
+      // If decimal is 80, we say "Eighty".
+      const centsWords = numToWords(decimalPart);
+      result += `, And ${centsWords} Cents Only`;
+    } else {
+      result += ' Only';
+    }
+
+    return result;
+  }
+
+  buildReceiptTemplate({ receipt, invoice, details, logoBase64 }) {
     const paymentMode = Receipt.paymentModeToString(
       this.getField(receipt, 'paymentMode', 'PaymentMode')
     );
+
     const rows = (details || []).length > 0 ? details : [{
       description: this.getField(invoice, 'Description', 'description') || 'Receipt Item',
       payingAmount: this.getField(receipt, 'payingAmount', 'PayingAmount'),
-      quantity: 1
+      quantity: 1,
+      refDocNumber: this.getField(invoice, 'Code', 'code', 'InvoiceNo', 'invoiceNo') // Fallback reference
     }];
+
+    // Calculate total
+    const totalAmount = this.getField(receipt, 'payingAmount', 'PayingAmount', 'totalAmount', 'TotalAmount') || 0;
+    const amountInWords = this.convertNumberToWords(totalAmount);
 
     const detailRows = rows.map((row, index) => `
       <tr>
-        <td>${index + 1}</td>
-        <td>${this.sanitize(this.getField(row, 'refDocName', 'description', 'itemId', 'ItemId'))}</td>
-        <td>${this.sanitize(this.getField(row, 'refDocNumber', 'RefDocNumber', 'itemCode', 'ItemCode') || '-')}</td>
-        <td>${this.sanitize(this.getField(row, 'quantity', 'Quantity') || 1)}</td>
-        <td class="text-right">${this.formatCurrency(this.getField(row, 'payingAmount', 'PayingAmount', 'totalPayingAmount', 'TotalPayingAmount'))}</td>
+        <td style="vertical-align: top;">${this.sanitize(this.getField(row, 'refDocNumber', 'RefDocNumber', 'itemCode', 'ItemCode') || '-')}</td>
+        <td style="vertical-align: top;">${this.sanitize(this.getField(row, 'refDocName', 'description', 'itemId', 'ItemId'))}</td>
+        <td style="text-align: right; vertical-align: top;">$ ${this.formatCurrency(this.getField(row, 'payingAmount', 'PayingAmount', 'totalPayingAmount', 'TotalPayingAmount'))}</td>
       </tr>
     `).join('');
+
+    const customerAddress = this.sanitize(this.getField(receipt, 'address', 'Address') || this.getField(invoice, 'Address', 'address') || '');
+    // Address formatting: try to break it up if nice, otherwise just show it.
 
     return `
 <!DOCTYPE html>
@@ -181,82 +260,120 @@ class ReceiptPdfService {
   <meta charset="UTF-8">
   <title>Receipt ${this.sanitize(this.getField(receipt, 'code', 'Code'))}</title>
   <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2a37; font-size: 13px; margin: 0; padding: 0; }
-    .container { padding: 24px; }
-    .header { text-align: center; margin-bottom: 32px; }
-    .header h1 { margin-bottom: 4px; }
-    .summary { display: flex; justify-content: space-between; margin-bottom: 24px; }
-    .summary-section { width: 48%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; }
-    .summary-section h3 { margin-top: 0; margin-bottom: 16px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; }
-    .summary-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
-    .summary-label { color: #64748b; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th { text-align: left; padding: 12px; background: #1f2937; color: #fff; font-size: 12px; }
-    td { padding: 12px; border-bottom: 1px solid #e2e8f0; }
-    .text-right { text-align: right; }
-    .totals { margin-top: 24px; text-align: right; }
-    .totals div { margin-bottom: 8px; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; background: #e2e8f0; color: #475569; font-size: 11px; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #000; font-size: 14px; margin: 0; padding: 0; }
+    .container { padding: 40px; }
+    
+    /* Header Section */
+    .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
+    .logo-section { display: flex; align-items: center; gap: 15px; }
+    .logo-img { width: 80px; height: auto; }
+    .receipt-title { font-size: 24px; font-weight: normal; text-transform: uppercase; line-height: 1.2; }
+    
+    .company-details { text-align: right; font-size: 12px; line-height: 1.4; }
+    .company-name { font-weight: bold; font-size: 14px; text-transform: uppercase; margin-bottom: 4px; }
+    
+    /* Receipt Info (Right aligned below company info usually, or separate) */
+    .receipt-meta { display: flex; justify-content: flex-end; margin-top: 10px; }
+    .meta-table { text-align: right; font-size: 14px; }
+    .meta-table td { padding: 2px 0 2px 20px; }
+    
+    /* Customer Info */
+    .customer-section { margin-bottom: 30px; margin-top: 20px; }
+    .info-row { display: flex; margin-bottom: 8px; }
+    .info-label { width: 120px; font-weight: normal; }
+    .info-value { flex: 1; }
+    
+    /* Main Table */
+    .items-table { width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; }
+    .items-table th { text-align: left; border-bottom: 2px solid #000; padding: 8px 0; font-weight: bold; text-transform: uppercase; font-size: 13px; }
+    .items-table td { padding: 12px 0; border: none; }
+    .total-row td { border-top: 2px solid #000; border-bottom: 2px double #000; padding: 10px 0; font-weight: bold; font-size: 15px; }
+    
+    /* Words */
+    .amount-words-row { display: flex; margin-top: 20px; margin-bottom: 40px; }
+    .words-label { width: 80px; }
+    .words-value { flex: 1; }
+    
+    /* Footer */
+    .footer-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 60px; }
+    .signature-line { width: 250px; border-top: 1px solid #000; padding-top: 8px; }
+    .disclaimer { text-align: right; font-size: 11px; color: #333; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>Receipt</h1>
-      <div>Receipt #${this.sanitize(this.getField(receipt, 'code', 'Code'))}</div>
-    </div>
-
-    <div class="summary">
-      <div class="summary-section">
-        <h3>Receipt Info</h3>
-        <div class="summary-row">
-          <span class="summary-label">Date</span>
-          <span>${this.formatDate(this.getField(receipt, 'transactionDate', 'TransactionDate'))}</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Payment Mode</span>
-          <span><span class="badge">${paymentMode}</span></span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Document No.</span>
-          <span>${this.sanitize(this.getField(receipt, 'paymentModeDocNo', 'PaymentModeDocNo') || '-')}</span>
+    <div class="header-row">
+      <div class="logo-section">
+        ${logoBase64 ? `<img src="${logoBase64}" class="logo-img" alt="Logo" />` : ''}
+        <div class="receipt-title">
+          OFFICIAL<br>RECEIPT
         </div>
       </div>
-      <div class="summary-section">
-        <h3>Customer</h3>
-        <div class="summary-row">
-          <span class="summary-label">Name</span>
-          <span>${this.sanitize(this.getField(receipt, 'customerName', 'CustomerName', 'payeeName', 'PayeeName'))}</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Address</span>
-          <span>${this.sanitize(this.getField(receipt, 'address', 'Address') || this.getField(invoice, 'Address', 'address') || '-')}</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Invoice</span>
-          <span>${this.sanitize(this.getField(invoice, 'Code', 'code', 'InvoiceNo', 'invoiceNo') || '-')}</span>
+      <div class="company-details">
+        <div class="company-name">THE ORDER OF FRIARS MINOR (S) LTD</div>
+        <div>Co & GST Reg No. 201016236M</div>
+        <div>Franciscan Columbarium</div>
+        <div>5 Bukit Batok East Avenue 2 Singapore 659918</div>
+        <div>Tel: 6560-6361, HP: 9774-7053,</div>
+        <div>email:franciscan.columbarium@gmail.com</div>
+        
+        <div class="receipt-meta">
+          <table class="meta-table">
+            <tr>
+              <td>Receipt No:</td>
+              <td>${this.sanitize(this.getField(receipt, 'code', 'Code'))}</td>
+            </tr>
+            <tr>
+              <td>Date :</td>
+              <td>${this.formatDate(this.getField(receipt, 'transactionDate', 'TransactionDate'))}</td>
+            </tr>
+          </table>
         </div>
       </div>
     </div>
 
-    <table>
+    <div class="customer-section">
+      <div class="info-row">
+        <div class="info-label">Received From :</div>
+        <div class="info-value">${this.sanitize(this.getField(receipt, 'customerName', 'CustomerName', 'payeeName', 'PayeeName'))}</div>
+      </div>
+      <div class="info-row">
+        <div class="info-label">Address:</div>
+        <div class="info-value">${customerAddress}</div>
+      </div>
+    </div>
+
+    <table class="items-table">
       <thead>
         <tr>
-          <th style="width: 60px;">#</th>
-          <th>Description</th>
-          <th>Reference</th>
-          <th>Qty</th>
-          <th class="text-right">Amount (SGD)</th>
+          <th style="width: 25%;">Invoice</th>
+          <th style="width: 50%;">Description</th>
+          <th style="width: 25%; text-align: right;">Total Amount</th>
         </tr>
       </thead>
       <tbody>
         ${detailRows}
+        
+        <tr class="total-row">
+          <td></td>
+          <td style="text-align: right; padding-right: 20px;">Total :</td>
+          <td style="text-align: right;">$ ${this.formatCurrency(totalAmount)}</td>
+        </tr>
       </tbody>
     </table>
 
-    <div class="totals">
-      <div><strong>Paying Amount:</strong> SGD ${this.formatCurrency(this.getField(receipt, 'payingAmount', 'PayingAmount', 'totalAmount', 'TotalAmount'))}</div>
-      <div><strong>Outstanding:</strong> SGD ${this.formatCurrency(this.getField(receipt, 'outstandingAmount', 'OutstandingAmount'))}</div>
+    <div class="amount-words-row">
+      <div class="words-label">Dollars :</div>
+      <div class="words-value">${amountInWords}</div>
+    </div>
+
+    <div class="footer-row">
+      <div class="signature-section">
+        <div class="signature-line">${paymentMode}</div>
+      </div>
+      <div class="disclaimer">
+        The Order of Friars Minor (S) Ltd
+      </div>
     </div>
   </div>
 </body>
@@ -264,89 +381,149 @@ class ReceiptPdfService {
     `;
   }
 
-  buildInvoiceTemplate(invoice) {
+  buildInvoiceTemplate(invoice, logoBase64) {
     const details = invoice.details || [];
-    const totalAmount = details.reduce((sum, row) => sum + (Number(row.LineTotalAmount || row.TotalPayingAmount || 0)), 0);
+
+    // Fallback if no details
+    if (details.length === 0) {
+      // ...
+    }
+
+    const subTotal = details.reduce((sum, row) => sum + (Number(row.LineTotalAmount || row.TotalPayingAmount || row.amount || 0)), 0);
+    const taxTotal = details.reduce((sum, row) => sum + (Number(row.LineTaxAmount || row.taxAmount || 0)), 0);
+    const totalAmount = this.getField(invoice, 'TotalAmount', 'totalAmount') || (subTotal + taxTotal);
+
+    // Amount in words
+    const amountInWords = this.convertNumberToWords(totalAmount);
+
     const detailRows = details.map((row, index) => `
       <tr>
-        <td>${index + 1}</td>
-        <td>${this.sanitize(row.RefDocName || row.Description || '-')}</td>
-        <td>${this.sanitize(row.RefDocNumber || '-')}</td>
-        <td>${this.sanitize(row.Quantity || 1)}</td>
-        <td class="text-right">${this.formatCurrency(row.UnitAmount || row.TotalPayingAmount)}</td>
-        <td class="text-right">${this.formatCurrency(row.LineTotalAmount || row.TotalPayingAmount)}</td>
+        <td style="vertical-align: top;">${this.sanitize(row.RefDocName || row.Description || row.itemName || '-')}</td>
+        <td style="vertical-align: top;">${this.sanitize(row.RefDocNumber || row.reference || '-')}</td>
+        <td style="text-align: center; vertical-align: top;">${this.sanitize(row.LineTaxPercent || row.taxPercent || 9.0)}</td>
+        <td style="text-align: center; vertical-align: top;">${Number(row.Quantity || row.quantity || 1).toFixed(2)}</td>
+        <td style="text-align: right; vertical-align: top;">$ ${this.formatCurrency(row.UnitAmount || row.unitPrice || 0)}</td>
+        <td style="text-align: right; vertical-align: top;">$ ${this.formatCurrency(row.LineTotalAmount || row.totalPayingAmount || row.amount || 0)}</td>
       </tr>
     `).join('');
+
+    const customerAddress = this.sanitize(this.getField(invoice, 'Address', 'address', 'customerAddress') || '');
 
     return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Invoice ${this.sanitize(this.getField(invoice, 'Code', 'code', 'InvoiceNo', 'invoiceNo'))}</title>
+  <title>Tax Invoice ${this.sanitize(this.getField(invoice, 'Code', 'code', 'InvoiceNo', 'invoiceNo'))}</title>
   <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; color: #111827; font-size: 13px; margin: 0; padding: 0; }
-    .container { padding: 32px; }
-    .header { text-align: center; margin-bottom: 32px; }
-    .header h1 { margin-bottom: 6px; }
-    .info { display: flex; justify-content: space-between; margin-bottom: 24px; }
-    .info-section { width: 48%; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
-    .info-section h3 { margin-top: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; }
-    .info-row { margin-bottom: 10px; }
-    .label { color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; display: block; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th { text-align: left; padding: 12px; background: #111827; color: #fff; font-size: 12px; }
-    td { padding: 12px; border-bottom: 1px solid #e5e7eb; }
-    .text-right { text-align: right; }
-    .totals { margin-top: 24px; text-align: right; }
-    .totals div { margin-bottom: 8px; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #000; font-size: 13px; margin: 0; padding: 0; }
+    .container { padding: 40px; }
+    
+    /* Header */
+    .header-row { display: flex; justify-content: space-between; margin-bottom: 20px; }
+    .logo-img { width: 80px; height: auto; border: 1px solid #000; padding: 2px; }
+    .company-details { text-align: right; font-size: 11px; line-height: 1.4; }
+    .company-name { font-weight: bold; font-size: 14px; text-transform: uppercase; margin-bottom: 4px; }
+    
+    /* Tax Invoice Label */
+    .invoice-label-row { text-align: right; margin-bottom: 30px; }
+    .invoice-label { display: inline-block; background: #000; color: #fff; padding: 4px 20px; font-weight: bold; font-size: 16px; text-transform: uppercase; }
+    
+    /* Customer & Invoice Info Grid */
+    .info-grid { display: flex; justify-content: space-between; margin-bottom: 30px; }
+    .bill-to-section { width: 50%; }
+    .invoice-meta-section { width: 40%; }
+    
+    .meta-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .meta-label { width: 100px; }
+    .meta-value { text-align: right; font-weight: bold; }
+    
+    .customer-row { display: flex; margin-bottom: 4px; }
+    .customer-label { width: 80px; }
+    .customer-value { flex: 1; }
+    
+    /* Table */
+    .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #000; }
+    .items-table th { background: #000; color: #fff; padding: 6px; text-align: center; font-weight: normal; font-size: 12px; border-right: 1px solid #fff; }
+    .items-table th:last-child { border-right: none; }
+    .items-table td { padding: 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 12px; }
+    .items-table td:last-child { border-right: none; }
+    
+    .totals-section { float: right; width: 300px; margin-bottom: 30px; }
+    .total-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .total-label { font-weight: bold; }
+    .total-value { text-align: right; }
+    
+    .final-total { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 6px 0; margin-top: 6px; font-weight: bold; font-size: 14px; }
+    
+    .clear { clear: both; }
+    
+    /* Words */
+    .words-section { margin-bottom: 40px; font-size: 12px; }
+    .words-row { display: flex; }
+    .words-label { width: 60px; }
+    .words-value { flex: 1; }
+    .signature-note { margin-top: 10px; font-size: 10px; color: #333; }
+    
+    /* Footer / Payment Methods */
+    .footer-section { margin-top: 40px; font-size: 11px; }
+    .payment-title { font-weight: bold; margin-bottom: 6px; }
+    .bank-details { font-weight: bold; }
+    .note { margin-top: 10px; font-style: italic; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>Invoice</h1>
-      <div>Invoice #${this.sanitize(this.getField(invoice, 'Code', 'code', 'InvoiceNo', 'invoiceNo'))}</div>
-    </div>
-
-    <div class="info">
-      <div class="info-section">
-        <h3>Bill To</h3>
-        <div class="info-row">
-          <span class="label">Customer</span>
-          <span>${this.sanitize(this.getField(invoice, 'CustomerName', 'customerName') || '-')}</span>
-        </div>
-        <div class="info-row">
-          <span class="label">Address</span>
-          <span>${this.sanitize(this.getField(invoice, 'Address', 'address') || '-')}</span>
-        </div>
+    <div class="header-row">
+      <div class="logo-section">
+        ${logoBase64 ? `<img src="${logoBase64}" class="logo-img" alt="Logo" />` : ''}
       </div>
-      <div class="info-section">
-        <h3>Invoice Info</h3>
-        <div class="info-row">
-          <span class="label">Date</span>
-          <span>${this.formatDate(this.getField(invoice, 'InvoiceDate', 'invoiceDate', 'CreatedDate', 'createdDate'))}</span>
-        </div>
-        <div class="info-row">
-          <span class="label">Due Date</span>
-          <span>${this.formatDate(this.getField(invoice, 'DueDate', 'dueDate'))}</span>
-        </div>
-        <div class="info-row">
-          <span class="label">Reference</span>
-          <span>${this.sanitize(this.getField(invoice, 'RefDocNumber', 'refDocNumber') || '-')}</span>
-        </div>
+      <div class="company-details">
+        <div class="company-name">THE ORDER OF FRIARS MINOR (S) LTD</div>
+        <div>Co. & GST Reg. No. 201016236M</div>
+        <div>Franciscan Columbarium</div>
+        <div>5 Bukit Batok East Avenue 2, Singapore 659918</div>
+        <div>Tel:6560-6361 HP:9774-7053</div>
+        <div>Email:franciscan.columbarium@gmail.com</div>
       </div>
     </div>
 
-    <table>
+    <div class="invoice-label-row">
+      <span class="invoice-label">TAX INVOICE</span>
+    </div>
+
+    <div class="info-grid">
+      <div class="bill-to-section">
+        <div class="customer-row">
+          <div class="customer-label">Name :</div>
+          <div class="customer-value">${this.sanitize(this.getField(invoice, 'CustomerName', 'customerName', 'payeeName'))}</div>
+        </div>
+        <div class="customer-row">
+          <div class="customer-label">Address :</div>
+          <div class="customer-value">${customerAddress}</div>
+        </div>
+      </div>
+      <div class="invoice-meta-section">
+        <div class="meta-row">
+          <div class="meta-label">Invoice No :</div>
+          <div class="meta-value">${this.sanitize(this.getField(invoice, 'Code', 'code', 'InvoiceNo', 'invoiceNo'))}</div>
+        </div>
+        <div class="meta-row">
+          <div class="meta-label">Date :</div>
+          <div class="meta-value">${this.formatDate(this.getField(invoice, 'InvoiceDate', 'invoiceDate'))}</div>
+        </div>
+      </div>
+    </div>
+
+    <table class="items-table">
       <thead>
         <tr>
-          <th style="width: 50px;">#</th>
-          <th>Description</th>
-          <th>Reference</th>
-          <th>Qty</th>
-          <th class="text-right">Unit</th>
-          <th class="text-right">Amount</th>
+          <th style="width: 30%; text-align: left; padding-left: 8px;">Description</th>
+          <th style="width: 25%; text-align: left; padding-left: 8px;">Reference No.</th>
+          <th style="width: 10%;">GST %</th>
+          <th style="width: 10%;">Qty</th>
+          <th style="width: 12%;">Unit Price</th>
+          <th style="width: 13%;">Amount</th>
         </tr>
       </thead>
       <tbody>
@@ -354,15 +531,38 @@ class ReceiptPdfService {
       </tbody>
     </table>
 
-    <div class="totals">
-      <div><strong>Subtotal:</strong> SGD ${this.formatCurrency(totalAmount)}</div>
-      <div><strong>Tax:</strong> SGD ${this.formatCurrency(this.getField(invoice, 'TaxAmount', 'taxAmount'))}</div>
-      <div><strong>Total:</strong> SGD ${this.formatCurrency(this.getField(invoice, 'TotalAmount', 'totalAmount', totalAmount))}</div>
-      <div><strong>Paid:</strong> SGD ${this.formatCurrency(this.getField(invoice, 'ReceiptAmount', 'receiptAmount'))}</div>
-      <div><strong>Balance:</strong> SGD ${this.formatCurrency(
-        (this.getField(invoice, 'TotalAmount', 'totalAmount', totalAmount) || 0) -
-        (this.getField(invoice, 'ReceiptAmount', 'receiptAmount') || 0)
-      )}</div>
+    <div class="totals-section">
+      <div class="total-row">
+        <span class="total-label">Sub Total :</span>
+        <span class="total-value">$ ${this.formatCurrency(subTotal)}</span>
+      </div>
+      <div class="total-row">
+        <span class="total-label">GST Total :</span>
+        <span class="total-value">$ ${this.formatCurrency(taxTotal)}</span>
+      </div>
+      <div class="total-row final-total">
+        <span class="total-label">Total :</span>
+        <span class="total-value">$ ${this.formatCurrency(totalAmount)}</span>
+      </div>
+    </div>
+    
+    <div class="clear"></div>
+
+    <div class="words-section">
+      <div class="words-row">
+        <div class="words-label">Dollars :</div>
+        <div class="words-value">${amountInWords}</div>
+      </div>
+      <div class="signature-note">This is a system generated invoice. No signature is required</div>
+    </div>
+
+    <div class="footer-section">
+      <div class="payment-title">Payment by:</div>
+      <div>1. Cash</div>
+      <div>2. Cheque payable to: <span class="bank-details">The Order of Friars Minor (S) Ltd - Columbarium</span></div>
+      <div>3. Internet transfer: <span class="bank-details">OFM - Col, Standard Chartered Bank</span></div>
+      <div style="margin-left: 110px;"><span class="bank-details">A/c 07-1-006455-1</span></div>
+      <div class="note">Please quote the invoice no. in the reference field</div>
     </div>
   </div>
 </body>

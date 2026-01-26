@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { EyeIcon, PrinterIcon, PlusIcon, ChevronDownIcon, UserIcon, ChurchIcon, BookOpenIcon, MailIcon, LoaderIcon } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { EyeIcon, ArrowLeftIcon, PlusIcon, ChevronDownIcon, UserIcon, ChurchIcon, BookOpenIcon, MailIcon, LoaderIcon } from 'lucide-react';
 import { useInscription } from '../hooks/useInscription';
 import { LoadingSpinner } from './common/LoadingSpinner';
 import { useToast } from '../contexts/ToastContext';
@@ -20,6 +21,9 @@ interface Beneficiary {
 }
 
 export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
   const {
     inscriptionRequestNo,
     nicheApplicationCode,
@@ -63,10 +67,40 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
     updateDeceasedDetails,
     addDeceased,
     removeDeceased,
-    updateDeceased
+    updateDeceased,
+    creatingInscription,
+    updatingInscription,
+    inscriptionError,
+    handleCreateInscription,
+    handleUpdateInscription
   } = useInscription();
 
   const { showError } = useToast();
+  
+  // Track if we need to refresh after create/update
+  // The hook already refreshes, but this ensures form state is updated
+  const prevInscriptionRequestNoRef = useRef<string | null>(null);
+  
+  useEffect(() => {
+    // Only refresh if inscriptionRequestNo changed (new inscription created or updated)
+    if (inscriptionRequestNo && 
+        nicheApplicationCode && 
+        prevInscriptionRequestNoRef.current !== inscriptionRequestNo) {
+      prevInscriptionRequestNoRef.current = inscriptionRequestNo;
+      // The hook already calls fetchInscriptionItems, but we ensure form is refreshed
+      // by letting the Redux state update naturally
+    }
+  }, [inscriptionRequestNo, nicheApplicationCode]);
+  
+  // Handle back navigation to niche application
+  const handleBackToNiche = () => {
+    if (nicheApplicationCode) {
+      navigate(`/niche?applicationCode=${nicheApplicationCode}`);
+    } else {
+      // Fallback: navigate to niche page
+      navigate('/niche');
+    }
+  };
 
   // Use Redux state for deceased details (mapped from API)
   // Initialize with empty if no data from Redux
@@ -103,7 +137,30 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
   };
 
   const handleUpdateBeneficiary = (index: number, field: keyof Beneficiary, value: string) => {
-    updateDeceased(index, { [field]: value });
+    const updatedDetail = { [field]: value };
+    
+    // Auto-calculate Internment Date/Time when Date Died is selected
+    // Internment Date should be 30 years LATER than Date Died
+    if (field === 'dateDied' && value) {
+      const dateDied = new Date(value);
+      if (!isNaN(dateDied.getTime())) {
+        // Calculate internment date as 30 years later
+        const internmentDate = new Date(dateDied);
+        internmentDate.setFullYear(internmentDate.getFullYear() + 30);
+        
+        // Format as YYYY-MM-DD for date input
+        const year = internmentDate.getFullYear();
+        const month = String(internmentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(internmentDate.getDate()).padStart(2, '0');
+        const formattedDate = `${year}-${month}-${day}`;
+        
+        // Set internment date to 30 years later
+        updatedDetail.internmentDate = formattedDate;
+        updatedDetail.internmentTime = '12:00';
+      }
+    }
+    
+    updateDeceased(index, updatedDetail);
   };
 
   const handleView = async () => {
@@ -130,9 +187,28 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
     }
   };
 
-  const handleSaveRequest = () => {
-    // TODO: Implement save functionality
-    console.log('Saving inscription request...');
+  const handleSaveRequest = async () => {
+    if (!nicheApplicationCode.trim()) {
+      showError('Validation Error', 'Please enter a Niche Application Code');
+      return;
+    }
+    
+    if (!applicantName.trim()) {
+      showError('Validation Error', 'Please enter Applicant Name');
+      return;
+    }
+    
+    try {
+      if (inscriptionRequestNo) {
+        // Update existing inscription
+        await handleUpdateInscription(inscriptionRequestNo);
+      } else {
+        // Create new inscription
+        await handleCreateInscription();
+      }
+    } catch (error) {
+      // Error is handled by toast in the hook
+    }
   };
 
   const handleClearForm = () => {
@@ -148,21 +224,9 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
       {/* Top Section - Improved Layout */}
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
         <div className="space-y-4">
-          {/* First Row: Request No. and Niche Application Code side by side */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                Inscription Request No.
-                <span className="text-gray-400 font-normal normal-case text-xs">(Auto-generated)</span>
-              </label>
-              <input
-                type="text"
-                value={inscriptionRequestNo}
-                onChange={(e) => updateInscriptionRequestNo(e.target.value)}
-                className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all"
-                placeholder="I-XXXX-0"
-              />
-            </div>
+          {/* First Row: Niche Application Code (left) and Inscription Request No. (right, only if exists) */}
+          <div className={`grid gap-4 ${inscriptionRequestNo ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+            {/* Niche Application Code - Always shown on left */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
                 Niche Application Code
@@ -173,9 +237,26 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
                 value={nicheApplicationCode}
                 onChange={(e) => updateNicheApplicationCode(e.target.value)}
                 className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all"
-                placeholder="INCR-XXXX or 3795-1"
+                placeholder="7980-0 or 3795-1"
               />
             </div>
+            {/* Inscription Request No. - Only shown when it exists (after create/update) */}
+            {inscriptionRequestNo && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                  Inscription Request No.
+                  <span className="text-gray-400 font-normal normal-case text-xs">(Auto-generated)</span>
+                </label>
+                <input
+                  type="text"
+                  value={inscriptionRequestNo}
+                  readOnly
+                  disabled
+                  className="w-full p-3 bg-gray-100 border border-gray-300 rounded-lg text-gray-700 cursor-not-allowed"
+                  placeholder="I-XXXX-0"
+                />
+              </div>
+            )}
           </div>
 
           {/* Second Row: Action Buttons */}
@@ -199,18 +280,12 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
               )}
             </button>
             <button 
+              onClick={handleBackToNiche}
               className="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 hover:shadow-md transition-all flex items-center justify-center gap-2"
-              title="Print inscription request"
+              title="Back to Niche Application"
             >
-              <PrinterIcon className="w-4 h-4" />
-              Print
-            </button>
-            <button 
-              className="px-5 py-2.5 bg-[#801818] text-white rounded-lg font-semibold hover:opacity-90 hover:shadow-md transition-all flex items-center justify-center gap-2"
-              title="Create a new inscription request"
-            >
-              <PlusIcon className="w-4 h-4" />
-              New Request
+              <ArrowLeftIcon className="w-4 h-4" />
+              Back to Niche
             </button>
           </div>
 
@@ -515,11 +590,17 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
                       const numB = parseInt(b.bibleInscriptionChoiceNo.match(/\d+/)?.[0] || '0', 10);
                       return numA - numB;
                     })
-                    .map((choice) => (
-                      <option key={choice.bibleInscriptionChoiceId} value={choice.bibleInscriptionChoiceId}>
-                        {choice.bibleInscriptionChoiceNo}
-                      </option>
-                    ))}
+                    .map((choice) => {
+                      // Combine number and text for display
+                      const displayText = choice.bibleInscriptionChoiceNoValue 
+                        ? `${choice.bibleInscriptionChoiceNo} - ${choice.bibleInscriptionChoiceNoValue}`
+                        : choice.bibleInscriptionChoiceNo;
+                      return (
+                        <option key={choice.bibleInscriptionChoiceId} value={choice.bibleInscriptionChoiceId}>
+                          {displayText}
+                        </option>
+                      );
+                    })}
                 </select>
                 {bibleChoicesLoading && (
                   <div className="flex items-center gap-2 text-gray-500">
@@ -631,15 +712,31 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
           </div>
         )}
 
+        {/* Inscription Error Message */}
+        {inscriptionError && (
+          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg">
+            <div className="text-sm font-semibold text-red-800">{inscriptionError}</div>
+          </div>
+        )}
+
         {/* Button Groups */}
         <div className="flex flex-wrap gap-3 justify-between items-center">
           {/* Primary Actions */}
           <div className="flex flex-wrap gap-3">
             <button
               onClick={handleSaveRequest}
-              className="px-6 py-3 bg-[#801818] text-white rounded-lg font-semibold shadow-md hover:shadow-lg hover:bg-[#9a1f1f] transition-all transform hover:-translate-y-0.5"
+              disabled={creatingInscription || updatingInscription || !nicheApplicationCode.trim() || !applicantName.trim()}
+              className="px-6 py-3 bg-[#801818] text-white rounded-lg font-semibold shadow-md hover:shadow-lg hover:bg-[#9a1f1f] transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center gap-2"
+              title={!nicheApplicationCode.trim() ? 'Please enter Niche Application Code' : !applicantName.trim() ? 'Please enter Applicant Name' : inscriptionRequestNo ? 'Update inscription' : 'Create new inscription'}
             >
-              SAVE REQUEST
+              {creatingInscription || updatingInscription ? (
+                <>
+                  <LoaderIcon className="w-4 h-4 animate-spin" />
+                  {inscriptionRequestNo ? 'Updating...' : 'Creating...'}
+                </>
+              ) : (
+                inscriptionRequestNo ? 'UPDATE REQUEST' : 'CREATE REQUEST'
+              )}
             </button>
             <button
               onClick={handleClearForm}
