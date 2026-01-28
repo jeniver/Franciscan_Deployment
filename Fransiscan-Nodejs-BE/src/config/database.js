@@ -1,4 +1,8 @@
 const sql = require('mssql');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
 const logger = require('../utils/logger');
 
 // SQL Server configuration
@@ -6,7 +10,19 @@ const logger = require('../utils/logger');
 const useWindowsAuth = !process.env.DB_PASSWORD || process.env.DB_PASSWORD === '';
 
 // Get configuration from environment
-const server = process.env.DB_SERVER || 'localhost';
+const rawServer = process.env.DB_SERVER || 'localhost';
+let server = rawServer;
+// Normalize ".\SQLEXPRESS" → "COLUMBARIUM\SQLEXPRESS" so getaddrinfo doesn't resolve "." (ENOTFOUND)
+if (rawServer === '.' || (rawServer.length >= 2 && (rawServer.startsWith('.\\') || rawServer.startsWith('./')))) {
+  const hostname = os.hostname();
+  server = rawServer === '.' ? hostname : (hostname + rawServer.slice(1));
+  logger.info('DB_SERVER normalized "%s" → "%s" to avoid getaddrinfo ENOTFOUND', rawServer, server);
+}
+// Normalize 0.0.0.0 → 127.0.0.1 for SQL connection (0.0.0.0 is a bind address, not a connect target)
+if (server === '0.0.0.0') {
+  server = '127.0.0.1';
+  logger.info('DB_SERVER normalized "0.0.0.0" → "127.0.0.1" for SQL connection');
+}
 const instance = process.env.DB_INSTANCE || '';
 const database = process.env.DB_DATABASE || 'FransiscanLive';
 const port = process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 1433;
@@ -38,6 +54,118 @@ const requestTimeout = getTimeout(process.env.DB_REQUEST_TIMEOUT);
 const cancelTimeout = getTimeout(process.env.DB_CANCEL_TIMEOUT, 180000); // 180s default 
 const poolIdleTimeout = parseInt(process.env.DB_POOL_IDLE_TIMEOUT) || 30000;
 
+/**
+ * Sync discover SQL Server port (Windows): ERRORLOG, then Registry, then TCP probe.
+ * Used upfront when named instance + no DB_PORT so we bypass SQL Server Browser from the first connection.
+ */
+function discoverPortSync() {
+  if (os.platform() !== 'win32') return null;
+  const bases = ['C:\\Program Files\\Microsoft SQL Server', 'C:\\Program Files (x86)\\Microsoft SQL Server'];
+  const preferred = ['MSSQL17.SQLEXPRESS', 'MSSQL16.SQLEXPRESS', 'MSSQL15.SQLEXPRESS', 'MSSQL14.SQLEXPRESS', 'MSSQL13.SQLEXPRESS'];
+  const patterns = [
+    /Server is listening on \[\s*'any'\s*<ipv4>\s*(\d+)\s*\]/,
+    /Server is listening on \[ 'any' <ipv4> (\d+) \]/,
+    /listening on \[ .*? (\d{4,5}) \]/,
+    /'any'\s*<ipv4>\s*(\d{4,5})/,
+    /TCP Dynamic Ports[^\d]*(\d{4,5})/,
+    /TCP Port[^\d]*(\d{4,5})/,
+    /TCPDynamicPorts[^\d]*(\d+)/i,
+    /TCPPort[^\d]*(\d+)/i
+  ];
+  const parsePort = (m) => { const p = parseInt(m[1], 10); return (p > 1024 && p < 65536) ? p : null; };
+  for (const name of preferred) {
+    const logPath = path.join('C:\\Program Files\\Microsoft SQL Server', name, 'MSSQL', 'Log', 'ERRORLOG');
+    if (fs.existsSync(logPath)) {
+      try {
+        let c = fs.readFileSync(logPath, 'utf8');
+        if (c.length > 100000) c = c.slice(-100000);
+        for (const re of patterns) { const m = c.match(re); if (m) { const p = parsePort(m); if (p) return p; } }
+      } catch (e) { /* ignore */ }
+    }
+  }
+  for (const base of bases) {
+    if (!fs.existsSync(base)) continue;
+    try {
+      for (const d of fs.readdirSync(base)) {
+        if (!/^MSSQL\d+\.(SQLEXPRESS|MSSQLSERVER)$/i.test(d)) continue;
+        const logPath = path.join(base, d, 'MSSQL', 'Log', 'ERRORLOG');
+        if (fs.existsSync(logPath)) {
+          try {
+            let c = fs.readFileSync(logPath, 'utf8');
+            if (c.length > 100000) c = c.slice(-100000);
+            for (const re of patterns) { const m = c.match(re); if (m) { const p = parsePort(m); if (p) return p; } }
+          } catch (e) { /* ignore */ }
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+  try {
+    const instancePath = 'HKLM\\SOFTWARE\\Microsoft\\Microsoft SQL Server\\Instance Names\\SQL';
+    const out = execSync(`reg query "${instancePath}"`, { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+    const lines = (out || '').split(/\r?\n/).filter(Boolean);
+    let internalName = null;
+    for (const line of lines) {
+      const m = line.match(/SQLEXPRESS\s+REG_?\w+\s+(MSSQL\d+\.SQLEXPRESS)/i) || line.match(/\s+REG_?\w+\s+(MSSQL\d+\.SQLEXPRESS)/i);
+      if (m && m[1]) { internalName = m[1].trim(); break; }
+    }
+    if (!internalName) {
+      for (const line of lines) {
+        const m = line.match(/SQLEXPRESS\s+REG_?\w+\s+(.+)/i);
+        if (m && m[1]) { internalName = (m[1] || '').trim(); break; }
+      }
+    }
+    if (internalName) {
+      const ipAllPath = `HKLM\\SOFTWARE\\Microsoft\\Microsoft SQL Server\\${internalName}\\MSSQLServer\\SuperSocketNetLib\\Tcp\\IPAll`;
+      for (const v of ['TcpPort', 'TcpDynamicPorts']) {
+        try {
+          const t = execSync(`reg query "${ipAllPath}" /v ${v}`, { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+          const pm = (t || '').match(new RegExp(`\\b${v}\\s+REG_\\w+\\s+([0-9,]+)`, 'i'));
+          if (pm) {
+            const first = (pm[1] || '').split(',')[0].trim();
+            const p = parseInt(first, 10);
+            if (p > 1024 && p < 65536) return p;
+          }
+        } catch (e) { /* ignore */ }
+      }
+    }
+  } catch (e) { /* ignore */ }
+  try {
+    const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'discover-port-tcp.js');
+    if (fs.existsSync(scriptPath)) {
+      const r = execSync(`node "${scriptPath}"`, { encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: 20000 });
+      const num = parseInt((r || '').trim(), 10);
+      if (num > 1024 && num < 65536) return num;
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+// Upfront: named instance + no DB_PORT on Windows → discover port and set DB_PORT so first connection uses host,port (no 15s Browser timeout)
+if (serverString.includes('\\') && !(process.env.DB_PORT && String(process.env.DB_PORT).trim() !== '') && os.platform() === 'win32') {
+  const discovered = discoverPortSync();
+  if (discovered) {
+    process.env.DB_PORT = String(discovered);
+    logger.info('Discovered SQL Server port %s; using host,port to bypass SQL Server Browser', discovered);
+    try {
+      const envPath = path.join(__dirname, '..', '..', '.env');
+      if (fs.existsSync(envPath)) {
+        let envContent = fs.readFileSync(envPath, 'utf8');
+        if (/\bDB_PORT\s*=/m.test(envContent)) {
+          envContent = envContent.replace(/^DB_PORT\s*=.*$/m, `DB_PORT=${discovered}`);
+        } else if (/^DB_SERVER\s*=/m.test(envContent)) {
+          envContent = envContent.replace(/^(DB_SERVER\s*=[^\n]*)/m, `$1\nDB_PORT=${discovered}`);
+        } else {
+          envContent = envContent.trimEnd() + `\nDB_PORT=${discovered}\n`;
+        }
+        fs.writeFileSync(envPath, envContent);
+        logger.info('Updated .env with DB_PORT=%s for future runs', discovered);
+      }
+    } catch (e) { /* non-fatal */ }
+  } else {
+    logger.warn('Could not discover SQL Server port (ERRORLOG, Registry, TCP probe). Set DB_PORT in .env or run: npm run find-sql-port');
+  }
+}
+
 if (useWindowsAuth) {
   // Windows Authentication with msnodesqlv8 driver
   logger.info('Using Windows Authentication with msnodesqlv8 driver');
@@ -46,13 +174,16 @@ if (useWindowsAuth) {
   // Note: Connection timeout in connection string is in seconds
   // For named instances, ensure proper format (e.g., .\SQLEXPRESS or localhost\SQLEXPRESS)
   const connectionTimeoutSeconds = Math.ceil(connectionTimeout / 1000);
-  
-  // Normalize server string for connection string (ensure proper escaping)
+
+  // When DB_PORT is set with a named instance, use host,port to bypass SQL Server Browser (avoids 15s ETIMEOUT)
   let connectionServerString = serverString;
-  // If server starts with .\, it's a local named instance - keep as is
-  // If server contains backslash, it's already a server\instance format
-  // Otherwise, use as-is
-  
+  const hasExplicitPortWin = process.env.DB_PORT && String(process.env.DB_PORT).trim() !== '';
+  if (serverString.includes('\\') && hasExplicitPortWin) {
+    const hostPart = serverString.split('\\')[0];
+    connectionServerString = `${hostPart},${String(process.env.DB_PORT).trim()}`;
+    logger.info('Windows Auth: using explicit port to bypass SQL Server Browser: Server=%s', connectionServerString);
+  }
+
   const connectionString = `Server=${connectionServerString};Database=${database};Trusted_Connection=Yes;Driver={ODBC Driver 17 for SQL Server};Connection Timeout=${connectionTimeoutSeconds};`;
 
   config = {
@@ -107,10 +238,9 @@ if (useWindowsAuth) {
     useNamedInstance = true;
   }
 
-  // Check if a specific port is provided - if so, don't use instanceName
-  // This allows bypassing SQL Server Browser when port is known
-  const hasExplicitPort = process.env.DB_PORT && process.env.DB_PORT !== '1433';
-  
+  // Check if a specific port is provided - if so, don't use instanceName (bypass SQL Server Browser)
+  const hasExplicitPort = process.env.DB_PORT && String(process.env.DB_PORT).trim() !== '';
+
   if (useNamedInstance && !hasExplicitPort) {
     // For named instances without explicit port, use instanceName (requires SQL Server Browser)
     // CRITICAL: Do NOT include 'port' property when using instanceName
@@ -484,6 +614,77 @@ const connectDatabase = async(retryCount = 0) => {
     }
 
     logger.error(`❌ Database connection failed (attempt ${retryCount + 1}/${MAX_RETRIES + 1}):`, errorDetails);
+
+    // One-time fallback: if configured port failed (e.g. 49152), try default 127.0.0.1:1433
+    const isPortFailure = error.code === 'ESOCKET' || error.code === 'ETIMEOUT' || error.message?.includes('Could not connect');
+    const triedNonDefaultPort = !useWindowsAuth && config.port != null && config.port !== 1433;
+    if (retryCount === 0 && isPortFailure && triedNonDefaultPort) {
+      try {
+        logger.info('Trying fallback 127.0.0.1:1433...');
+        const fallbackConfig = {
+          server: '127.0.0.1',
+          port: 1433,
+          database: config.database,
+          user: config.user,
+          password: config.password,
+          options: {
+            encrypt: config.options.encrypt,
+            trustServerCertificate: config.options.trustServerCertificate,
+            enableArithAbort: true,
+            connectionTimeout: config.options.connectionTimeout,
+            requestTimeout: config.options.requestTimeout,
+            cancelTimeout: config.options.cancelTimeout,
+            useUTC: false,
+            rowCollectionOnDone: true,
+            rowCollectionOnRequestCompletion: true
+          },
+          pool: config.pool
+        };
+        pool = await sql.connect(fallbackConfig);
+        setupPoolEventHandlers(pool);
+        const valid = await validateConnection(pool);
+        if (valid) {
+          lastValidationTime = Date.now();
+          logger.info('✅ Connected via fallback 127.0.0.1:1433');
+          return pool;
+        }
+      } catch (fallbackErr) {
+        logger.warn('Fallback 127.0.0.1:1433 failed:', fallbackErr.message);
+        pool = null;
+      }
+    }
+
+    // One-time: named instance + no DB_PORT + ETIMEOUT → discover port from ERRORLOG and retry with host,port
+    const isNamedInstanceNoPort = serverString.includes('\\') && !(process.env.DB_PORT && String(process.env.DB_PORT).trim() !== '');
+    const isTimeout = error.code === 'ETIMEOUT' || error.code === 'ETIMEDOUT';
+    if (retryCount === 0 && isTimeout && isNamedInstanceNoPort && os.platform() === 'win32') {
+      const discoveredPort = discoverPortSync();
+      if (discoveredPort) {
+        logger.info('Discovered SQL Server port %s from ERRORLOG, retrying with host,port', discoveredPort);
+        const hostPart = serverString.split('\\')[0];
+        try {
+          if (useWindowsAuth) {
+            const toSec = Math.ceil((config.options.connectionTimeout || 60000) / 1000);
+            const connStr = `Server=${hostPart},${discoveredPort};Database=${database};Trusted_Connection=Yes;Driver={ODBC Driver 17 for SQL Server};Connection Timeout=${toSec};`;
+            pool = await sql.connect({ server: hostPart, database, driver: 'msnodesqlv8', connectionString: connStr, options: config.options, pool: config.pool });
+          } else {
+            const fallbackOpts = { ...config.options, instanceName: undefined };
+            const fb = { server: hostPart, port: discoveredPort, database, user: process.env.DB_USER, password: process.env.DB_PASSWORD, options: fallbackOpts, pool: config.pool };
+            pool = await sql.connect(fb);
+          }
+          setupPoolEventHandlers(pool);
+          const valid = await validateConnection(pool);
+          if (valid) {
+            lastValidationTime = Date.now();
+            logger.info('✅ Connected using discovered port %s', discoveredPort);
+            return pool;
+          }
+        } catch (e) {
+          logger.warn('Retry with discovered port %s failed: %s', discoveredPort, e.message);
+          pool = null;
+        }
+      }
+    }
 
     // Retry with exponential backoff and jitter
     if (retryCount < MAX_RETRIES) {

@@ -37,10 +37,11 @@ const utilRoutes = require('./routes/utils');
 const reportRoutes = require('./routes/reports');
 const bibleChoicesRoutes = require('./routes/bibleChoices');
 
-const app = express();
+const app = new express();
 app.set('etag', false);
+// Bind to all interfaces by default so the API is reachable from other machines too.
+// We intentionally do NOT pass a host to app.listen so Node listens on 0.0.0.0.
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || 'localhost';
 
 // Security middleware
 app.use(helmet());
@@ -311,11 +312,18 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // Start server
+const DB_STARTUP_TIMEOUT_MS = parseInt(process.env.DB_STARTUP_TIMEOUT_MS, 10) || 18000; // 18s default so server starts even when DB is down
+
 const startServer = async () => {
   try {
-    // Try to connect to database (optional for development)
+    // Try to connect to database (optional for development). Use a short timeout so npm start doesn't hang for minutes.
     try {
-      await connectDatabase();
+      await Promise.race([
+        connectDatabase(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`DB startup timeout (${DB_STARTUP_TIMEOUT_MS}ms) - starting server without database`)), DB_STARTUP_TIMEOUT_MS)
+        )
+      ]);
       logger.info('Database connected successfully');
       
       // Warm cache with common queries for improved performance (optional)
@@ -340,23 +348,23 @@ const startServer = async () => {
         });
       }
     } catch (dbError) {
-      logger.warn('Database connection failed, starting server without database:', dbError.message);
-      logger.warn('Some API endpoints may not work without database connection');
+      logger.warn('Database connection failed or timed out, starting server without database:', dbError.message);
+      logger.warn('Some API endpoints may not work without database connection. Run: npm run fix-sql-connection && npm start');
     }
 
-    // Start the server
-    app.listen(PORT, HOST, () => {
-      logger.info(`Server running on http://${HOST}:${PORT}`);
+    // Start the server (bind on all interfaces by default)
+    app.listen(PORT, () => {
+      logger.info(`Server running on port ${PORT} (listening on 0.0.0.0)`);
       logger.info(`Environment: ${process.env.NODE_ENV}`);
       logger.info('API endpoints available at:');
-      logger.info('  GET  /health - Health check');
-      logger.info('  GET  / - API information');
-      logger.info('  POST /api/auth/login - User login');
-      logger.info('  POST /api/auth/register - User registration');
-      logger.info('  GET  /api/niche-agreements/:applicationNumber - Get niche agreement details + Crystal Reports paths');
-      logger.info('  GET  /api/niche-agreements/:applicationNumber/reports - Get Crystal Reports info only');
-      logger.info('  GET  /api/niche-agreements/:applicationNumber/pdf - Get Agreement PDF data (JSON for frontend PDF generation)');
-      logger.info('  GET  /api/niche-agreements/:applicationNumber/invoice-pdf - Get Invoice PDF data (JSON for frontend PDF generation)');
+      logger.info('  GET  http://<host>:%d/health - Health check', PORT);
+      logger.info('  GET  http://<host>:%d/ - API information',    PORT);
+      logger.info('  POST http://<host>:%d/api/auth/login - User login', PORT);
+      logger.info('  POST http://<host>:%d/api/auth/register - User registration', PORT);
+      logger.info('  GET  http://<host>:%d/api/niche-agreements/:applicationNumber - Get niche agreement details + Crystal Reports paths', PORT);
+      logger.info('  GET  http://<host>:%d/api/niche-agreements/:applicationNumber/reports - Get Crystal Reports info only', PORT);
+      logger.info('  GET  http://<host>:%d/api/niche-agreements/:applicationNumber/pdf - Get Agreement PDF data (JSON for frontend PDF generation)', PORT);
+      logger.info('  GET  http://<host>:%d/api/niche-agreements/:applicationNumber/invoice-pdf - Get Invoice PDF data (JSON for frontend PDF generation)', PORT);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

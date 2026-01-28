@@ -23,16 +23,56 @@ const sqlConfigPaths = [
 console.log('1. Checking SQL Server Error Logs for port information:');
 console.log('-'.repeat(60));
 
-// Try to find SQL Server error logs
-const errorLogPaths = [
-  'C:\\Program Files\\Microsoft SQL Server\\MSSQL15.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG',
-  'C:\\Program Files\\Microsoft SQL Server\\MSSQL14.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG',
-  'C:\\Program Files\\Microsoft SQL Server\\MSSQL13.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG',
-  'C:\\Program Files (x86)\\Microsoft SQL Server\\MSSQL15.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG',
-  'C:\\Program Files (x86)\\Microsoft SQL Server\\MSSQL14.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG',
-  'C:\\Program Files (x86)\\Microsoft SQL Server\\MSSQL13.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG'
+// Discover ERRORLOG paths (including MSSQL16/17 and dynamic scan under Program Files)
+function discoverErrorLogPaths() {
+  const basePaths = [
+    'C:\\Program Files\\Microsoft SQL Server',
+    'C:\\Program Files (x86)\\Microsoft SQL Server'
+  ];
+  const preferred = [
+    'C:\\Program Files\\Microsoft SQL Server\\MSSQL17.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG',
+    'C:\\Program Files\\Microsoft SQL Server\\MSSQL16.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG',
+    'C:\\Program Files\\Microsoft SQL Server\\MSSQL15.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG',
+    'C:\\Program Files\\Microsoft SQL Server\\MSSQL14.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG',
+    'C:\\Program Files\\Microsoft SQL Server\\MSSQL13.SQLEXPRESS\\MSSQL\\Log\\ERRORLOG'
+  ];
+  const paths = [];
+  for (const p of preferred) {
+    if (fs.existsSync(p)) paths.push(p);
+  }
+  for (const base of basePaths) {
+    if (!fs.existsSync(base)) continue;
+    try {
+      const dirs = fs.readdirSync(base);
+      for (const d of dirs) {
+        if (!/^MSSQL\d+\.(SQLEXPRESS|MSSQLSERVER)$/i.test(d)) continue;
+        const logPath = path.join(base, d, 'MSSQL', 'Log', 'ERRORLOG');
+        if (fs.existsSync(logPath) && !paths.includes(logPath)) paths.push(logPath);
+      }
+    } catch (e) { /* ignore */ }
+  }
+  return paths;
+}
+
+const PORT_PATTERNS = [
+  /Server is listening on \[ 'any' <ipv4> (\d+) \]/,
+  /Server is listening on \[\s*'any'\s*<ipv4>\s*(\d+)\s*\]/,
+  /TCP Dynamic Ports[^\d]*(\d{4,5})/,
+  /TCP Port[^\d]*(\d{4,5})/
 ];
 
+function extractPort(content) {
+  for (const re of PORT_PATTERNS) {
+    const m = content.match(re);
+    if (m) {
+      const p = parseInt(m[1], 10);
+      if (p > 1024 && p < 65536) return String(p);
+    }
+  }
+  return null;
+}
+
+const errorLogPaths = discoverErrorLogPaths();
 let foundPort = null;
 
 for (const logPath of errorLogPaths) {
@@ -40,10 +80,8 @@ for (const logPath of errorLogPaths) {
     console.log(`  ✅ Found error log: ${logPath}`);
     try {
       const logContent = fs.readFileSync(logPath, 'utf8');
-      // Look for port information in the log
-      const portMatch = logContent.match(/Server is listening on \[ 'any' <ipv4> (\d+) \]/);
-      if (portMatch) {
-        foundPort = portMatch[1];
+      foundPort = extractPort(logContent);
+      if (foundPort) {
         console.log(`  ✅ Found port: ${foundPort}`);
         break;
       }
@@ -90,12 +128,12 @@ if (foundPort) {
       envContent += `\nDB_PORT=${foundPort}`;
     }
     
-    // Also update DB_SERVER to remove instance name if using port
-    if (envContent.includes('DB_SERVER=localhost\\SQLEXPRESS')) {
-      envContent = envContent.replace(/^DB_SERVER=.*$/m, 'DB_SERVER=localhost');
-      console.log('  ✅ Updated DB_SERVER to: localhost');
-      console.log(`  ✅ Updated DB_PORT to: ${foundPort}`);
+    // Normalize DB_SERVER to host when using port (no instance name)
+    if (/\bDB_SERVER=.*[\\]/.test(envContent) || /DB_SERVER=\.\\SQLEXPRESS/.test(envContent)) {
+      envContent = envContent.replace(/^DB_SERVER=.*$/m, 'DB_SERVER=127.0.0.1');
+      console.log('  ✅ Updated DB_SERVER to: 127.0.0.1');
     }
+    console.log(`  ✅ Updated DB_PORT to: ${foundPort}`);
     
     fs.writeFileSync(envPath, envContent);
     console.log('\n✅ Configuration updated!');
