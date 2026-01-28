@@ -5,7 +5,7 @@
 
 # MySQL Database Configuration
 MYSQL_ROOT_PASSWORD=FranciscanRoot@2024
-MYSQL_DATABASE=FransiscanLive
+MYSQL_DATABASE=FransiscanTest
 MYSQL_USER=franciscan_user
 MYSQL_PASSWORD=FranciscanPass@2024
 
@@ -17,7 +17,7 @@ HOST=0.0.0.0
 # Database Connection (for backend)
 DB_SERVER=mysql
 DB_PORT=3306
-DB_DATABASE=FransiscanLive
+DB_DATABASE=FransiscanTest
 DB_USER=franciscan_user
 DB_PASSWORD=FranciscanPass@2024
 

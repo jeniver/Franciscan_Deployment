@@ -7,7 +7,7 @@ services:
     container_name: franciscan-mysql
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-FranciscanRoot@2024}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-FransiscanLive}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-FransiscanTest}
       MYSQL_USER: ${MYSQL_USER:-franciscan_user}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-FranciscanPass@2024}
     ports:
@@ -41,7 +41,7 @@ services:
       - HOST=0.0.0.0
       - DB_SERVER=mysql
       - DB_PORT=3306
-      - DB_DATABASE=${MYSQL_DATABASE:-FransiscanLive}
+      - DB_DATABASE=${MYSQL_DATABASE:-FransiscanTest}
       - DB_USER=${MYSQL_USER:-franciscan_user}
       - DB_PASSWORD=${MYSQL_PASSWORD:-FranciscanPass@2024}
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}

@@ -291,7 +291,7 @@ http://localhost:3000/api
 ```env
 DB_SERVER=localhost
 DB_INSTANCE=SQLEXPRESS          # Optional, for named instances
-DB_DATABASE=FransiscanLive
+DB_DATABASE=FransiscanTest
 DB_PORT=1433
 DB_USER=your_username           # Optional for Windows Auth
 DB_PASSWORD=your_password       # Empty for Windows Auth
@@ -325,7 +325,7 @@ Critical indexes for performance (defined in `DATABASE_OPTIMIZATION.sql`):
 
 **To Apply:**
 ```bash
-sqlcmd -S localhost -d FransiscanLive -i DATABASE_OPTIMIZATION.sql
+sqlcmd -S localhost -d FransiscanTest -i DATABASE_OPTIMIZATION.sql
 ```
 
 ### Connection Resilience
@@ -506,7 +506,7 @@ NODE_ENV=production
 
 # Database
 DB_SERVER=localhost
-DB_DATABASE=FransiscanLive
+DB_DATABASE=FransiscanTest
 DB_PORT=1433
 DB_USER=your_user
 DB_PASSWORD=your_password

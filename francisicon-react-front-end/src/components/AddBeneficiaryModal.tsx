@@ -56,6 +56,22 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
     };
     
     onSave(newBeneficiary);
+    
+    // Reset form after saving (only if not editing)
+    if (!beneficiary) {
+      setFormData({
+        name: '',
+        nric: '',
+        dateOfBirth: '',
+        gender: 'Male',
+        relationshipToApp: '',
+        religiousAffiliation: 'Non Catholic',
+        relationshipToNominee1: '',
+        relationshipToNominee2: '',
+        status: 'Not Occupied'
+      });
+    }
+    
     onClose();
   };
 

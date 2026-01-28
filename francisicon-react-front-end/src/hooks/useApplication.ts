@@ -83,16 +83,16 @@ export const useApplication = () => {
   // Legacy validation function for backward compatibility
   const validateStepDataLegacy = useCallback((step: number, data: Record<string, any>): boolean => {
     switch (step) {
-      case 1: // Consent Forms
-        return data.consentForms && Object.keys(data.consentForms).length > 0;
-      case 2: // Niche Details
+      case 1: // Niche Details (moved from step 2)
         return data.nicheId || (data.selectedNiches && data.selectedNiches.length > 0);
-      case 3: // Contact Person Details
+      case 2: // Contact Person Details (moved from step 3)
         return data.contactName; // NRIC/Passport is optional
-      case 4: // Beneficiary Details
+      case 3: // Beneficiary Details (moved from step 4)
         return data.beneficiaries && data.beneficiaries.length > 0;
-      case 5: // Nominee Details (now the final step)
+      case 4: // Nominee Details (moved from step 5)
         return data.nominees && data.nominees.length > 0;
+      case 5: // Consent Forms (moved to last step)
+        return data.consentForms && Object.keys(data.consentForms).length > 0;
       default:
         return true;
     }
@@ -265,7 +265,7 @@ export const useApplication = () => {
       // Switch to view mode and form view
       dispatch(setViewModeAction(true));
       dispatch(setApplicationViewMode('form'));
-      dispatch(setCurrentStep(1)); // Start at consent forms for viewing
+      dispatch(setCurrentStep(1)); // Start at niche details for viewing
       
       // Set a timeout to prevent the request from hanging indefinitely
       const timeoutPromise = new Promise((_, reject) => {
@@ -315,7 +315,7 @@ export const useApplication = () => {
   }, [applicationNumber, dispatch, navigate, loadApplication]);
 
   // Handle View Application from table (loads and shows in view mode)
-  const handleViewApplicationFromTable = useCallback(async (applicationCode: string) => {
+  const handleViewApplicationFromTable = useCallback(async (applicationCode: string, navigate?: (path: string) => void, skipNavigation?: boolean) => {
     if (!applicationCode.trim()) {
       return;
     }
@@ -327,10 +327,15 @@ export const useApplication = () => {
     requestInProgressRef.current = true;
     
     try {
+      // Navigate to view route if navigate function is provided and not skipping navigation
+      if (navigate && !skipNavigation) {
+        navigate(`/niche/view/${applicationCode}`);
+      }
+      
       dispatch(setApplicationNumber(applicationCode));
       dispatch(setViewModeAction(true));
       dispatch(setApplicationViewMode('form'));
-      dispatch(setCurrentStep(1)); // Start at consent forms for viewing
+      dispatch(setCurrentStep(1)); // Start at niche details for viewing
       
       const action = await loadApplication(applicationCode.trim());
       
@@ -346,7 +351,7 @@ export const useApplication = () => {
   }, [dispatch, loadApplication]);
 
   // Handle Edit Application from table (loads and shows in edit mode)
-  const handleEditApplicationFromTable = useCallback(async (applicationCode: string) => {
+  const handleEditApplicationFromTable = useCallback(async (applicationCode: string, navigate?: (path: string) => void, skipNavigation?: boolean) => {
     if (!applicationCode.trim()) {
       return;
     }
@@ -358,10 +363,15 @@ export const useApplication = () => {
     requestInProgressRef.current = true;
     
     try {
+      // Navigate to edit route if navigate function is provided and not skipping navigation
+      if (navigate && !skipNavigation) {
+        navigate(`/niche/edit/${applicationCode}`);
+      }
+      
       dispatch(setApplicationNumber(applicationCode));
       dispatch(setEditMode(true));
       dispatch(setApplicationViewMode('form'));
-      dispatch(setCurrentStep(1)); // Start at consent forms for editing
+      dispatch(setCurrentStep(1)); // Start at niche details for editing
       
       const action = await loadApplication(applicationCode.trim());
       
@@ -548,11 +558,13 @@ export const useApplication = () => {
     dispatch(clearViewEditMode());
     // Clear loaded data flag to ensure consent forms are hidden
     // Note: We can't directly set isDataLoaded, but clearing formData and applicationNumber should work
-    // Go directly to Niche Details for new applications (step 2, skipping Consent Forms)
-    dispatch(setCurrentStep(2));
+    // Go directly to Niche Details for new applications (step 1, skipping Consent Forms)
+    dispatch(setCurrentStep(1));
     // Clear any validation errors
     dispatch(clearValidationErrors());
-    console.log('New application started - all data cleared, starting at step 2 (Niche Details)');
+    // Switch to form view - this is critical for showing the form
+    dispatch(setApplicationViewMode('form'));
+    console.log('New application started - all data cleared, starting at step 1 (Niche Details)');
   }, [dispatch, clearSavedStepData]);
 
   return {

@@ -30,7 +30,7 @@ async function diagnoseNicheBooking(applicationCode) {
   console.log('Initializing database connection...');
   console.log('Environment configuration:');
   console.log(`  DB_SERVER: ${process.env.DB_SERVER || 'localhost (default)'}`);
-  console.log(`  DB_DATABASE: ${process.env.DB_DATABASE || 'FransiscanLive (default)'}`);
+  console.log(`  DB_DATABASE: ${process.env.DB_DATABASE || 'FransiscanTest (default)'}`);
   console.log(`  DB_PORT: ${process.env.DB_PORT || '1433 (default)'}`);
   console.log(`  DB_INSTANCE: ${process.env.DB_INSTANCE || '(not set)'}`);
   console.log(`  DB_USER: ${process.env.DB_USER || '(not set - using Windows Auth)'}`);

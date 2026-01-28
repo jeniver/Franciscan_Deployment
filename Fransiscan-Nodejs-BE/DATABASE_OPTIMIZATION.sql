@@ -1,12 +1,12 @@
 -- ============================================================================
 -- Franciscan Database Optimization Script
 -- Purpose: Improve query performance for Niche Agreement APIs
--- Database: FransiscanLive
+-- Database: FransiscanTest
 -- Version: 2.0.0
 -- Date: October 23, 2025
 -- ============================================================================
 
-USE FransiscanLive;
+USE FransiscanTest;
 GO
 
 -- ============================================================================

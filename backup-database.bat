@@ -14,13 +14,13 @@ echo.
 
 REM Configuration - Update these values
 set DB_SERVER=.\SQLEXPRESS
-set DB_DATABASE=FransiscanLive
+set DB_DATABASE=FransiscanTest
 set DB_USER=
 set DB_PASSWORD=
 set BACKUP_DIR=backups
 set TIMESTAMP=%date:~-4,4%%date:~-10,2%%date:~-7,2%_%time:~0,2%%time:~3,2%%time:~6,2%
 set TIMESTAMP=%TIMESTAMP: =0%
-set BACKUP_FILE=%BACKUP_DIR%\FransiscanLive_backup_%TIMESTAMP%.sql
+set BACKUP_FILE=%BACKUP_DIR%\FransiscanTest_backup_%TIMESTAMP%.sql
 
 REM Create backup directory if it doesn't exist
 if not exist "%BACKUP_DIR%" mkdir "%BACKUP_DIR%"

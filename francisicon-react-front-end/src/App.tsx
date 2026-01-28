@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { WizardStepper } from './components/WizardStepper';
 import { ConsentForms } from './pages/ConsentForms';
@@ -33,30 +33,31 @@ const DEFAULT_LIST_FILTERS: ApplicationListFilters = {
 
 const steps = [{
   id: 1,
-  label: 'Consent Forms',
-  icon: FileTextIcon
-}, {
-  id: 2,
   label: 'Niche Details',
   icon: HomeIcon
 }, {
-  id: 3,
+  id: 2,
   label: 'Contact Person (Applicant) Details',
   icon: UserIcon
 }, {
-  id: 4,
+  id: 3,
   label: 'Beneficiary Details',
   icon: UsersIcon
 }, {
-  id: 5,
+  id: 4,
   label: 'Nominee Details',
   icon: UserCheckIcon
+}, {
+  id: 5,
+  label: 'Consent Forms',
+  icon: FileTextIcon
 }];
 
 export function App() {
   const dispatch = useDispatch();
   const location = useLocation();
   const navigate = useNavigate();
+  const params = useParams<{ applicationCode?: string }>();
   const {
     currentStep,
     formData,
@@ -114,6 +115,16 @@ export function App() {
   // Track if we're intentionally creating a new application to prevent auto-switching to table view
   const isCreatingNewRef = useRef(false);
   const [selectedApplicationCode, setSelectedApplicationCode] = useState<string | null>(null);
+  // Track last processed route to prevent infinite loops
+  const lastProcessedRouteRef = useRef<string>('');
+  const routeProcessingRef = useRef(false);
+  // Track current state in refs to avoid dependency issues
+  const stateRef = useRef({ viewMode, applicationNumber, isViewMode, isEditMode, currentStep });
+  
+  // Update refs when state changes
+  useEffect(() => {
+    stateRef.current = { viewMode, applicationNumber, isViewMode, isEditMode, currentStep };
+  }, [viewMode, applicationNumber, isViewMode, isEditMode, currentStep]);
 
   // Handler for opening invoice PDF (error handling is now in the hook)
   const handleGoToInvoiceWithFeedback = useCallback(async () => {
@@ -165,11 +176,10 @@ export function App() {
   const handleCreateNewFromTable = useCallback(() => {
     // Set flag to prevent useEffect from switching back to table view
     isCreatingNewRef.current = true;
-    setViewMode('form');
     setLastCreatedCode(null);
-    handleNewApplication();
-    goToStep(2);
-  }, [handleNewApplication, goToStep, setViewMode]);
+    // Navigate to /niche/new route
+    navigate('/niche/new');
+  }, [navigate]);
 
   // Debounce timer ref for search inputs
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -208,15 +218,113 @@ export function App() {
   const showConsentStep = (Boolean(applicationNumber.trim()) && (isViewMode || isEditMode || isDataLoaded)) || false;
 
   const visibleSteps = useMemo(() => {
-    return showConsentStep ? steps : steps.filter(step => step.id !== 1);
+    // Consent Forms is now step 5 (last step)
+    return showConsentStep ? steps : steps.filter(step => step.id !== 5);
   }, [showConsentStep]);
 
   useEffect(() => {
-    if (!showConsentStep && currentStep === 1) {
-      const fallbackStep = visibleSteps[0]?.id ?? 2;
-      goToStep(fallbackStep);
+    // If consent step shouldn't be shown and we're on step 5, go back to step 1
+    if (!showConsentStep && currentStep === 5) {
+      goToStep(1);
     }
-  }, [showConsentStep, currentStep, goToStep, visibleSteps]);
+  }, [showConsentStep, currentStep, goToStep]);
+
+  // Sync route params with Redux state - This is the primary route handler
+  useEffect(() => {
+    const path = location.pathname;
+    const routeKey = `${path}:${params.applicationCode || ''}`;
+    
+    // Prevent infinite loops - only process if route actually changed
+    if (routeProcessingRef.current) {
+      return;
+    }
+    
+    // Check if route actually changed
+    if (lastProcessedRouteRef.current === routeKey) {
+      return;
+    }
+    
+    routeProcessingRef.current = true;
+    lastProcessedRouteRef.current = routeKey;
+    
+    // Use setTimeout to allow state updates to complete before resetting the flag
+    const resetProcessing = () => {
+      setTimeout(() => {
+        routeProcessingRef.current = false;
+      }, 100);
+    };
+    
+    // Handle /niche/new route - create new application
+    if (path === '/niche/new') {
+      isCreatingNewRef.current = true;
+      const currentState = stateRef.current;
+      // Only call handleNewApplication if we're not already in the right state
+      if (currentState.applicationNumber.trim() !== '' || currentState.isViewMode || currentState.isEditMode || currentState.viewMode !== 'form') {
+        handleNewApplication();
+      }
+      // Ensure we're on step 1
+      if (currentState.currentStep !== 1) {
+        goToStep(1);
+      }
+      resetProcessing();
+      return;
+    }
+    
+    // Handle /niche/view/:applicationCode route - view application
+    if (path.startsWith('/niche/view/') && params.applicationCode) {
+      const codeFromRoute = params.applicationCode;
+      const currentState = stateRef.current;
+      // Only load if we need to
+      if (codeFromRoute !== currentState.applicationNumber || !currentState.isViewMode || currentState.viewMode !== 'form') {
+        if (currentState.viewMode !== 'form') {
+          setViewMode('form');
+        }
+        // Load and view the application (skip navigation to prevent loop)
+        handleViewApplicationFromTable(codeFromRoute, navigate, true).finally(() => {
+          resetProcessing();
+        });
+      } else {
+        resetProcessing();
+      }
+      return;
+    }
+    
+    // Handle /niche/edit/:applicationCode route - edit application
+    if (path.startsWith('/niche/edit/') && params.applicationCode) {
+      const codeFromRoute = params.applicationCode;
+      const currentState = stateRef.current;
+      // Only load if we need to
+      if (codeFromRoute !== currentState.applicationNumber || !currentState.isEditMode || currentState.viewMode !== 'form') {
+        if (currentState.viewMode !== 'form') {
+          setViewMode('form');
+        }
+        // Load and edit the application (skip navigation to prevent loop)
+        handleEditApplicationFromTable(codeFromRoute, navigate, true).finally(() => {
+          resetProcessing();
+        });
+      } else {
+        resetProcessing();
+      }
+      return;
+    }
+    
+    // Handle /niche route (base) - show table view
+    if (path === '/niche') {
+      const currentState = stateRef.current;
+      // Only switch to table if not already there
+      if (currentState.viewMode !== 'table') {
+        setViewMode('table');
+        handleOpenTableView();
+      } else {
+        // If already in table view, just ensure data is loaded (but don't force refresh to prevent loops)
+        // The table will load data on its own if needed
+      }
+      resetProcessing();
+      return;
+    }
+    
+    resetProcessing();
+  }, [location.pathname, params.applicationCode]);
 
   // Cleanup debounce timer on unmount
   useEffect(() => {
@@ -229,14 +337,14 @@ export function App() {
 
   const consentVisibilityRef = useRef(showConsentStep);
   useEffect(() => {
+    // Consent Forms is now step 5 (last step)
     if (!consentVisibilityRef.current && showConsentStep) {
+      goToStep(5);
+    } else if (consentVisibilityRef.current && !showConsentStep && currentStep === 5) {
       goToStep(1);
-    } else if (consentVisibilityRef.current && !showConsentStep && currentStep === 1) {
-      const fallbackStep = visibleSteps[0]?.id ?? 2;
-      goToStep(fallbackStep);
     }
     consentVisibilityRef.current = showConsentStep;
-  }, [showConsentStep, currentStep, goToStep, visibleSteps]);
+  }, [showConsentStep, currentStep, goToStep]);
 
   const handleCreateNicheApplication = async () => {
     try {
@@ -337,32 +445,19 @@ You will now be redirected to the Invoice & Receipt page.`);
     loadSavedStepData();
   }, [loadSavedStepData]);
 
-  // Ensure Niche Applications view (table) is displayed first when navigating to /niche
-  // This effect runs when the component mounts or when location/applicationNumber/viewMode changes
+  // Secondary effect: Reset flag after form view is established for /niche/new
+  // This prevents the auto-table-view effect from interfering with /niche/new
   useEffect(() => {
-    // Check if we're on the /niche route
-    const isNicheRoute = location.pathname.startsWith('/niche');
+    const path = location.pathname;
     
-    // If we're on /niche route and:
-    // - There's no application number (not viewing/editing an application)
-    // - Not in view or edit mode
-    // - Currently in form view mode
-    // - NOT intentionally creating a new application (to prevent interference)
-    // Then switch to table view and load applications
-    if (isNicheRoute && !applicationNumber.trim() && !isViewMode && !isEditMode && viewMode === 'form' && !isCreatingNewRef.current) {
-      setViewMode('table');
-      // Load applications list
-      void searchApplicationList({ pagination: { page: 1 } });
-    }
-    
-    // Reset the flag after a short delay to allow the form view to be established
-    if (isCreatingNewRef.current) {
+    // Reset the flag after a delay to allow the form view to be established for /niche/new
+    if (isCreatingNewRef.current && path === '/niche/new') {
       const timer = setTimeout(() => {
         isCreatingNewRef.current = false;
-      }, 100);
+      }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [location.pathname, applicationNumber, isViewMode, isEditMode, viewMode, setViewMode, searchApplicationList]);
+  }, [location.pathname]);
 
   // Create a read-only setFormData that prevents updates in view mode
   const readOnlySetFormData = useCallback((data: any) => {
@@ -375,25 +470,26 @@ You will now be redirected to the Invoice & Receipt page.`);
     const isReadOnly = isViewMode;
     const setFormDataFn = isReadOnly ? readOnlySetFormData : updateForm;
 
-    if (!showConsentStep && currentStep === 1) {
-      return <NicheDetails formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
-    }
-
     switch (currentStep) {
       case 1:
-        return <ConsentForms formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
-      case 2:
         return <NicheDetails formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
-      case 3:
+      case 2:
         return <ContactPersonDetails formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
-      case 4:
+      case 3:
         return <BeneficiaryDetails formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
-      case 5:
+      case 4:
         return <NomineeDetails formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
+      case 5:
+        // Consent Forms is now the last step
+        if (!showConsentStep) {
+          // If consent step shouldn't be shown, go back to step 1
+          return <NicheDetails formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
+        }
+        return <ConsentForms formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
       case 6:
         return <InvoiceReceipt formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
       default:
-        return <ConsentForms formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
+        return <NicheDetails formData={formData} setFormData={setFormDataFn} isReadOnly={isReadOnly} />;
     }
   };
 
@@ -637,8 +733,7 @@ You will now be redirected to the Invoice & Receipt page.`);
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => {
-                                setSelectedApplicationCode(applicationCode);
-                                setIsAgreementDetailsModalOpen(true);
+                                handleViewApplicationFromTable(applicationCode, navigate);
                               }}
                               className="text-blue-600 hover:text-blue-800 hover:underline"
                               title="View Application Details"
@@ -647,7 +742,7 @@ You will now be redirected to the Invoice & Receipt page.`);
                             </button>
                             <span className="text-gray-300">|</span>
                             <button
-                              onClick={() => handleEditApplicationFromTable(applicationCode)}
+                              onClick={() => handleEditApplicationFromTable(applicationCode, navigate)}
                               className="text-green-600 hover:text-green-800 hover:underline"
                               title="Edit Application"
                             >
@@ -937,8 +1032,7 @@ You will now be redirected to the Invoice & Receipt page.`);
                     </div>
                     <button
                       onClick={() => {
-                        handleNewApplication();
-                        setViewMode('table');
+                        navigate('/niche');
                       }}
                       className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
                     >
@@ -956,8 +1050,7 @@ You will now be redirected to the Invoice & Receipt page.`);
                     </div>
                     <button
                       onClick={() => {
-                        handleNewApplication();
-                        setViewMode('table');
+                        navigate('/niche');
                       }}
                       className="text-sm text-green-600 hover:text-green-800 hover:underline"
                     >
@@ -978,13 +1071,14 @@ You will now be redirected to the Invoice & Receipt page.`);
                   </Button>
                   <Button
                     variant="primary"
-                    onClick={currentStep === 5 ? handleCreateNicheApplication : nextStep}
-                    disabled={currentStep === 5 && isCreatingApplication}
+                    onClick={currentStep === 4 ? handleCreateNicheApplication : nextStep}
+                    disabled={(currentStep === 4 || currentStep === 5) && isCreatingApplication}
                     icon={(loading || isCreatingApplication) ? <LoadingSpinner size="sm" text="" /> : undefined}
                   >
                     {loading ? 'Saving...' :
                       isCreatingApplication ? 'Creating Niche Application...' :
-                        currentStep === 5 ? 'Save Niche Application' : 'Next Step →'}
+                        currentStep === 4 ? 'Create Application' : 
+                        currentStep === 5 ? 'Next Step →' : 'Next Step →'}
                   </Button>
                 </div>
               )}
@@ -993,7 +1087,7 @@ You will now be redirected to the Invoice & Receipt page.`);
                   <Button
                     variant="outline"
                     onClick={() => {
-                      handleNewApplication();
+                      navigate('/niche');
                       setViewMode('table');
                     }}
                   >
@@ -1011,7 +1105,7 @@ You will now be redirected to the Invoice & Receipt page.`);
                       variant="primary"
                       onClick={async () => {
                         if (currentStep === 5) {
-                          // Save the application
+                          // Save the application - only Consent Forms can update when editing
                           const result = await handleUpdateApplication(applicationNumber, formData);
                           if (result.success) {
                             showSuccessMessage('Application updated successfully!');
@@ -1019,12 +1113,13 @@ You will now be redirected to the Invoice & Receipt page.`);
                             dispatch(setViewModeAction(true));
                             dispatch(setEditMode(false));
                             // Reload the application to show updated data and navigate to view
-                            await handleViewApplicationFromTable(applicationNumber);
+                            await handleViewApplicationFromTable(applicationNumber, navigate);
                             // Ensure we're in form view mode (handleViewApplicationFromTable already does this)
                           } else {
                             showErrorMessage(result.error || 'Failed to update application');
                           }
                         } else {
+                          // For steps 1-4, just move to next step
                           nextStep();
                         }
                       }}
@@ -1032,7 +1127,7 @@ You will now be redirected to the Invoice & Receipt page.`);
                       icon={loading ? <LoadingSpinner size="sm" text="" /> : undefined}
                     >
                       {loading ? 'Saving...' :
-                        currentStep === 5 ? 'Save Changes' : 'Next Step →'}
+                        currentStep === 5 ? 'Update Application' : 'Next Step →'}
                     </Button>
                   </div>
                 </div>
@@ -1042,8 +1137,7 @@ You will now be redirected to the Invoice & Receipt page.`);
                   <Button
                     variant="outline"
                     onClick={() => {
-                      handleNewApplication();
-                      setViewMode('table');
+                      navigate('/niche');
                     }}
                   >
                     ← Back to Applications

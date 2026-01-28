@@ -11,7 +11,7 @@ console.log('-'.repeat(60));
 const envVars = {
   'DB_SERVER': process.env.DB_SERVER || '(not set - using default: localhost)',
   'DB_INSTANCE': process.env.DB_INSTANCE || '(not set)',
-  'DB_DATABASE': process.env.DB_DATABASE || '(not set - using default: FransiscanLive)',
+  'DB_DATABASE': process.env.DB_DATABASE || '(not set - using default: FransiscanTest)',
   'DB_PORT': process.env.DB_PORT || '(not set - using default: 1433)',
   'DB_USER': process.env.DB_USER || '(not set)',
   'DB_PASSWORD': process.env.DB_PASSWORD ? '***set***' : '(not set - using Windows Auth)',
@@ -93,7 +93,7 @@ console.log('\n5. Connection String Analysis:');
 console.log('-'.repeat(60));
 const useWindowsAuth = !process.env.DB_PASSWORD || process.env.DB_PASSWORD === '';
 const instance = process.env.DB_INSTANCE || '';
-const database = process.env.DB_DATABASE || 'FransiscanLive';
+const database = process.env.DB_DATABASE || 'FransiscanTest';
 const serverString = instance && instance !== '' ? `${server}\\${instance}` : server;
 
 console.log(`  Authentication: ${useWindowsAuth ? 'Windows Authentication' : 'SQL Server Authentication'}`);

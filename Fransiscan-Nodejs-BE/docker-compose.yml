@@ -8,7 +8,7 @@ services:
     environment:
       - NODE_ENV=production
       - DB_SERVER=host.docker.internal\SQLEXPRESS
-      - DB_DATABASE=FransiscanLive
+      - DB_DATABASE=FransiscanTest
       - DB_USER=JENIVER\geniv
       - DB_PASSWORD=
       - DB_ENCRYPT=true

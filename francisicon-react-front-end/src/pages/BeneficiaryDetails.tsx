@@ -54,10 +54,29 @@ export function BeneficiaryDetails({
   };
 
   const handleSaveBeneficiary = (beneficiaryData: any) => {
+    // Normalize beneficiary data to ensure consistent field names
+    const normalizedBeneficiary = {
+      id: editingBeneficiary?.id || Date.now(),
+      fullName: beneficiaryData.fullName || beneficiaryData.name || '',
+      nric: beneficiaryData.nric || '',
+      dateOfBirth: beneficiaryData.dateOfBirth || '',
+      sex: beneficiaryData.sex || beneficiaryData.gender || '',
+      gender: beneficiaryData.gender || beneficiaryData.sex || '',
+      relationship: beneficiaryData.relationship || beneficiaryData.relationshipToApp || '',
+      relationshipToApp: beneficiaryData.relationshipToApp || beneficiaryData.relationship || '',
+      religion: beneficiaryData.religion || beneficiaryData.religiousAffiliation || '',
+      religiousAffiliation: beneficiaryData.religiousAffiliation || beneficiaryData.religion || '',
+      relationshipToNominee1: beneficiaryData.relationshipToNominee1 || '',
+      relationshipToNominee2: beneficiaryData.relationshipToNominee2 || '',
+      status: beneficiaryData.status || 'Not Occupied',
+      isMale: beneficiaryData.isMale !== undefined ? beneficiaryData.isMale : (beneficiaryData.sex === 'Male' || beneficiaryData.gender === 'Male'),
+      isCatholic: beneficiaryData.isCatholic !== undefined ? beneficiaryData.isCatholic : (beneficiaryData.religion === 'Catholic' || beneficiaryData.religiousAffiliation === 'Catholic')
+    };
+
     if (editingBeneficiary) {
       // Update existing beneficiary
       const updated = beneficiaries.map(b => 
-        b.id === editingBeneficiary.id ? { ...beneficiaryData, id: editingBeneficiary.id } : b
+        b.id === editingBeneficiary.id ? normalizedBeneficiary : b
       );
       setBeneficiaries(updated);
       
@@ -69,15 +88,14 @@ export function BeneficiaryDetails({
         // Update individual fields for first beneficiary
         beneficiary1: firstBeneficiary ? {
           name: firstBeneficiary.fullName || firstBeneficiary.name || '',
-          relationshipToApplicant: firstBeneficiary.relationshipToApplicant || firstBeneficiary.relationship || ''
+          relationshipToApplicant: firstBeneficiary.relationshipToApp || firstBeneficiary.relationship || ''
         } : { name: '', relationshipToApplicant: '' }
       };
       
       setFormData(updatedFormData);
     } else {
       // Add new beneficiary
-      const newBeneficiary = { ...beneficiaryData, id: Date.now() };
-      const updated = [...beneficiaries, newBeneficiary];
+      const updated = [...beneficiaries, normalizedBeneficiary];
       setBeneficiaries(updated);
       
       // Update individual beneficiary fields for the first beneficiary (for API compatibility)
@@ -88,7 +106,7 @@ export function BeneficiaryDetails({
         // Update individual fields for first beneficiary
         beneficiary1: firstBeneficiary ? {
           name: firstBeneficiary.fullName || firstBeneficiary.name || '',
-          relationshipToApplicant: firstBeneficiary.relationshipToApplicant || firstBeneficiary.relationship || ''
+          relationshipToApplicant: firstBeneficiary.relationshipToApp || firstBeneficiary.relationship || ''
         } : { name: '', relationshipToApplicant: '' }
       };
       
@@ -193,19 +211,19 @@ export function BeneficiaryDetails({
                         {beneficiary.nric} {beneficiary.dateOfBirth}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {beneficiary.sex || 'N/A'}
+                        {(beneficiary as any).sex || (beneficiary as any).gender || 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {beneficiary.religion}
+                        {(beneficiary as any).religion || (beneficiary as any).religiousAffiliation || 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {beneficiary.relationship}
+                        {(beneficiary as any).relationship || (beneficiary as any).relationshipToApp || 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {beneficiary.relationshipToNominee1 || ' '}
+                        {(beneficiary as any).relationshipToNominee1 || ' '}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {beneficiary.relationshipToNominee2 || ' '}
+                        {(beneficiary as any).relationshipToNominee2 || ' '}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(beneficiary.status)}`}>

@@ -8,7 +8,7 @@ const useWindowsAuth = !process.env.DB_PASSWORD || process.env.DB_PASSWORD === '
 // Get configuration from environment
 const server = process.env.DB_SERVER || 'localhost';
 const instance = process.env.DB_INSTANCE || '';
-const database = process.env.DB_DATABASE || 'FransiscanLive';
+const database = process.env.DB_DATABASE || 'FransiscanTest';
 const port = process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 1433;
 
 // Build server string - handle named instances properly
@@ -23,6 +23,17 @@ if (instance && instance !== '') {
 } else {
   // No instance, use server as-is
   serverString = server;
+}
+
+// Normalize server string: convert .\INSTANCE to localhost\INSTANCE for Node.js drivers
+// The .\ format works in SSMS but Node.js drivers need localhost\INSTANCE
+if (serverString.startsWith('.\\')) {
+  serverString = 'localhost' + serverString.substring(1); // Replace .\ with localhost\
+  logger.info(`Normalized server string: ${server} -> ${serverString}`);
+} else if (serverString.startsWith('.') && !serverString.includes('\\')) {
+  // Handle edge case where server is just '.' without instance
+  serverString = 'localhost';
+  logger.info(`Normalized server string: ${server} -> ${serverString}`);
 }
 
 let config;
@@ -47,16 +58,30 @@ if (useWindowsAuth) {
   // For named instances, ensure proper format (e.g., .\SQLEXPRESS or localhost\SQLEXPRESS)
   const connectionTimeoutSeconds = Math.ceil(connectionTimeout / 1000);
   
-  // Normalize server string for connection string (ensure proper escaping)
-  let connectionServerString = serverString;
-  // If server starts with .\, it's a local named instance - keep as is
-  // If server contains backslash, it's already a server\instance format
-  // Otherwise, use as-is
+  // For Windows Auth with msnodesqlv8, if port is specified, use server,port format
+  // This bypasses SQL Server Browser and is more reliable
+  const hasExplicitPort = process.env.DB_PORT && process.env.DB_PORT !== '';
+  const serverHost = serverString.includes('\\') ? serverString.split('\\')[0] : serverString;
+  
+  let connectionServerString;
+  if (hasExplicitPort) {
+    // Use server,port format - this is the most reliable for msnodesqlv8
+    connectionServerString = `${serverHost},${process.env.DB_PORT}`;
+    logger.info(`Using explicit port ${process.env.DB_PORT} (bypasses SQL Server Browser)`);
+  } else {
+    // Use instance name format (requires SQL Server Browser)
+    connectionServerString = serverString;
+    if (serverString.includes('\\')) {
+      logger.warn('⚠️  Named instance without explicit port - SQL Server Browser must be running');
+      logger.warn('💡 Set DB_PORT in .env to bypass SQL Server Browser');
+    }
+  }
   
   const connectionString = `Server=${connectionServerString};Database=${database};Trusted_Connection=Yes;Driver={ODBC Driver 17 for SQL Server};Connection Timeout=${connectionTimeoutSeconds};`;
 
   config = {
-    server: serverString,
+    server: hasExplicitPort ? serverHost : serverString,
+    port: hasExplicitPort ? parseInt(process.env.DB_PORT) : undefined,
     database,
     driver: 'msnodesqlv8',
     connectionString,
@@ -81,13 +106,23 @@ if (useWindowsAuth) {
   // Log connection details for debugging
   logger.info('Windows Auth connection config:', {
     serverString,
+    connectionServerString,
+    serverHost,
     database,
-    hasInstance: serverString.includes('\\'),
+    usingPort: hasExplicitPort,
+    port: hasExplicitPort ? process.env.DB_PORT : 'dynamic (SQL Server Browser)',
     connectionTimeout: connectionTimeoutSeconds
   });
-} else {
+  } else {
   // SQL Server Authentication with tedious driver
   logger.info('Using SQL Server Authentication with tedious driver');
+
+  // Validate that DB_USER is set when using SQL Auth
+  if (!process.env.DB_USER || process.env.DB_USER.trim() === '') {
+    logger.error('❌ DB_USER is required when using SQL Server Authentication (DB_PASSWORD is set)');
+    logger.error('💡 Either set DB_USER in .env file or remove DB_PASSWORD to use Windows Authentication');
+    throw new Error('DB_USER is required for SQL Server Authentication');
+  }
 
   // For named instances with tedious driver, we need to separate server and instance
   // Named instances can be in format: localhost\SQLEXPRESS, .\SQLEXPRESS, or server\instance
@@ -104,6 +139,7 @@ if (useWindowsAuth) {
   } else if (server === '.' || server === '') {
     serverHost = 'localhost';
   } else if (instance && instance !== '') {
+    instanceName = instance;
     useNamedInstance = true;
   }
 
@@ -121,6 +157,7 @@ if (useWindowsAuth) {
       database,
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
+      driver: 'tedious', // Explicitly set driver for SQL Auth
       options: {
         instanceName: instanceName,
         encrypt: process.env.DB_ENCRYPT === 'true',
@@ -150,7 +187,7 @@ if (useWindowsAuth) {
     }
     
     logger.info('Named instance detected - using instanceName option (SQL Server Browser required)');
-    logger.info(`Config: server=${config.server}, instanceName=${config.options.instanceName}, port=${config.port !== undefined ? config.port : 'OMITTED (correct)'}`);
+    logger.info(`Config: server=${config.server}, instanceName=${config.options.instanceName}, port=${config.port !== undefined ? config.port : 'OMITTED (correct)'}, user=${config.user}`);
     logger.warn('⚠️  If connection fails with ~15-20s timeout, SQL Server Browser service is not running');
     logger.warn('💡 Solution 1: Start SQL Server Browser: sc start SQLBrowser (as Administrator)');
     logger.warn('💡 Solution 2: Find port and set DB_PORT in .env (bypasses Browser)');
@@ -163,6 +200,7 @@ if (useWindowsAuth) {
       database,
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
+      driver: 'tedious', // Explicitly set driver for SQL Auth
       options: {
         encrypt: process.env.DB_ENCRYPT === 'true',
         trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === 'true',
@@ -183,9 +221,9 @@ if (useWindowsAuth) {
     };
     
     if (useNamedInstance && hasExplicitPort) {
-      logger.info(`Named instance with explicit port: ${serverHost}:${config.port} (bypassing SQL Server Browser)`);
+      logger.info(`Named instance with explicit port: ${serverHost}:${config.port} (bypassing SQL Server Browser), user=${config.user}`);
     } else {
-      logger.info(`Default instance connection: ${serverHost}:${config.port}`);
+      logger.info(`Default instance connection: ${serverHost}:${config.port}, user=${config.user}`);
     }
   }
   
@@ -196,7 +234,8 @@ if (useWindowsAuth) {
     database,
     port: config.port || 'dynamic (via SQL Server Browser)',
     hasInstance: useNamedInstance,
-    usingBrowser: useNamedInstance && !hasExplicitPort
+    usingBrowser: useNamedInstance && !hasExplicitPort,
+    user: process.env.DB_USER // Log user for debugging (password is never logged)
   });
 }
 
@@ -442,11 +481,52 @@ const connectDatabase = async(retryCount = 0) => {
       port: actualPort,
       driver: config.driver || 'unknown',
       configHasPort: 'port' in config,
-      configHasInstanceName: !!(config.options?.instanceName)
+      configHasInstanceName: !!(config.options?.instanceName),
+      authentication: useWindowsAuth ? 'Windows Authentication' : 'SQL Server Authentication',
+      user: useWindowsAuth ? '(Windows user)' : (config.user || process.env.DB_USER || 'NOT SET')
     };
 
-    // Add additional context for connection errors
-    if (error.code === 'ESOCKET' || error.code === 'ETIMEOUT' || error.message?.includes('Could not connect')) {
+    // Handle ELOGIN errors (authentication failures) specifically
+    if (error.code === 'ELOGIN' || error.message?.includes('Login failed') || error.message?.includes('authentication failed')) {
+      const attemptedUser = useWindowsAuth ? '(Windows user)' : (config.user || process.env.DB_USER || 'NOT SET');
+      const diagnostic = {
+        errorType: 'Authentication Failure (ELOGIN)',
+        attemptedUser: attemptedUser,
+        possibleCauses: [
+          `SQL Server user '${attemptedUser}' does not exist`,
+          `Password for user '${attemptedUser}' is incorrect`,
+          `User '${attemptedUser}' does not have permission to access database '${database}'`,
+          'SQL Server authentication mode is not configured correctly'
+        ],
+        solutions: []
+      };
+
+      if (useWindowsAuth) {
+        diagnostic.solutions = [
+          'Verify your Windows user has SQL Server access',
+          'Check SQL Server allows Windows Authentication',
+          'Ensure SQL Server is configured for Mixed Mode or Windows Authentication',
+          'Try switching to SQL Server Authentication: Set DB_USER and DB_PASSWORD in .env'
+        ];
+        diagnostic.checkAuth = 'Verify SQL Server authentication mode: Windows Auth or Mixed Mode';
+      } else {
+        diagnostic.solutions = [
+          `Verify user '${attemptedUser}' exists in SQL Server: SELECT name FROM sys.sql_logins WHERE name = '${attemptedUser}'`,
+          `Check password is correct for user '${attemptedUser}'`,
+          `Grant database access: USE [${database}]; CREATE USER [${attemptedUser}] FOR LOGIN [${attemptedUser}]; ALTER ROLE db_datareader ADD MEMBER [${attemptedUser}]; ALTER ROLE db_datawriter ADD MEMBER [${attemptedUser}];`,
+          'Or create the user if it does not exist: CREATE LOGIN [franciscan_api] WITH PASSWORD = \'YourPassword\';',
+          'Or switch to Windows Authentication: Remove DB_PASSWORD from .env file'
+        ];
+        diagnostic.checkUser = `Verify user exists: sqlcmd -S ${serverString} -Q "SELECT name FROM sys.sql_logins WHERE name = '${attemptedUser}'"`;
+        diagnostic.checkDatabaseAccess = `Verify user has database access: sqlcmd -S ${serverString} -d ${database} -Q "SELECT dp.name FROM sys.database_principals dp WHERE dp.name = '${attemptedUser}'"`;
+      }
+
+      errorDetails.diagnostic = diagnostic;
+      // Log ELOGIN errors with specific message
+      logger.error(`❌ Authentication failed (attempt ${retryCount + 1}/${MAX_RETRIES + 1}):`, errorDetails);
+      // Skip the general error logging below for ELOGIN errors since we already logged it
+    } else if (error.code === 'ESOCKET' || error.code === 'ETIMEOUT' || error.message?.includes('Could not connect')) {
+      // Add additional context for connection errors
       const isNamedInstance = !useWindowsAuth && config.options?.instanceName;
       const timeoutMatch = error.message?.match(/(\d+)ms/);
       const timeoutMs = timeoutMatch ? parseInt(timeoutMatch[1]) : null;
@@ -483,7 +563,10 @@ const connectDatabase = async(retryCount = 0) => {
       errorDetails.diagnostic = diagnostic;
     }
 
-    logger.error(`❌ Database connection failed (attempt ${retryCount + 1}/${MAX_RETRIES + 1}):`, errorDetails);
+    // Log error (skip if already logged for ELOGIN)
+    if (error.code !== 'ELOGIN' && !error.message?.includes('Login failed') && !error.message?.includes('authentication failed')) {
+      logger.error(`❌ Database connection failed (attempt ${retryCount + 1}/${MAX_RETRIES + 1}):`, errorDetails);
+    }
 
     // Retry with exponential backoff and jitter
     if (retryCount < MAX_RETRIES) {

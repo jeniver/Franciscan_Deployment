@@ -404,7 +404,7 @@ export const applicationSlice = createSlice({
       state.applicationNumber = action.payload;
     },
     resetApplication: (state) => {
-      state.currentStep = 2; // Start at step 2 (Niche Details) for new applications
+      state.currentStep = 1; // Start at step 1 (Niche Details) for new applications
       state.formData = {};
       state.applicationNumber = '';
       state.loading = false;
@@ -423,7 +423,7 @@ export const applicationSlice = createSlice({
     },
     clearPreviousApplicationData: (state) => {
       // Clear only form-related data, keep created applications
-      state.currentStep = 2;
+      state.currentStep = 1; // Start at step 1 (Niche Details) for new applications
       state.formData = {};
       state.applicationNumber = '';
       state.createdApplication = null;

@@ -75,7 +75,7 @@ docker-compose up -d --build
 docker-compose ps
 
 # Backup database
-docker exec franciscan-mysql mysqldump -ufranciscan_user -p FransiscanLive > backup.sql
+docker exec franciscan-mysql mysqldump -ufranciscan_user -p FransiscanTest > backup.sql
 ```
 
 ## 📁 Project Structure

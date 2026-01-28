@@ -25,7 +25,22 @@ export function AppRouter() {
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/niche/*" element={
+        <Route path="/niche" element={
+          <ProtectedRoute>
+            <App />
+          </ProtectedRoute>
+        } />
+        <Route path="/niche/new" element={
+          <ProtectedRoute>
+            <App />
+          </ProtectedRoute>
+        } />
+        <Route path="/niche/view/:applicationCode" element={
+          <ProtectedRoute>
+            <App />
+          </ProtectedRoute>
+        } />
+        <Route path="/niche/edit/:applicationCode" element={
           <ProtectedRoute>
             <App />
           </ProtectedRoute>

@@ -11,13 +11,13 @@ Write-Host ""
 
 # Configuration - Update these values
 $DB_SERVER = ".\SQLEXPRESS"
-$DB_DATABASE = "FransiscanLive"
+$DB_DATABASE = "FransiscanTest"
 $DB_USER = ""
 $DB_PASSWORD = ""
 $BACKUP_DIR = "backups"
 $TIMESTAMP = Get-Date -Format "yyyyMMdd_HHmmss"
-$BACKUP_FILE = Join-Path $BACKUP_DIR "FransiscanLive_backup_$TIMESTAMP.bak"
-$SQL_BACKUP_FILE = Join-Path $BACKUP_DIR "FransiscanLive_backup_$TIMESTAMP.sql"
+$BACKUP_FILE = Join-Path $BACKUP_DIR "FransiscanTest_backup_$TIMESTAMP.bak"
+$SQL_BACKUP_FILE = Join-Path $BACKUP_DIR "FransiscanTest_backup_$TIMESTAMP.sql"
 
 # Create backup directory if it doesn't exist
 if (-not (Test-Path $BACKUP_DIR)) {

@@ -49,7 +49,7 @@ Added statistics updates for:
 ### Step 1: Run Database Optimization Script
 ```bash
 # Connect to SQL Server and run:
-sqlcmd -S your_server -d FransiscanLive -i DATABASE_OPTIMIZATION.sql
+sqlcmd -S your_server -d FransiscanTest -i DATABASE_OPTIMIZATION.sql
 ```
 
 Or execute the script in SQL Server Management Studio (SSMS).
