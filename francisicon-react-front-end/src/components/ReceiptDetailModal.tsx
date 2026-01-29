@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { XIcon, DownloadIcon, PrinterIcon } from 'lucide-react';
 import { Receipt, receiptService } from '../services/receiptService';
+import { receiptPdfService } from '../services/receiptPdfService';
 import { useToast } from '../contexts/ToastContext';
 
 interface ReceiptDetailModalProps {
@@ -12,6 +13,46 @@ interface ReceiptDetailModalProps {
 export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailModalProps) {
   const { showError, showSuccess } = useToast();
   const [isDownloading, setIsDownloading] = useState(false);
+  const [htmlContent, setHtmlContent] = useState<string>('');
+
+  useEffect(() => {
+    if (!isOpen || !receipt) {
+      setHtmlContent('');
+      return;
+    }
+
+    try {
+      const applicationCode =
+        receipt.applicationCode || (receipt.applicationId ? String(receipt.applicationId) : undefined);
+
+      // Build a lightweight payload compatible with receiptPdfService
+      const payload: any = {
+        receipt: {
+          code: receipt.receiptCode,
+          transactionDate: receipt.receiptDate || receipt.createdAt,
+          customerName: receipt.customerName,
+          totalAmount: receipt.totalAmount,
+          payingAmount: receipt.payingAmount,
+          paymentMode: receipt.paymentMode,
+        },
+        details: (receipt.invoiceDetails || []).map((d) => ({
+          description: d.description,
+          quantity: d.quantity,
+          unitAmount: d.unitPrice,
+          lineTotalAmount: d.amount,
+        })),
+      };
+
+      const html = receiptPdfService.generateReceiptHtml(payload, {
+        requestedCode: receipt.receiptCode,
+        applicationCode,
+      });
+      setHtmlContent(html);
+    } catch (err) {
+      console.error('Failed to generate receipt HTML preview:', err);
+      setHtmlContent('');
+    }
+  }, [isOpen, receipt]);
 
   if (!isOpen || !receipt) return null;
 
@@ -36,7 +77,18 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
   };
 
   const handlePrint = () => {
-    window.print();
+    if (htmlContent) {
+      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+      if (printWindow) {
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        printWindow.onload = () => {
+          printWindow.print();
+        };
+      }
+    } else {
+      window.print();
+    }
   };
 
   const handleDownload = async () => {
@@ -105,119 +157,47 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
           </div>
 
           {/* Content */}
-          <div className="p-6">
-            {/* Receipt Header */}
-            <div className="mb-6 pb-6 border-b border-gray-200">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Receipt Code</p>
-                  <p className="text-lg font-semibold text-gray-900">{receipt.receiptCode}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Date</p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    {formatDate(receipt.receiptDate || receipt.createdAt)}
-                  </p>
-                </div>
-                {receipt.invoiceCode && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Invoice Code</p>
-                    <p className="text-lg font-semibold text-gray-900">{receipt.invoiceCode}</p>
+          <div className="flex-1 p-6 bg-gray-50 overflow-auto">
+            {htmlContent ? (
+              <iframe
+                srcDoc={htmlContent}
+                className="w-full h-[70vh] border border-gray-200 bg-white rounded-lg"
+                title={`Receipt - ${receipt.receiptCode}`}
+                style={{ minHeight: '100%' }}
+              />
+            ) : (
+              <div className="text-sm text-gray-700">
+                {/* Fallback simple view if HTML preview is not available */}
+                <div className="mb-6 pb-6 border-b border-gray-200">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600 mb-1">Receipt Code</p>
+                      <p className="text-lg font-semibold text-gray-900">{receipt.receiptCode}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600 mb-1">Date</p>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {formatDate(receipt.receiptDate || receipt.createdAt)}
+                      </p>
+                    </div>
                   </div>
-                )}
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Payment Mode</p>
-                  <p className="text-lg font-semibold text-gray-900">{receipt.paymentMode}</p>
                 </div>
-              </div>
-            </div>
-
-            {/* Customer Information */}
-            <div className="mb-6 pb-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Customer Information</h3>
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Customer Name</p>
-                <p className="text-lg font-medium text-gray-900">{receipt.customerName}</p>
-              </div>
-            </div>
-
-            {/* Invoice Details */}
-            {receipt.invoiceDetails && receipt.invoiceDetails.length > 0 && (
-              <div className="mb-6 pb-6 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Invoice Details</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">
-                          Description
-                        </th>
-                        {receipt.invoiceDetails.some((d) => d.quantity) && (
-                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">
-                            Quantity
-                          </th>
-                        )}
-                        {receipt.invoiceDetails.some((d) => d.unitPrice) && (
-                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">
-                            Unit Price
-                          </th>
-                        )}
-                        <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase">
-                          Amount
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {receipt.invoiceDetails.map((detail, index) => (
-                        <tr key={index}>
-                          <td className="px-4 py-3 text-sm text-gray-900">{detail.description}</td>
-                          {receipt.invoiceDetails!.some((d) => d.quantity) && (
-                            <td className="px-4 py-3 text-sm text-gray-600">
-                              {detail.quantity || '-'}
-                            </td>
-                          )}
-                          {receipt.invoiceDetails!.some((d) => d.unitPrice) && (
-                            <td className="px-4 py-3 text-sm text-gray-600">
-                              {detail.unitPrice ? formatCurrency(detail.unitPrice) : '-'}
-                            </td>
-                          )}
-                          <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
-                            {formatCurrency(detail.amount)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">Customer Name</p>
+                    <p className="text-lg font-medium text-gray-900">{receipt.customerName}</p>
+                  </div>
+                  <div className="flex justify-between max-w-sm text-sm text-gray-700">
+                    <span>Total Amount</span>
+                    <span className="font-semibold">{formatCurrency(receipt.totalAmount)}</span>
+                  </div>
+                  <div className="flex justify-between max-w-sm text-sm text-gray-700">
+                    <span>Paying Amount</span>
+                    <span className="font-semibold">{formatCurrency(receipt.payingAmount)}</span>
+                  </div>
                 </div>
               </div>
             )}
-
-            {/* Payment Summary */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Summary</h3>
-              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Total Amount</span>
-                  <span className="text-lg font-semibold text-gray-900">
-                    {formatCurrency(receipt.totalAmount)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Paying Amount</span>
-                  <span className="text-lg font-semibold text-green-600">
-                    {formatCurrency(receipt.payingAmount)}
-                  </span>
-                </div>
-                {receipt.totalAmount > receipt.payingAmount && (
-                  <div className="flex justify-between items-center pt-2 border-t border-gray-300">
-                    <span className="text-sm font-medium text-gray-700">Balance</span>
-                    <span className="text-lg font-bold text-orange-600">
-                      {formatCurrency(receipt.totalAmount - receipt.payingAmount)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
 
             {/* Footer Actions */}
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">

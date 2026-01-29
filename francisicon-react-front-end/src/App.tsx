@@ -11,7 +11,7 @@ import { InvoiceReceipt } from './pages/InvoiceReceipt';
 import { NicheAgreementDetailsModal } from './components/NicheAgreementDetailsModal';
 import { AgreementViewerModal } from './components/AgreementViewerModal';
 import { applicationEmailService } from './services/applicationEmailService';
-import { EyeIcon, PrinterIcon, PlusIcon, ArrowRightIcon, FileTextIcon, HomeIcon, UserIcon, UsersIcon, UserCheckIcon, ReceiptIcon, AlertCircleIcon, PenToolIcon } from 'lucide-react';
+import { EyeIcon, PrinterIcon, PlusIcon, FileTextIcon, HomeIcon, UserIcon, UsersIcon, UserCheckIcon, AlertCircleIcon, PenToolIcon } from 'lucide-react';
 import { useApplication } from './hooks/useApplication';
 import { useFormValidation } from './hooks/useFormValidation';
 import { Button } from './components/common/Button';
@@ -21,7 +21,6 @@ import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { useDispatch } from 'react-redux';
 import { setViewMode as setViewModeAction, setEditMode } from './store/applicationSlice';
 import type { ApplicationListFilters } from './store/applicationSlice';
-import { formatDateToDDMMYYYY } from './utils/dateUtils';
 
 const DEFAULT_LIST_FILTERS: ApplicationListFilters = {
   applicationCode: '',
@@ -875,12 +874,11 @@ You will now be redirected to the Invoice & Receipt page.`);
                   </Button>
                   <Button
                     variant="primary"
-                    icon={<ArrowRightIcon className="w-4 h-4" />}
                     iconPosition="right"
                     onClick={handleGoToInvoiceWithFeedback}
                     disabled={!applicationNumber.trim()}
                   >
-                    Go to Invoice & Receipt
+                    Invoice & Receipt
                   </Button>
                   {applicationNumber && (
                     <Button

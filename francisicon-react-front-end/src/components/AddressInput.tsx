@@ -16,6 +16,116 @@ import {
 import { Input } from './common/Input';
 import { FormSelect } from './FormSelect';
 
+export interface ParsedAddress {
+  block: string;
+  blockNo: string;
+  streetName: string;
+  unitNo: string;
+  postalCode: string;
+  country: string;
+}
+
+/**
+ * Parse a raw address string into structured address fields.
+ *
+ * Examples handled:
+ * - "Blk 343 Choa Chu Kang Loop #06-43 Singapore 680343"
+ * - "Block 343 Choa Chu Kang Loop #06-43, Singapore 680343"
+ * - "343 Choa Chu Kang Loop, #06-43, Singapore 680343"
+ * - "343 Choa Chu Kang Loop 680343"
+ */
+export function parseRawAddress(addressString: string): ParsedAddress {
+  const result: ParsedAddress = {
+    block: '',
+    blockNo: '',
+    streetName: '',
+    unitNo: '',
+    postalCode: '',
+    country: 'Singapore'
+  };
+
+  if (!addressString || !addressString.trim()) {
+    return result;
+  }
+
+  const address = addressString.trim();
+
+  // Pattern 1: "Blk XXX Street Name #XX-XX Singapore XXXXXX" or "Block XXX Street Name #XX-XX Singapore XXXXXX"
+  const pattern1 = address.match(/B[il]o?ck\s*(\d+[A-Z]?)\s+(.+?)(?:,\s*Singapore\s+(\d{6}))?/i);
+  if (pattern1) {
+    const blockNo = pattern1[1];
+    const rest = pattern1[2].trim();
+    const postalCode = pattern1[3] || '';
+
+    // Extract unit number (#XX-XX)
+    const unitMatch = rest.match(/#(\d+-\d+)/);
+    if (unitMatch) {
+      result.unitNo = `#${unitMatch[1]}`;
+      const streetPart = rest.replace(/#\d+-\d+/, '').trim();
+      result.streetName = streetPart;
+    } else {
+      result.streetName = rest;
+    }
+
+    result.block = 'Block';
+    result.blockNo = blockNo;
+    if (postalCode) {
+      result.postalCode = postalCode;
+    }
+    return result;
+  }
+
+  // Pattern 2: Comma-separated format "Block XXX, Street Name, #XX-XX, Singapore XXXXXX"
+  const parts = address.split(',').map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    parts.forEach((part, index) => {
+      const lowerPart = part.toLowerCase();
+
+      if (lowerPart.includes('blk') || lowerPart.includes('block')) {
+        const blockMatch = part.match(/(\d+[A-Z]?)/);
+        if (blockMatch) {
+          result.block = 'Block';
+          result.blockNo = blockMatch[1];
+        }
+      } else if (part.startsWith('#')) {
+        result.unitNo = part;
+      } else if (lowerPart.includes('singapore')) {
+        const postalMatch = part.match(/(\d{6})/);
+        if (postalMatch) {
+          result.postalCode = postalMatch[1];
+        }
+        result.country = 'Singapore';
+      } else if (!part.match(/^\d{6}$/) && index < parts.length - 1) {
+        // Likely street name
+        result.streetName = part;
+      } else if (part.match(/^\d{6}$/)) {
+        // Postal code
+        result.postalCode = part;
+      }
+    });
+
+    // If we still don't have a street name and there's at least one part, use the first non-empty
+    if (!result.streetName && parts.length > 0) {
+      result.streetName = parts[0];
+    }
+
+    return result;
+  }
+
+  // Pattern 3: Extract postal code if present (6 digits)
+  const postalMatch = address.match(/\b(\d{6})\b/);
+  if (postalMatch) {
+    result.postalCode = postalMatch[1];
+  }
+
+  // Fallback: treat full address as street name if we couldn't parse better
+  if (!result.streetName) {
+    result.streetName = address;
+  }
+
+  return result;
+}
+
 interface AddressInputProps {
   /**
    * Prefix for form data fields (e.g., 'applicant', 'contact', 'nominee')
@@ -66,6 +176,13 @@ interface AddressInputProps {
    * Custom label text
    */
   label?: string;
+
+  /**
+   * Optional raw/legacy address string. If provided and structured
+   * initialValues are missing, this will be parsed using the component's
+   * internal converter and mapped into the structured fields.
+   */
+  initialAddressString?: string;
 }
 
 /**
@@ -89,7 +206,8 @@ export function AddressInput({
   isReadOnly = false,
   error,
   showLabel = true,
-  label = 'Address'
+  label = 'Address',
+  initialAddressString
 }: AddressInputProps) {
   const dispatch = useDispatch();
   
@@ -103,24 +221,41 @@ export function AddressInput({
   const isInitializedRef = useRef(false);
   const lastSyncedValuesRef = useRef<string>('');
 
-  // Initialize address fields from initialValues (only once on mount)
+  // Initialize address fields from initialValues or initialAddressString (only once on mount)
   useEffect(() => {
     if (isInitializedRef.current) return;
-    
-    if (initialValues) {
-      if (initialValues.block || initialValues.blockNo || initialValues.streetName || 
-          initialValues.unitNo || initialValues.postalCode || initialValues.country) {
-        // Address fields exist, sync with Redux
-        dispatch(setBlock(initialValues.block || ''));
-        dispatch(setBlockNo(initialValues.blockNo || ''));
-        dispatch(setStreetName(initialValues.streetName || ''));
-        dispatch(setUnitNo(initialValues.unitNo || ''));
-        dispatch(setPostalCode(initialValues.postalCode || ''));
-        dispatch(setCountry(initialValues.country || 'Singapore'));
-        isInitializedRef.current = true;
-      }
+
+    // 1) Prefer explicit structured values if provided
+    if (initialValues && (
+      initialValues.block ||
+      initialValues.blockNo ||
+      initialValues.streetName ||
+      initialValues.unitNo ||
+      initialValues.postalCode ||
+      initialValues.country
+    )) {
+      dispatch(setBlock(initialValues.block || ''));
+      dispatch(setBlockNo(initialValues.blockNo || ''));
+      dispatch(setStreetName(initialValues.streetName || ''));
+      dispatch(setUnitNo(initialValues.unitNo || ''));
+      dispatch(setPostalCode(initialValues.postalCode || ''));
+      dispatch(setCountry(initialValues.country || 'Singapore'));
+      isInitializedRef.current = true;
+      return;
     }
-  }, [initialValues, dispatch]);
+
+    // 2) Fallback: parse raw/legacy address string if provided
+    if (initialAddressString && initialAddressString.trim()) {
+      const parsed = parseRawAddress(initialAddressString);
+      dispatch(setBlock(parsed.block));
+      dispatch(setBlockNo(parsed.blockNo));
+      dispatch(setStreetName(parsed.streetName));
+      dispatch(setUnitNo(parsed.unitNo));
+      dispatch(setPostalCode(parsed.postalCode));
+      dispatch(setCountry(parsed.country || 'Singapore'));
+      isInitializedRef.current = true;
+    }
+  }, [initialValues, initialAddressString, dispatch]);
 
   // Sync Redux address state to parent component - only when values actually change
   useEffect(() => {

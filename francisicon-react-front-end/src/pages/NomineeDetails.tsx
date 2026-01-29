@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { UserCheckIcon, PlusIcon, InfoIcon, Trash2Icon } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { FormSelect } from '../components/FormSelect';
+import { AddressInput } from '../components/AddressInput';
 interface NomineeDetailsProps {
   formData: any;
   setFormData: (data: any) => void;
@@ -70,6 +71,42 @@ export function NomineeDetails({
     }
   }, [formData.nominees]);
 
+  // Helper to build a single-line legacy address from structured fields
+  const buildLegacyAddress = (addressData: {
+    block?: string;
+    blockNo?: string;
+    streetName?: string;
+    unitNo?: string;
+    postalCode?: string;
+    country?: string;
+  }): string => {
+    if (!addressData.blockNo && !addressData.streetName && !addressData.unitNo && !addressData.postalCode) {
+      return '';
+    }
+
+    const parts: string[] = [];
+
+    if (addressData.blockNo && addressData.streetName) {
+      parts.push(
+        `${addressData.block ? addressData.block + ' ' : ''}${addressData.blockNo} ${addressData.streetName}`.trim()
+      );
+    } else if (addressData.streetName) {
+      parts.push(addressData.streetName);
+    }
+
+    if (addressData.unitNo) {
+      parts.push(`#${addressData.unitNo.replace(/^#/, '')}`);
+    }
+
+    if (addressData.postalCode) {
+      parts.push(
+        `${addressData.country || 'Singapore'} ${addressData.postalCode}`.trim()
+      );
+    }
+
+    return parts.join(', ');
+  };
+
   const handleAddNominee = () => {
     const newNominee: Nominee = {
       id: Date.now(),
@@ -91,7 +128,6 @@ export function NomineeDetails({
     const firstNominee = updatedNominees[0];
     setFormData({
       nominees: updatedNominees,
-      // Update individual fields for the first nominee
       nomineeName: firstNominee?.fullName || '',
       nomineeIDNo: firstNominee?.nric || '',
       nomineeRelationship: firstNominee?.relationship || '',
@@ -215,23 +251,6 @@ export function NomineeDetails({
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">
-                  Address
-                </label>
-                <input 
-                  type="text" 
-                  value={nominee.address || ''} 
-                  onChange={e => handleUpdateNominee(nominee.id, 'address', e.target.value)} 
-                  placeholder="Enter address" 
-                  className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent ${
-                    isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
-                  }`}
-                  disabled={isReadOnly} 
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-6 mt-4">
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-2 block">
                   Mobile No.
@@ -247,21 +266,27 @@ export function NomineeDetails({
                   disabled={isReadOnly} 
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">
-                  Office Telephone
-                </label>
-                <input 
-                  type="tel" 
-                  value={nominee.officeTelNo || ''} 
-                  onChange={e => handleUpdateNominee(nominee.id, 'officeTelNo', e.target.value)} 
-                  placeholder="Enter office telephone" 
-                  className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent ${
-                    isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
-                  }`}
-                  disabled={isReadOnly} 
-                />
+  
               </div>
+            </div>
+            
+            <div className="mt-4">
+            <div>
+                    <AddressInput
+                      fieldPrefix="nominee"
+                      initialAddressString={nominee.address || ''}
+                      onAddressChange={(addressData) => {
+                        // Convert structured address to legacy single string
+                        const legacyAddress = buildLegacyAddress(addressData);
+                        // Update only this nominee's address; other fields handled by existing logic
+                        handleUpdateNominee(nominee.id, 'address', legacyAddress as Nominee['address']);
+                      }}
+                      isReadOnly={isReadOnly}
+                      // Reuse nomineeAddress validation error if present
+                      error={validationErrors.nomineeAddress}
+                    />
+                  </div>
+              
             </div>
 
             <div className="grid grid-cols-2 gap-6 mt-4">
@@ -315,6 +340,23 @@ export function NomineeDetails({
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-2 block">
+                  Office Telephone
+                </label>
+                <input 
+                  type="tel" 
+                  value={nominee.officeTelNo || ''} 
+                  onChange={e => handleUpdateNominee(nominee.id, 'officeTelNo', e.target.value)} 
+                  placeholder="Enter office telephone" 
+                  className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent ${
+                    isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
+                  }`}
+                  disabled={isReadOnly} 
+                />
+              </div>
+            </div>
+            <div className="mt-4">
+            <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">
                   Relationship to applicant
                 </label>
                 <input 
@@ -328,9 +370,9 @@ export function NomineeDetails({
                   disabled={isReadOnly} 
                 />
               </div>
-            </div>
-
+              </div>
             <div className="mt-4">
+
               <FormSelect
                 label="Status"
                 value={nominee.status || 'Active'}
@@ -346,6 +388,7 @@ export function NomineeDetails({
                 placeholder="Select status"
                 disabled={isReadOnly}
               />
+              
             </div>
 
             {/* Second Nominee Agreement Button for second nominee */}

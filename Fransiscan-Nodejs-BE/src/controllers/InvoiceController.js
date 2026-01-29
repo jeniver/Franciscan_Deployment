@@ -587,35 +587,59 @@ class InvoiceController extends BaseController {
         status,
         transactionDateFrom,
         transactionDateTo,
+        fromDate,  // Support frontend parameter
+        toDate,    // Support frontend parameter
+        searchTerm, // Support frontend search term
+        invoiceCode, // Support frontend invoice code
+        paymentMode, // Support frontend payment mode
+        sortBy = 'TransactionDate', // Support frontend sortBy
+        sortOrder = 'desc', // Support frontend sortOrder
         page = 1,
         limit = 10
       } = req.query;
 
       const churchId = req.user?.churchId;
 
-      // Build query
-      let query = `
-        SELECT 
-          i.*,
-          (SELECT COUNT(*) FROM InvoiceDetail id WHERE id.InvoiceId = i.InvoiceId) AS DetailCount
-        FROM Invoice i WITH(NOLOCK)
-        WHERE i.Status > 0
-      `;
+      // Map frontend parameters to backend parameters
+      const dateFrom = transactionDateFrom || fromDate;
+      const dateTo = transactionDateTo || toDate;
 
       const params = {};
       const conditions = [];
+      
+      // Build base WHERE clause conditions (will be used for both main query and count query)
+      conditions.push('i.Status > 0');
 
       if (churchId) {
         conditions.push('i.ChurchId = @churchId');
         params.churchId = churchId;
       }
 
-      if (customerName) {
+      // Handle searchTerm - search across multiple fields
+      if (searchTerm && searchTerm.trim()) {
+        const searchConditions = [];
+        const searchValue = `%${searchTerm.trim()}%`;
+        
+        searchConditions.push('i.CustomerName LIKE @searchTerm');
+        searchConditions.push('i.InvoiceCode LIKE @searchTerm');
+        searchConditions.push('i.RefDocNumber LIKE @searchTerm');
+        
+        params.searchTerm = searchValue;
+        conditions.push(`(${searchConditions.join(' OR ')})`);
+      }
+
+      // Handle individual search fields (for backward compatibility)
+      if (customerName && !searchTerm) {
         conditions.push('i.CustomerName LIKE @customerName');
         params.customerName = `%${customerName}%`;
       }
 
-      if (refDocNumber) {
+      if (invoiceCode && !searchTerm) {
+        conditions.push('i.InvoiceCode LIKE @invoiceCode');
+        params.invoiceCode = `%${invoiceCode}%`;
+      }
+
+      if (refDocNumber && !searchTerm) {
         conditions.push('i.RefDocNumber = @refDocNumber');
         params.refDocNumber = refDocNumber;
       }
@@ -625,34 +649,58 @@ class InvoiceController extends BaseController {
         params.refDocName = refDocName;
       }
 
-      if (status !== undefined) {
+      if (paymentMode) {
+        conditions.push('i.PaymentMode = @paymentMode');
+        params.paymentMode = paymentMode;
+      }
+
+      if (status !== undefined && status !== null && status !== '') {
         conditions.push('i.Status = @status');
         params.status = parseInt(status);
       }
 
-      if (transactionDateFrom) {
+      if (dateFrom) {
         conditions.push('CAST(i.TransactionDate AS DATE) >= CAST(@transactionDateFrom AS DATE)');
-        params.transactionDateFrom = transactionDateFrom;
+        params.transactionDateFrom = dateFrom;
       }
 
-      if (transactionDateTo) {
+      if (dateTo) {
         conditions.push('CAST(i.TransactionDate AS DATE) <= CAST(@transactionDateTo AS DATE)');
-        params.transactionDateTo = transactionDateTo;
+        params.transactionDateTo = dateTo;
       }
 
-      if (conditions.length > 0) {
-        query += ' AND ' + conditions.join(' AND ');
-      }
+      // Build WHERE clause
+      const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
-      // Get total count
-      const countQuery = query.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) AS Total FROM');
+      // Get total count - build count query separately to avoid issues with subqueries in main query
+      const countQuery = `
+        SELECT COUNT(*) AS Total 
+        FROM Invoice i WITH(NOLOCK)
+        ${whereClause}
+      `;
+      
       const { executeQuery } = require('../config/database');
       const countResult = await executeQuery(countQuery, params);
       const total = countResult.recordset[0]?.Total || 0;
 
+      // Build main query with subquery for DetailCount
+      let query = `
+        SELECT 
+          i.*,
+          (SELECT COUNT(*) FROM InvoiceDetail id WHERE id.InvoiceId = i.InvoiceId) AS DetailCount
+        FROM Invoice i WITH(NOLOCK)
+        ${whereClause}
+      `;
+
+      // Handle sorting
+      const validSortBy = ['TransactionDate', 'InvoiceId', 'CustomerName', 'InvoiceCode', 'TotalAmount', 'PayingAmount'];
+      const validSortOrder = ['asc', 'desc'];
+      const sortColumn = validSortBy.includes(sortBy) ? sortBy : 'TransactionDate';
+      const sortDirection = validSortOrder.includes(sortOrder.toLowerCase()) ? sortOrder.toUpperCase() : 'DESC';
+
       // Add pagination
       const offset = (parseInt(page) - 1) * parseInt(limit);
-      query += ` ORDER BY i.TransactionDate DESC, i.InvoiceId DESC`;
+      query += ` ORDER BY i.${sortColumn} ${sortDirection}, i.InvoiceId DESC`;
       query += ` OFFSET ${offset} ROWS FETCH NEXT ${parseInt(limit)} ROWS ONLY`;
 
       const result = await executeQuery(query, params);
@@ -668,6 +716,11 @@ class InvoiceController extends BaseController {
       }, 'Invoices retrieved successfully');
     } catch (error) {
       logger.error('Controller: Failed to search invoices:', error);
+      logger.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        query: req.query
+      });
       return this.sendError(res, 'Failed to search invoices', 500);
     }
   });

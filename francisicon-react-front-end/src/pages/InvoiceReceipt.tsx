@@ -3,6 +3,8 @@ import { ReceiptIcon, DownloadIcon, PrinterIcon } from 'lucide-react';
 import { normalizeFormData } from '../types/nicheApplication';
 import { useNiche } from '../hooks/useNiche';
 import { invoicePdfService } from '../services/invoicePdfService';
+import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
+import { InvoiceTemplateData } from '../services/invoiceTemplateService';
 import { nicheAgreementService } from '../services/nicheAgreementService';
 
 interface InvoiceReceiptProps {
@@ -257,84 +259,24 @@ export function InvoiceReceipt({
     }
   };
 
-  const handlePrint = async () => {
-    try {
-      const blob = await invoicePdfService.generateInvoicePdfBlob({
-        invoiceNo: invoiceData.invoiceNo || `INV-${Date.now()}`,
-        invoiceDate: invoiceData.invoiceDate || new Date().toLocaleDateString(),
-        dueDate:
-          invoiceData.dueDate ||
-          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
-        applicationNumber:
-          (invoiceData.metadata && invoiceData.metadata.applicationNumber) ||
-          applicationNumber,
-        applicantName: invoiceData.applicantName || normalizedData.applicantName || '',
-        applicantIDNo: invoiceData.applicantIDNo || normalizedData.applicantIDNo || '',
-        applicantEmail: invoiceData.applicantEmail || normalizedData.applicantEmail || '',
-        applicantPhone: invoiceData.applicantPhone || normalizedData.applicantPhone || '',
-        applicantAddress:
-          invoiceData.applicantAddress || normalizedData.applicantAddress || '',
-        nicheDetails: {
-          nicheId: invoiceData.nicheDetails?.nicheId ?? normalizedData.nicheId,
-          nicheCode: invoiceData.nicheDetails?.nicheCode || normalizedData.nicheCode || '',
-          chapel: invoiceData.nicheDetails?.chapel || normalizedData.chapel || '',
-          wallName: invoiceData.nicheDetails?.wallName || normalizedData.wallName || '',
-          rowNumber: invoiceData.nicheDetails?.rowNumber || normalizedData.rowNumber || '',
-          rowLevel:
-            invoiceData.nicheDetails?.rowLevel !== undefined
-              ? invoiceData.nicheDetails.rowLevel
-              : normalizedData.rowLevel,
-        },
-        beneficiaries: (invoiceData.beneficiaries && invoiceData.beneficiaries.length
-          ? invoiceData.beneficiaries
-          : normalizedData.beneficiaries || []
-        ).map((b: any) => ({
-          name: b.name || b.fullName || '',
-          relationship: b.relationshipToApplicant || b.relationship || '',
-          nric: b.nric || b.idNo || '',
-        })),
-        nominees: (invoiceData.nominees && invoiceData.nominees.length
-          ? invoiceData.nominees
-          : normalizedData.nominees || []
-        ).map((n: any) => ({
-          name: n.name || n.fullName || '',
-          nric: n.nric || n.idNo || '',
-          relationship: n.relationship || '',
-        })),
-        pricing: {
-          nicheAmount: invoiceData.nicheAmount || 0,
-          serviceAmount: invoiceData.serviceAmount || 0,
-          taxAmount: invoiceData.taxAmount || 0,
-          totalAmount: invoiceData.totalAmount || 0,
-        },
-      });
+  // Popup invoice viewer state
+  const [isInvoiceViewerOpen, setIsInvoiceViewerOpen] = useState(false);
+  const [viewerInvoiceData, setViewerInvoiceData] = useState<InvoiceTemplateData | null>(null);
 
-      // Open PDF in new window for printing
-      const url = URL.createObjectURL(blob);
-      const printWindow = window.open(url, '_blank');
-      if (printWindow) {
-        printWindow.onload = () => {
-          printWindow.print();
-          // Clean up after printing
-          setTimeout(() => {
-            URL.revokeObjectURL(url);
-          }, 1000);
-        };
-      } else {
-        // Fallback: download if popup is blocked
-        const downloadUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = `Invoice-${invoiceData.invoiceNo || applicationNumber || 'Invoice'}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(downloadUrl);
-      }
-    } catch (error) {
-      console.error('Error printing:', error);
-      alert('Failed to print PDF. Please try downloading instead.');
-    }
+  const handlePrint = async () => {
+    // Open HTML popup viewer instead of direct PDF print
+    const tmpl: InvoiceTemplateData = {
+      invoiceCode: invoiceData.invoiceNo || stableInvoiceNo,
+      invoiceDate: invoiceData.invoiceDate || stableInvoiceDate,
+      customerName: invoiceData.applicantName || normalizedData.applicantName || '',
+      customerAddress: invoiceData.applicantAddress || normalizedData.applicantAddress || '',
+      paymentMode: invoiceData.paymentMode || '',
+      totalAmount: invoiceData.totalAmount || 0,
+      taxAmount: invoiceData.taxAmount || 0,
+      items: [], // Could be populated from backend invoice details in future
+    };
+    setViewerInvoiceData(tmpl);
+    setIsInvoiceViewerOpen(true);
   };
   
   return <div>
@@ -514,5 +456,10 @@ export function InvoiceReceipt({
           </div>
         </div>
       </div>
+      <InvoiceViewerModal
+        isOpen={isInvoiceViewerOpen}
+        onClose={() => setIsInvoiceViewerOpen(false)}
+        invoiceData={viewerInvoiceData}
+      />
     </div>;
 }

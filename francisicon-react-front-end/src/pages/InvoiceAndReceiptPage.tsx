@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useReceipt } from '../hooks/useReceipt';
 import { useToast } from '../contexts/ToastContext';
 import { addressService } from '../services/addressService';
+import { parseRawAddress } from '../components/AddressInput';
 import { PrinterIcon, EyeIcon, LoaderIcon } from 'lucide-react';
+import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
+import { InvoiceTemplateData } from '../services/invoiceTemplateService';
 
 interface InvoiceItem {
   id: string;
@@ -36,13 +39,10 @@ export function InvoiceAndReceiptPage() {
   const { showSuccess, showError } = useToast();
   const { 
     fetchLastReceiptNumber, 
-    getInvoicePdfLink, 
     getReceiptPdfLink,
     fetchInvoiceByCode,
-    fetchReceiptByCode: handleFetchReceiptByCode,
     fetchReceiptItems,
     selectedInvoice,
-    selectedReceipt,
     lastReceiptNumber,
     receiptItems,
     loading 
@@ -54,9 +54,9 @@ export function InvoiceAndReceiptPage() {
 
   const [applicationNumber, setApplicationNumber] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [receiptCode, setReceiptCode] = useState('');
+  const [receiptCode] = useState('');
   const [transactionDate, setTransactionDate] = useState(new Date().toLocaleDateString('en-GB'));
-  const [receiptStatus, setReceiptStatus] = useState('Active');
+  const [receiptStatus] = useState('Active');
   const [payeeName, setPayeeName] = useState('');
   const [viewingInvoiceCode, setViewingInvoiceCode] = useState<string | null>(null);
   const [viewingReceiptCode, setViewingReceiptCode] = useState<string | null>(null);
@@ -69,6 +69,10 @@ export function InvoiceAndReceiptPage() {
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [items, setItems] = useState<InvoiceItem[]>([]);
   
+  // Invoice viewer modal state
+  const [isInvoiceViewerOpen, setIsInvoiceViewerOpen] = useState(false);
+  const [viewerInvoiceData, setViewerInvoiceData] = useState<InvoiceTemplateData | null>(null);
+  
   // Ref for debouncing postal code lookup
   const postalCodeDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -77,75 +81,29 @@ export function InvoiceAndReceiptPage() {
     ? receiptItems.map(item => item.itemName || item.description || '').filter(Boolean)
     : DEFAULT_ITEM_OPTIONS;
 
-  // Parse address string into separate fields
-  const parseAndSetAddress = useCallback((addressString: string) => {
+  // Parse address string into separate fields using common parser
+  const applyParsedAddress = useCallback((addressString: string) => {
     if (!addressString || !addressString.trim()) return;
-    
-    const address = addressString.trim();
-    
-    // Pattern 1: "Blk XXX Street Name #XX-XX Singapore XXXXXX" or "Block XXX Street Name #XX-XX Singapore XXXXXX"
-    const pattern1 = address.match(/B[il]o?ck\s*(\d+[A-Z]?)\s+(.+?)(?:,\s*Singapore\s+(\d{6}))?/i);
-    if (pattern1) {
-      const blockNo = pattern1[1];
-      const rest = pattern1[2].trim();
-      const postalCode = pattern1[3] || '';
-      
-      // Extract unit number (#XX-XX)
-      const unitMatch = rest.match(/#(\d+-\d+)/);
-      if (unitMatch) {
-        setAddressUnit(`#${unitMatch[1]}`);
-        const streetPart = rest.replace(/#\d+-\d+/, '').trim();
-        setAddressStreet(streetPart);
-      } else {
-        setAddressStreet(rest);
-      }
-      
-      setAddressNumber(blockNo);
-      if (postalCode) {
-        setAddressPostalCode(postalCode);
-      }
-      return;
+
+    const parsed = parseRawAddress(addressString);
+
+    if (parsed.block) {
+      setAddressBlock(parsed.block);
     }
-    
-    // Pattern 2: Comma-separated format "Block XXX, Street Name, #XX-XX, Singapore XXXXXX"
-    const parts = address.split(',').map(p => p.trim()).filter(Boolean);
-    if (parts.length >= 2) {
-      // Try to identify parts
-      parts.forEach((part, index) => {
-        const lowerPart = part.toLowerCase();
-        if (lowerPart.includes('blk') || lowerPart.includes('block')) {
-          const blockMatch = part.match(/(\d+[A-Z]?)/);
-          if (blockMatch) {
-            setAddressNumber(blockMatch[1]);
-          }
-        } else if (part.startsWith('#')) {
-          setAddressUnit(part);
-        } else if (lowerPart.includes('singapore')) {
-          const postalMatch = part.match(/(\d{6})/);
-          if (postalMatch) {
-            setAddressPostalCode(postalMatch[1]);
-          }
-          setAddressCountry('Singapore');
-        } else if (!part.match(/^\d{6}$/) && index < parts.length - 1) {
-          // Likely street name
-          setAddressStreet(part);
-        } else if (part.match(/^\d{6}$/)) {
-          // Postal code
-          setAddressPostalCode(part);
-        }
-      });
-      return;
+    if (parsed.blockNo) {
+      setAddressNumber(parsed.blockNo);
     }
-    
-    // Pattern 3: Extract postal code if present (6 digits)
-    const postalMatch = address.match(/\b(\d{6})\b/);
-    if (postalMatch) {
-      setAddressPostalCode(postalMatch[1]);
+    if (parsed.streetName) {
+      setAddressStreet(parsed.streetName);
     }
-    
-    // Set as street if can't parse further
-    if (!addressStreet) {
-      setAddressStreet(address);
+    if (parsed.unitNo) {
+      setAddressUnit(parsed.unitNo);
+    }
+    if (parsed.postalCode) {
+      setAddressPostalCode(parsed.postalCode);
+    }
+    if (parsed.country) {
+      setAddressCountry(parsed.country);
     }
   }, []);
 
@@ -227,7 +185,7 @@ export function InvoiceAndReceiptPage() {
         const invoiceData = invoice as any;
         if (invoiceData.address || invoiceData.customerAddress) {
           const addressString = invoiceData.address || invoiceData.customerAddress || '';
-          parseAndSetAddress(addressString);
+          applyParsedAddress(addressString);
         } else if (invoiceData.addressBlock || invoiceData.addressNumber || invoiceData.addressStreet) {
           // Handle individual address fields if provided
           if (invoiceData.addressBlock) setAddressBlock(invoiceData.addressBlock);
@@ -398,17 +356,18 @@ export function InvoiceAndReceiptPage() {
     if (!lastReceiptNumber) return 'N/A';
     if (typeof lastReceiptNumber === 'string') return lastReceiptNumber;
     if (typeof lastReceiptNumber === 'object') {
+      const lastReceiptAny = lastReceiptNumber as any;
       // Handle object with data property
-      if ('data' in lastReceiptNumber && typeof lastReceiptNumber.data === 'string') {
-        return lastReceiptNumber.data;
+      if ('data' in lastReceiptAny && typeof lastReceiptAny.data === 'string') {
+        return lastReceiptAny.data;
       }
       // Handle object with lastNumber property
-      if ('lastNumber' in lastReceiptNumber && typeof lastReceiptNumber.lastNumber === 'string') {
-        return lastReceiptNumber.lastNumber;
+      if ('lastNumber' in lastReceiptAny && typeof lastReceiptAny.lastNumber === 'string') {
+        return lastReceiptAny.lastNumber;
       }
       // Handle object with success and data
-      if ('success' in lastReceiptNumber && 'data' in lastReceiptNumber) {
-        const data = (lastReceiptNumber as any).data;
+      if ('success' in lastReceiptAny && 'data' in lastReceiptAny) {
+        const data = lastReceiptAny.data;
         if (typeof data === 'string') return data;
         if (typeof data === 'object' && data?.lastNumber) return String(data.lastNumber);
       }
@@ -513,139 +472,28 @@ export function InvoiceAndReceiptPage() {
   };
 
 
-  // Handle view receipt by code (similar to ReceiptPage)
-  const handleViewReceiptByCode = async (code: string) => {
-    if (!code.trim()) {
-      showError('Error', 'Receipt code is required');
-      return;
+  // Build customer address string from address fields
+  const buildCustomerAddress = useCallback(() => {
+    const parts: string[] = [];
+    if (addressBlock && addressNumber) {
+      parts.push(`${addressBlock} ${addressNumber}`);
     }
-
-    setViewingReceiptCode(code);
-
-    try {
-      // Dispatch the action - it doesn't return a promise, so we need to check selectedReceipt
-      handleFetchReceiptByCode(code.trim());
-      
-      // Wait a bit for Redux to update, then check selectedReceipt
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Check if receipt was loaded in Redux state
-      if (selectedReceipt && (selectedReceipt.receiptCode === code.trim() || selectedReceipt.code === code.trim())) {
-        const receipt = selectedReceipt;
-        
-        if (!receipt) {
-          showError('Error', 'Receipt not found');
-          return;
-        }
-
-        // Map receipt data to form fields
-        setReceiptCode(receipt.receiptCode || '');
-        setInvoiceNumber(receipt.invoiceCode || invoiceNumber || '');
-        setPayeeName(receipt.customerName || '');
-        setPaymentMode(receipt.paymentMode || 'Cash');
-        
-        // Parse and set transaction date
-        if (receipt.receiptDate) {
-          const date = new Date(receipt.receiptDate);
-          if (!isNaN(date.getTime())) {
-            const day = String(date.getDate()).padStart(2, '0');
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const year = date.getFullYear();
-            setTransactionDate(`${day}-${month}-${year}`);
-          }
-        }
-
-        // Parse address from receipt
-        const receiptData = receipt as any;
-        if (receiptData.address || receiptData.customerAddress) {
-          const addressString = receiptData.address || receiptData.customerAddress || '';
-          parseAndSetAddress(addressString);
-        }
-
-        // Set application number if available
-        if (receipt.applicationCode || receipt.applicationId) {
-          setApplicationNumber(receipt.applicationCode || String(receipt.applicationId) || '');
-        }
-
-        // Load receipt items if receipt ID is available
-        if (receipt.receiptId) {
-          fetchReceiptItems(receipt.receiptId.toString(), true).catch((err) => {
-            console.warn('Failed to fetch receipt items:', err);
-          });
-        }
-
-        // Map receipt items to invoice items if available
-        // Use invoiceDetails from Receipt interface, or check for details in the receipt object
-        const receiptDetails = (receipt as any).receiptDetails || receipt.invoiceDetails || (receipt as any).details || [];
-        if (receiptDetails && receiptDetails.length > 0) {
-          const mappedItems: InvoiceItem[] = receiptDetails.map((detail: any, index: number) => {
-            const itemName = detail.itemName || detail.ItemName || detail.description || detail.Item || '';
-            const quantity = detail.quantity || detail.Quantity || 1;
-            const payingAmount = detail.payingAmount || detail.PayingAmount || detail.unitPrice || detail.UnitAmount || 0;
-            const lineTaxPercent = detail.lineTaxPercent || detail.LineTaxPercent || detail.taxPercent || detail.TaxPercent || 9;
-            const lineTaxAmount = detail.lineTaxAmount || detail.LineTaxAmount || detail.taxAmount || detail.TaxAmount || 0;
-            const totalPayingAmount = detail.totalPayingAmount || detail.TotalPayingAmount || detail.amount || detail.Amount || 0;
-            const lineTotalAmount = detail.lineTotalAmount || detail.LineTotalAmount || payingAmount * quantity;
-            const refDocNumber = detail.refDocNumber || detail.RefDocNumber || '';
-
-            // Find matching item in available items
-            let selectItem = availableItems[0] || 'Other';
-            if (itemName) {
-              const matchedReceiptItem = receiptItems.find(
-                receiptItem => 
-                  (detail.itemId && receiptItem.itemId === detail.itemId) ||
-                  receiptItem.itemName?.trim().toLowerCase() === itemName.trim().toLowerCase()
-              );
-              if (matchedReceiptItem) {
-                selectItem = matchedReceiptItem.itemName || selectItem;
-              } else {
-                const exactMatch = availableItems.find(item => 
-                  item.trim().toLowerCase() === itemName.trim().toLowerCase()
-                );
-                if (exactMatch) {
-                  selectItem = exactMatch;
-                }
-              }
-            }
-
-            const matchedReceiptItem = receiptItems.find(
-              receiptItem => receiptItem.itemName === selectItem || receiptItem.description === selectItem
-            );
-            const defaultAmount = matchedReceiptItem?.unitPrice ?? matchedReceiptItem?.defaultAmount ?? payingAmount;
-            const totalNoTax = lineTotalAmount || (payingAmount * quantity);
-            const taxAmount = lineTaxAmount || (totalNoTax * lineTaxPercent / 100);
-            const totalAmount = totalPayingAmount || (totalNoTax + taxAmount);
-
-            return {
-              id: `item-${index}-${Date.now()}`,
-              selectItem,
-              reference: refDocNumber,
-              defaultAmount,
-              amountPaying: payingAmount,
-              quantity,
-              totalNoTax,
-              taxPercent: lineTaxPercent,
-              taxAmount,
-              totalAmount
-            };
-          });
-          setItems(mappedItems);
-        }
-
-        showSuccess('Success', 'Receipt loaded successfully');
-      } else {
-        // Receipt not found in Redux state
-        showError('Error', 'Receipt not found. Please check the receipt code and try again.');
-      }
-    } catch (error: any) {
-      console.error('Error loading receipt:', error);
-      showError('Error', error.message || 'Failed to load receipt');
-    } finally {
-      setViewingReceiptCode(null);
+    if (addressStreet) {
+      parts.push(addressStreet);
     }
-  };
+    if (addressUnit) {
+      parts.push(addressUnit);
+    }
+    if (addressPostalCode) {
+      parts.push(addressPostalCode);
+    }
+    if (addressCountry) {
+      parts.push(addressCountry);
+    }
+    return parts.join(', ') || '';
+  }, [addressBlock, addressNumber, addressStreet, addressUnit, addressPostalCode, addressCountry]);
 
-  // Handle print invoice (enhanced like ReceiptPage)
+  // Handle print invoice - open InvoiceViewerModal popup
   const handlePrintInvoice = async () => {
     try {
       // Try invoice number first, then receipt code
@@ -658,44 +506,67 @@ export function InvoiceAndReceiptPage() {
 
       setViewingInvoiceCode(codeToUse);
 
-      console.log('[handlePrintInvoice] Starting invoice PDF generation for code:', codeToUse);
+      // Build invoice template data from form state
+      const customerAddress = buildCustomerAddress();
       
-      // Get invoice PDF URL - the service already opens it in a new tab
-      const pdfUrl = await getInvoicePdfLink(codeToUse, true, applicationNumber || applicationNumberFromRoute);
-      
-      console.log('[handlePrintInvoice] PDF URL generated:', pdfUrl);
-      
-      // Verify the PDF URL is valid
-      if (!pdfUrl) {
-        throw new Error('PDF URL was not generated. Please try again.');
+      // Format transaction date (convert from DD-MM-YYYY to proper date format)
+      let formattedDate = transactionDate;
+      try {
+        if (transactionDate && transactionDate.includes('-')) {
+          const parts = transactionDate.split('-');
+          if (parts.length === 3) {
+            const [day, month, year] = parts;
+            const dateObj = new Date(`${year}-${month}-${day}`);
+            if (!isNaN(dateObj.getTime())) {
+              formattedDate = dateObj.toLocaleDateString('en-SG', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              });
+            }
+          }
+        } else if (transactionDate) {
+          // Try parsing as ISO date or other formats
+          const dateObj = new Date(transactionDate);
+          if (!isNaN(dateObj.getTime())) {
+            formattedDate = dateObj.toLocaleDateString('en-SG', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            });
+          }
+        }
+      } catch (error) {
+        console.warn('Error formatting date:', error);
+        // Keep original date string if formatting fails
       }
 
-      // Additional check: try to open the PDF if it wasn't already opened
-      if (pdfUrl && pdfUrl.startsWith('blob:')) {
-        // The service should have already opened it, but verify
-        const testWindow = window.open(pdfUrl, '_blank', 'noopener,noreferrer');
-        if (testWindow) {
-          // Give it a moment to load
-          setTimeout(() => {
-            if (testWindow.closed) {
-              console.warn('[handlePrintInvoice] PDF window was closed');
-            }
-          }, 1000);
-        }
-      }
-      
-      showSuccess('Success', 'Invoice PDF opened in a new tab');
+      // Map items to template items
+      const templateItems = items.map(item => ({
+        description: item.selectItem || 'Item',
+        quantity: item.quantity || 1,
+        unitPrice: item.amountPaying || 0,
+        amount: item.totalAmount || 0,
+      }));
+
+      const templateData: InvoiceTemplateData = {
+        invoiceCode: codeToUse,
+        invoiceDate: formattedDate,
+        customerName: payeeName || 'N/A',
+        customerAddress: customerAddress || undefined,
+        paymentMode: paymentMode || undefined,
+        totalAmount: totals.totalPayable || 0,
+        taxAmount: totals.taxAmount || 0,
+        items: templateItems.length > 0 ? templateItems : undefined,
+      };
+
+      setViewerInvoiceData(templateData);
+      setIsInvoiceViewerOpen(true);
+      showSuccess('Success', 'Invoice viewer opened');
     } catch (error: any) {
       console.error('[handlePrintInvoice] Error:', error);
-      const errorMessage = error?.message || error?.response?.data?.message || 'Failed to print invoice. Please check the console for details.';
+      const errorMessage = error?.message || 'Failed to open invoice viewer';
       showError('Error', errorMessage);
-      
-      // If there's a specific error message, show it
-      if (error?.message?.includes('timed out')) {
-        showError('Error', 'PDF generation is taking too long. Please try again.');
-      } else if (error?.message?.includes('Popup blocked')) {
-        showError('Error', 'Popup was blocked. Please allow popups for this site.');
-      }
     } finally {
       setViewingInvoiceCode(null);
     }
@@ -1083,6 +954,17 @@ export function InvoiceAndReceiptPage() {
           </div>
         </div>
       </div>
+
+      {/* Invoice Viewer Modal */}
+      <InvoiceViewerModal
+        isOpen={isInvoiceViewerOpen}
+        onClose={() => {
+          setIsInvoiceViewerOpen(false);
+          setViewerInvoiceData(null);
+        }}
+        invoiceData={viewerInvoiceData}
+        loading={viewingInvoiceCode !== null}
+      />
     </Layout>
   );
 }

@@ -15,6 +15,7 @@ import { NichesReportPage } from './pages/NichesReportPage';
 import { MiscReceiptPage } from './pages/MiscReceiptPage';
 import { MiscInvoicePage } from './pages/MiscInvoicePage';
 import { InvoiceAndReceiptPage } from './pages/InvoiceAndReceiptPage';
+import { InvoiceAndReceiptManagementPage } from './pages/InvoiceAndReceiptManagementPage';
 import { InscriptionPage } from './pages/InscriptionPage';
 import { NichiBookingPage } from './pages/NichiBookingPage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
@@ -47,12 +48,12 @@ export function AppRouter() {
         } />
         <Route path="/receipt" element={
           <ProtectedRoute>
-            <ReceiptPage />
+            <InvoiceAndReceiptManagementPage />
           </ProtectedRoute>
         } />
         <Route path="/invoice" element={
           <ProtectedRoute>
-            <ReceiptPage />
+            <InvoiceAndReceiptManagementPage />
           </ProtectedRoute>
         } />
         <Route path="/invoice-receipt" element={

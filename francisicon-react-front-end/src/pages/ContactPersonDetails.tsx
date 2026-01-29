@@ -4,14 +4,6 @@ import { FormInput } from '../components/FormInput';
 import { FormSelect } from '../components/FormSelect';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store';
-import { 
-  setBlock,
-  setBlockNo,
-  setStreetName,
-  setUnitNo,
-  setPostalCode,
-  setCountry
-} from '../store/addressSlice';
 import { AddressInput } from '../components/AddressInput';
 
 interface ContactPersonDetailsProps {
@@ -30,33 +22,6 @@ export function ContactPersonDetails({
   const validationErrors = useSelector((state: RootState) => state.application.validationErrors);
   
   const isInitializedRef = useRef(false);
-  
-  // Initialize address fields from formData if they exist (only once on mount)
-  useEffect(() => {
-    if (isInitializedRef.current) return;
-    
-    if (formData.applicantBlock || formData.applicantBlockNo || formData.applicantStreetName || 
-        formData.applicantUnitNo || formData.applicantPostalCode || formData.applicantCountry) {
-      // Address fields already exist in formData, sync with Redux
-      dispatch(setBlock(formData.applicantBlock || ''));
-      dispatch(setBlockNo(formData.applicantBlockNo || ''));
-      dispatch(setStreetName(formData.applicantStreetName || ''));
-      dispatch(setUnitNo(formData.applicantUnitNo || ''));
-      dispatch(setPostalCode(formData.applicantPostalCode || ''));
-      dispatch(setCountry(formData.applicantCountry || 'Singapore'));
-      isInitializedRef.current = true;
-    } else if (formData.applicantAddress || formData.contactAddress) {
-      // Legacy address format - try to parse it
-      const address = formData.applicantAddress || formData.contactAddress || '';
-      // Simple parsing (can be improved)
-      const postalMatch = address.match(/\b\d{6}\b/);
-      if (postalMatch) {
-        dispatch(setPostalCode(postalMatch[0]));
-      }
-      isInitializedRef.current = true;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
 
   // Handle address change from AddressInput component - memoized to prevent infinite loops
   const handleAddressChange = useCallback((addressData: {
@@ -152,6 +117,7 @@ export function ContactPersonDetails({
               postalCode: formData.applicantPostalCode,
               country: formData.applicantCountry
             }}
+            initialAddressString={formData.applicantAddress || formData.contactAddress || ''}
             isReadOnly={isReadOnly}
             error={validationErrors.applicantAddress || validationErrors.contactAddress}
           />

@@ -17,7 +17,9 @@ import { useToast } from '../contexts/ToastContext';
 import { ReceiptDetailModal } from '../components/ReceiptDetailModal';
 import { CreateReceiptModal } from '../components/CreateReceiptModal';
 import { ReportViewerModal } from '../components/ReportViewerModal';
-import { Receipt } from '../services/receiptService';
+import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
+import { InvoiceTemplateData } from '../services/invoiceTemplateService';
+import { Receipt, receiptService } from '../services/receiptService';
 
 const formatInputDate = (date: Date) => date.toISOString().split('T')[0];
 
@@ -90,6 +92,8 @@ export function ReceiptPage() {
   const [viewingReceiptCode, setViewingReceiptCode] = useState<string | null>(null);
   const [viewingReport, setViewingReport] = useState<Blob | null>(null);
   const [viewingReportTitle, setViewingReportTitle] = useState<string>('');
+  const [isInvoiceViewerOpen, setIsInvoiceViewerOpen] = useState(false);
+  const [viewerInvoiceData, setViewerInvoiceData] = useState<InvoiceTemplateData | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<AppliedFilters>({
     fromDate: defaultFromDate,
     toDate: defaultToDate,
@@ -435,24 +439,49 @@ export function ReceiptPage() {
 
   const handleViewInvoicePdf = async (receipt: Receipt) => {
     if (!receipt.invoiceCode || receipt.invoiceCode === '-') {
-      showError('Error', 'Invoice code is required to view invoice PDF');
+      showError('Error', 'Invoice code is required to view invoice');
       return;
     }
 
     const isPending = (receipt.payingAmount || 0) < (receipt.totalAmount || 0);
     if (isPending) {
-      showError('Error', 'Invoice PDF is only available for fully paid receipts');
+      showError('Error', 'Invoice view is only available for fully paid receipts');
       return;
     }
 
     try {
       const invoiceCode = receipt.invoiceCode.trim();
-      const applicationCode =
-        receipt.applicationCode || (receipt.applicationId ? String(receipt.applicationId) : undefined);
-      await getInvoicePdfLink(invoiceCode, true, applicationCode);
-      showSuccess('Success', 'Invoice PDF opened in new tab');
+
+      // Fetch full invoice data so we can render a correct invoice template
+      const invoice = await receiptService.getInvoiceByCode(invoiceCode);
+
+      const items =
+        (invoice.invoiceDetails || []).map((d) => ({
+          description: d.description,
+          quantity: d.quantity || 1,
+          unitPrice: d.unitPrice || 0,
+          amount: d.amount || 0,
+        })) || [];
+
+      const tmpl: InvoiceTemplateData = {
+        invoiceCode: invoice.invoiceCode || invoiceCode,
+        invoiceDate: invoice.invoiceDate || receipt.receiptDate || '',
+        customerName: invoice.customerName || receipt.customerName || '',
+        customerAddress: (receipt as any).customerAddress || undefined,
+        paymentMode: invoice.paymentMode || receipt.paymentMode || '',
+        totalAmount:
+          invoice.totalAmount ||
+          invoice.payingAmount ||
+          receipt.totalAmount ||
+          receipt.payingAmount ||
+          0,
+        taxAmount: undefined,
+        items: items.length > 0 ? items : undefined,
+      };
+      setViewerInvoiceData(tmpl);
+      setIsInvoiceViewerOpen(true);
     } catch (error: any) {
-      const errorMessage = error?.message || error?.response?.data?.message || 'Failed to open invoice PDF';
+      const errorMessage = error?.message || error?.response?.data?.message || 'Failed to open invoice view';
       showError('Error', errorMessage);
     }
   };
@@ -834,6 +863,11 @@ export function ReceiptPage() {
         pdfBlob={viewingReport}
         title={viewingReportTitle}
         loading={generatingReportPdf}
+      />
+      <InvoiceViewerModal
+        isOpen={isInvoiceViewerOpen}
+        onClose={() => setIsInvoiceViewerOpen(false)}
+        invoiceData={viewerInvoiceData}
       />
     </Layout>
   );
