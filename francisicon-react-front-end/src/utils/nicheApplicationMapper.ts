@@ -5,7 +5,17 @@ import { formatDateForInput } from './dateUtils';
 // Map form data to niche application request format
 export const mapFormDataToNicheApplicationRequest = (formData: Record<string, any>): NicheApplicationRequest => {
   const normalizedData = normalizeFormData(formData);
-  return createNicheApplicationRequest(normalizedData);
+  const request = createNicheApplicationRequest(normalizedData);
+  // Ensure all required fields have default values
+  return {
+    ...request,
+    nicheId: request.nicheId ?? 0,
+    applicantName: request.applicantName || '',
+    applicantIDNo: request.applicantIDNo || '',
+    nomineeName: request.nomineeName || '',
+    nomineeIDNo: request.nomineeIDNo || '',
+    beneficiary1: request.beneficiary1 || { name: '', relationshipToApplicant: '' }
+  } as unknown as NicheApplicationRequest;
 };
 
 const normalizeAddress = (address: any): string => {
@@ -110,7 +120,7 @@ export const mapApiApplicationToFormData = (record?: RawNicheApplication): Niche
       (record.nominee ? [record.nominee] : []) ||
       []
   );
-  const primaryNominee = (record.nominee || nominees[0]) || {};
+  const primaryNominee = (record.nominee || nominees?.[0]) || {};
   
   // Handle nicheId - can be array or single value
   let nicheIds: number[] = [];
@@ -141,6 +151,61 @@ export const mapApiApplicationToFormData = (record?: RawNicheApplication): Niche
     twoBeneficiaries: consentForms.twoBeneficiaries || null
   };
 
+  // Extract structured address fields from API response
+  // Priority: record level > applicant.address object > direct address* fields on applicant
+  const applicantAddress = applicant.address || {};
+  
+  // Check multiple sources for address fields (handles both nested and flat structures)
+  const addressNo = record.applicantAddressNo || 
+    applicantAddress.no || 
+    applicantAddress.addressNo || 
+    (applicant as any)?.addressNo ||  // Direct field on applicant (e.g., applicant.addressNo)
+    '';
+  const addressLine1 = record.applicantAddressLine1 || 
+    applicantAddress.line1 || 
+    applicantAddress.addressLine1 || 
+    (applicant as any)?.addressLine1 ||  // Direct field on applicant (e.g., applicant.addressLine1)
+    '';
+  const addressLine2 = record.applicantAddressLine2 || 
+    applicantAddress.line2 || 
+    applicantAddress.addressLine2 || 
+    (applicant as any)?.addressLine2 ||  // Direct field on applicant (e.g., applicant.addressLine2)
+    '';
+  const addressCity = record.applicantAddressCity || 
+    applicantAddress.city || 
+    applicantAddress.addressCity || 
+    (applicant as any)?.addressCity ||  // Direct field on applicant (e.g., applicant.addressCity)
+    '';
+  const addressState = record.applicantAddressState || 
+    applicantAddress.state || 
+    applicantAddress.addressState || 
+    (applicant as any)?.addressState ||  // Direct field on applicant (e.g., applicant.addressState)
+    '';
+  const addressCountry = record.applicantAddressCountry || 
+    applicantAddress.country || 
+    applicantAddress.addressCountry || 
+    (applicant as any)?.addressCountry ||  // Direct field on applicant (e.g., applicant.addressCountry)
+    'Singapore';
+
+  // Map address fields based on API structure:
+  // addressNo -> block dropdown (Block/No), addressLine1 -> blockNo, addressLine2 -> streetName
+  // addressCity -> unitNo, addressState -> postalCode, addressCountry -> country
+  // Handle "No" value: if addressNo is "No", set block to empty string (which shows "No" in dropdown)
+  const applicantBlock = addressNo && addressNo.trim() !== '' && addressNo !== 'No' ? 'Block' : '';
+  const applicantBlockNo = (addressLine1 || '').trim();
+  const applicantStreetName = (addressLine2 || '').trim();
+  const applicantUnitNo = (addressCity || '').trim();
+  const applicantPostalCode = (addressState || '').trim();
+  const applicantCountry = (addressCountry || 'Singapore').trim();
+
+  // Build legacy address string if structured fields exist, otherwise use normalized address
+  let legacyAddress = '';
+  if (applicantBlockNo && applicantStreetName) {
+    legacyAddress = `${applicantBlock ? applicantBlock + ' ' : ''}${applicantBlockNo} ${applicantStreetName}${applicantUnitNo ? ' #' + applicantUnitNo : ''}${applicantPostalCode ? ', ' + applicantCountry + ' ' + applicantPostalCode : ''}`;
+  } else {
+    legacyAddress = record.applicantAddress || normalizeAddress(applicant.address) || '';
+  }
+
   const baseFormData: Record<string, any> = {
     applicationNumber: record.applicationNumber || record.applicationCode || record.code || '',
     consentForms: consentFormsData,
@@ -155,11 +220,19 @@ export const mapApiApplicationToFormData = (record?: RawNicheApplication): Niche
     wallCode: record.nicheDetails?.wallCode || record.wallCode || '',
     rowNumber: record.nicheDetails?.rowNumber || record.rowNumber || '',
     rowLevel: record.nicheDetails?.rowLevel ?? record.rowLevel ?? null,
-    applicantName: record.applicantName || applicant.name || '',
-    applicantIDNo: record.applicantIDNo || applicant.idNo || '',
-    applicantEmail: record.applicantEmail || applicant.email || '',
-    applicantPhone: record.applicantPhone || applicant.mobileNo || '',
-    applicantAddress: record.applicantAddress || normalizeAddress(applicant.address),
+    // Trim name and phone fields to fix validation issues
+    applicantName: (record.applicantName || applicant.name || '').trim(),
+    applicantIDNo: (record.applicantIDNo || applicant.idNo || '').trim(),
+    applicantEmail: (record.applicantEmail || applicant.email || '').trim(),
+    applicantPhone: (record.applicantPhone || applicant.mobileNo || '').trim(),
+    applicantAddress: legacyAddress,
+    // Structured address fields
+    applicantBlock: applicantBlock,
+    applicantBlockNo: applicantBlockNo,
+    applicantStreetName: applicantStreetName,
+    applicantUnitNo: applicantUnitNo,
+    applicantPostalCode: applicantPostalCode,
+    applicantCountry: applicantCountry,
     applicantReligion:
       record.applicantReligion ||
       (typeof applicant.isCatholic === 'boolean'
@@ -167,42 +240,38 @@ export const mapApiApplicationToFormData = (record?: RawNicheApplication): Niche
           ? 'Catholic'
           : 'Non-Catholic'
         : ''),
-    applicantHomeTel: record.applicantHomeTel || applicant.homeTelNo || '',
-    applicantOfficeTel: record.applicantOfficeTel || applicant.officeTelNo || '',
-    applicantCountry: record.applicantCountry || 'Singapore',
+    applicantHomeTel: (record.applicantHomeTel || applicant.homeTelNo || '').trim(),
+    applicantOfficeTel: (record.applicantOfficeTel || applicant.officeTelNo || '').trim(),
     contactStatus: record.contactStatus || 'Active',
     contactRemarks: record.contactRemarks || '',
     remarks: record.remarks || '',
     bookedDate: record.bookedDate || '',
     beneficiaries,
-    beneficiary1: record.beneficiary1 || beneficiaries[0] || {
+    beneficiary1: record.beneficiary1 || beneficiaries?.[0] || {
       name: '',
       relationshipToApplicant: ''
     },
     nominees,
     nomineeName:
-      record.nomineeName ||
+      (record.nomineeName ||
       primaryNominee.fullName ||
       primaryNominee.name ||
-      '',
+      '').trim(),
     nomineeIDNo:
-      record.nomineeIDNo ||
+      (record.nomineeIDNo ||
       primaryNominee.nric ||
-      primaryNominee.idNo ||
-      '',
+      '').trim(),
     nomineeRelationship:
-      record.nomineeRelationship ||
+      (record.nomineeRelationship ||
       primaryNominee.relationship ||
-      primaryNominee.relationshipToApplicant ||
-      '',
+      '').trim(),
     nomineeAddress: record.nomineeAddress || normalizeAddress(primaryNominee.address),
     nomineePhone:
-      record.nomineePhone ||
+      (record.nomineePhone ||
       primaryNominee.contactNumber ||
       primaryNominee.phone ||
-      primaryNominee.mobileNo ||
-      '',
-    nomineeEmail: record.nomineeEmail || primaryNominee.email || '',
+      '').trim(),
+    nomineeEmail: (record.nomineeEmail || primaryNominee.email || '').trim(),
     nomineeStatus: record.nomineeStatus || primaryNominee.status || 'Active',
     invoice: record.invoice || {}
   };

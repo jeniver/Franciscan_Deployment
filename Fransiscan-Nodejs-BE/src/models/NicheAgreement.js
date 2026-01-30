@@ -176,6 +176,12 @@ class NicheAgreement {
       applicant: {
         name: this.applicantName,
         address: this.getApplicantAddress(),
+        addressNo: this.applicantAddressNo,
+        addressLine1: this.applicantAddressLine1,
+        addressLine2: this.applicantAddressLine2,
+        addressCity: this.applicantAddressCity,
+        addressState: this.applicantAddressState,
+        addressCountry: this.applicantAddressCountry,
         email: this.applicantEmailID,
         idNo: this.applicantIDNo,
         mobileNo: this.applicantMobileNo,
@@ -188,6 +194,12 @@ class NicheAgreement {
       nominee: {
         name: this.nomineeName,
         address: this.getNomineeAddress(),
+        addressNo: this.nomineeAddressNo,
+        addressLine1: this.nomineeAddressLine1,
+        addressLine2: this.nomineeAddressLine2,
+        addressCity: this.nomineeAddressCity,
+        addressState: this.nomineeAddressState,
+        addressCountry: this.nomineeAddressCountry,
         email: this.nomineeEmailID,
         idNo: this.nomineeIDNo,
         mobileNo: this.nomineeMobileNo,
@@ -197,16 +209,24 @@ class NicheAgreement {
       },
 
       // Second Nominee
-      nominee2: {
-        name: this.nominee2Name,
-        address: this.getNominee2Address(),
-        email: this.nominee2EmailID,
-        idNo: this.nominee2IDNo,
-        mobileNo: this.nominee2MobileNo,
-        homeTelNo: this.nominee2HomeTelNo,
-        officeTelNo: this.nominee2OfficeTelNo,
-        relationship: this.nominee2Relationship
-      },
+      nominee2: this.nominee2Name || this.nominee2IDNo || this.nominee2MobileNo || this.getNominee2Address()
+        ? {
+          name: this.nominee2Name,
+          address: this.getNominee2Address(),
+          addressNo: this.nominee2AddressNo,
+          addressLine1: this.nominee2AddressLine1,
+          addressLine2: this.nominee2AddressLine2,
+          addressCity: this.nominee2AddressCity,
+          addressState: this.nominee2AddressState,
+          addressCountry: this.nominee2AddressCountry,
+          email: this.nominee2EmailID,
+          idNo: this.nominee2IDNo,
+          mobileNo: this.nominee2MobileNo,
+          homeTelNo: this.nominee2HomeTelNo,
+          officeTelNo: this.nominee2OfficeTelNo,
+          relationship: this.nominee2Relationship
+        }
+        : null,
 
       // Beneficiaries
       beneficiaries: [

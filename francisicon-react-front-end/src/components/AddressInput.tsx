@@ -1,17 +1,9 @@
-import React, { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { MapPinIcon, LoaderIcon } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
-import { RootState } from '../store';
+import { RootState, AppDispatch } from '../store';
 import { 
-  lookupAddressByPostalCode, 
-  lookupAddressByBlockAndStreet,
-  setBlock,
-  setBlockNo,
-  setStreetName,
-  setUnitNo,
-  setPostalCode,
-  setCountry,
-  clearLookupError
+  lookupAddressByPostalCode
 } from '../store/addressSlice';
 import { Input } from './common/Input';
 import { FormSelect } from './FormSelect';
@@ -112,13 +104,42 @@ export function parseRawAddress(addressString: string): ParsedAddress {
     return result;
   }
 
-  // Pattern 3: Extract postal code if present (6 digits)
-  const postalMatch = address.match(/\b(\d{6})\b/);
+  // Pattern 3: Generic "No Street ... #Unit ..." style (e.g. "888 WOODLANDS DRIVE 50 #88")
+  // Also works for addresses without "#" (e.g. "888 WOODLANDS DRIVE 50 680343 Singapore")
+  // Extract unit (starting with '#') first, then infer house/flat number and street.
+  let remainingAddress = address;
+
+  const hashIndex = address.indexOf('#');
+  if (hashIndex !== -1) {
+    const unitPart = address.slice(hashIndex).trim();
+    // Take the first token starting with '#' as unit number
+    const unitTokenMatch = unitPart.match(/#\S+/);
+    if (unitTokenMatch) {
+      result.unitNo = unitTokenMatch[0];
+    }
+    remainingAddress = address.slice(0, hashIndex).trim();
+  }
+
+  // Pattern 3a: Extract postal code if present (6 digits) from the remaining or full string
+  const postalMatch = remainingAddress.match(/\b(\d{6})\b/) || address.match(/\b(\d{6})\b/);
   if (postalMatch) {
     result.postalCode = postalMatch[1];
   }
 
-  // Fallback: treat full address as street name if we couldn't parse better
+  // Attempt to infer "No" and street name from the remaining part.
+  // Heuristic: first token numeric/alphanumeric -> No; rest -> street name.
+  const tokens = remainingAddress.split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    const first = tokens[0];
+    if (/^\d+[A-Za-z]?$/.test(first)) {
+      result.blockNo = first;
+      // Exclude any trailing postal code token if we've already captured it
+      const streetTokens = tokens.slice(1).filter(t => !(result.postalCode && t === result.postalCode));
+      result.streetName = streetTokens.join(' ').trim();
+    }
+  }
+
+  // Fallback: if we still don't have a street name, treat full address as street name
   if (!result.streetName) {
     result.streetName = address;
   }
@@ -209,21 +230,54 @@ export function AddressInput({
   label = 'Address',
   initialAddressString
 }: AddressInputProps) {
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   
-  // Get address state from Redux
-  const addressState = useSelector((state: RootState) => state.address);
+  // Use local state instead of shared Redux state to prevent cross-contamination
+  // between different AddressInput instances (Contact Person vs Nominee)
+  const [localAddressState, setLocalAddressState] = useState({
+    block: initialValues?.block || '',
+    blockNo: initialValues?.blockNo || '',
+    streetName: initialValues?.streetName || '',
+    unitNo: initialValues?.unitNo || '',
+    postalCode: initialValues?.postalCode || '',
+    country: initialValues?.country || 'Singapore',
+    isLookingUp: false,
+    lookupError: null as string | null
+  });
   
-  // Debounce refs for postal code and block/street lookups
+  // Get lookup state from Redux (for loading indicators)
+  const addressLookupState = useSelector((state: RootState) => ({
+    isLookingUp: state.address.isLookingUp,
+    lookupError: state.address.lookupError
+  }));
+  
+  // Debounce refs for postal code lookup only (removed block/street auto-lookup)
   const postalCodeDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const blockStreetDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const isInitializedRef = useRef(false);
   const lastSyncedValuesRef = useRef<string>('');
+  const lastInitialValuesRef = useRef<string>('');
 
-  // Initialize address fields from initialValues or initialAddressString (only once on mount)
+  // Initialize address fields from initialValues or initialAddressString
+  // This effect runs when initialValues or initialAddressString change (e.g., when loading data in edit mode)
   useEffect(() => {
-    if (isInitializedRef.current) return;
+    // Create a string representation of current initialValues to detect changes
+    const currentInitialValuesKey = JSON.stringify({
+      block: initialValues?.block || '',
+      blockNo: initialValues?.blockNo || '',
+      streetName: initialValues?.streetName || '',
+      unitNo: initialValues?.unitNo || '',
+      postalCode: initialValues?.postalCode || '',
+      country: initialValues?.country || '',
+      addressString: initialAddressString || ''
+    });
+
+    // Only update if initialValues actually changed (not just on first mount)
+    if (isInitializedRef.current && currentInitialValuesKey === lastInitialValuesRef.current) {
+      return;
+    }
+
+    lastInitialValuesRef.current = currentInitialValuesKey;
 
     // 1) Prefer explicit structured values if provided
     if (initialValues && (
@@ -234,12 +288,15 @@ export function AddressInput({
       initialValues.postalCode ||
       initialValues.country
     )) {
-      dispatch(setBlock(initialValues.block || ''));
-      dispatch(setBlockNo(initialValues.blockNo || ''));
-      dispatch(setStreetName(initialValues.streetName || ''));
-      dispatch(setUnitNo(initialValues.unitNo || ''));
-      dispatch(setPostalCode(initialValues.postalCode || ''));
-      dispatch(setCountry(initialValues.country || 'Singapore'));
+      setLocalAddressState(prev => ({
+        ...prev,
+        block: initialValues.block || '',
+        blockNo: initialValues.blockNo || '',
+        streetName: initialValues.streetName || '',
+        unitNo: initialValues.unitNo || '',
+        postalCode: initialValues.postalCode || '',
+        country: initialValues.country || 'Singapore'
+      }));
       isInitializedRef.current = true;
       return;
     }
@@ -247,86 +304,98 @@ export function AddressInput({
     // 2) Fallback: parse raw/legacy address string if provided
     if (initialAddressString && initialAddressString.trim()) {
       const parsed = parseRawAddress(initialAddressString);
-      dispatch(setBlock(parsed.block));
-      dispatch(setBlockNo(parsed.blockNo));
-      dispatch(setStreetName(parsed.streetName));
-      dispatch(setUnitNo(parsed.unitNo));
-      dispatch(setPostalCode(parsed.postalCode));
-      dispatch(setCountry(parsed.country || 'Singapore'));
+      setLocalAddressState(prev => ({
+        ...prev,
+        block: parsed.block,
+        blockNo: parsed.blockNo,
+        streetName: parsed.streetName,
+        unitNo: parsed.unitNo,
+        postalCode: parsed.postalCode,
+        country: parsed.country || 'Singapore'
+      }));
+      isInitializedRef.current = true;
+      return;
+    }
+
+    // 3) If no initial values provided and not yet initialized, set defaults
+    if (!isInitializedRef.current) {
+      setLocalAddressState(prev => ({
+        ...prev,
+        block: '',
+        blockNo: '',
+        streetName: '',
+        unitNo: '',
+        postalCode: '',
+        country: 'Singapore'
+      }));
       isInitializedRef.current = true;
     }
-  }, [initialValues, initialAddressString, dispatch]);
+  }, [initialValues, initialAddressString]);
 
-  // Sync Redux address state to parent component - only when values actually change
+  // Sync local address state to parent component - only when values actually change
   useEffect(() => {
     if (!onAddressChange) return;
     
     // Create a string representation of current values to compare
     const currentValues = JSON.stringify({
-      block: addressState.block,
-      blockNo: addressState.blockNo,
-      streetName: addressState.streetName,
-      unitNo: addressState.unitNo,
-      postalCode: addressState.postalCode,
-      country: addressState.country
+      block: localAddressState.block,
+      blockNo: localAddressState.blockNo,
+      streetName: localAddressState.streetName,
+      unitNo: localAddressState.unitNo,
+      postalCode: localAddressState.postalCode,
+      country: localAddressState.country
     });
     
     // Only call onAddressChange if values actually changed
     if (currentValues !== lastSyncedValuesRef.current) {
       lastSyncedValuesRef.current = currentValues;
       onAddressChange({
-        block: addressState.block,
-        blockNo: addressState.blockNo,
-        streetName: addressState.streetName,
-        unitNo: addressState.unitNo,
-        postalCode: addressState.postalCode,
-        country: addressState.country
+        block: localAddressState.block,
+        blockNo: localAddressState.blockNo,
+        streetName: localAddressState.streetName,
+        unitNo: localAddressState.unitNo,
+        postalCode: localAddressState.postalCode,
+        country: localAddressState.country
       });
     }
   }, [
-    addressState.block,
-    addressState.blockNo,
-    addressState.streetName,
-    addressState.unitNo,
-    addressState.postalCode,
-    addressState.country,
+    localAddressState.block,
+    localAddressState.blockNo,
+    localAddressState.streetName,
+    localAddressState.unitNo,
+    localAddressState.postalCode,
+    localAddressState.country,
     onAddressChange
   ]);
 
-  // Handle postal code change with auto-fill
+  // Handle postal code change with auto-fill (only when postal code changes)
   const handlePostalCodeChange = useCallback((value: string) => {
-    dispatch(setPostalCode(value));
+    setLocalAddressState(prev => ({ ...prev, postalCode: value }));
     
     // Clear existing debounce
     if (postalCodeDebounceRef.current) {
       clearTimeout(postalCodeDebounceRef.current);
     }
     
-    // Debounce the lookup
+    // Debounce the lookup - only lookup when postal code is entered
     postalCodeDebounceRef.current = setTimeout(() => {
       if (value && value.replace(/\s+/g, '').trim().length >= 4) {
-        dispatch(lookupAddressByPostalCode(value));
+        dispatch(lookupAddressByPostalCode(value)).then((action) => {
+          if (lookupAddressByPostalCode.fulfilled.match(action)) {
+            // Update local state with lookup results
+            setLocalAddressState(prev => ({
+              ...prev,
+              blockNo: action.payload.blockNo || prev.blockNo,
+              streetName: action.payload.streetName || prev.streetName,
+              unitNo: action.payload.unitNo || prev.unitNo,
+              postalCode: action.payload.postalCode || prev.postalCode,
+              country: action.payload.country || prev.country
+            }));
+          }
+        });
       }
     }, 800);
   }, [dispatch]);
-
-  // Handle block number and street name change with auto-fill
-  const handleBlockStreetChange = useCallback(() => {
-    // Clear existing debounce
-    if (blockStreetDebounceRef.current) {
-      clearTimeout(blockStreetDebounceRef.current);
-    }
-    
-    // Debounce the lookup
-    blockStreetDebounceRef.current = setTimeout(() => {
-      if (addressState.blockNo && addressState.streetName) {
-        dispatch(lookupAddressByBlockAndStreet({
-          blockNo: addressState.blockNo,
-          streetName: addressState.streetName
-        }));
-      }
-    }, 1000);
-  }, [dispatch, addressState.blockNo, addressState.streetName]);
 
   // Cleanup debounce timers
   useEffect(() => {
@@ -334,14 +403,11 @@ export function AddressInput({
       if (postalCodeDebounceRef.current) {
         clearTimeout(postalCodeDebounceRef.current);
       }
-      if (blockStreetDebounceRef.current) {
-        clearTimeout(blockStreetDebounceRef.current);
-      }
     };
   }, []);
 
   // Determine block type: if block has value, it's "Block", otherwise "No"
-  const blockType = addressState.block && addressState.block !== '' ? 'Block' : 'No';
+  const blockType = localAddressState.block && localAddressState.block !== '' ? 'Block' : 'No';
 
   return (
     <div>
@@ -359,11 +425,10 @@ export function AddressInput({
             value={blockType}
             onChange={(e) => {
               const newBlockType = e.target.value;
-              if (newBlockType === 'Block') {
-                dispatch(setBlock('Block'));
-              } else {
-                dispatch(setBlock(''));
-              }
+              setLocalAddressState(prev => ({
+                ...prev,
+                block: newBlockType === 'Block' ? 'Block' : ''
+              }));
             }}
             disabled={isReadOnly}
             className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent text-sm"
@@ -378,10 +443,9 @@ export function AddressInput({
           <Input
             label=""
             type="text"
-            value={addressState.blockNo}
+            value={localAddressState.blockNo}
             onChange={(e) => {
-              dispatch(setBlockNo(e.target.value));
-              handleBlockStreetChange();
+              setLocalAddressState(prev => ({ ...prev, blockNo: e.target.value }));
             }}
             placeholder={blockType === 'Block' ? "Block No" : "No"}
             disabled={isReadOnly}
@@ -394,10 +458,9 @@ export function AddressInput({
           <Input
             label=""
             type="text"
-            value={addressState.streetName}
+            value={localAddressState.streetName}
             onChange={(e) => {
-              dispatch(setStreetName(e.target.value));
-              handleBlockStreetChange();
+              setLocalAddressState(prev => ({ ...prev, streetName: e.target.value }));
             }}
             placeholder="Street Name"
             disabled={isReadOnly}
@@ -410,8 +473,10 @@ export function AddressInput({
           <Input
             label=""
             type="text"
-            value={addressState.unitNo}
-            onChange={(e) => dispatch(setUnitNo(e.target.value))}
+            value={localAddressState.unitNo}
+            onChange={(e) => {
+              setLocalAddressState(prev => ({ ...prev, unitNo: e.target.value }));
+            }}
             placeholder="Unit No"
             disabled={isReadOnly}
             className="text-sm"
@@ -423,22 +488,22 @@ export function AddressInput({
           <Input
             label=""
             type="text"
-            value={addressState.postalCode}
+            value={localAddressState.postalCode}
             onChange={(e) => handlePostalCodeChange(e.target.value)}
             placeholder="Postal Code"
             disabled={isReadOnly}
             maxLength={6}
             className="text-sm"
           />
-          {addressState.isLookingUp && (
+          {addressLookupState.isLookingUp && (
             <div className="flex items-center gap-1 mt-1 text-xs text-gray-600">
               <LoaderIcon className="w-3 h-3 animate-spin" />
               <span>Looking up...</span>
             </div>
           )}
-          {addressState.lookupError && (
+          {addressLookupState.lookupError && (
             <div className="text-xs text-amber-600 mt-1">
-              {addressState.lookupError}
+              {addressLookupState.lookupError}
             </div>
           )}
         </div>
@@ -449,8 +514,10 @@ export function AddressInput({
         <div className="w-full md:w-1/3">
           <FormSelect
             label="Country"
-            value={addressState.country || 'Singapore'}
-            onChange={(value) => dispatch(setCountry(value || 'Singapore'))}
+            value={localAddressState.country || 'Singapore'}
+            onChange={(value) => {
+              setLocalAddressState(prev => ({ ...prev, country: value || 'Singapore' }));
+            }}
             options={[
               { value: 'Singapore', label: 'Singapore' },
               { value: 'Malaysia', label: 'Malaysia' },

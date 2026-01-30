@@ -33,6 +33,7 @@ export interface NicheApplicationFormData {
   applicantPostalCode?: string;
   applicantCountry?: string;
   applicantReligion?: string;
+  applicantIsCatholic?: boolean;
   applicantHomeTel?: string;
   applicantOfficeTel?: string;
   contactStatus?: string;
@@ -76,6 +77,15 @@ export interface NicheApplicationFormData {
   nomineePhone?: string;
   nomineeEmail?: string;
   nomineeStatus?: string;
+  // Structured nominee address fields (primary nominee)
+  nomineeBlock?: string;
+  nomineeBlockNo?: string;
+  nomineeStreetName?: string;
+  nomineeUnitNo?: string;
+  nomineePostalCode?: string;
+  nomineeCountry?: string;
+  nomineeHomeTel?: string;
+  nomineeOfficeTel?: string;
   
   // Step 6: Invoice & Receipt
   invoice?: {
@@ -136,6 +146,15 @@ export const normalizeFormData = (formData: Record<string, any>): NicheApplicati
     applicantUnitNo: formData.applicantUnitNo || '',
     applicantPostalCode: formData.applicantPostalCode || '',
     applicantReligion: formData.applicantReligion || formData.contactReligion || '',
+    applicantIsCatholic:
+      typeof formData.applicantIsCatholic === 'boolean'
+        ? formData.applicantIsCatholic
+        : (() => {
+            const rel = (formData.applicantReligion || formData.contactReligion || '').toString().toLowerCase();
+            if (!rel) return undefined;
+            if (rel.includes('catholic')) return true;
+            return false;
+          })(),
     applicantHomeTel: formData.applicantHomeTel || formData.contactHomeTel || '',
     applicantOfficeTel: formData.applicantOfficeTel || formData.contactOfficeTel || '',
     applicantCountry: formData.applicantCountry || formData.contactCountry || 'Singapore',
@@ -171,6 +190,14 @@ export const normalizeFormData = (formData: Record<string, any>): NicheApplicati
     nomineePhone: formData.nomineePhone || formData.nominees?.[0]?.contactNumber || formData.nominees?.[0]?.phone || '',
     nomineeEmail: formData.nomineeEmail || formData.nominees?.[0]?.email || '',
     nomineeStatus: formData.nomineeStatus || formData.nominees?.[0]?.status || 'Active',
+    nomineeHomeTel: formData.nomineeHomeTel || formData.nominees?.[0]?.homeTelNo || '',
+    nomineeOfficeTel: formData.nomineeOfficeTel || formData.nominees?.[0]?.officeTelNo || '',
+    nomineeBlock: formData.nomineeBlock || '',
+    nomineeBlockNo: formData.nomineeBlockNo || '',
+    nomineeStreetName: formData.nomineeStreetName || '',
+    nomineeUnitNo: formData.nomineeUnitNo || '',
+    nomineePostalCode: formData.nomineePostalCode || '',
+    nomineeCountry: formData.nomineeCountry || formData.applicantCountry || 'Singapore',
     
     // Step 6: Invoice & Receipt
     invoice: formData.invoice || {}
@@ -188,15 +215,34 @@ export const createNicheApplicationRequest = (formData: NicheApplicationFormData
     applicantEmail: normalizedData.applicantEmail,
     applicantPhone: normalizedData.applicantPhone,
     applicantAddress: normalizedData.applicantAddress,
+    applicantHomeTel: normalizedData.applicantHomeTel,
+    applicantOfficeTel: normalizedData.applicantOfficeTel,
+    // Map structured applicant address fields to DB layout
+    applicantAddressNo: normalizedData.applicantBlock && normalizedData.applicantBlock !== '' ? normalizedData.applicantBlock : 'No',
+    applicantAddressLine1: normalizedData.applicantBlockNo,
+    applicantAddressLine2: normalizedData.applicantStreetName,
+    applicantAddressCity: normalizedData.applicantUnitNo,
+    applicantAddressState: normalizedData.applicantPostalCode,
+    applicantAddressCountry: normalizedData.applicantCountry,
     applicantReligion: normalizedData.applicantReligion,
+    applicantIsCatholic: normalizedData.applicantIsCatholic,
     contactStatus: normalizedData.contactStatus || 'Active',
     nomineeName: normalizedData.nomineeName,
     nomineeIDNo: normalizedData.nomineeIDNo,
     nomineeRelationship: normalizedData.nomineeRelationship,
     nomineeAddress: normalizedData.nomineeAddress,
+    // Map structured nominee address fields (primary nominee) to DB layout
+    nomineeAddressNo: normalizedData.nomineeBlock && normalizedData.nomineeBlock !== '' ? normalizedData.nomineeBlock : 'No',
+    nomineeAddressLine1: normalizedData.nomineeBlockNo,
+    nomineeAddressLine2: normalizedData.nomineeStreetName,
+    nomineeAddressCity: normalizedData.nomineeUnitNo,
+    nomineeAddressState: normalizedData.nomineePostalCode,
+    nomineeAddressCountry: normalizedData.nomineeCountry || normalizedData.applicantCountry,
     nomineePhone: normalizedData.nomineePhone,
     nomineeEmail: normalizedData.nomineeEmail,
     nomineeStatus: normalizedData.nomineeStatus || 'Active',
+    nomineeHomeTel: normalizedData.nomineeHomeTel,
+    nomineeOfficeTel: normalizedData.nomineeOfficeTel,
     beneficiary1: normalizedData.beneficiary1,
     beneficiaries: (normalizedData.beneficiaries || []).map((beneficiary: any, index: number) => ({
       id: beneficiary.id || index + 1,

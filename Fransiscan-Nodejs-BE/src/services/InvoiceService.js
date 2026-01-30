@@ -410,6 +410,70 @@ class InvoiceService extends BaseService {
       };
     }
   }
+
+  /**
+   * Cancel (soft delete) an invoice by code.
+   * Sets Status = 0 on the matching invoice, preserving header and detail rows.
+   * @param {string} code - Invoice code
+   * @param {number} churchId - Church ID for access control
+   * @returns {Promise<Object>} Result object with success flag and optional error
+   */
+  async cancelInvoiceByCode(code, churchId) {
+    try {
+      if (!code || !code.trim()) {
+        return {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invoice code is required'
+          }
+        };
+      }
+
+      // Verify invoice exists and belongs to this church
+      const existing = await this.repository.getInvoiceByCode(code, churchId, null);
+      if (!existing) {
+        return {
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Invoice not found'
+          }
+        };
+      }
+
+      const effectiveCode = existing.code || existing.Code || code.trim();
+      const cancelled = await this.repository.cancelInvoiceByCode(effectiveCode, churchId);
+
+      if (!cancelled) {
+        return {
+          success: false,
+          error: {
+            code: 'CANCEL_FAILED',
+            message: 'Failed to cancel invoice'
+          }
+        };
+      }
+
+      logger.info(`Invoice cancelled (soft delete): Code=${effectiveCode}, ChurchId=${churchId}`);
+
+      return {
+        success: true,
+        data: {
+          invoiceCode: effectiveCode
+        }
+      };
+    } catch (error) {
+      logger.error('Error cancelling invoice:', error);
+      return {
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error.message || 'Failed to cancel invoice'
+        }
+      };
+    }
+  }
 }
 
 module.exports = InvoiceService;

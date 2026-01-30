@@ -188,6 +188,13 @@ router.post('/:code/payments',
   })
 );
 
+// Cancel invoice by code (soft delete: Status = 0)
+// POST /api/invoices/:code/cancel
+router.post('/:code/cancel',
+  authenticateToken,
+  invoiceController.cancelInvoiceByCode
+);
+
 // Mark invoice as paid
 router.patch('/:id/paid',
   commonValidations.id,

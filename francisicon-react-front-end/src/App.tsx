@@ -337,13 +337,21 @@ export function App() {
   const consentVisibilityRef = useRef(showConsentStep);
   useEffect(() => {
     // Consent Forms is now step 5 (last step)
-    if (!consentVisibilityRef.current && showConsentStep) {
-      goToStep(5);
-    } else if (consentVisibilityRef.current && !showConsentStep && currentStep === 5) {
+    const wasVisible = consentVisibilityRef.current;
+
+    // When consent step becomes visible, only auto-jump to it for non-edit flows.
+    // For /niche/edit/... we want to stay on Niche Details (step 1).
+    if (!wasVisible && showConsentStep) {
+      if (!isEditMode) {
+        goToStep(5);
+      }
+    } else if (wasVisible && !showConsentStep && currentStep === 5) {
+      // If consent step is being hidden while currently on it, return to step 1
       goToStep(1);
     }
+
     consentVisibilityRef.current = showConsentStep;
-  }, [showConsentStep, currentStep, goToStep]);
+  }, [showConsentStep, currentStep, goToStep, isEditMode]);
 
   const handleCreateNicheApplication = async () => {
     try {

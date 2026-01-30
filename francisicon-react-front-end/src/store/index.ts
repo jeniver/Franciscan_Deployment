@@ -10,6 +10,7 @@ import reportReducer from './reportSlice.ts';
 import addressReducer from './addressSlice.ts';
 import inscriptionReducer from './inscriptionSlice.ts';
 import nichibookingReducer from './nichibookingSlice.ts';
+import invoiceReducer from './invoiceSlice.ts';
 
 export const store = configureStore({
   reducer: {
@@ -24,6 +25,7 @@ export const store = configureStore({
     address: addressReducer,
     inscription: inscriptionReducer,
     nichibooking: nichibookingReducer,
+    invoice: invoiceReducer,
   },
 });
 

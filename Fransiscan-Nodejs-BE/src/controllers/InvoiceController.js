@@ -573,6 +573,48 @@ class InvoiceController extends BaseController {
   });
 
   /**
+   * Cancel invoice by code (soft delete: Status = 0)
+   * POST /api/invoices/:code/cancel
+   * Mirrors ASP.NET UpdateInvoice_Status behavior.
+   */
+  cancelInvoiceByCode = this.asyncHandler(async(req, res) => {
+    this.logRequest(req, 'Cancel Invoice by Code');
+
+    try {
+      const { code } = req.params;
+      const churchId = req.user?.churchId;
+
+      if (!code) {
+        return this.sendError(res, 'Invoice code is required', 400);
+      }
+
+      if (!churchId) {
+        return this.sendError(res, 'Authentication required with church ID', 401);
+      }
+
+      const result = await this.invoiceService.cancelInvoiceByCode(code, churchId);
+
+      if (!result.success) {
+        const statusCode =
+          result.error.code === 'NOT_FOUND' ? 404 :
+          result.error.code === 'VALIDATION_ERROR' ? 400 :
+          400;
+
+        return res.status(statusCode).json(result);
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: result.data,
+        message: 'Invoice cancelled successfully'
+      });
+    } catch (error) {
+      logger.error('Controller: Failed to cancel invoice:', error);
+      return this.sendError(res, 'Failed to cancel invoice', 500);
+    }
+  });
+
+  /**
    * Search invoices
    * GET /api/invoices/search
    */

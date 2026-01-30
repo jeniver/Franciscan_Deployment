@@ -258,6 +258,7 @@ export function NicheDetails({
         // Update form data with niche details
         setFormData({
           ...formData,
+          nicheId: matchingNicheByLocation.nicheId, // Set nicheId for validation compatibility
           nicheCode: matchingNicheByLocation.code,
           selectedNiches: [...selectedNiches, matchingNicheByLocation.nicheId],
           niche: {
@@ -333,6 +334,7 @@ export function NicheDetails({
     setFormData({
       ...formData,
       selectedNiches: newSelected,
+      nicheId: newSelected.length > 0 ? newSelected[0] : null, // Set nicheId for validation compatibility
       nicheCode: primaryNicheCode, // Update niche code in text box when niche is clicked
       niche: {
         ...formData.niche,
@@ -381,6 +383,7 @@ export function NicheDetails({
         
         setFormData({
           ...formData,
+          nicheId: niche.nicheId, // Set nicheId for validation compatibility
           nicheCode: niche.code, // Use the exact niche code from the niche object
           selectedNiches: newSelected,
           niche: {
@@ -411,6 +414,7 @@ export function NicheDetails({
       handleSetSelectedNiches([]);
       setFormData({
         ...formData,
+        nicheId: null, // Clear nicheId when clearing selection
         nicheCode: '',
         selectedNiches: [],
         niche: {

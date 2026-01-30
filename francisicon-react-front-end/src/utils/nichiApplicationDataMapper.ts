@@ -135,10 +135,32 @@ export function mapNichiApplicationToFormData(
     formData.applicantIdNo = applicationData.applicant.idNo || '';
     formData.applicantEmail = applicationData.applicant.email || '';
     formData.applicantPhone = applicationData.applicant.mobileNo || '';
+    // Prefer structured address parts when present, but keep legacy address string
     formData.applicantAddress = applicationData.applicant.address || '';
+    if ((applicationData.applicant as any).addressNo ||
+        (applicationData.applicant as any).addressLine1 ||
+        (applicationData.applicant as any).addressLine2 ||
+        (applicationData.applicant as any).addressCity ||
+        (applicationData.applicant as any).addressState ||
+        (applicationData.applicant as any).addressCountry) {
+      formData.applicantBlock = (applicationData.applicant as any).addressNo || '';
+      formData.applicantBlockNo = (applicationData.applicant as any).addressLine1 || '';
+      formData.applicantStreetName = (applicationData.applicant as any).addressLine2 || '';
+      formData.applicantUnitNo = (applicationData.applicant as any).addressCity || '';
+      formData.applicantPostalCode = (applicationData.applicant as any).addressState || '';
+      formData.applicantCountry = (applicationData.applicant as any).addressCountry || 'Singapore';
+    }
     formData.applicantHomeTel = applicationData.applicant.homeTelNo || '';
     formData.applicantOfficeTel = applicationData.applicant.officeTelNo || '';
-    formData.applicantIsCatholic = applicationData.applicant.isCatholic || false;
+    // Map religion dropdown from isCatholic when possible
+    formData.applicantIsCatholic = applicationData.applicant.isCatholic ?? false;
+    if (!formData.applicantReligion) {
+      if (applicationData.applicant.isCatholic === true) {
+        formData.applicantReligion = 'Catholic';
+      } else if (applicationData.applicant.isCatholic === false) {
+        formData.applicantReligion = 'Non Catholic';
+      }
+    }
   }
 
   // Map nominee details (optional)
@@ -151,6 +173,20 @@ export function mapNichiApplicationToFormData(
     formData.nomineeRelationship = applicationData.nominee.relationship || '';
     formData.nomineeHomeTel = applicationData.nominee.homeTelNo || '';
     formData.nomineeOfficeTel = applicationData.nominee.officeTelNo || '';
+    // Map structured nominee address parts when present
+    if ((applicationData.nominee as any).addressNo ||
+        (applicationData.nominee as any).addressLine1 ||
+        (applicationData.nominee as any).addressLine2 ||
+        (applicationData.nominee as any).addressCity ||
+        (applicationData.nominee as any).addressState ||
+        (applicationData.nominee as any).addressCountry) {
+      formData.nomineeBlock = (applicationData.nominee as any).addressNo || '';
+      formData.nomineeBlockNo = (applicationData.nominee as any).addressLine1 || '';
+      formData.nomineeStreetName = (applicationData.nominee as any).addressLine2 || '';
+      formData.nomineeUnitNo = (applicationData.nominee as any).addressCity || '';
+      formData.nomineePostalCode = (applicationData.nominee as any).addressState || '';
+      formData.nomineeCountry = (applicationData.nominee as any).addressCountry || formData.applicantCountry || 'Singapore';
+    }
   }
 
   // Map deceased details
@@ -198,9 +234,9 @@ export function mapNichiApplicationToFormData(
   }
   formData.deceasedDetails = deceasedDetailsArray;
 
-  // Map additional details
-  if (applicationData.additionalDetails || (applicationData as any).additionalDetails) {
-    const additionalDetails = applicationData.additionalDetails || (applicationData as any).additionalDetails;
+  // Map additional details (API may provide this under data.additionalDetails or flattened)
+  const additionalDetails = (applicationData as any).additionalDetails || (applicationData as any).additionalDetails;
+  if (additionalDetails) {
     formData.selectedBibleChoiceId = additionalDetails.bibleInscriptionChoiceId || null;
     formData.phraseOfChoice = additionalDetails.additionalInscriptionPhrase || 
                                additionalDetails.bibleInscriptionText || '';

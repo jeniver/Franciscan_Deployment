@@ -529,7 +529,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
         </div>
       </details>
 
-      {/* Inscription Items Display */}
+      {/* Inscription Items Display
       {inscriptionItems.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
@@ -560,7 +560,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
             ))}
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Additional Details of Inscription */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">

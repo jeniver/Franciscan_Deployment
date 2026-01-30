@@ -10,7 +10,7 @@ export interface ValidationRule {
   minLength?: number;
   maxLength?: number;
   pattern?: RegExp;
-  custom?: (value: any) => string | null;
+  custom?: (value: any, formData?: Record<string, any>) => string | null;
   message?: string;
 }
 
@@ -57,10 +57,8 @@ export const validateField = (value: any, rule: ValidationRule): string | null =
     return rule.message || 'Invalid format';
   }
 
-  // Custom validation
-  if (rule.custom) {
-    return rule.custom(value);
-  }
+  // Custom validation (handled in validateForm, not here)
+  // This is kept for backward compatibility but custom validators should be called from validateForm
 
   return null;
 };
@@ -71,7 +69,10 @@ export const validateForm = (data: Record<string, any>, rules: ValidationRules):
   Object.keys(rules).forEach(field => {
     const rule = rules[field];
     const value = data[field];
-    const error = validateField(value, rule);
+    // Pass full form data to custom validator for cross-field validation
+    const error = rule.custom 
+      ? rule.custom(value, data)
+      : validateField(value, rule);
     
     if (error) {
       errors[field] = error;
@@ -170,11 +171,21 @@ export const NICHE_DETAILS_VALIDATION_RULES: ValidationRules = {
       return null;
     }
   },
-  // Keep nicheId for backward compatibility
+  // Keep nicheId for backward compatibility - make it optional if selectedNiches is present
   nicheId: {
-    required: true,
-    custom: (value) => {
-      if (!value || (Array.isArray(value) && value.length === 0)) {
+    required: false, // Make optional since selectedNiches is the primary field
+    custom: (value, formData) => {
+      // If selectedNiches is present and valid, nicheId is not required
+      const selectedNiches = formData?.selectedNiches;
+      if (selectedNiches && Array.isArray(selectedNiches) && selectedNiches.length > 0) {
+        return null; // Validation passes if selectedNiches is valid
+      }
+      // Otherwise, check nicheId
+      if (!value || value === null || value === undefined) {
+        return 'Please select a niche';
+      }
+      // If it's an array, check it's not empty
+      if (Array.isArray(value) && value.length === 0) {
         return 'Please select a niche';
       }
       return null;
@@ -184,17 +195,12 @@ export const NICHE_DETAILS_VALIDATION_RULES: ValidationRules = {
 
 export const CONTACT_DETAILS_VALIDATION_RULES: ValidationRules = {
   // Support both new and legacy field names
+  // Name validation removed - no longer required
   applicantName: {
-    required: true,
-    minLength: 2,
-    maxLength: 100,
-    message: 'Name must be between 2 and 100 characters'
+    required: false,
   },
   contactName: {
-    required: true,
-    minLength: 2,
-    maxLength: 100,
-    message: 'Name must be between 2 and 100 characters'
+    required: false,
   },
   applicantIDNo: {
     required: false,
@@ -208,11 +214,12 @@ export const CONTACT_DETAILS_VALIDATION_RULES: ValidationRules = {
   contactEmail: {
     custom: validateEmail
   },
+  // Mobile number validation removed - no longer required
   applicantPhone: {
-    required: true,
+    required: false,
   },
   contactPhone: {
-    required: true,
+    required: false,
   },
   applicantHomeTel: {
   },
@@ -274,19 +281,24 @@ export const NOMINEE_DETAILS_VALIDATION_RULES: ValidationRules = {
 };
 
 // Step-specific validation functions
+// Step mapping: 1=Niche Details, 2=Contact Person, 3=Beneficiary, 4=Nominee, 5=Consent Forms
 export const validateStep = (step: number, formData: Record<string, any>): ValidationResult => {
   switch (step) {
     case 1:
-      return validateForm(formData, CONSENT_FORMS_VALIDATION_RULES);
+      // Niche Details step - validate niche selection
+      return validateForm(formData, NICHE_DETAILS_VALIDATION_RULES);
     case 2:
-      // Niche selection step - no validation required
-      return { isValid: true, errors: {} };
-    case 3:
+      // Contact Person Details step
       return validateForm(formData, CONTACT_DETAILS_VALIDATION_RULES);
-    case 4:
+    case 3:
+      // Beneficiary Details step
       return validateForm(formData, BENEFICIARY_DETAILS_VALIDATION_RULES);
-    case 5:
+    case 4:
+      // Nominee Details step
       return validateForm(formData, NOMINEE_DETAILS_VALIDATION_RULES);
+    case 5:
+      // Consent Forms step
+      return validateForm(formData, CONSENT_FORMS_VALIDATION_RULES);
     case 6:
       // Invoice step doesn't require validation
       return { isValid: true, errors: {} };

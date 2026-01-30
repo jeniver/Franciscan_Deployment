@@ -10,6 +10,7 @@ interface FormSelectProps {
   required?: boolean;
   placeholder?: string;
   disabled?: boolean;
+  error?: string;
 }
 export function FormSelect({
   label,
@@ -18,25 +19,31 @@ export function FormSelect({
   options,
   required = false,
   placeholder = 'Select an option',
-  disabled = false
+  disabled = false,
+  error
 }: FormSelectProps) {
-  return <div className="flex flex-col gap-2">
+  return (
+    <div className="flex flex-col gap-2">
       <label className="text-sm font-medium text-gray-700">
         {label}
         {required && <span className="text-red-500 ml-1">*</span>}
       </label>
-      <select 
-        value={value} 
-        onChange={e => onChange(e.target.value)} 
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
         disabled={disabled}
-        className={`w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+        className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
           disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
-        }`}
+        } ${error ? 'border-red-500' : 'border-gray-300'}`}
       >
         <option value="">{placeholder}</option>
-        {options.map(option => <option key={option.value} value={option.value}>
+        {options.map(option => (
+          <option key={option.value} value={option.value}>
             {option.label}
-          </option>)}
+          </option>
+        ))}
       </select>
-    </div>;
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+    </div>
+  );
 }

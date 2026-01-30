@@ -21,6 +21,13 @@ export class NichiApplicationError extends Error {
 export interface NichiApplicant {
   name: string;
   address: string;
+  // Optional structured fields (mirroring agreement API)
+  addressNo?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressCountry?: string | null;
   email: string;
   idNo: string;
   mobileNo: string;
@@ -32,6 +39,13 @@ export interface NichiApplicant {
 export interface NichiNominee {
   name: string;
   address: string;
+  // Optional structured fields (mirroring agreement API)
+  addressNo?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressCountry?: string | null;
   email: string;
   idNo: string;
   mobileNo: string;

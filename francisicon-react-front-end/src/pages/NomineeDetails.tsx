@@ -280,6 +280,21 @@ export function NomineeDetails({
                         const legacyAddress = buildLegacyAddress(addressData);
                         // Update only this nominee's address; other fields handled by existing logic
                         handleUpdateNominee(nominee.id, 'address', legacyAddress as Nominee['address']);
+
+                        // For the primary nominee (index 0), also update top-level structured fields
+                        // so the API request can map them to NomineeAddress* columns.
+                        if (index === 0) {
+                          setFormData({
+                            ...formData,
+                            nomineeAddress: legacyAddress,
+                            nomineeBlock: addressData.block || '',
+                            nomineeBlockNo: addressData.blockNo || '',
+                            nomineeStreetName: addressData.streetName || '',
+                            nomineeUnitNo: addressData.unitNo || '',
+                            nomineePostalCode: addressData.postalCode || '',
+                            nomineeCountry: addressData.country || 'Singapore'
+                          });
+                        }
                       }}
                       isReadOnly={isReadOnly}
                       // Reuse nomineeAddress validation error if present

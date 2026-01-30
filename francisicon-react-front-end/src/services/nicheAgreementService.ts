@@ -9,6 +9,12 @@ const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:30
 export interface Applicant {
   name: string;
   address: string;
+  addressNo?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressCountry?: string | null;
   email: string;
   idNo: string;
   mobileNo: string;
@@ -20,6 +26,12 @@ export interface Applicant {
 export interface Nominee {
   name: string;
   address: string;
+  addressNo?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressCountry?: string | null;
   email: string;
   idNo: string;
   mobileNo: string;

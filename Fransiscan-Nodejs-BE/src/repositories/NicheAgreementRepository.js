@@ -170,6 +170,9 @@ class NicheAgreementRepository extends BaseRepository {
         // Niche details with enhanced location information
         nicheNumber: mergedData.NicheId ? mergedData.NicheId.toString() : null,
         nicheCode: mergedData.NicheCode || null,
+        nicheRowNumber: mergedData.RowCode || null,
+        nicheWallName: mergedData.WallName || null,
+        chapelName: mergedData.ChapelName || null,
         nicheTotalAmount: mergedData.Amount || 0,
         nicheLineAmount: mergedData.DefaultAmount || 0,
 
@@ -277,6 +280,51 @@ class NicheAgreementRepository extends BaseRepository {
         nicheAgreement.beneBirthYear_2 = bene2.BirthYear;
         nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1;
         nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2;
+      }
+
+      // Fallback: if no beneficiaries from NicheBooking, try NicheApplicationBeneficiary
+      if (!nicheAgreement.beneName_1 && !nicheAgreement.beneName_2) {
+        const fallbackQuery = `
+          SELECT TOP 2
+            Name,
+            IDNo,
+            IsCatholic,
+            IsMale,
+            RelationshipToApplicant,
+            DateOfBirth,
+            BirthYear
+          FROM NicheApplicationBeneficiary WITH (NOLOCK)
+          WHERE NicheApplicationId = @nicheApplicationId
+          ORDER BY NicheApplicationBeneficiaryId
+        `;
+
+        const fallbackResult = await executeQuery(
+          fallbackQuery,
+          { nicheApplicationId },
+          { timeout: 10000 }
+        );
+
+        if (fallbackResult.recordset.length > 0) {
+          const bene1 = fallbackResult.recordset[0];
+          nicheAgreement.beneName_1 = bene1.Name;
+          nicheAgreement.beneIDNo_1 = bene1.IDNo;
+          nicheAgreement.beneIsCatholic_1 = bene1.IsCatholic;
+          nicheAgreement.beneIsMale_1 = bene1.IsMale;
+          nicheAgreement.beneRelationshipToApplicant_1 = bene1.RelationshipToApplicant;
+          nicheAgreement.beneDateOfBirth_1 = bene1.DateOfBirth;
+          nicheAgreement.beneBirthYear_1 = bene1.BirthYear;
+        }
+
+        if (fallbackResult.recordset.length > 1) {
+          const bene2 = fallbackResult.recordset[1];
+          nicheAgreement.beneName_2 = bene2.Name;
+          nicheAgreement.beneIDNo_2 = bene2.IDNo;
+          nicheAgreement.beneIsCatholic_2 = bene2.IsCatholic;
+          nicheAgreement.beneIsMale_2 = bene2.IsMale;
+          nicheAgreement.beneRelationshipToApplicant_2 = bene2.RelationshipToApplicant;
+          nicheAgreement.beneDateOfBirth_2 = bene2.DateOfBirth;
+          nicheAgreement.beneBirthYear_2 = bene2.BirthYear;
+        }
       }
     } catch (error) {
       logger.warn('Could not fetch beneficiaries:', error.message);

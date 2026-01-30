@@ -50,6 +50,7 @@ export function ContactPersonDetails({
       applicantAddress: legacyAddress,
       contactAddress: legacyAddress
     });
+    console.log("formData", formData)
   }, [formData, setFormData]);
 
   useEffect(() => {
@@ -86,7 +87,6 @@ export function ContactPersonDetails({
                 contactName: value
               })} 
               placeholder="Enter full name" 
-              required 
               icon={<UserIcon className="w-4 h-4" />}
               error={validationErrors.applicantName || validationErrors.contactName}
               disabled={isReadOnly}
@@ -103,9 +103,11 @@ export function ContactPersonDetails({
               error={validationErrors.applicantIDNo || validationErrors.contactNric}
               disabled={isReadOnly}
             />
+            
           </div>
           
           {/* Address Component */}
+      
           <AddressInput
             fieldPrefix="applicant"
             onAddressChange={handleAddressChange}
@@ -147,7 +149,6 @@ export function ContactPersonDetails({
               })} 
               placeholder="+65 1234 5678" 
               type="tel" 
-              required 
               icon={<PhoneIcon className="w-4 h-4" />}
               error={validationErrors.applicantPhone || validationErrors.contactPhone}
               disabled={isReadOnly}
@@ -182,15 +183,30 @@ export function ContactPersonDetails({
             />
           </div>
           <div className="grid grid-cols-2 gap-6">
-            <FormInput 
-              label="Religion" 
-              value={formData.applicantReligion || formData.contactReligion || ''} 
-              onChange={value => setFormData({
-                ...formData,
-                applicantReligion: value,
-                contactReligion: value
-              })} 
-              placeholder="Enter religion"
+            <FormSelect
+              label="Religion"
+              value={
+                formData.applicantReligion ||
+                (formData.applicantIsCatholic === true
+                  ? 'Catholic'
+                  : formData.applicantIsCatholic === false
+                    ? 'Non Catholic'
+                    : '')
+              }
+              onChange={value => {
+                const isCatholic = value === 'Catholic';
+                setFormData({
+                  ...formData,
+                  applicantReligion: value,
+                  contactReligion: value,
+                  applicantIsCatholic: value ? isCatholic : undefined
+                });
+              }}
+              options={[
+                { value: 'Catholic', label: 'Catholic' },
+                { value: 'Non Catholic', label: 'Non Catholic' }
+              ]}
+              placeholder="Select religion"
               error={validationErrors.applicantReligion || validationErrors.contactReligion}
               disabled={isReadOnly}
             />

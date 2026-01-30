@@ -331,13 +331,16 @@ class NicheAgreementService {
         if (!date) return null;
         try {
           const d = new Date(date);
+          if (isNaN(d.getTime())) {
+            return null;
+          }
           const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
           const day = String(d.getDate()).padStart(2, '0');
           const month = months[d.getMonth()];
           const year = d.getFullYear();
           return `${day}-${month}-${year}`;
         } catch (error) {
-          return date;
+          return null;
         }
       };
 
@@ -359,19 +362,27 @@ class NicheAgreementService {
         });
       }
       if (nicheAgreement.beneName_2) {
-        agreementData.beneficiaries.push({
-          name: nicheAgreement.beneName_2,
-          idNo: nicheAgreement.beneIDNo_2,
-          isCatholic: nicheAgreement.beneIsCatholic_2,
-          isMale: nicheAgreement.beneIsMale_2,
-          relationshipToApplicant: nicheAgreement.beneRelationshipToApplicant_2,
-          dateOfBirth: formatDate(nicheAgreement.beneDateOfBirth_2),
-          birthYear: nicheAgreement.beneBirthYear_2,
-          relationshipToNominee1: nicheAgreement.ben2_NomineeRelationship,
-          relationshipToNominee2: nicheAgreement.ben2_Nominee2Relationship,
-          status: 'Occupied', // Based on the UI showing "Occupied" status
-          sex: nicheAgreement.beneIsMale_2 ? 'Male' : 'Female'
-        });
+        const secondIsDistinct =
+          nicheAgreement.beneName_2 !== nicheAgreement.beneName_1 ||
+          (nicheAgreement.beneIDNo_2 && nicheAgreement.beneIDNo_2 !== nicheAgreement.beneIDNo_1) ||
+          nicheAgreement.beneBirthYear_2 !== nicheAgreement.beneBirthYear_1 ||
+          nicheAgreement.beneRelationshipToApplicant_2 !== nicheAgreement.beneRelationshipToApplicant_1;
+
+        if (secondIsDistinct) {
+          agreementData.beneficiaries.push({
+            name: nicheAgreement.beneName_2,
+            idNo: nicheAgreement.beneIDNo_2,
+            isCatholic: nicheAgreement.beneIsCatholic_2,
+            isMale: nicheAgreement.beneIsMale_2,
+            relationshipToApplicant: nicheAgreement.beneRelationshipToApplicant_2,
+            dateOfBirth: formatDate(nicheAgreement.beneDateOfBirth_2),
+            birthYear: nicheAgreement.beneBirthYear_2,
+            relationshipToNominee1: nicheAgreement.ben2_NomineeRelationship,
+            relationshipToNominee2: nicheAgreement.ben2_Nominee2Relationship,
+            status: 'Occupied', // Based on the UI showing "Occupied" status
+            sex: nicheAgreement.beneIsMale_2 ? 'Male' : 'Female'
+          });
+        }
       }
 
       // Format dates in agreement data

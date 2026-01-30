@@ -376,6 +376,46 @@ const pickFirst = (...values) => {
   return null;
 };
 
+/**
+ * Build a de‑duplication key for a person using the strongest identifier
+ * available (ID/NRIC > email > phone > name).
+ * This is used to detect duplicate nominees/beneficiaries within a single
+ * niche application.
+ */
+const buildPersonKey = (person = {}) => {
+  if (!person) {
+    return null;
+  }
+
+  const rawId = person.idNo || person.nric || person.identificationNumber || person.idNumber;
+  if (rawId && String(rawId).trim()) {
+    return `ID:${String(rawId).trim().toUpperCase()}`;
+  }
+
+  const rawEmail = person.email || person.emailID || person.emailId;
+  if (rawEmail && String(rawEmail).trim()) {
+    return `EMAIL:${String(rawEmail).trim().toLowerCase()}`;
+  }
+
+  const rawPhone =
+    person.mobileNo ||
+    person.contactNumber ||
+    person.phone ||
+    person.mobile ||
+    person.nomineePhone;
+  const normalizedPhone = normalizePhone(rawPhone);
+  if (normalizedPhone) {
+    return `PHONE:${normalizedPhone}`;
+  }
+
+  const rawName = person.name || person.fullName;
+  if (rawName && String(rawName).trim()) {
+    return `NAME:${String(rawName).trim().toUpperCase()}`;
+  }
+
+  return null;
+};
+
 const parseDateValue = (value) => {
   if (!value) {
     return null;
@@ -1163,11 +1203,29 @@ class NicheApplicationService {
       // Ensure result.records is always an array
       const records = result && Array.isArray(result.records) ? result.records : [];
       
-      const formattedRecords = records.map(record =>
-        buildApplicationResponse(record)
-      ).filter(Boolean); // Filter out any null/undefined responses
+      // Map raw records to response DTOs and de‑duplicate by application code
+      // Some legacy data may contain duplicate rows for the same Code; we keep
+      // only the first occurrence per code to avoid duplicates in the listing.
+      const mappedRecords = records
+        .map(record => buildApplicationResponse(record))
+        .filter(Boolean);
+
+      const uniqueByCode = [];
+      const seenCodes = new Set();
+      mappedRecords.forEach((item) => {
+        const codeKey = item.code || item.applicationNumber || null;
+        if (codeKey && seenCodes.has(codeKey)) {
+          return;
+        }
+        if (codeKey) {
+          seenCodes.add(codeKey);
+        }
+        uniqueByCode.push(item);
+      });
+
+      const formattedRecords = uniqueByCode;
       
-      const totalRecords = result.skipTotal ? null : (result.total ?? 0);
+      const totalRecords = result.skipTotal ? null : (result.total ?? formattedRecords.length);
       const effectivePageSize = fetchAllRequested
         ? (requestedPageSizeNumber && requestedPageSizeNumber > 0 ? requestedPageSizeNumber : chunkSize)
         : queryPageSize;
@@ -1496,6 +1554,114 @@ class NicheApplicationService {
 
       // Create beneficiary objects
       const beneficiaries = extractBeneficiariesFromPayload(data);
+
+      // --- Business rule: prevent duplicate nominees / beneficiaries within the same application ---
+      // Build nominee list:
+      //  - Prefer the explicit nominees[] array when present
+      //  - Fallback to legacy nominee/nominee2 fields
+      const nomineeCandidates = [];
+      if (nomineeArray.length > 0) {
+        nomineeArray.forEach((nominee) => {
+          if (!nominee) return;
+          nomineeCandidates.push({
+            name: pickFirst(nominee.fullName, nominee.name),
+            idNo: pickFirst(nominee.nric, nominee.idNo, nominee.identificationNumber, nominee.idNumber),
+            email: pickFirst(nominee.email, nominee.emailID, nominee.emailId),
+            mobileNo: pickFirst(
+              nominee.mobileNo,
+              nominee.contactNumber,
+              nominee.phone,
+              nominee.mobile
+            )
+          });
+        });
+      } else {
+        // Legacy single / second nominee fields
+        if (nomineeInput && (nomineeInput.name || nomineeInput.fullName || nomineeInput.nric || nomineeInput.idNo)) {
+          nomineeCandidates.push({
+            name: pickFirst(nomineeInput.fullName, nomineeInput.name),
+            idNo: pickFirst(nomineeInput.nric, nomineeInput.idNo, nomineeInput.identificationNumber, nomineeInput.idNumber),
+            email: pickFirst(nomineeInput.email, nomineeInput.emailID, nomineeInput.emailId),
+            mobileNo: pickFirst(
+              nomineeInput.mobileNo,
+              nomineeInput.contactNumber,
+              nomineeInput.phone,
+              nomineeInput.mobile
+            )
+          });
+        }
+        if (nominee2Input && (nominee2Input.name || nominee2Input.fullName || nominee2Input.nric || nominee2Input.idNo)) {
+          nomineeCandidates.push({
+            name: pickFirst(nominee2Input.fullName, nominee2Input.name),
+            idNo: pickFirst(nominee2Input.nric, nominee2Input.idNo, nominee2Input.identificationNumber, nominee2Input.idNumber),
+            email: pickFirst(nominee2Input.email, nominee2Input.emailID, nominee2Input.emailId),
+            mobileNo: pickFirst(
+              nominee2Input.mobileNo,
+              nominee2Input.contactNumber,
+              nominee2Input.phone,
+              nominee2Input.mobile
+            )
+          });
+        }
+      }
+
+      const nomineeKeys = new Set();
+      const duplicateNomineeDescriptions = new Set();
+      nomineeCandidates.forEach((nominee) => {
+        const key = buildPersonKey(nominee);
+        if (!key) {
+          return;
+        }
+        if (nomineeKeys.has(key)) {
+          duplicateNomineeDescriptions.add(
+            pickFirst(nominee.name, nominee.idNo, nominee.email, nominee.mobileNo) || 'Unknown nominee'
+          );
+        } else {
+          nomineeKeys.add(key);
+        }
+      });
+
+      const beneficiaryKeys = new Set();
+      const duplicateBeneficiaryDescriptions = new Set();
+      beneficiaries.forEach((beneficiary) => {
+        if (!beneficiary) return;
+        const key = buildPersonKey({
+          name: beneficiary.name,
+          idNo: beneficiary.idNo
+        });
+        if (!key) {
+          return;
+        }
+        if (beneficiaryKeys.has(key)) {
+          duplicateBeneficiaryDescriptions.add(
+            pickFirst(beneficiary.name, beneficiary.idNo) || 'Unknown beneficiary'
+          );
+        } else {
+          beneficiaryKeys.add(key);
+        }
+      });
+
+      if (duplicateNomineeDescriptions.size > 0 || duplicateBeneficiaryDescriptions.size > 0) {
+        const errors = [];
+        if (duplicateNomineeDescriptions.size > 0) {
+          errors.push(
+            `Same person cannot be added as multiple nominees: ${Array.from(duplicateNomineeDescriptions).join(', ')}`
+          );
+        }
+        if (duplicateBeneficiaryDescriptions.size > 0) {
+          errors.push(
+            `Same person cannot be added as multiple beneficiaries: ${Array.from(duplicateBeneficiaryDescriptions).join(', ')}`
+          );
+        }
+
+        return {
+          success: false,
+          error: {
+            code: 'VALIDATION_FAILED',
+            message: errors.join(' | ')
+          }
+        };
+      }
 
       // Validate application
       const appValidation = application.validate();
@@ -1915,6 +2081,110 @@ class NicheApplicationService {
       }
       if (data.beneficiary3 && data.beneficiary3.name) {
         beneficiaries.push(new NicheApplicationBeneficiary(data.beneficiary3));
+      }
+
+      // --- Business rule: prevent duplicate nominees / beneficiaries on update as well ---
+      const updateNomineeCandidates = [];
+      const updateNomineeArray = Array.isArray(data.nominees) ? data.nominees : [];
+      const updateNomineeInput = data.nominee || updateNomineeArray[0] || {};
+      const updateNominee2Input = data.nominee2 || updateNomineeArray[1] || null;
+
+      if (updateNomineeArray.length > 0) {
+        updateNomineeArray.forEach((nominee) => {
+          if (!nominee) return;
+          updateNomineeCandidates.push({
+            name: pickFirst(nominee.fullName, nominee.name),
+            idNo: pickFirst(nominee.nric, nominee.idNo, nominee.identificationNumber, nominee.idNumber),
+            email: pickFirst(nominee.email, nominee.emailID, nominee.emailId),
+            mobileNo: pickFirst(
+              nominee.mobileNo,
+              nominee.contactNumber,
+              nominee.phone,
+              nominee.mobile
+            )
+          });
+        });
+      } else {
+        if (updateNomineeInput && (updateNomineeInput.name || updateNomineeInput.fullName || updateNomineeInput.nric || updateNomineeInput.idNo)) {
+          updateNomineeCandidates.push({
+            name: pickFirst(updateNomineeInput.fullName, updateNomineeInput.name),
+            idNo: pickFirst(updateNomineeInput.nric, updateNomineeInput.idNo, updateNomineeInput.identificationNumber, updateNomineeInput.idNumber),
+            email: pickFirst(updateNomineeInput.email, updateNomineeInput.emailID, updateNomineeInput.emailId),
+            mobileNo: pickFirst(
+              updateNomineeInput.mobileNo,
+              updateNomineeInput.contactNumber,
+              updateNomineeInput.phone,
+              updateNomineeInput.mobile
+            )
+          });
+        }
+        if (updateNominee2Input && (updateNominee2Input.name || updateNominee2Input.fullName || updateNominee2Input.nric || updateNominee2Input.idNo)) {
+          updateNomineeCandidates.push({
+            name: pickFirst(updateNominee2Input.fullName, updateNominee2Input.name),
+            idNo: pickFirst(updateNominee2Input.nric, updateNominee2Input.idNo, updateNominee2Input.identificationNumber, updateNominee2Input.idNumber),
+            email: pickFirst(updateNominee2Input.email, updateNominee2Input.emailID, updateNominee2Input.emailId),
+            mobileNo: pickFirst(
+              updateNominee2Input.mobileNo,
+              updateNominee2Input.contactNumber,
+              updateNominee2Input.phone,
+              updateNominee2Input.mobile
+            )
+          });
+        }
+      }
+
+      const updateNomineeKeys = new Set();
+      const updateDuplicateNomineeDescriptions = new Set();
+      updateNomineeCandidates.forEach((nominee) => {
+        const key = buildPersonKey(nominee);
+        if (!key) return;
+        if (updateNomineeKeys.has(key)) {
+          updateDuplicateNomineeDescriptions.add(
+            pickFirst(nominee.name, nominee.idNo, nominee.email, nominee.mobileNo) || 'Unknown nominee'
+          );
+        } else {
+          updateNomineeKeys.add(key);
+        }
+      });
+
+      const updateBeneficiaryKeys = new Set();
+      const updateDuplicateBeneficiaryDescriptions = new Set();
+      beneficiaries.forEach((beneficiary) => {
+        if (!beneficiary) return;
+        const key = buildPersonKey({
+          name: beneficiary.name,
+          idNo: beneficiary.idNo
+        });
+        if (!key) return;
+        if (updateBeneficiaryKeys.has(key)) {
+          updateDuplicateBeneficiaryDescriptions.add(
+            pickFirst(beneficiary.name, beneficiary.idNo) || 'Unknown beneficiary'
+          );
+        } else {
+          updateBeneficiaryKeys.add(key);
+        }
+      });
+
+      if (updateDuplicateNomineeDescriptions.size > 0 || updateDuplicateBeneficiaryDescriptions.size > 0) {
+        const errors = [];
+        if (updateDuplicateNomineeDescriptions.size > 0) {
+          errors.push(
+            `Same person cannot be added as multiple nominees: ${Array.from(updateDuplicateNomineeDescriptions).join(', ')}`
+          );
+        }
+        if (updateDuplicateBeneficiaryDescriptions.size > 0) {
+          errors.push(
+            `Same person cannot be added as multiple beneficiaries: ${Array.from(updateDuplicateBeneficiaryDescriptions).join(', ')}`
+          );
+        }
+
+        return {
+          success: false,
+          error: {
+            code: 'VALIDATION_FAILED',
+            message: errors.join(' | ')
+          }
+        };
       }
 
       // Validate

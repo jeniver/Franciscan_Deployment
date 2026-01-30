@@ -188,6 +188,387 @@ class InvoiceRepository extends BaseRepository {
    * @param {string} applicationCode - Optional application code type (NAPP, WAPP, INCR, GOLA) for filtering
    * @returns {Promise<Object|null>} Invoice with details, receipt info, and all fields or null
    */
+  /**
+   * Get application details by code (NicheApplication, Booking, Niche, Wall, Item info)
+   * This is called when invoice is not found - returns application data for invoice creation
+   * @param {string} code - Application code
+   * @param {number} churchId - Church ID for filtering
+   * @returns {Promise<Object|null>} Application details or null
+   */
+  async getApplicationDetailsByCode(code, churchId = null) {
+    try {
+      if (!code || code.trim().length === 0) {
+        logger.warn('getApplicationDetailsByCode called with empty code');
+        return null;
+      }
+
+      const searchCode = code.trim();
+      logger.info(`Fetching application details for code: ${searchCode}, churchId: ${churchId}`);
+
+      // Step 1: Get NicheApplication data
+      let applicationQuery = `
+        SELECT TOP 1
+          na.NicheApplicationId,
+          na.Code AS ApplicationCode,
+          na.NicheId,
+          na.AppliedDate,
+          na.AgreementDate,
+          na.Status AS ApplicationStatus,
+          na.ApplicantName,
+          na.ApplicantIDNo,
+          na.ApplicantEmailID,
+          na.ApplicantMobileNo,
+          na.ApplicantHomeTelNo,
+          na.ApplicantOfficeTelNo,
+          na.ApplicantIsCatholic,
+          na.ApplicantAddressNo,
+          na.ApplicantAddressLine1,
+          na.ApplicantAddressLine2,
+          na.ApplicantAddressCity,
+          na.ApplicantAddressState,
+          na.ApplicantAddressCountry,
+          na.NomineeName,
+          na.NomineeIDNo,
+          na.NomineeEmailID,
+          na.NomineeMobileNo,
+          na.NomineeHomeTelNo,
+          na.NomineeOfficeTelNo,
+          na.NomineeRelationship,
+          na.NomineeIsCatholic,
+          na.NomineeAddressNo,
+          na.NomineeAddressLine1,
+          na.NomineeAddressLine2,
+          na.NomineeAddressCity,
+          na.NomineeAddressState,
+          na.NomineeAddressCountry,
+          na.NomineeName2,
+          na.NomineeIDNo2,
+          na.Amount AS ApplicationAmount,
+          na.DefaultAmount AS ApplicationDefaultAmount,
+          na.ChurchId,
+          na.UserId,
+          na.Remarks,
+          na.RefDocType
+        FROM NicheApplication na WITH(NOLOCK)
+        WHERE na.Code = @code
+      `;
+
+      const applicationParams = { code: searchCode };
+
+      if (churchId) {
+        applicationQuery += ' AND na.ChurchId = @churchId';
+        applicationParams.churchId = churchId;
+      }
+
+      const applicationResult = await executeQuery(applicationQuery, applicationParams, { timeout: 10000 });
+
+      if (!applicationResult.recordset || applicationResult.recordset.length === 0) {
+        logger.info(`No application found for code: ${searchCode}`);
+        return null;
+      }
+
+      const application = applicationResult.recordset[0];
+
+      // Step 2: Get Niche details with Wall, Row, Chapel hierarchy and pricing
+      let nicheDetails = null;
+      if (application.NicheId) {
+        const nicheQuery = `
+          SELECT 
+            n.NicheId,
+            n.Code AS NicheCode,
+            n.DefaultAmount AS NichePrice,
+            n.AppearanceDescription,
+            n.Status AS NicheStatus,
+            n.ChurchId AS NicheChurchId,
+            r.NicheRowlId,
+            r.Code AS RowCode,
+            r.NicheLevel,
+            r.DefaultAmount AS RowPrice,
+            w.NicheWallId,
+            w.Code AS WallCode,
+            w.Name AS WallName,
+            c.ChapelId,
+            c.Code AS ChapelCode,
+            c.Name AS ChapelName,
+            CASE WHEN EXISTS (
+              SELECT 1 FROM NicheBooking nb WITH (NOLOCK)
+              WHERE nb.NicheId = n.NicheId AND nb.BookingStatus = 1
+            ) THEN 1 ELSE 0 END AS IsBooked
+          FROM Niche n WITH (NOLOCK)
+          INNER JOIN NicheRow r WITH (NOLOCK) ON n.NicheRowlId = r.NicheRowlId
+          INNER JOIN NicheWall w WITH (NOLOCK) ON r.NicheWallId = w.NicheWallId
+          INNER JOIN Chapel c WITH (NOLOCK) ON w.ChapelId = c.ChapelId
+          WHERE n.NicheId = @nicheId
+        `;
+
+        const nicheResult = await executeQuery(nicheQuery, { nicheId: application.NicheId }, { timeout: 10000 });
+
+        if (nicheResult.recordset && nicheResult.recordset.length > 0) {
+          nicheDetails = nicheResult.recordset[0];
+        }
+      }
+
+      // Step 3: Get matching Item based on niche level or DocType
+      let item = null;
+      if (nicheDetails && nicheDetails.NicheLevel && application.ChurchId) {
+        // Try to get item by niche level (e.g., Level 6 -> ItemId 6)
+        const levelItemQuery = `
+          SELECT TOP 1
+            i.ItemId,
+            i.Name AS ItemName,
+            i.Code AS ItemCode,
+            i.Price AS ItemPrice,
+            i.IsRefType,
+            i.DocType,
+            i.ChurchId
+          FROM Item i WITH(NOLOCK)
+          WHERE i.ChurchId = @churchId
+            AND i.ItemId = @itemId
+        `;
+        const levelItemResult = await executeQuery(levelItemQuery, { 
+          churchId: application.ChurchId, 
+          itemId: nicheDetails.NicheLevel 
+        }, { timeout: 5000 });
+        
+        if (levelItemResult.recordset && levelItemResult.recordset.length > 0) {
+          item = levelItemResult.recordset[0];
+        }
+      }
+
+      // Fallback: Get item with DocType = 'NAPP' (Niche Application)
+      if (!item && application.ChurchId) {
+        const itemQuery = `
+          SELECT TOP 1
+            i.ItemId,
+            i.Name AS ItemName,
+            i.Code AS ItemCode,
+            i.Price AS ItemPrice,
+            i.IsRefType,
+            i.DocType,
+            i.ChurchId
+          FROM Item i WITH(NOLOCK)
+          WHERE i.ChurchId = @churchId
+            AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
+          ORDER BY i.ItemId
+        `;
+        const itemResult = await executeQuery(itemQuery, { churchId: application.ChurchId }, { timeout: 5000 });
+        
+        if (itemResult.recordset && itemResult.recordset.length > 0) {
+          item = itemResult.recordset[0];
+        }
+      }
+
+      // Last resort: Get any item for the church
+      if (!item && application.ChurchId) {
+        const fallbackItemQuery = `
+          SELECT TOP 1
+            i.ItemId,
+            i.Name AS ItemName,
+            i.Code AS ItemCode,
+            i.Price AS ItemPrice,
+            i.IsRefType,
+            i.DocType,
+            i.ChurchId
+          FROM Item i WITH(NOLOCK)
+          WHERE i.ChurchId = @churchId
+          ORDER BY i.ItemId
+        `;
+        const fallbackItemResult = await executeQuery(fallbackItemQuery, { churchId: application.ChurchId }, { timeout: 5000 });
+        
+        if (fallbackItemResult.recordset && fallbackItemResult.recordset.length > 0) {
+          item = fallbackItemResult.recordset[0];
+        }
+      }
+
+      // Step 4: Get NicheBooking if exists
+      let booking = null;
+      const bookingQuery = `
+        SELECT TOP 1
+          nb.NicheBookingId,
+          nb.NicheId,
+          nb.NicheApplicationId,
+          nb.BookedDate,
+          nb.BookingStatus,
+          nb.Remarks AS BookingRemarks,
+          nb.ChurchId AS BookingChurchId,
+          nb.UserId AS BookingUserId,
+          cp.Name AS ContactPersonName,
+          cp.IDNo AS ContactPersonIDNo,
+          cp.MobileNo AS ContactPersonMobile,
+          cp.EmailID AS ContactPersonEmail,
+          nom1.Name AS NomineeName,
+          nom1.IDNo AS NomineeIDNo,
+          nom2.Name AS Nominee2Name,
+          nom2.IDNo AS Nominee2IDNo
+        FROM NicheBooking nb WITH(NOLOCK)
+        LEFT JOIN Person cp WITH(NOLOCK) ON nb.ContactPersonId = cp.PersonId
+        LEFT JOIN Person nom1 WITH(NOLOCK) ON nb.NomineeId = nom1.PersonId
+        LEFT JOIN Person nom2 WITH(NOLOCK) ON nb.NomineeId2 = nom2.PersonId
+        WHERE nb.NicheApplicationId = @nicheApplicationId
+          AND nb.BookingStatus > 0
+        ORDER BY nb.BookedDate DESC
+      `;
+
+      const bookingResult = await executeQuery(bookingQuery, { 
+        nicheApplicationId: application.NicheApplicationId 
+      }, { timeout: 10000 });
+
+      if (bookingResult.recordset && bookingResult.recordset.length > 0) {
+        booking = bookingResult.recordset[0];
+      }
+
+      // Step 5: Calculate pricing
+      const nichePrice = nicheDetails?.NichePrice || nicheDetails?.RowPrice || application.ApplicationDefaultAmount || application.ApplicationAmount || 0;
+      const itemPrice = item?.ItemPrice || nichePrice;
+
+      // Step 6: Build comprehensive response
+      const response = {
+        // CRITICAL FLAGS for Frontend
+        isApplicationData: true,        // This is application data, NOT an invoice
+        isInvoice: false,               // Explicitly mark as not an invoice
+        hasInvoice: false,              // No invoice exists for this application
+        canCreateInvoice: true,         // Frontend should show "Create Invoice" button
+        invoiceId: null,                // No invoice ID
+        code: null,                     // No invoice code yet
+        
+        // Application info
+        applicationCode: application.ApplicationCode,
+        nicheApplicationId: application.NicheApplicationId,
+        applicationStatus: application.ApplicationStatus,
+        appliedDate: application.AppliedDate,
+        agreementDate: application.AgreementDate,
+        refDocNumber: application.ApplicationCode,
+        refDocName: 'NAPP',
+        
+        // Customer/Applicant info
+        customerName: application.ApplicantName,
+        applicantIDNo: application.ApplicantIDNo,
+        applicantEmail: application.ApplicantEmailID,
+        applicantMobile: application.ApplicantMobileNo,
+        applicantHomeTel: application.ApplicantHomeTelNo,
+        applicantOfficeTel: application.ApplicantOfficeTelNo,
+        applicantIsCatholic: application.ApplicantIsCatholic,
+        
+        // Address fields
+        addressNo: application.ApplicantAddressNo,
+        address: application.ApplicantAddressLine1,
+        address2: application.ApplicantAddressLine2,
+        addressCity: application.ApplicantAddressCity,
+        districtCode: application.ApplicantAddressState,
+        country: application.ApplicantAddressCountry,
+        
+        // Nominee info
+        nomineeName: application.NomineeName,
+        nomineeIDNo: application.NomineeIDNo,
+        nomineeEmail: application.NomineeEmailID,
+        nomineeMobile: application.NomineeMobileNo,
+        nomineeRelationship: application.NomineeRelationship,
+        nomineeName2: application.NomineeName2,
+        nomineeIDNo2: application.NomineeIDNo2,
+        
+        // Financial info
+        totalAmount: nichePrice,
+        payingAmount: nichePrice,
+        applicationAmount: application.ApplicationAmount,
+        applicationDefaultAmount: application.ApplicationDefaultAmount,
+        taxAmount: 0,
+        taxPercentage: 0,
+        taxCode: null,
+        
+        // System fields
+        userId: application.UserId,
+        churchId: application.ChurchId,
+        status: application.ApplicationStatus,
+        remarks: application.Remarks,
+        transactionDate: application.AppliedDate || new Date(),
+        
+        // Niche details
+        niche: nicheDetails ? {
+          nicheId: nicheDetails.NicheId,
+          nicheCode: nicheDetails.NicheCode,
+          nichePrice: nicheDetails.NichePrice,
+          nicheStatus: nicheDetails.NicheStatus,
+          appearanceDescription: nicheDetails.AppearanceDescription,
+          isBooked: nicheDetails.IsBooked === 1,
+          
+          // Row details
+          rowId: nicheDetails.NicheRowlId,
+          rowCode: nicheDetails.RowCode,
+          nicheLevel: nicheDetails.NicheLevel,
+          rowPrice: nicheDetails.RowPrice,
+          
+          // Wall details
+          wallId: nicheDetails.NicheWallId,
+          wallCode: nicheDetails.WallCode,
+          wallName: nicheDetails.WallName,
+          
+          // Chapel details
+          chapelId: nicheDetails.ChapelId,
+          chapelCode: nicheDetails.ChapelCode,
+          chapelName: nicheDetails.ChapelName
+        } : null,
+        
+        // Booking details
+        booking: booking ? {
+          nicheBookingId: booking.NicheBookingId,
+          nicheId: booking.NicheId,
+          nicheApplicationId: booking.NicheApplicationId,
+          bookedDate: booking.BookedDate,
+          bookingStatus: booking.BookingStatus,
+          bookingRemarks: booking.BookingRemarks,
+          bookingChurchId: booking.BookingChurchId,
+          bookingUserId: booking.BookingUserId,
+          contactPersonName: booking.ContactPersonName,
+          contactPersonIDNo: booking.ContactPersonIDNo,
+          contactPersonMobile: booking.ContactPersonMobile,
+          contactPersonEmail: booking.ContactPersonEmail,
+          nomineeName: booking.NomineeName,
+          nomineeIDNo: booking.NomineeIDNo,
+          nominee2Name: booking.Nominee2Name,
+          nominee2IDNo: booking.Nominee2IDNo
+        } : null,
+        
+        // Invoice details (single line item for now)
+        details: [{
+          invoiceDetailId: null,
+          invoiceId: null,
+          itemId: item?.ItemId || null,
+          itemName: item?.ItemName || 'Niche',
+          itemCode: item?.ItemCode || null,
+          itemPrice: itemPrice,
+          itemDocType: item?.DocType || null,
+          itemIsRefType: item?.IsRefType || false,
+          quantity: 1,
+          unitAmount: itemPrice,
+          payingAmount: itemPrice,
+          totalPayingAmount: itemPrice,
+          refDocNumber: application.ApplicationCode,
+          refDocName: 'NAPP',
+          refType: 'NAPP',
+          outstandingAmount: 0,
+          lineTotalAmount: itemPrice,
+          lineTaxPercent: 0,
+          lineTaxAmount: 0
+        }],
+        
+        // Summary
+        summary: {
+          totalItems: 1,
+          subtotal: itemPrice,
+          totalTax: 0,
+          grandTotal: itemPrice
+        }
+      };
+
+      logger.info(`Application details retrieved: ApplicationCode=${response.applicationCode}, NicheCode=${nicheDetails?.NicheCode || 'N/A'}, Price=${nichePrice}, ItemName=${item?.ItemName || 'N/A'}`);
+
+      return response;
+    } catch (error) {
+      logger.error('Error getting application details by code:', error);
+      throw error;
+    }
+  }
+
   async getInvoiceByCode(code, churchId = null, applicationCode = null) {
     try {
       if (!code || code.trim().length === 0) {
@@ -479,6 +860,20 @@ class InvoiceRepository extends BaseRepository {
           searchedByRefDocNumber: looksLikeRefDoc || result.recordset.length === 0
         });
         
+        // FEATURE: Fetch application details if invoice doesn't exist
+        logger.info(`Attempting to fetch application details for code: ${searchCode}`);
+        
+        try {
+          const applicationDetails = await this.getApplicationDetailsByCode(searchCode, churchId);
+          
+          if (applicationDetails) {
+            logger.info(`Application found for code: ${searchCode}, returning application details`);
+            return applicationDetails;
+          }
+        } catch (appError) {
+          logger.warn('Failed to fetch application details:', appError);
+          }
+          
         // Comprehensive diagnostic: Check multiple scenarios
         try {
           // Diagnostic 1: Check if invoice exists with this RefDocNumber (any status, any church)
@@ -705,6 +1100,12 @@ class InvoiceRepository extends BaseRepository {
       const normalizedInvoiceRefDocName = invoice.RefDocName ? String(invoice.RefDocName).trim().toUpperCase() : null;
       
       const invoiceResponse = {
+        // CRITICAL FLAGS for Frontend
+        isApplicationData: false,       // This is an actual invoice, NOT application data
+        isInvoice: true,                // Explicitly mark as invoice
+        hasInvoice: true,               // Invoice exists
+        canCreateInvoice: false,        // No need to create invoice - already exists
+        
         // Invoice header fields
         invoiceId: invoice.InvoiceId,
         code: invoice.Code,
@@ -852,6 +1253,42 @@ class InvoiceRepository extends BaseRepository {
       return null;
     } catch (error) {
       logger.error('Error getting invoice ID by code:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Soft-cancel invoice by code (set Status = 0, keep row and details)
+   * Mirrors ASP.NET UpdateInvoice_Status behavior.
+   * @param {string} code - Invoice code
+   * @param {number|null} churchId - Optional church filter for access control
+   * @returns {Promise<boolean>} True if an invoice was updated
+   */
+  async cancelInvoiceByCode(code, churchId = null) {
+    try {
+      if (!code || !code.trim()) {
+        return false;
+      }
+
+      let query = `
+        UPDATE Invoice
+        SET Status = 0
+        WHERE Code = @code
+          AND Status > 0
+      `;
+
+      const params = { code: code.trim() };
+
+      if (churchId) {
+        query += ' AND ChurchId = @churchId';
+        params.churchId = churchId;
+      }
+
+      const result = await executeQuery(query, params);
+      // rowsAffected is an array; first element is the count for this statement
+      return Array.isArray(result.rowsAffected) && result.rowsAffected[0] > 0;
+    } catch (error) {
+      logger.error('Error cancelling invoice by code:', error);
       throw error;
     }
   }
