@@ -814,7 +814,7 @@ export const pdfTemplateService = {
             &nbsp;</span></div>
         <div style="left:28.1875em;top:60.654em;" class="pdf24_01">
           <span style="word-spacing:0.0002em;"
-            class="pdf24_17 pdf24_08 pdf24_14">Fr Justin Lim
+            class="pdf24_17 pdf24_08 pdf24_14">Fr Gerard Victore
             &nbsp;</span></div>
         <div style="left:3.625em;top:61.7623em;" class="pdf24_01">
           <span style="word-spacing:0.0003em;"
