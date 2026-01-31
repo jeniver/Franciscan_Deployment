@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { SearchIcon, EyeIcon, EditIcon, TrashIcon, CalendarIcon, UserIcon, ClockIcon } from 'lucide-react';
 import { Button } from './common/Button';
 import { Input } from './common/Input';
+import { DateInput } from './common/DateInput';
 import { LoadingSpinner } from './common/LoadingSpinner';
 import { Card } from './common/Card';
 import { useWakeRoom } from '../hooks/useWakeRoom';
@@ -134,10 +135,10 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
               <label className="block text-sm font-medium text-gray-700">
                 Using date
               </label>
-              <Input
-                type="date"
-                value={searchCriteria.usingDate}
-                onChange={(e) => setSearchCriteria({ ...searchCriteria, usingDate: e.target.value })}
+              <DateInput
+                value={searchCriteria.usingDate || ''}
+                onChange={(apiDate) => setSearchCriteria({ ...searchCriteria, usingDate: apiDate })}
+                placeholder="dd/mm/yyyy"
                 className="w-full"
               />
             </div>

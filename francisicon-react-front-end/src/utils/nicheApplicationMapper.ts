@@ -273,6 +273,26 @@ export const mapApiApplicationToFormData = (record?: RawNicheApplication): Niche
       '').trim(),
     nomineeEmail: (record.nomineeEmail || primaryNominee.email || '').trim(),
     nomineeStatus: record.nomineeStatus || primaryNominee.status || 'Active',
+    
+    // Nominee structured address fields (for AddressInput component)
+    // Extract from API if present, similar to applicant address mapping
+    nomineeAddressNo: (primaryNominee as any)?.addressNo || record.nomineeAddressNo || '',
+    nomineeAddressLine1: (primaryNominee as any)?.addressLine1 || record.nomineeAddressLine1 || '',
+    nomineeAddressLine2: (primaryNominee as any)?.addressLine2 || record.nomineeAddressLine2 || '',
+    nomineeAddressCity: (primaryNominee as any)?.addressCity || record.nomineeAddressCity || '',
+    nomineeAddressState: (primaryNominee as any)?.addressState || record.nomineeAddressState || '',
+    nomineeAddressCountry: (primaryNominee as any)?.addressCountry || record.nomineeAddressCountry || 'Singapore',
+    // UI fields for AddressInput (match applicant pattern)
+    nomineeBlock: (() => {
+      const addrNo = (primaryNominee as any)?.addressNo || record.nomineeAddressNo || '';
+      return addrNo && addrNo.trim() !== '' && addrNo !== 'No' ? 'Block' : '';
+    })(),
+    nomineeBlockNo: ((primaryNominee as any)?.addressLine1 || record.nomineeAddressLine1 || '').trim(),
+    nomineeStreetName: ((primaryNominee as any)?.addressLine2 || record.nomineeAddressLine2 || '').trim(),
+    nomineeUnitNo: ((primaryNominee as any)?.addressCity || record.nomineeAddressCity || '').trim(),
+    nomineePostalCode: ((primaryNominee as any)?.addressState || record.nomineeAddressState || '').trim(),
+    nomineeCountry: ((primaryNominee as any)?.addressCountry || record.nomineeAddressCountry || 'Singapore').trim(),
+    
     invoice: record.invoice || {}
   };
 

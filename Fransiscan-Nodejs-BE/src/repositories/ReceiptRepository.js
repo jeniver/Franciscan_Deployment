@@ -541,6 +541,9 @@ class ReceiptRepository extends BaseRepository {
    */
   async getLastReceiptNumber() {
     try {
+      // ⚠️ CRITICAL FIX: Use UPDLOCK + HOLDLOCK to prevent race conditions
+      // This ensures exclusive access while generating the next code
+      // Matches document recommendation from ASP.NET analysis
       // OPTIMIZED: Use TRY_CAST instead of ISNUMERIC for better performance
       // ISNUMERIC can be very slow on large tables
       const query = `
@@ -550,7 +553,7 @@ class ReceiptRepository extends BaseRepository {
             ELSE 0
           END
         ), 0) AS LastNumber
-        FROM Receipt WITH (NOLOCK)
+        FROM Receipt WITH (UPDLOCK, HOLDLOCK)
         WHERE Code IS NOT NULL AND LEN(LTRIM(RTRIM(Code))) > 0
       `;
       

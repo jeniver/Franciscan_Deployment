@@ -1,13 +1,23 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import { Layout } from '../components/Layout';
 import { useReceipt } from '../hooks/useReceipt';
 import { useToast } from '../contexts/ToastContext';
 import { addressService } from '../services/addressService';
 import { parseRawAddress } from '../components/AddressInput';
-import { PrinterIcon, EyeIcon, LoaderIcon } from 'lucide-react';
+import { PrinterIcon, EyeIcon, LoaderIcon, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
 import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
+import { ReceiptDetailModal } from '../components/ReceiptDetailModal';
 import { InvoiceTemplateData } from '../services/invoiceTemplateService';
+import { receiptService, type Receipt as ReceiptType, type InvoiceDetail } from '../services/receiptService';
+import type { AppDispatch, RootState } from '../store';
+import {
+  fetchInvoiceOrApplication,
+  clearCurrentData,
+  resetCreateStatus,
+  createInvoice,
+} from '../store/invoiceSlice';
 
 interface InvoiceItem {
   id: string;
@@ -37,14 +47,26 @@ const PAYMENT_MODES = ['Cash', 'Cheque', 'Bank Transfer', 'Credit Card', 'Other'
 export function InvoiceAndReceiptPage() {
   const location = useLocation();
   const { showSuccess, showError } = useToast();
+  const dispatch = useDispatch<AppDispatch>();
+
+  const {
+    currentData,
+    loading: invoiceLoading,
+    error: invoiceError,
+    creatingInvoice,
+    createInvoiceSuccess,
+    createReceiptSuccess,
+    lastCreatedInvoiceCode,
+    lastCreatedReceiptCode,
+  } = useSelector((state: RootState) => state.invoice);
+
   const { 
     fetchLastReceiptNumber, 
-    getReceiptPdfLink,
-    fetchInvoiceByCode,
     fetchReceiptItems,
-    selectedInvoice,
     lastReceiptNumber,
     receiptItems,
+    selectedReceipt,
+    setSelectedReceipt,
     loading 
   } = useReceipt();
   
@@ -72,6 +94,9 @@ export function InvoiceAndReceiptPage() {
   // Invoice viewer modal state
   const [isInvoiceViewerOpen, setIsInvoiceViewerOpen] = useState(false);
   const [viewerInvoiceData, setViewerInvoiceData] = useState<InvoiceTemplateData | null>(null);
+
+  // Receipt detail modal state
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   
   // Ref for debouncing postal code lookup
   const postalCodeDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -145,6 +170,117 @@ export function InvoiceAndReceiptPage() {
     };
   }, []);
 
+  const clearFormFields = useCallback(() => {
+    setInvoiceNumber('');
+    setPayeeName('');
+    setPaymentMode('Cash');
+
+    setAddressBlock('Block');
+    setAddressNumber('');
+    setAddressStreet('');
+    setAddressUnit('');
+    setAddressPostalCode('');
+    setAddressCountry('Singapore');
+
+    setItems([]);
+    setTransactionDate(new Date().toLocaleDateString('en-GB'));
+  }, []);
+
+  const handleApplicationNumberChange = useCallback(
+    (value: string) => {
+      setApplicationNumber(value);
+      clearFormFields();
+      dispatch(clearCurrentData());
+    },
+    [clearFormFields, dispatch]
+  );
+
+  // Populate UI from invoiceSlice currentData (invoice OR application fallback)
+  useEffect(() => {
+    if (!currentData) return;
+
+    // Basic fields
+    setPayeeName(currentData.customerName || '');
+    setPaymentMode(((currentData as any)?.paymentMode as string) || 'Cash');
+
+    // Only set invoice number when it is truly an invoice
+    setInvoiceNumber(currentData.isInvoice ? (currentData.code || '') : '');
+
+    // Date
+    if (currentData.transactionDate) {
+      const date = new Date(currentData.transactionDate);
+      if (!isNaN(date.getTime())) {
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        setTransactionDate(`${day}-${month}-${year}`);
+      }
+    }
+
+    // Address (best-effort; backend fields differ between invoice/application)
+    const fullAddress =
+      currentData.address ||
+      [currentData.addressNo, currentData.address2, currentData.addressCity, currentData.country]
+        .filter(Boolean)
+        .join(', ');
+    if (fullAddress) {
+      applyParsedAddress(fullAddress);
+    }
+
+    // Details → table items
+    const mapped: InvoiceItem[] = Array.isArray(currentData.details)
+      ? currentData.details.map((d, idx) => {
+          const name = d.itemName || '';
+          const matchedReceiptItem = receiptItems.find((ri) => ri.itemId === d.itemId);
+
+          // Pick a dropdown option that matches itemName (fallback to first option)
+          const optionMatch =
+            availableItems.find((opt) => opt.trim().toLowerCase() === name.trim().toLowerCase()) ||
+            (matchedReceiptItem?.itemName as string | undefined) ||
+            availableItems[0] ||
+            'Other';
+
+          return {
+            id: `invline-${idx}-${Date.now()}`,
+            selectItem: optionMatch,
+            reference: d.refDocNumber || '',
+            defaultAmount: matchedReceiptItem?.unitPrice ?? matchedReceiptItem?.defaultAmount ?? d.unitAmount ?? 0,
+            amountPaying: d.payingAmount ?? 0,
+            quantity: d.quantity ?? 1,
+            totalNoTax: d.lineTotalAmount ?? (d.payingAmount ?? 0) * (d.quantity ?? 1),
+            taxPercent: d.lineTaxPercent ?? 9,
+            taxAmount: d.lineTaxAmount ?? 0,
+            totalAmount: d.totalPayingAmount ?? 0,
+          };
+        })
+      : [];
+
+    setItems(mapped);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentData, applyParsedAddress, receiptItems]);
+
+  useEffect(() => {
+    if (createInvoiceSuccess && lastCreatedInvoiceCode) {
+      showSuccess('Success', `Invoice created: ${lastCreatedInvoiceCode}`);
+      dispatch(resetCreateStatus());
+      // Refresh view with newly created invoice code
+      dispatch(fetchInvoiceOrApplication(lastCreatedInvoiceCode));
+    }
+  }, [createInvoiceSuccess, lastCreatedInvoiceCode, dispatch, showSuccess]);
+
+  useEffect(() => {
+    if (createReceiptSuccess && lastCreatedReceiptCode) {
+      showSuccess('Success', `Receipt created: ${lastCreatedReceiptCode}`);
+      dispatch(resetCreateStatus());
+    }
+  }, [createReceiptSuccess, lastCreatedReceiptCode, dispatch, showSuccess]);
+
+  useEffect(() => {
+    if (invoiceError) {
+      showError('Error', invoiceError);
+    }
+  }, [invoiceError, showError]);
+
   // Handle view invoice by application number
   const handleViewInvoiceByApplication = async (appNumber: string) => {
     if (!appNumber.trim()) {
@@ -152,178 +288,10 @@ export function InvoiceAndReceiptPage() {
     }
     
     try {
-      // Try to fetch invoice using application number as invoice code
-      const result = await fetchInvoiceByCode(appNumber.trim());
-      
-      // Check if the dispatch was successful
-      if (result.type.endsWith('/fulfilled')) {
-        const invoice = selectedInvoice || (result.payload as any);
-        
-        if (!invoice) {
-          showError('Error', 'Invoice not found');
-          return;
-        }
-        
-        // Map invoice data to form fields
-        // Use code from invoice API response (invoiceCode already contains Code from API)
-        setInvoiceNumber(invoice.invoiceCode || invoiceNumber || '');
-        setPayeeName(invoice.customerName || '');
-        setPaymentMode(invoice.paymentMode || 'Cash');
-        
-        // Parse and set transaction date (format as DD-MM-YYYY)
-        if (invoice.invoiceDate) {
-          const date = new Date(invoice.invoiceDate);
-          if (!isNaN(date.getTime())) {
-            const day = String(date.getDate()).padStart(2, '0');
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const year = date.getFullYear();
-            setTransactionDate(`${day}-${month}-${year}`);
-          }
-        }
-        
-        // Parse address from invoice API (if available)
-        const invoiceData = invoice as any;
-        if (invoiceData.address || invoiceData.customerAddress) {
-          const addressString = invoiceData.address || invoiceData.customerAddress || '';
-          applyParsedAddress(addressString);
-        } else if (invoiceData.addressBlock || invoiceData.addressNumber || invoiceData.addressStreet) {
-          // Handle individual address fields if provided
-          if (invoiceData.addressBlock) setAddressBlock(invoiceData.addressBlock);
-          if (invoiceData.addressNumber) setAddressNumber(invoiceData.addressNumber);
-          if (invoiceData.addressStreet) setAddressStreet(invoiceData.addressStreet);
-          if (invoiceData.addressUnit) setAddressUnit(invoiceData.addressUnit);
-          if (invoiceData.addressPostalCode) setAddressPostalCode(invoiceData.addressPostalCode);
-          if (invoiceData.addressCountry) setAddressCountry(invoiceData.addressCountry);
-        }
-        
-        // Map invoice details to items
-        if (invoice.invoiceDetails && invoice.invoiceDetails.length > 0) {
-          const mappedItems: InvoiceItem[] = invoice.invoiceDetails.map((detail: any, index: number) => {
-            // Get values directly from API response
-            const itemName = detail.itemName || detail.ItemName || detail.description || detail.Item || '';
-            const quantity = detail.quantity || detail.Quantity || 1;
-            const payingAmount = detail.payingAmount || detail.PayingAmount || detail.unitPrice || detail.UnitAmount || 0;
-            const lineTaxPercent = detail.lineTaxPercent || detail.LineTaxPercent || detail.taxPercent || detail.TaxPercent || 9;
-            const lineTaxAmount = detail.lineTaxAmount || detail.LineTaxAmount || detail.taxAmount || detail.TaxAmount || 0;
-            const totalPayingAmount = detail.totalPayingAmount || detail.TotalPayingAmount || detail.amount || detail.Amount || 0;
-            const lineTotalAmount = detail.lineTotalAmount || detail.LineTotalAmount || detail.unitPrice || detail.UnitAmount || 0;
-            const refDocNumber = detail.refDocNumber || detail.RefDocNumber || '';
-            
-            // Select item from dropdown based on itemName from API
-            let selectItem = availableItems[0] || 'Other';
-            
-            if (itemName) {
-              // First try to match with receiptItems using itemId or itemName
-              const matchedReceiptItem = receiptItems.find(
-                receiptItem => 
-                  (detail.itemId && receiptItem.itemId === detail.itemId) ||
-                  receiptItem.itemName?.trim().toLowerCase() === itemName.trim().toLowerCase() ||
-                  receiptItem.description?.trim().toLowerCase() === itemName.trim().toLowerCase()
-              );
-              
-              if (matchedReceiptItem) {
-                // Use the itemName from receiptItems to ensure exact match
-                selectItem = matchedReceiptItem.itemName || selectItem;
-              } else {
-                // Try to find exact match in availableItems (case-insensitive)
-                const exactMatch = availableItems.find(item => 
-                  item.trim().toLowerCase() === itemName.trim().toLowerCase()
-                );
-                
-                if (exactMatch) {
-                  selectItem = exactMatch;
-                } else {
-                  // Try partial match
-                  const partialMatch = availableItems.find(item => 
-                    item.toLowerCase().includes(itemName.toLowerCase()) || 
-                    itemName.toLowerCase().includes(item.toLowerCase())
-                  );
-                  
-                  if (partialMatch) {
-                    selectItem = partialMatch;
-                  } else {
-                    // Fallback to keyword matching
-                    const lowerItemName = itemName.toLowerCase();
-                    if (lowerItemName.includes('niche')) {
-                      const nicheItem = availableItems.find(item => item.toLowerCase().includes('niche'));
-                      selectItem = nicheItem || 'Level 3 Niche';
-                    } else if (lowerItemName.includes('inscription')) {
-                      const inscriptionItem = availableItems.find(item => item.toLowerCase().includes('inscription'));
-                      selectItem = inscriptionItem || 'Niche Inscription Both Name';
-                    } else if (lowerItemName.includes('urn')) {
-                      const urnItem = availableItems.find(item => item.toLowerCase().includes('urn'));
-                      selectItem = urnItem || 'Urn (Brass praying hands)';
-                    } else if (lowerItemName.includes('room') || lowerItemName.includes('verna')) {
-                      const roomItem = availableItems.find(item => item.toLowerCase().includes('room') || item.toLowerCase().includes('verna'));
-                      selectItem = roomItem || 'Booking of La Verna Room';
-                    } else if (lowerItemName.includes('clearing') || lowerItemName.includes('fee')) {
-                      const feeItem = availableItems.find(item => item.toLowerCase().includes('clearing') || item.toLowerCase().includes('fee'));
-                      selectItem = feeItem || 'Clearing fees';
-                    }
-                  }
-                }
-              }
-            }
-            
-            // Find the corresponding item in receiptItems to get its default Price
-            const matchedReceiptItem = receiptItems.find(
-              receiptItem => 
-                (detail.itemId && receiptItem.itemId === detail.itemId) ||
-                receiptItem.itemName?.trim() === selectItem.trim() || 
-                receiptItem.description?.trim() === selectItem.trim() ||
-                receiptItem.itemName?.trim().toLowerCase() === selectItem.trim().toLowerCase()
-            );
-            
-            // Get default amount from receiptItems (the base Price from item catalog)
-            const defaultAmount = matchedReceiptItem?.unitPrice ?? matchedReceiptItem?.defaultAmount ?? payingAmount;
-            
-            // Use values directly from API for calculations
-            // Total (No Tax) = lineTotalAmount or payingAmount * quantity
-            const totalNoTax = lineTotalAmount || (payingAmount * quantity);
-            
-            // Map directly from API response
-            const amountPaying = payingAmount;
-            const taxPercent = lineTaxPercent;
-            const taxAmount = lineTaxAmount;
-            const totalAmount = totalPayingAmount || (totalNoTax + taxAmount);
-            
-            return {
-              id: `item-${index}-${Date.now()}`,
-              selectItem,
-              reference: refDocNumber,
-              defaultAmount, // Default price from item catalog
-              amountPaying, // From API: payingAmount
-              quantity,
-              totalNoTax, // From API: lineTotalAmount or calculated
-              taxPercent, // From API: lineTaxPercent
-              taxAmount, // From API: lineTaxAmount
-              totalAmount // From API: totalPayingAmount
-            };
-          });
-          
-          setItems(mappedItems);
-        } else {
-          // Clear items if no details
-          setItems([]);
-        }
-        
-        // Optionally refetch items for this specific receipt/invoice if we have a receipt ID
-        // This ensures we have the latest items for this specific receipt
-        if (invoice.invoiceId) {
-          fetchReceiptItems(invoice.invoiceId.toString(), true).catch((err) => {
-            console.warn('Failed to refetch items for invoice:', err);
-            // Continue with existing items
-          });
-        }
-        
-        showSuccess('Success', 'Invoice loaded successfully');
-      } else if (result.type.endsWith('/rejected')) {
-        const errorPayload = result.payload as { message?: string };
-        showError('Error', errorPayload?.message || 'Failed to load invoice');
-      }
+      await dispatch(fetchInvoiceOrApplication(appNumber.trim())).unwrap();
+      // UI will populate from `currentData` effect
     } catch (error: any) {
-      console.error('Error loading invoice:', error);
-      showError('Error', error.message || 'Failed to load invoice');
+      showError('Error', error?.message || String(error) || 'Failed to load invoice/application');
     }
   };
 
@@ -471,6 +439,81 @@ export function InvoiceAndReceiptPage() {
     await handleViewInvoiceByApplication(applicationNumber.trim());
   };
 
+  const normalizePaymentModeForBackend = (mode: string): string => {
+    const m = (mode || '').trim();
+    if (!m) return 'Cash';
+    // UI uses "Bank Transfer" etc; backend invoice expects: Cash, Cheque, TT, Credit Card, Others
+    if (m === 'Bank Transfer') return 'TT';
+    if (m === 'Other') return 'Others';
+    return m;
+  };
+
+  const handleGenerateInvoice = async (withReceipt: boolean) => {
+    if (!applicationNumber.trim()) {
+      showError('Error', 'Application number is required');
+      return;
+    }
+    if (!currentData) {
+      showError('Error', 'Please load application data first');
+      return;
+    }
+    if (!currentData.canCreateInvoice) {
+      showError('Error', 'Invoice cannot be created for this record');
+      return;
+    }
+    if (!paymentMode.trim()) {
+      showError('Error', 'Please select payment mode');
+      return;
+    }
+
+    const invoicePayload = {
+      invoice: {
+        transactionDate: currentData.transactionDate || new Date().toISOString(),
+        refDocNumber: currentData.applicationCode || currentData.refDocNumber || applicationNumber.trim(),
+        refDocName: currentData.refDocName || 'NAPP',
+        customerName: payeeName || currentData.customerName,
+        totalAmount: currentData.totalAmount || currentData.summary?.grandTotal || 0,
+        payingAmount: currentData.payingAmount || currentData.summary?.grandTotal || 0,
+        taxAmount: currentData.taxAmount || currentData.summary?.totalTax || 0,
+        taxPercentage: currentData.taxPercentage || 9,
+        taxCode: currentData.taxCode || null,
+        nicheApplicationId: currentData.nicheApplicationId,
+        addressNo: addressNumber || currentData.addressNo,
+        address: buildCustomerAddress() || currentData.address,
+        address2: addressUnit || currentData.address2,
+        addressCity: addressPostalCode || currentData.addressCity,
+        districtCode: currentData.districtCode,
+        country: addressCountry || currentData.country,
+        paymentMode: normalizePaymentModeForBackend(paymentMode),
+      },
+      invoiceDetails: (currentData.details || []).map((d) => ({
+        itemId: d.itemId,
+        quantity: d.quantity,
+        unitAmount: d.unitAmount,
+        payingAmount: d.payingAmount,
+        totalPayingAmount: d.totalPayingAmount,
+        refDocNumber: d.refDocNumber,
+        refDocName: d.refDocName,
+        lineTotalAmount: d.lineTotalAmount,
+        lineTaxPercent: d.lineTaxPercent,
+        lineTaxAmount: d.lineTaxAmount,
+      })),
+      createReceipt: withReceipt,
+    };
+
+    try {
+      await dispatch(createInvoice(invoicePayload)).unwrap();
+    } catch (e: any) {
+      showError('Error', e?.message || String(e) || 'Failed to create invoice');
+    }
+  };
+
+  // Receipt table requires InvoiceId NOT NULL. So "receipt only" is implemented
+  // as "create invoice + receipt" when the record is still an application.
+  const handleGenerateReceipt = async () => {
+    await handleGenerateInvoice(true);
+  };
+
 
   // Build customer address string from address fields
   const buildCustomerAddress = useCallback(() => {
@@ -585,9 +628,49 @@ export function InvoiceAndReceiptPage() {
 
       setViewingReceiptCode(codeToUse);
 
-      // Get receipt PDF URL - the service already opens it in a new tab
-      await getReceiptPdfLink(codeToUse, true, applicationNumber || applicationNumberFromRoute);
-      showSuccess('Success', 'Receipt PDF opened in a new tab');
+      // Prefer fetching the real receipt by code (so modal shows exact backend data)
+      let receipt: ReceiptType | null = null;
+      try {
+        receipt = await receiptService.getReceiptByCode(codeToUse);
+      } catch (err) {
+        // Fallback: build a local receipt from the current screen state
+        const parseTransactionDateToIso = (d: string): string | undefined => {
+          if (!d) return undefined;
+          // common UI format is DD-MM-YYYY
+          const m = d.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+          if (m) {
+            const [, dd, mm, yyyy] = m;
+            return `${yyyy}-${mm}-${dd}`;
+          }
+          // last resort: let Date parse it
+          const dateObj = new Date(d);
+          if (!isNaN(dateObj.getTime())) return dateObj.toISOString();
+          return d;
+        };
+
+        const invoiceDetails: InvoiceDetail[] = items.map((item) => ({
+          description: item.selectItem || 'Item',
+          quantity: item.quantity || 1,
+          unitPrice: item.amountPaying || 0,
+          amount: item.totalAmount || 0,
+        }));
+
+        receipt = {
+          receiptCode: codeToUse,
+          invoiceCode: invoiceNumber || undefined,
+          applicationCode: (applicationNumber || applicationNumberFromRoute) || undefined,
+          customerName: payeeName || currentData?.customerName || 'N/A',
+          totalAmount: totals.totalPayable || 0,
+          payingAmount: totals.totalPayable || 0,
+          paymentMode: paymentMode || 'Cash',
+          receiptDate: parseTransactionDateToIso(transactionDate),
+          invoiceDetails,
+        };
+      }
+
+      setSelectedReceipt(receipt);
+      setIsDetailModalOpen(true);
+      showSuccess('Success', 'Receipt preview opened');
     } catch (error: any) {
       const errorMessage = error?.message || error?.response?.data?.message || 'Failed to print receipt';
       showError('Error', errorMessage);
@@ -618,16 +701,16 @@ export function InvoiceAndReceiptPage() {
                     <input
                       type="text"
                       value={applicationNumber}
-                      onChange={(e) => setApplicationNumber(e.target.value)}
+                      onChange={(e) => handleApplicationNumberChange(e.target.value)}
                       className="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-[#4b3621] focus:outline-none focus:ring-2 focus:ring-[#4b3621]/20 transition-all"
                       placeholder="Enter application number"
                     />
                     <button
                       onClick={handleViewInvoice}
-                      disabled={loading || !applicationNumber.trim()}
+                      disabled={loading || invoiceLoading || !applicationNumber.trim()}
                       className="px-5 py-2 bg-gradient-to-r from-[#4b3621] to-[#5a4730] text-white rounded-lg font-semibold hover:from-[#5a4730] hover:to-[#4b3621] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
-                      {loading ? (
+                      {loading || invoiceLoading ? (
                         <>
                           <LoaderIcon className="w-4 h-4 animate-spin" />
                           Loading...
@@ -635,12 +718,37 @@ export function InvoiceAndReceiptPage() {
                       ) : (
                         <>
                           <EyeIcon className="w-4 h-4" />
-                          View Invoice
+                          View Data
                         </>
                       )}
                     </button>
                   </div>
                 </div>
+
+                {/* Flags banner */}
+                {currentData?.isApplicationData && !currentData?.isInvoice && (
+                  <div className="flex items-start gap-3 p-3 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+                    <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-semibold text-yellow-800 text-sm">Application Data Loaded</div>
+                      <div className="text-yellow-700 text-xs mt-1">
+                        {currentData.canCreateInvoice
+                          ? 'Invoice can be generated.'
+                          : 'Invoice cannot be generated for this application.'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {currentData?.isInvoice && (
+                  <div className="flex items-start gap-3 p-3 bg-green-50 border-2 border-green-300 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-semibold text-green-800 text-sm">Invoice Loaded</div>
+                      <div className="text-green-700 text-xs mt-1">You can print invoice / receipt.</div>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Display Invoice Number after data is loaded */}
                 {invoiceNumber && (
@@ -774,6 +882,67 @@ export function InvoiceAndReceiptPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Generate buttons (match design; show only when backend says allowed) */}
+                {currentData?.canCreateInvoice && !currentData?.isInvoice && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <button
+                        onClick={() => handleGenerateInvoice(false)}
+                        disabled={creatingInvoice || !paymentMode.trim()}
+                        className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {creatingInvoice ? (
+                          <>
+                            <LoaderIcon className="w-4 h-4 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="w-4 h-4" />
+                            Generate Invoice
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={handleGenerateReceipt}
+                        disabled={creatingInvoice || !paymentMode.trim()}
+                        className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {creatingInvoice ? (
+                          <>
+                            <LoaderIcon className="w-4 h-4 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="w-4 h-4" />
+                            Generate Receipt
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => handleGenerateInvoice(true)}
+                        disabled={creatingInvoice || !paymentMode.trim()}
+                        className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-purple-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {creatingInvoice ? (
+                          <>
+                            <LoaderIcon className="w-4 h-4 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="w-4 h-4" />
+                            Invoice + Receipt
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -902,7 +1071,13 @@ export function InvoiceAndReceiptPage() {
                         <td className="border border-[#bbaaaa] px-2 py-2 text-center">
                           <button
                             onClick={() => handleRemoveItem(item.id)}
-                            className="px-3 py-1.5 bg-red-600 text-white rounded-md font-semibold hover:bg-red-700 transition-all shadow-sm hover:shadow-md text-xs"
+                            disabled={
+                              // ✅ FIX: Disable Remove Item button for existing invoices
+                              // New invoice (isApplicationData: true, isInvoice: false) → enabled
+                              // Existing invoice (isApplicationData: false, isInvoice: true) → disabled
+                              currentData?.isInvoice === true && currentData?.isApplicationData === false
+                            }
+                            className="px-3 py-1.5 bg-red-600 text-white rounded-md font-semibold hover:bg-red-700 transition-all shadow-sm hover:shadow-md text-xs disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-600"
                           >
                             Remove
                           </button>
@@ -918,7 +1093,13 @@ export function InvoiceAndReceiptPage() {
             <div className="p-4 bg-gray-50 border-t border-gray-200">
               <button
                 onClick={handleAddItem}
-                className="w-full px-6 py-3 bg-gradient-to-r from-[#4b3621] to-[#5a4730] text-white rounded-lg font-semibold hover:from-[#5a4730] hover:to-[#4b3621] transition-all shadow-md hover:shadow-lg"
+                disabled={
+                  // ✅ FIX: Disable Add Item button for existing invoices
+                  // New invoice (isApplicationData: true, isInvoice: false, canCreateInvoice: true) → enabled
+                  // Existing invoice (isApplicationData: false, isInvoice: true, canCreateInvoice: false) → disabled
+                  currentData?.isInvoice === true && currentData?.isApplicationData === false && currentData?.canCreateInvoice === false
+                }
+                className="w-full px-6 py-3 bg-gradient-to-r from-[#4b3621] to-[#5a4730] text-white rounded-lg font-semibold hover:from-[#5a4730] hover:to-[#4b3621] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-[#4b3621] disabled:hover:to-[#5a4730]"
               >
                 + Add Item
               </button>
@@ -964,6 +1145,12 @@ export function InvoiceAndReceiptPage() {
         }}
         invoiceData={viewerInvoiceData}
         loading={viewingInvoiceCode !== null}
+      />
+
+<ReceiptDetailModal
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        receipt={selectedReceipt}
       />
     </Layout>
   );

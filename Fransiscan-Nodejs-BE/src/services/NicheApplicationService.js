@@ -503,20 +503,23 @@ const parseGender = (value) => {
 
 const buildBeneficiaryEntity = (input = {}) => {
   if (!input) {
+    logger.debug('[buildBeneficiaryEntity] Input is null/undefined');
     return null;
   }
 
+  // Log the raw input for debugging
+  logger.debug('[buildBeneficiaryEntity] Raw input:', JSON.stringify(input, null, 2));
+
   const name = pickFirst(input.name, input.fullName);
   if (!name) {
+    logger.debug('[buildBeneficiaryEntity] No name found in input');
     return null;
   }
 
   const relationship = pickFirst(
     input.relationshipToApplicant,
     input.relationship,
-    input.relationshipToNominee,
-    input.relationshipToNominee1,
-    input.relationshipToNominee2
+    input.relationshipToApp
   );
 
   const dateOfBirth = parseDateValue(pickFirst(input.dateOfBirth, input.dob));
@@ -525,46 +528,93 @@ const buildBeneficiaryEntity = (input = {}) => {
   const isCatholic = deriveIsCatholic(
     input.isCatholic !== undefined && input.isCatholic !== null
       ? input.isCatholic
-      : input.religion
+      : input.religion !== undefined && input.religion !== null
+        ? input.religion
+        : input.religiousAffiliation
   );
-  const isMale = parseGender(input.isMale !== undefined ? input.isMale : input.gender);
+  const isMale = parseGender(
+    input.isMale !== undefined 
+      ? input.isMale 
+      : input.gender !== undefined 
+        ? input.gender 
+        : input.sex
+  );
 
-  return new NicheApplicationBeneficiary({
+  // NOTE: relationshipToNominee1/2 columns do NOT exist in NicheApplicationBeneficiary table
+  // These were removed to match the actual database schema
+
+  const result = new NicheApplicationBeneficiary({
     name,
     relationshipToApplicant: relationship || null,
     dateOfBirth: dateOfBirth || null,
     birthYear: birthYear || null,
     idNo: idNo || null,
     isCatholic,
-    isMale
+    isMale,
   });
+
+  // Log the processed result
+  logger.debug('[buildBeneficiaryEntity] Processed result:', JSON.stringify(result.toJSON(), null, 2));
+
+  return result;
 };
 
 const extractBeneficiariesFromPayload = (payload = {}) => {
+  logger.debug('[extractBeneficiariesFromPayload] Extracting beneficiaries from payload');
+  logger.debug('[extractBeneficiariesFromPayload] Payload keys:', Object.keys(payload));
+  
   const collected = [];
 
-  if (Array.isArray(payload.beneficiaries)) {
+  // Prioritize the beneficiaries array if it exists and has items
+  if (Array.isArray(payload.beneficiaries) && payload.beneficiaries.length > 0) {
+    logger.debug(`[extractBeneficiariesFromPayload] Found beneficiaries array with ${payload.beneficiaries.length} items`);
     collected.push(...payload.beneficiaries);
+  } else {
+    logger.debug('[extractBeneficiariesFromPayload] No beneficiaries array, checking individual fields');
+    // Fall back to individual beneficiary1/2/3 fields only if array is not present
+    ['beneficiary1', 'beneficiary2', 'beneficiary3'].forEach((key) => {
+      if (payload[key]) {
+        logger.debug(`[extractBeneficiariesFromPayload] Found ${key}:`, JSON.stringify(payload[key], null, 2));
+        collected.push(payload[key]);
+      }
+    });
   }
 
-  ['beneficiary1', 'beneficiary2', 'beneficiary3'].forEach((key) => {
-    if (payload[key]) {
-      collected.push(payload[key]);
-    }
-  });
+  logger.debug(`[extractBeneficiariesFromPayload] Total collected: ${collected.length}`);
 
   const entities = [];
+  const seenKeys = new Set(); // Deduplicate based on person key
 
   for (const item of collected) {
     const entity = buildBeneficiaryEntity(item);
     if (entity) {
+      // Create a deduplication key based on name + idNo
+      const key = buildPersonKey({
+        name: entity.name,
+        idNo: entity.idNo
+      });
+
+      // Skip if we've already seen this person (duplicate)
+      if (key && seenKeys.has(key)) {
+        logger.debug(`[extractBeneficiariesFromPayload] Skipping duplicate: ${entity.name}`);
+        continue;
+      }
+
+      if (key) {
+        seenKeys.add(key);
+      }
+
       entities.push(entity);
+      logger.debug(`[extractBeneficiariesFromPayload] Added beneficiary: ${entity.name}`);
     }
+
     if (entities.length === 3) {
+      logger.debug('[extractBeneficiariesFromPayload] Reached max of 3 beneficiaries');
       break;
     }
   }
 
+  logger.debug(`[extractBeneficiariesFromPayload] Final entities count: ${entities.length}`);
   return entities;
 };
 
@@ -1553,7 +1603,20 @@ class NicheApplicationService {
       });
 
       // Create beneficiary objects
+      // ✅ DEBUG: Log raw beneficiary data before processing
+      logger.info('[Service.createApplication] Raw beneficiary data from payload:');
+      logger.info('[Service.createApplication]   data.beneficiaries:', JSON.stringify(data.beneficiaries, null, 2));
+      logger.info('[Service.createApplication]   data.beneficiary1:', JSON.stringify(data.beneficiary1, null, 2));
+      logger.info('[Service.createApplication]   data.beneficiary2:', JSON.stringify(data.beneficiary2, null, 2));
+      logger.info('[Service.createApplication]   data.beneficiary3:', JSON.stringify(data.beneficiary3, null, 2));
+      
       const beneficiaries = extractBeneficiariesFromPayload(data);
+      
+      // ✅ DEBUG: Log processed beneficiaries
+      logger.info('[Service.createApplication] Processed beneficiaries count:', beneficiaries.length);
+      beneficiaries.forEach((ben, index) => {
+        logger.info(`[Service.createApplication] Beneficiary ${index + 1}:`, JSON.stringify(ben.toJSON(), null, 2));
+      });
 
       // --- Business rule: prevent duplicate nominees / beneficiaries within the same application ---
       // Build nominee list:
@@ -2275,10 +2338,13 @@ class NicheApplicationService {
    */
   async deleteApplication(code, churchId) {
     try {
+      logger.info(`[deleteApplication] Starting deletion for code: ${code}, churchId: ${churchId}`);
+      
       // Get application to check church access
       const application = await NicheApplicationRepository.getByCode(code);
 
       if (!application) {
+        logger.warn(`[deleteApplication] Application not found: ${code}`);
         return {
           success: false,
           error: {
@@ -2289,6 +2355,7 @@ class NicheApplicationService {
       }
 
       if (application.churchId !== churchId) {
+        logger.warn(`[deleteApplication] Access denied: churchId ${churchId} tried to delete application ${code} belonging to churchId ${application.churchId}`);
         return {
           success: false,
           error: {
@@ -2298,11 +2365,16 @@ class NicheApplicationService {
         };
       }
 
+      // Perform soft delete (sets Status = 0)
+      logger.info(`[deleteApplication] Executing soft delete (Status = 0) for code: ${code}, nicheId: ${application.nicheId}`);
       await NicheApplicationRepository.deleteByCode(code);
 
-      logger.info(`Niche application deleted: ${code}`);
+      logger.info(`[deleteApplication] Successfully deleted application ${code}`);
 
+      // CRITICAL: Invalidate ALL cached application lists
+      // This ensures deleted items don't appear in subsequent list queries
       invalidateNicheApplicationCache();
+      logger.info('[deleteApplication] Cache invalidated - all niche application cache entries cleared');
 
       return {
         success: true,

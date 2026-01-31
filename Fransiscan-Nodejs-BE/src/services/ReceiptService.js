@@ -87,8 +87,28 @@ class ReceiptService extends BaseService {
    */
   async createReceipt(receiptData, userId, churchId) {
     try {
-      // Validate data
-      const errors = this.validateData(receiptData);
+      // Create receipt entity (include auth fields BEFORE validating)
+      const receipt = new Receipt({
+        ...receiptData,
+        userId,
+        churchId,
+        transactionDate: receiptData.transactionDate || new Date(),
+        status: receiptData.status || 2 // Default to paid status
+      });
+
+      // Normalize payment mode BEFORE validating
+      if (typeof receipt.paymentMode === 'string') {
+        receipt.paymentMode = Receipt.paymentModeToNumber(receipt.paymentMode);
+      } else if (typeof receipt.paymentMode === 'number') {
+        // ok
+      } else if (receipt.paymentMode != null) {
+        // numeric string -> number
+        const n = Number(receipt.paymentMode);
+        if (!Number.isNaN(n)) receipt.paymentMode = n;
+      }
+
+      // Validate final receipt object
+      const errors = receipt.validate();
       if (errors.length > 0) {
         return {
           success: false,
@@ -98,20 +118,6 @@ class ReceiptService extends BaseService {
             details: errors
           }
         };
-      }
-
-      // Create receipt entity
-      const receipt = new Receipt({
-        ...receiptData,
-        userId,
-        churchId,
-        transactionDate: receiptData.transactionDate || new Date(),
-        status: receiptData.status || 2 // Default to paid status
-      });
-
-      // Convert payment mode string to number if needed
-      if (typeof receipt.paymentMode === 'string') {
-        receipt.paymentMode = Receipt.paymentModeToNumber(receipt.paymentMode);
       }
 
       // Save receipt
@@ -239,6 +245,39 @@ class ReceiptService extends BaseService {
         }));
 
         await this.repository.saveReceiptDetails(receiptId, receiptDetails);
+      }
+
+      // ✅ FIX: Update NicheApplication status from Draft (1) to Booked (3) when receipt is created
+      // This ensures that once payment is received (receipt printed), the niche moves to booked state
+      try {
+        const { executeQuery } = require('../config/database');
+        const refDocName = invoice.RefDocName || invoice.refDocName;
+        const refDocNumber = invoice.RefDocNumber || invoice.refDocNumber;
+
+        if (refDocName && refDocNumber) {
+          const normalizedRefDocName = String(refDocName).trim().toUpperCase();
+          const normalizedRefDocNumber = String(refDocNumber).trim();
+
+          // Only update status for Niche Applications (NAPP)
+          if (normalizedRefDocName === 'NAPP') {
+            const updateStatusQuery = `
+              UPDATE NicheApplication
+              SET Status = 3
+              WHERE Code = @code
+                AND Status = 1
+            `;
+
+            await executeQuery(updateStatusQuery, { code: normalizedRefDocNumber });
+            logger.info(`[ReceiptService] Updated NicheApplication status from Draft (1) to Booked (3) for code: ${normalizedRefDocNumber}`);
+          }
+        }
+      } catch (statusUpdateError) {
+        // Log but don't fail receipt creation if status update fails
+        logger.warn('[ReceiptService] Failed to update NicheApplication status after receipt creation (non-critical):', {
+          error: statusUpdateError.message,
+          refDocName: invoice.RefDocName || invoice.refDocName,
+          refDocNumber: invoice.RefDocNumber || invoice.refDocNumber
+        });
       }
 
       return {

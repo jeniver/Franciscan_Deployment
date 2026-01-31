@@ -6,11 +6,11 @@ import {
   FilterIcon,
   DownloadIcon,
   PlusIcon,
-  CalendarIcon,
   EyeIcon,
   FileTextIcon,
   TrendingUpIcon,
 } from 'lucide-react';
+import { DateInput } from '../components/common/DateInput';
 import { useReceipt } from '../hooks/useReceipt';
 import { useReport } from '../hooks/useReport';
 import { useToast } from '../contexts/ToastContext';
@@ -70,7 +70,6 @@ export function ReceiptPage() {
     searchReceipts,
     fetchInvoiceByCode,
     getReceiptPdfLink,
-    getInvoicePdfLink,
     setCurrentPage,
     setSelectedInvoice,
     setFilters,
@@ -735,29 +734,23 @@ export function ReceiptPage() {
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       From date
                     </label>
-                    <div className="relative mt-1">
-                      <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                      <input
-                        type="date"
-                        value={filters.fromDate || ''}
-                        onChange={(e) => setFilters({ fromDate: e.target.value })}
-                        className="w-full h-12 pl-10 pr-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
+                    <DateInput
+                      value={filters.fromDate || ''}
+                      onChange={(apiDate) => setFilters({ fromDate: apiDate })}
+                      className="h-12"
+                      placeholder="dd/mm/yyyy"
+                    />
                   </div> 
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       To date
                     </label>
-                    <div className="relative mt-1">
-                      <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                      <input
-                        type="date"
-                        value={filters.toDate || ''}
-                        onChange={(e) => setFilters({ toDate: e.target.value })}
-                        className="w-full h-12 pl-10 pr-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
+                    <DateInput
+                      value={filters.toDate || ''}
+                      onChange={(apiDate) => setFilters({ toDate: apiDate })}
+                      className="h-12"
+                      placeholder="dd/mm/yyyy"
+                    />
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">

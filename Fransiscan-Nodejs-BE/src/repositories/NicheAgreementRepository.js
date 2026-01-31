@@ -232,11 +232,136 @@ class NicheAgreementRepository extends BaseRepository {
   }
 
   /**
-   * Add beneficiaries information (simple query)
+   * Helper function to format DateOfBirth from database
+   * Handles both DATETIME (NicheBookingBeneficiary) and NVARCHAR (NicheApplicationBeneficiary)
+   * ENHANCED: Better handling of edge cases and logging
+   */
+  formatDateOfBirth(dbValue) {
+    logger.debug(`[formatDateOfBirth] Input: ${dbValue}, Type: ${typeof dbValue}`);
+    
+    if (!dbValue) {
+      logger.debug(`[formatDateOfBirth] Value is null/undefined/empty`);
+      return null;
+    }
+    
+    // If it's already a Date object (from DATETIME column)
+    if (dbValue instanceof Date) {
+      if (isNaN(dbValue.getTime())) {
+        logger.warn(`[formatDateOfBirth] Invalid Date object: ${dbValue}`);
+        return null;
+      }
+      const isoString = dbValue.toISOString();
+      logger.debug(`[formatDateOfBirth] Date object converted to ISO: ${isoString}`);
+      return isoString;
+    }
+    
+    // If it's a string (from NVARCHAR column)
+    if (typeof dbValue === 'string') {
+      const trimmed = dbValue.trim();
+      if (!trimmed || trimmed === 'null' || trimmed === 'NULL' || trimmed === '') {
+        logger.debug(`[formatDateOfBirth] Empty or null string: "${trimmed}"`);
+        return null;
+      }
+      
+      // Try to parse as date
+      const parsed = new Date(trimmed);
+      if (!isNaN(parsed.getTime())) {
+        const isoString = parsed.toISOString();
+        logger.debug(`[formatDateOfBirth] String "${trimmed}" parsed to ISO: ${isoString}`);
+        return isoString;
+      }
+      
+      // Try common date formats
+      // Format: "2012-04-15" (YYYY-MM-DD)
+      const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (ymdMatch) {
+        const [, year, month, day] = ymdMatch;
+        const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+        if (!isNaN(date.getTime())) {
+          const isoString = date.toISOString();
+          logger.debug(`[formatDateOfBirth] YYYY-MM-DD format "${trimmed}" converted to ISO: ${isoString}`);
+          return isoString;
+        }
+      }
+      
+      // Format: "15-Apr-2012" or "15 Apr 2012" (DD-MMM-YYYY)
+      const dmyMatch = trimmed.match(/^(\d{1,2})[\s-](\w{3})[\s-](\d{4})/i);
+      if (dmyMatch) {
+        const [, day, monthName, year] = dmyMatch;
+        const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+        const monthIndex = months.indexOf(monthName.toLowerCase());
+        if (monthIndex !== -1) {
+          const date = new Date(parseInt(year, 10), monthIndex, parseInt(day, 10));
+          if (!isNaN(date.getTime())) {
+            const isoString = date.toISOString();
+            logger.debug(`[formatDateOfBirth] DD-MMM-YYYY format "${trimmed}" converted to ISO: ${isoString}`);
+            return isoString;
+          }
+        }
+      }
+      
+      logger.warn(`[formatDateOfBirth] Could not parse date string: "${trimmed}"`);
+      // Return as-is if can't parse (might be formatted string that frontend can handle)
+      return trimmed;
+    }
+    
+    // Try to convert to Date
+    try {
+      const date = new Date(dbValue);
+      if (!isNaN(date.getTime())) {
+        const isoString = date.toISOString();
+        logger.debug(`[formatDateOfBirth] Converted to Date and ISO: ${isoString}`);
+        return isoString;
+      }
+    } catch (e) {
+      logger.warn(`[formatDateOfBirth] Error converting to Date:`, e.message);
+    }
+    
+    logger.warn(`[formatDateOfBirth] Could not format date value: ${dbValue} (type: ${typeof dbValue})`);
+    return null;
+  }
+
+  /**
+   * Helper function to format BirthYear from database
+   * Handles both INT (NicheBookingBeneficiary) and NVARCHAR (NicheApplicationBeneficiary)
+   */
+  formatBirthYear(dbValue) {
+    if (dbValue === null || dbValue === undefined) return null;
+    
+    // If it's already a number
+    if (typeof dbValue === 'number') {
+      return dbValue;
+    }
+    
+    // If it's a string, try to parse
+    if (typeof dbValue === 'string') {
+      const trimmed = dbValue.trim();
+      if (!trimmed) return null;
+      
+      const parsed = parseInt(trimmed, 10);
+      if (!isNaN(parsed)) {
+        return parsed;
+      }
+      
+      // Return as string if can't parse to number
+      return trimmed;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Add beneficiaries information
+   * FIXED: Query NicheApplicationBeneficiary directly (primary source)
+   * Fallback to NicheBookingBeneficiary only if no data found
+   * ENHANCED: Proper date formatting for both tables
    */
   async addBeneficiaries(nicheApplicationId, nicheAgreement) {
     try {
-      const query = `
+      logger.info(`[addBeneficiaries] Starting for nicheApplicationId: ${nicheApplicationId}`);
+      
+      // PRIMARY: Query NicheApplicationBeneficiary first (this is where POST data is saved)
+      const primaryQuery = `
         SELECT TOP 2
           Name,
           IDNo,
@@ -244,46 +369,88 @@ class NicheAgreementRepository extends BaseRepository {
           IsMale,
           RelationshipToApplicant,
           DateOfBirth,
-          BirthYear,
-          RelationshipToNominee1,
-          RelationshipToNominee2
-        FROM NicheBooking nb WITH (NOLOCK)
-        INNER JOIN NicheBookingBeneficiary nbb WITH (NOLOCK) ON nb.NicheBookingId = nbb.NicheBookingId
-        WHERE nb.NicheApplicationId = @nicheApplicationId
-        ORDER BY nbb.NicheBookingBeneficiaryId
+          BirthYear
+        FROM NicheApplicationBeneficiary WITH (NOLOCK)
+        WHERE NicheApplicationId = @nicheApplicationId
+        ORDER BY NicheApplicationBeneficiaryId
       `;
 
-      // Reduced timeout - should complete in < 2s with proper index on NicheBookingBeneficiary
-      const result = await executeQuery(query, { nicheApplicationId }, { timeout: 10000 });
+      const primaryResult = await executeQuery(
+        primaryQuery,
+        { nicheApplicationId },
+        { timeout: 10000 }
+      );
 
-      if (result.recordset.length > 0) {
-        const bene1 = result.recordset[0];
+      logger.info(`[addBeneficiaries] Primary query returned ${primaryResult.recordset.length} records from NicheApplicationBeneficiary`);
+
+      if (primaryResult.recordset.length > 0) {
+        const bene1 = primaryResult.recordset[0];
+        logger.info(`[addBeneficiaries] Beneficiary 1 raw data:`, {
+          Name: bene1.Name,
+          DateOfBirth: bene1.DateOfBirth,
+          DateOfBirthType: typeof bene1.DateOfBirth,
+          BirthYear: bene1.BirthYear,
+          BirthYearType: typeof bene1.BirthYear
+        });
+        
         nicheAgreement.beneName_1 = bene1.Name;
         nicheAgreement.beneIDNo_1 = bene1.IDNo;
         nicheAgreement.beneIsCatholic_1 = bene1.IsCatholic;
         nicheAgreement.beneIsMale_1 = bene1.IsMale;
         nicheAgreement.beneRelationshipToApplicant_1 = bene1.RelationshipToApplicant;
-        nicheAgreement.beneDateOfBirth_1 = bene1.DateOfBirth;
-        nicheAgreement.beneBirthYear_1 = bene1.BirthYear;
-        nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1;
-        nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2;
+        
+        // ✅ FIX: Format DateOfBirth properly (handles NVARCHAR string)
+        nicheAgreement.beneDateOfBirth_1 = this.formatDateOfBirth(bene1.DateOfBirth);
+        
+        // ✅ FIX: Format BirthYear properly (handles NVARCHAR string)
+        nicheAgreement.beneBirthYear_1 = this.formatBirthYear(bene1.BirthYear);
+        
+        logger.info(`[addBeneficiaries] Beneficiary 1 formatted:`, {
+          dateOfBirth: nicheAgreement.beneDateOfBirth_1,
+          birthYear: nicheAgreement.beneBirthYear_1
+        });
+        
+        // Note: RelationshipToNominee1/2 columns don't exist in NicheApplicationBeneficiary table
+        nicheAgreement.ben1_NomineeRelationship = null;
+        nicheAgreement.ben1_Nominee2Relationship = null;
       }
 
-      if (result.recordset.length > 1) {
-        const bene2 = result.recordset[1];
+      if (primaryResult.recordset.length > 1) {
+        const bene2 = primaryResult.recordset[1];
+        logger.info(`[addBeneficiaries] Beneficiary 2 raw data:`, {
+          Name: bene2.Name,
+          DateOfBirth: bene2.DateOfBirth,
+          DateOfBirthType: typeof bene2.DateOfBirth,
+          BirthYear: bene2.BirthYear,
+          BirthYearType: typeof bene2.BirthYear
+        });
+        
         nicheAgreement.beneName_2 = bene2.Name;
         nicheAgreement.beneIDNo_2 = bene2.IDNo;
         nicheAgreement.beneIsCatholic_2 = bene2.IsCatholic;
         nicheAgreement.beneIsMale_2 = bene2.IsMale;
         nicheAgreement.beneRelationshipToApplicant_2 = bene2.RelationshipToApplicant;
-        nicheAgreement.beneDateOfBirth_2 = bene2.DateOfBirth;
-        nicheAgreement.beneBirthYear_2 = bene2.BirthYear;
-        nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1;
-        nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2;
+        
+        // ✅ FIX: Format DateOfBirth properly
+        nicheAgreement.beneDateOfBirth_2 = this.formatDateOfBirth(bene2.DateOfBirth);
+        
+        // ✅ FIX: Format BirthYear properly
+        nicheAgreement.beneBirthYear_2 = this.formatBirthYear(bene2.BirthYear);
+        
+        logger.info(`[addBeneficiaries] Beneficiary 2 formatted:`, {
+          dateOfBirth: nicheAgreement.beneDateOfBirth_2,
+          birthYear: nicheAgreement.beneBirthYear_2
+        });
+        
+        // Note: RelationshipToNominee1/2 columns don't exist in NicheApplicationBeneficiary table
+        nicheAgreement.ben2_NomineeRelationship = null;
+        nicheAgreement.ben2_Nominee2Relationship = null;
       }
 
-      // Fallback: if no beneficiaries from NicheBooking, try NicheApplicationBeneficiary
+      // FALLBACK: If no data found, try NicheBookingBeneficiary (legacy/booking data)
       if (!nicheAgreement.beneName_1 && !nicheAgreement.beneName_2) {
+        logger.info(`[addBeneficiaries] No data in NicheApplicationBeneficiary, trying NicheBookingBeneficiary`);
+        
         const fallbackQuery = `
           SELECT TOP 2
             Name,
@@ -292,42 +459,97 @@ class NicheAgreementRepository extends BaseRepository {
             IsMale,
             RelationshipToApplicant,
             DateOfBirth,
-            BirthYear
-          FROM NicheApplicationBeneficiary WITH (NOLOCK)
-          WHERE NicheApplicationId = @nicheApplicationId
-          ORDER BY NicheApplicationBeneficiaryId
+            BirthYear,
+            RelationshipToNominee1,
+            RelationshipToNominee2
+          FROM NicheBooking nb WITH (NOLOCK)
+          INNER JOIN NicheBookingBeneficiary nbb WITH (NOLOCK) ON nb.NicheBookingId = nbb.NicheBookingId
+          WHERE nb.NicheApplicationId = @nicheApplicationId
+          ORDER BY nbb.NicheBookingBeneficiaryId
         `;
 
-        const fallbackResult = await executeQuery(
-          fallbackQuery,
-          { nicheApplicationId },
-          { timeout: 10000 }
-        );
+        const fallbackResult = await executeQuery(fallbackQuery, { nicheApplicationId }, { timeout: 10000 });
+
+        logger.info(`[addBeneficiaries] Fallback query returned ${fallbackResult.recordset.length} records from NicheBookingBeneficiary`);
 
         if (fallbackResult.recordset.length > 0) {
           const bene1 = fallbackResult.recordset[0];
+          logger.info(`[addBeneficiaries] Fallback Beneficiary 1 raw data:`, {
+            Name: bene1.Name,
+            DateOfBirth: bene1.DateOfBirth,
+            DateOfBirthType: typeof bene1.DateOfBirth,
+            BirthYear: bene1.BirthYear,
+            BirthYearType: typeof bene1.BirthYear
+          });
+          
           nicheAgreement.beneName_1 = bene1.Name;
           nicheAgreement.beneIDNo_1 = bene1.IDNo;
           nicheAgreement.beneIsCatholic_1 = bene1.IsCatholic;
           nicheAgreement.beneIsMale_1 = bene1.IsMale;
           nicheAgreement.beneRelationshipToApplicant_1 = bene1.RelationshipToApplicant;
-          nicheAgreement.beneDateOfBirth_1 = bene1.DateOfBirth;
-          nicheAgreement.beneBirthYear_1 = bene1.BirthYear;
+          
+          // ✅ FIX: Format DateOfBirth properly (handles DATETIME)
+          nicheAgreement.beneDateOfBirth_1 = this.formatDateOfBirth(bene1.DateOfBirth);
+          
+          // ✅ FIX: Format BirthYear properly (handles INT)
+          nicheAgreement.beneBirthYear_1 = this.formatBirthYear(bene1.BirthYear);
+          
+          logger.info(`[addBeneficiaries] Fallback Beneficiary 1 formatted:`, {
+            dateOfBirth: nicheAgreement.beneDateOfBirth_1,
+            birthYear: nicheAgreement.beneBirthYear_1
+          });
+          
+          nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1;
+          nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2;
         }
 
         if (fallbackResult.recordset.length > 1) {
           const bene2 = fallbackResult.recordset[1];
+          logger.info(`[addBeneficiaries] Fallback Beneficiary 2 raw data:`, {
+            Name: bene2.Name,
+            DateOfBirth: bene2.DateOfBirth,
+            DateOfBirthType: typeof bene2.DateOfBirth,
+            BirthYear: bene2.BirthYear,
+            BirthYearType: typeof bene2.BirthYear
+          });
+          
           nicheAgreement.beneName_2 = bene2.Name;
           nicheAgreement.beneIDNo_2 = bene2.IDNo;
           nicheAgreement.beneIsCatholic_2 = bene2.IsCatholic;
           nicheAgreement.beneIsMale_2 = bene2.IsMale;
           nicheAgreement.beneRelationshipToApplicant_2 = bene2.RelationshipToApplicant;
-          nicheAgreement.beneDateOfBirth_2 = bene2.DateOfBirth;
-          nicheAgreement.beneBirthYear_2 = bene2.BirthYear;
+          
+          // ✅ FIX: Format DateOfBirth properly
+          nicheAgreement.beneDateOfBirth_2 = this.formatDateOfBirth(bene2.DateOfBirth);
+          
+          // ✅ FIX: Format BirthYear properly
+          nicheAgreement.beneBirthYear_2 = this.formatBirthYear(bene2.BirthYear);
+          
+          logger.info(`[addBeneficiaries] Fallback Beneficiary 2 formatted:`, {
+            dateOfBirth: nicheAgreement.beneDateOfBirth_2,
+            birthYear: nicheAgreement.beneBirthYear_2
+          });
+          
+          nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1;
+          nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2;
         }
       }
+      
+      logger.info(`[addBeneficiaries] Completed. Final values:`, {
+        bene1: {
+          name: nicheAgreement.beneName_1,
+          dateOfBirth: nicheAgreement.beneDateOfBirth_1,
+          birthYear: nicheAgreement.beneBirthYear_1
+        },
+        bene2: {
+          name: nicheAgreement.beneName_2,
+          dateOfBirth: nicheAgreement.beneDateOfBirth_2,
+          birthYear: nicheAgreement.beneBirthYear_2
+        }
+      });
     } catch (error) {
       logger.warn('Could not fetch beneficiaries:', error.message);
+      logger.error('[addBeneficiaries] Error details:', error);
       // Don't throw - beneficiaries are optional
     }
   }

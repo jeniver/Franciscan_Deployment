@@ -888,19 +888,64 @@ class NicheApplicationRepository {
           const beneficiaryTime = Date.now() - beneficiaryStartTime;
           logger.debug(`Beneficiary query completed in ${beneficiaryTime}ms for applicationId: ${application.nicheApplicationId}`);
 
-          // Map beneficiaries
+          // Map beneficiaries with proper date formatting
           application.beneficiaries = (beneficiaryResult.recordset || [])
-            .map(row => new NicheApplicationBeneficiary({
-              nicheApplicationBeneficiaryId: row.NicheApplicationBeneficiaryId,
-              nicheApplicationId: row.NicheApplicationId,
-              name: row.Name,
-              relationshipToApplicant: row.RelationshipToApplicant,
-              dateOfBirth: row.DateOfBirth,
-              birthYear: row.BirthYear,
-              idNo: row.IDNo,
-              isCatholic: row.IsCatholic,
-              isMale: row.IsMale
-            }));
+            .map(row => {
+              // ✅ FIX: Format DateOfBirth (handles NVARCHAR string from database)
+              let formattedDateOfBirth = null;
+              if (row.DateOfBirth) {
+                if (row.DateOfBirth instanceof Date) {
+                  formattedDateOfBirth = row.DateOfBirth.toISOString();
+                } else if (typeof row.DateOfBirth === 'string') {
+                  const trimmed = row.DateOfBirth.trim();
+                  if (trimmed) {
+                    const parsed = new Date(trimmed);
+                    formattedDateOfBirth = !isNaN(parsed.getTime()) ? parsed.toISOString() : trimmed;
+                  }
+                } else {
+                  try {
+                    const date = new Date(row.DateOfBirth);
+                    formattedDateOfBirth = !isNaN(date.getTime()) ? date.toISOString() : null;
+                  } catch (e) {
+                    formattedDateOfBirth = null;
+                  }
+                }
+              }
+              
+              // ✅ FIX: Format BirthYear (handles NVARCHAR string from database)
+              let formattedBirthYear = null;
+              if (row.BirthYear !== null && row.BirthYear !== undefined) {
+                if (typeof row.BirthYear === 'number') {
+                  formattedBirthYear = row.BirthYear;
+                } else if (typeof row.BirthYear === 'string') {
+                  const trimmed = String(row.BirthYear).trim();
+                  if (trimmed) {
+                    const parsed = parseInt(trimmed, 10);
+                    formattedBirthYear = !isNaN(parsed) ? parsed : trimmed;
+                  }
+                }
+              }
+              
+              logger.debug(`[getByCode] Beneficiary mapping:`, {
+                name: row.Name,
+                rawDateOfBirth: row.DateOfBirth,
+                formattedDateOfBirth,
+                rawBirthYear: row.BirthYear,
+                formattedBirthYear
+              });
+              
+              return new NicheApplicationBeneficiary({
+                nicheApplicationBeneficiaryId: row.NicheApplicationBeneficiaryId,
+                nicheApplicationId: row.NicheApplicationId,
+                name: row.Name,
+                relationshipToApplicant: row.RelationshipToApplicant,
+                dateOfBirth: formattedDateOfBirth,
+                birthYear: formattedBirthYear,
+                idNo: row.IDNo,
+                isCatholic: row.IsCatholic,
+                isMale: row.IsMale
+              });
+            });
         } catch (beneficiaryError) {
           // Don't fail entire query if beneficiaries fail - just log and continue
           logger.warn(`Failed to fetch beneficiaries for application ${code}:`, beneficiaryError.message);
@@ -1118,12 +1163,17 @@ class NicheApplicationRepository {
    */
   async deleteByCode(code) {
     try {
+      logger.info(`[NicheApplicationRepository.deleteByCode] Starting delete for code: ${code}`);
+      
       // Get application first
       const application = await this.getByCode(code);
 
       if (!application) {
+        logger.warn(`[NicheApplicationRepository.deleteByCode] Application not found: ${code}`);
         return false;
       }
+
+      logger.info(`[NicheApplicationRepository.deleteByCode] Found application: ${code}, nicheId: ${application.nicheId}, current Status: ${application.status}`);
 
       // Update application status to deleted
       const updateAppQuery = `
@@ -1133,11 +1183,13 @@ class NicheApplicationRepository {
       `;
 
       await executeQuery(updateAppQuery, { code });
+      logger.info(`[NicheApplicationRepository.deleteByCode] Set Status = 0 for code: ${code}`);
 
       // Update niche status back to vacant
       // Ensure nicheId is a valid integer (parseInt handles string conversion and stops at non-numeric chars)
       const nicheId = application.nicheId != null ? parseInt(application.nicheId, 10) : null;
       if (nicheId == null || isNaN(nicheId) || nicheId <= 0) {
+        logger.error(`[NicheApplicationRepository.deleteByCode] Invalid nicheId: ${application.nicheId} for application ${code}`);
         throw new Error(`Invalid nicheId: ${application.nicheId}`);
       }
 
@@ -1148,6 +1200,8 @@ class NicheApplicationRepository {
       `;
 
       await executeQuery(updateNicheQuery, { nicheId });
+      logger.info(`[NicheApplicationRepository.deleteByCode] Set niche Status = 1 (vacant) for nicheId: ${nicheId}`);
+      logger.info(`[NicheApplicationRepository.deleteByCode] Successfully completed delete for code: ${code}`);
 
       return true;
     } catch (error) {

@@ -219,6 +219,10 @@ class NicheApplication {
 
 /**
  * NicheApplicationBeneficiary entity model
+ * 
+ * Note: RelationshipToNominee1 and RelationshipToNominee2 are NOT in the database schema
+ * but are kept in the model for backward compatibility and potential future use.
+ * These fields will not be persisted to the database.
  */
 class NicheApplicationBeneficiary {
   constructor(data = {}) {
@@ -231,6 +235,10 @@ class NicheApplicationBeneficiary {
     this.idNo = data.idNo || data.IDNo || null;
     this.isCatholic = data.isCatholic !== undefined ? data.isCatholic : (data.IsCatholic || null);
     this.isMale = data.isMale !== undefined ? data.isMale : (data.IsMale || null);
+    // Note: These fields exist in the model but NOT in the database table
+    // They are kept for backward compatibility with the application code
+    this.relationshipToNominee1 = data.relationshipToNominee1 || data.RelationshipToNominee1 || null;
+    this.relationshipToNominee2 = data.relationshipToNominee2 || data.RelationshipToNominee2 || null;
   }
 
   toJSON() {
@@ -243,7 +251,10 @@ class NicheApplicationBeneficiary {
       birthYear: this.birthYear,
       idNo: this.idNo,
       isCatholic: this.isCatholic,
-      isMale: this.isMale
+      isMale: this.isMale,
+      // Include these in JSON output for frontend compatibility
+      relationshipToNominee1: this.relationshipToNominee1,
+      relationshipToNominee2: this.relationshipToNominee2
     };
   }
 

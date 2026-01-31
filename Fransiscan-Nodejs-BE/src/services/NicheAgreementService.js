@@ -327,41 +327,112 @@ class NicheAgreementService {
       };
 
       // Helper function to format dates like ASP.NET (dd-MMM-yyyy)
+      // ENHANCED: Handles ISO strings, Date objects, and various date formats
       const formatDate = (date) => {
-        if (!date) return null;
+        if (!date) {
+          logger.debug(`[formatDate] Input is null/undefined: ${date}`);
+          return null;
+        }
+        
         try {
-          const d = new Date(date);
+          // If it's already a Date object
+          let d;
+          if (date instanceof Date) {
+            d = date;
+          } else if (typeof date === 'string') {
+            // Handle ISO strings (e.g., "2012-04-15T00:00:00.000Z")
+            const trimmed = date.trim();
+            if (!trimmed) {
+              logger.debug(`[formatDate] Empty string provided`);
+              return null;
+            }
+            d = new Date(trimmed);
+          } else {
+            // Try to convert to Date
+            d = new Date(date);
+          }
+          
           if (isNaN(d.getTime())) {
+            logger.warn(`[formatDate] Invalid date value: ${date} (type: ${typeof date})`);
             return null;
           }
+          
           const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
           const day = String(d.getDate()).padStart(2, '0');
           const month = months[d.getMonth()];
           const year = d.getFullYear();
-          return `${day}-${month}-${year}`;
+          const formatted = `${day}-${month}-${year}`;
+          
+          logger.debug(`[formatDate] Formatted ${date} → ${formatted}`);
+          return formatted;
         } catch (error) {
+          logger.error(`[formatDate] Error formatting date ${date}:`, error.message);
           return null;
         }
       };
 
       // Process beneficiaries data (from repository)
       agreementData.beneficiaries = [];
+      
+      // ✅ DEBUG: Log beneficiary data before processing
+      logger.info(`[processNicheAgreementData] Beneficiary 1 raw data:`, {
+        name: nicheAgreement.beneName_1,
+        dateOfBirth: nicheAgreement.beneDateOfBirth_1,
+        dateOfBirthType: typeof nicheAgreement.beneDateOfBirth_1,
+        birthYear: nicheAgreement.beneBirthYear_1,
+        birthYearType: typeof nicheAgreement.beneBirthYear_1
+      });
+      
       if (nicheAgreement.beneName_1) {
+        // ✅ FIX: Try to format date, with fallback to construct from birthYear if dateOfBirth is null
+        let formattedDateOfBirth = formatDate(nicheAgreement.beneDateOfBirth_1);
+        
+        // ✅ FALLBACK: If dateOfBirth is null but birthYear exists, construct a date
+        if (!formattedDateOfBirth && nicheAgreement.beneBirthYear_1) {
+          logger.info(`[processNicheAgreementData] dateOfBirth is null but birthYear exists (${nicheAgreement.beneBirthYear_1}), constructing date`);
+          try {
+            // Construct date as January 1st of the birth year
+            const constructedDate = new Date(parseInt(nicheAgreement.beneBirthYear_1, 10), 0, 1);
+            formattedDateOfBirth = formatDate(constructedDate);
+            logger.info(`[processNicheAgreementData] Constructed date from birthYear: ${formattedDateOfBirth}`);
+          } catch (e) {
+            logger.warn(`[processNicheAgreementData] Failed to construct date from birthYear:`, e.message);
+          }
+        }
+        
+        logger.info(`[processNicheAgreementData] Beneficiary 1 formatted dateOfBirth:`, {
+          input: nicheAgreement.beneDateOfBirth_1,
+          birthYear: nicheAgreement.beneBirthYear_1,
+          output: formattedDateOfBirth
+        });
+        
         agreementData.beneficiaries.push({
           name: nicheAgreement.beneName_1,
           idNo: nicheAgreement.beneIDNo_1,
           isCatholic: nicheAgreement.beneIsCatholic_1,
           isMale: nicheAgreement.beneIsMale_1,
           relationshipToApplicant: nicheAgreement.beneRelationshipToApplicant_1,
-          dateOfBirth: formatDate(nicheAgreement.beneDateOfBirth_1),
+          dateOfBirth: formattedDateOfBirth, // ✅ Use formatted date (or constructed from birthYear)
           birthYear: nicheAgreement.beneBirthYear_1,
           relationshipToNominee1: nicheAgreement.ben1_NomineeRelationship,
           relationshipToNominee2: nicheAgreement.ben1_Nominee2Relationship,
           status: 'Occupied', // Based on the UI showing "Occupied" status
-          sex: nicheAgreement.beneIsMale_1 ? 'Male' : 'Female'
+          sex: nicheAgreement.beneIsMale_1 !== null && nicheAgreement.beneIsMale_1 !== undefined
+            ? (nicheAgreement.beneIsMale_1 ? 'Male' : 'Female')
+            : null
         });
       }
+      
       if (nicheAgreement.beneName_2) {
+        // ✅ DEBUG: Log beneficiary 2 data
+        logger.info(`[processNicheAgreementData] Beneficiary 2 raw data:`, {
+          name: nicheAgreement.beneName_2,
+          dateOfBirth: nicheAgreement.beneDateOfBirth_2,
+          dateOfBirthType: typeof nicheAgreement.beneDateOfBirth_2,
+          birthYear: nicheAgreement.beneBirthYear_2,
+          birthYearType: typeof nicheAgreement.beneBirthYear_2
+        });
+        
         const secondIsDistinct =
           nicheAgreement.beneName_2 !== nicheAgreement.beneName_1 ||
           (nicheAgreement.beneIDNo_2 && nicheAgreement.beneIDNo_2 !== nicheAgreement.beneIDNo_1) ||
@@ -369,21 +440,48 @@ class NicheAgreementService {
           nicheAgreement.beneRelationshipToApplicant_2 !== nicheAgreement.beneRelationshipToApplicant_1;
 
         if (secondIsDistinct) {
+          // ✅ FIX: Try to format date, with fallback to construct from birthYear if dateOfBirth is null
+          let formattedDateOfBirth2 = formatDate(nicheAgreement.beneDateOfBirth_2);
+          
+          // ✅ FALLBACK: If dateOfBirth is null but birthYear exists, construct a date
+          if (!formattedDateOfBirth2 && nicheAgreement.beneBirthYear_2) {
+            logger.info(`[processNicheAgreementData] Beneficiary 2 dateOfBirth is null but birthYear exists (${nicheAgreement.beneBirthYear_2}), constructing date`);
+            try {
+              // Construct date as January 1st of the birth year
+              const constructedDate = new Date(parseInt(nicheAgreement.beneBirthYear_2, 10), 0, 1);
+              formattedDateOfBirth2 = formatDate(constructedDate);
+              logger.info(`[processNicheAgreementData] Beneficiary 2 constructed date from birthYear: ${formattedDateOfBirth2}`);
+            } catch (e) {
+              logger.warn(`[processNicheAgreementData] Failed to construct date from birthYear for beneficiary 2:`, e.message);
+            }
+          }
+          
+          logger.info(`[processNicheAgreementData] Beneficiary 2 formatted dateOfBirth:`, {
+            input: nicheAgreement.beneDateOfBirth_2,
+            birthYear: nicheAgreement.beneBirthYear_2,
+            output: formattedDateOfBirth2
+          });
+          
           agreementData.beneficiaries.push({
             name: nicheAgreement.beneName_2,
             idNo: nicheAgreement.beneIDNo_2,
             isCatholic: nicheAgreement.beneIsCatholic_2,
             isMale: nicheAgreement.beneIsMale_2,
             relationshipToApplicant: nicheAgreement.beneRelationshipToApplicant_2,
-            dateOfBirth: formatDate(nicheAgreement.beneDateOfBirth_2),
+            dateOfBirth: formattedDateOfBirth2, // ✅ Use formatted date (or constructed from birthYear)
             birthYear: nicheAgreement.beneBirthYear_2,
             relationshipToNominee1: nicheAgreement.ben2_NomineeRelationship,
             relationshipToNominee2: nicheAgreement.ben2_Nominee2Relationship,
             status: 'Occupied', // Based on the UI showing "Occupied" status
-            sex: nicheAgreement.beneIsMale_2 ? 'Male' : 'Female'
+            sex: nicheAgreement.beneIsMale_2 !== null && nicheAgreement.beneIsMale_2 !== undefined
+              ? (nicheAgreement.beneIsMale_2 ? 'Male' : 'Female')
+              : null
           });
         }
       }
+      
+      // ✅ DEBUG: Log final beneficiaries array
+      logger.info(`[processNicheAgreementData] Final beneficiaries array:`, JSON.stringify(agreementData.beneficiaries, null, 2));
 
       // Format dates in agreement data
       agreementData.appliedDate = formatDate(agreementData.appliedDate);

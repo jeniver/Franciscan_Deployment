@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { UserIcon, MailIcon, PhoneIcon } from 'lucide-react';
 import { FormInput } from '../components/FormInput';
 import { FormSelect } from '../components/FormSelect';
-import { useSelector, useDispatch } from 'react-redux';
+import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { AddressInput } from '../components/AddressInput';
 
@@ -17,11 +17,10 @@ export function ContactPersonDetails({
   setFormData,
   isReadOnly = false
 }: ContactPersonDetailsProps) {
-  const dispatch = useDispatch();
   // Get validation errors from Redux store
   const validationErrors = useSelector((state: RootState) => state.application.validationErrors);
   
-  const isInitializedRef = useRef(false);
+  // const isInitializedRef = useRef(false);
 
   // Handle address change from AddressInput component - memoized to prevent infinite loops
   const handleAddressChange = useCallback((addressData: {
@@ -32,20 +31,44 @@ export function ContactPersonDetails({
     postalCode?: string;
     country?: string;
   }) => {
-    // Build legacy address string for backward compatibility
-    const legacyAddress = addressData.blockNo && addressData.streetName 
-      ? `${addressData.block ? addressData.block + ' ' : ''}${addressData.blockNo} ${addressData.streetName}${addressData.unitNo ? ' #' + addressData.unitNo : ''}${addressData.postalCode ? ', ' + (addressData.country || 'Singapore') + ' ' + addressData.postalCode : ''}`
-      : formData.applicantAddress || formData.contactAddress || '';
+    // NOTE: Avoid parsing/converting address strings here. We store structured fields directly.
+    // (Old legacy string builder removed/commented out to prevent incorrect formatting like "##14-07".)
+
+    const rawBlock = (addressData.block || '').trim();
+    const isBlock = rawBlock.toLowerCase() === 'block' || rawBlock.toLowerCase() === 'blk';
+    const addressNo = isBlock ? 'Blk' : 'No';
+
+    const unitNoRaw = (addressData.unitNo || '').trim();
+    const unitNoNormalized = unitNoRaw ? (unitNoRaw.startsWith('#') ? unitNoRaw : `#${unitNoRaw}`) : '';
+    const country = (addressData.country || 'Singapore').trim() || 'Singapore';
+    const postalCode = (addressData.postalCode || '').trim();
+
+    // Build a consistent legacy address string for display/backward compatibility only
+    // Format: "Blk 1B Pine Grove #14-07 Singapore 591001"
+    const legacyAddress =
+      addressData.blockNo && addressData.streetName
+        ? `${addressNo !== 'No' ? `${addressNo} ` : ''}${(addressData.blockNo || '').trim()} ${(addressData.streetName || '').trim()}${unitNoNormalized ? ` ${unitNoNormalized}` : ''}${postalCode ? ` ${country} ${postalCode}` : ''}`.trim()
+        : (formData.applicantAddress || formData.contactAddress || '');
 
     // Update formData with address fields - must pass plain object, not function
     setFormData({
       ...formData,
-      applicantBlock: addressData.block || '',
+      // UI fields used by AddressInput
+      applicantBlock: isBlock ? 'Block' : '',
       applicantBlockNo: addressData.blockNo || '',
       applicantStreetName: addressData.streetName || '',
-      applicantUnitNo: addressData.unitNo || '',
-      applicantPostalCode: addressData.postalCode || '',
-      applicantCountry: addressData.country || 'Singapore',
+      applicantUnitNo: unitNoRaw, // store raw; keep user input (may include '#')
+      applicantPostalCode: postalCode,
+      applicantCountry: country,
+
+      // API-facing structured applicant fields (maps exactly to applicant.addressNo/Line1/Line2/City/State/Country)
+      applicantAddressNo: addressNo,
+      applicantAddressLine1: (addressData.blockNo || '').trim(),
+      applicantAddressLine2: (addressData.streetName || '').trim(),
+      applicantAddressCity: unitNoNormalized, // keep with '#', matching backend sample
+      applicantAddressState: postalCode,
+      applicantAddressCountry: country,
+
       // Also maintain legacy address field for backward compatibility
       applicantAddress: legacyAddress,
       contactAddress: legacyAddress
@@ -60,6 +83,82 @@ export function ContactPersonDetails({
         contactStatus: 'Active'
       });
     }
+  }, [formData, setFormData]);
+
+  // Sync structured applicant address fields for API (addressNo/Line1/Line2/City/State/Country)
+  // Some mappers only hydrate UI fields (applicantBlock/applicantBlockNo/applicantStreetName/...)
+  // so we derive the structured fields once to ensure downstream templates/API payloads have them.
+  const lastAddressSyncKeyRef = useRef<string>('');
+  useEffect(() => {
+    const key = JSON.stringify({
+      applicantBlock: formData.applicantBlock ?? '',
+      applicantBlockNo: formData.applicantBlockNo ?? '',
+      applicantStreetName: formData.applicantStreetName ?? '',
+      applicantUnitNo: formData.applicantUnitNo ?? '',
+      applicantPostalCode: formData.applicantPostalCode ?? '',
+      applicantCountry: formData.applicantCountry ?? '',
+      applicantAddressNo: formData.applicantAddressNo ?? '',
+      applicantAddressLine1: formData.applicantAddressLine1 ?? '',
+      applicantAddressLine2: formData.applicantAddressLine2 ?? '',
+      applicantAddressCity: formData.applicantAddressCity ?? '',
+      applicantAddressState: formData.applicantAddressState ?? '',
+      applicantAddressCountry: formData.applicantAddressCountry ?? '',
+    });
+
+    if (key === lastAddressSyncKeyRef.current) return;
+    lastAddressSyncKeyRef.current = key;
+
+    const hasAnyUiAddress =
+      !!(formData.applicantBlockNo || formData.applicantStreetName || formData.applicantUnitNo || formData.applicantPostalCode);
+
+    if (!hasAnyUiAddress) return;
+
+    const alreadyHasStructured =
+      !!(formData.applicantAddressNo ||
+        formData.applicantAddressLine1 ||
+        formData.applicantAddressLine2 ||
+        formData.applicantAddressCity ||
+        formData.applicantAddressState ||
+        formData.applicantAddressCountry);
+
+    // If structured fields already exist, don't overwrite (user may be editing in other steps).
+    if (alreadyHasStructured) return;
+
+    const rawBlock = String(formData.applicantBlock || '').trim();
+    const isBlock = rawBlock.toLowerCase() === 'block' || rawBlock.toLowerCase() === 'blk';
+    const applicantAddressNo = isBlock ? 'Blk' : 'No';
+
+    const unitNoRaw = String(formData.applicantUnitNo || '').trim();
+    const unitNoNormalized = unitNoRaw ? (unitNoRaw.startsWith('#') ? unitNoRaw : `#${unitNoRaw}`) : '';
+    const country = String(formData.applicantCountry || 'Singapore').trim() || 'Singapore';
+    const postalCode = String(formData.applicantPostalCode || '').trim();
+
+    setFormData({
+      ...formData,
+      // Normalize UI dropdown value if older mapper stored "Blk"
+      applicantBlock: isBlock ? 'Block' : '',
+
+      // API-facing structured fields
+      applicantAddressNo,
+      applicantAddressLine1: String(formData.applicantBlockNo || '').trim(),
+      applicantAddressLine2: String(formData.applicantStreetName || '').trim(),
+      applicantAddressCity: unitNoNormalized,
+      applicantAddressState: postalCode,
+      applicantAddressCountry: country,
+    });
+  }, [formData, setFormData]);
+
+  // Ensure Religion dropdown reflects applicantIsCatholic when loading existing data
+  useEffect(() => {
+    if (typeof formData.applicantIsCatholic !== 'boolean') return;
+    if (formData.applicantReligion) return;
+
+    const religion = formData.applicantIsCatholic ? 'Catholic' : 'Non Catholic';
+    setFormData({
+      ...formData,
+      applicantReligion: religion,
+      contactReligion: religion,
+    });
   }, [formData, setFormData]);
 
   return <div>
@@ -105,19 +204,24 @@ export function ContactPersonDetails({
             />
             
           </div>
-          
+           
           {/* Address Component */}
-      
+       
           <AddressInput
             fieldPrefix="applicant"
             onAddressChange={handleAddressChange}
             initialValues={{
-              block: formData.applicantBlock,
-              blockNo: formData.applicantBlockNo,
-              streetName: formData.applicantStreetName,
-              unitNo: formData.applicantUnitNo,
-              postalCode: formData.applicantPostalCode,
-              country: formData.applicantCountry
+              // Prefer structured applicant fields if present; otherwise fallback to UI fields
+              block:
+                (formData.applicantAddressNo || formData.applicantBlock) &&
+                String(formData.applicantAddressNo || formData.applicantBlock).toLowerCase() !== 'no'
+                  ? 'Block'
+                  : '',
+              blockNo: formData.applicantAddressLine1 ?? formData.applicantBlockNo,
+              streetName: formData.applicantAddressLine2 ?? formData.applicantStreetName,
+              unitNo: formData.applicantAddressCity ?? formData.applicantUnitNo,
+              postalCode: formData.applicantAddressState ?? formData.applicantPostalCode,
+              country: formData.applicantAddressCountry ?? formData.applicantCountry
             }}
             initialAddressString={formData.applicantAddress || formData.contactAddress || ''}
             isReadOnly={isReadOnly}

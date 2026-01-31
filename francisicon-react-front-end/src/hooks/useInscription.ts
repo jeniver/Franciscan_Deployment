@@ -1,5 +1,6 @@
 import { useSelector, useDispatch } from 'react-redux';
 import { useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { RootState, AppDispatch } from '../store';
 import {
   setInscriptionRequestNo,
@@ -34,6 +35,7 @@ import { useToast } from '../contexts/ToastContext';
 
 export function useInscription() {
   const dispatch: AppDispatch = useDispatch();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
 
   // Select state from Redux
@@ -245,6 +247,13 @@ export function useInscription() {
       // Refresh inscription items to get the new inscription data
       if (nicheApplicationCode) {
         await dispatch(fetchInscriptionItems(nicheApplicationCode));
+      }
+      
+      // ✅ FIX: Navigate to invoice-receipt page after successful inscription creation
+      if (nicheApplicationCode) {
+        navigate('/invoice-receipt', {
+          state: { applicationNumber: nicheApplicationCode }
+        });
       }
       
       return result;

@@ -427,6 +427,7 @@ export const useApplication = () => {
   // Handle Delete Application from table
   const handleDeleteApplicationFromTable = useCallback(async (applicationCode: string) => {
     if (!applicationCode.trim()) {
+      showError('Error', 'Application code is required');
       return;
     }
     
@@ -439,16 +440,23 @@ export const useApplication = () => {
       
       if (result.type.endsWith('/fulfilled')) {
         console.log('Application deleted successfully');
-        // Refresh the application list
+        showSuccess('Success', `Application ${applicationCode} has been deleted successfully`);
+        
+        // Clear frontend cache to ensure fresh data
+        dispatch(clearApplicationListCache());
+        
+        // Refresh the application list to reflect the deletion
         await searchApplicationList();
       } else {
         const errorData = result.payload as { message: string; type: string; statusCode: number };
         console.error('Error deleting application:', errorData.message);
+        showError('Delete Failed', errorData.message || 'Failed to delete application');
       }
     } catch (error: any) {
       console.error('Error deleting application:', error);
+      showError('Error', error.message || 'An unexpected error occurred while deleting the application');
     }
-  }, [dispatch, searchApplicationList]);
+  }, [dispatch, searchApplicationList, showError, showSuccess]);
 
   // Handle Print Agreement button click - opens modal with agreement HTML template
   const handlePrintAgreement = useCallback(async () => {

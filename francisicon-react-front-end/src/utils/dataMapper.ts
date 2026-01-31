@@ -3,6 +3,40 @@ import { NicheAgreementResponse } from '../services/nicheAgreementService';
 // Map API response data to form data structure
 export const mapApiResponseToFormData = (apiResponse: NicheAgreementResponse) => {
   const { data } = apiResponse;
+
+  // Map applicant structured address fields (if present) into the UI fields used by AddressInput.
+  // This is important for /niche/edit/<non-NAPP-code> flows which load via nicheAgreementService.
+  const applicantAddressNo = (data.applicant as any)?.addressNo || '';
+  const applicantAddressLine1 = (data.applicant as any)?.addressLine1 || '';
+  const applicantAddressLine2 = (data.applicant as any)?.addressLine2 || '';
+  const applicantAddressCity = (data.applicant as any)?.addressCity || '';
+  const applicantAddressState = (data.applicant as any)?.addressState || '';
+  const applicantAddressCountry = (data.applicant as any)?.addressCountry || 'Singapore';
+
+  const hasStructuredApplicantAddress = !!(
+    applicantAddressNo ||
+    applicantAddressLine1 ||
+    applicantAddressLine2 ||
+    applicantAddressCity ||
+    applicantAddressState ||
+    applicantAddressCountry
+  );
+
+  const applicantBlock =
+    applicantAddressNo && String(applicantAddressNo).trim().toLowerCase() !== 'no' ? 'Block' : '';
+
+  const unitNoRaw = String(applicantAddressCity || '').trim();
+  const unitNoNormalized = unitNoRaw ? (unitNoRaw.startsWith('#') ? unitNoRaw : `#${unitNoRaw}`) : '';
+
+  const country = String(applicantAddressCountry || 'Singapore').trim() || 'Singapore';
+  const postalCode = String(applicantAddressState || '').trim();
+
+  const legacyApplicantAddress =
+    (data.applicant?.address && String(data.applicant.address).trim() !== '')
+      ? String(data.applicant.address)
+      : (hasStructuredApplicantAddress && (applicantAddressLine1 || applicantAddressLine2)
+          ? `${applicantBlock ? 'Blk ' : ''}${String(applicantAddressLine1 || '').trim()} ${String(applicantAddressLine2 || '').trim()}${unitNoNormalized ? ` ${unitNoNormalized}` : ''}${postalCode ? ` ${country} ${postalCode}` : ''}`.trim()
+          : '');
   
   return {
     // Application Number
@@ -32,11 +66,38 @@ export const mapApiResponseToFormData = (apiResponse: NicheAgreementResponse) =>
     contactNric: data.applicant?.idNo || '',
     contactEmail: data.applicant?.email || '',
     contactPhone: data.applicant?.mobileNo || '',
-    contactAddress: data.applicant?.address || '',
-    contactReligion: data.applicant?.isCatholic ? 'Catholic' : 'Non-Catholic',
+    contactAddress: legacyApplicantAddress,
+    contactReligion: data.applicant?.isCatholic ? 'Catholic' : 'Non Catholic',
     contactHomeTel: data.applicant?.homeTelNo || '',
     contactOfficeTel: data.applicant?.officeTelNo || '',
-    contactCountry: 'Singapore',
+    contactCountry: country,
+
+    // Applicant fields used by ContactPersonDetails (Step 3)
+    applicantName: data.applicant?.name || '',
+    applicantIDNo: data.applicant?.idNo || '',
+    applicantEmail: data.applicant?.email || '',
+    applicantPhone: data.applicant?.mobileNo || '',
+    applicantAddress: legacyApplicantAddress,
+    applicantHomeTel: data.applicant?.homeTelNo || '',
+    applicantOfficeTel: data.applicant?.officeTelNo || '',
+    applicantIsCatholic: data.applicant?.isCatholic ?? undefined,
+    applicantReligion: data.applicant?.isCatholic === true ? 'Catholic' : data.applicant?.isCatholic === false ? 'Non Catholic' : '',
+
+    // AddressInput UI fields (these drive the address textbox values)
+    applicantBlock,
+    applicantBlockNo: String(applicantAddressLine1 || '').trim(),
+    applicantStreetName: String(applicantAddressLine2 || '').trim(),
+    applicantUnitNo: unitNoRaw,
+    applicantPostalCode: postalCode,
+    applicantCountry: country,
+
+    // Structured fields (so downstream PDFs/API payloads have consistent data)
+    applicantAddressNo: applicantBlock ? 'Blk' : 'No',
+    applicantAddressLine1: String(applicantAddressLine1 || '').trim(),
+    applicantAddressLine2: String(applicantAddressLine2 || '').trim(),
+    applicantAddressCity: unitNoNormalized,
+    applicantAddressState: postalCode,
+    applicantAddressCountry: country,
 
     // Beneficiary Details (Step 4)
     beneficiaries: data.beneficiaries?.map((beneficiary, index) => ({
@@ -81,6 +142,31 @@ export const mapApiResponseToFormData = (apiResponse: NicheAgreementResponse) =>
         officeTelNo: data.nominee2.officeTelNo
       } : null
     ].filter(Boolean),
+    
+    // Extract first nominee's structured address fields (similar to applicant)
+    nomineeAddressNo: (data.nominee as any)?.addressNo || '',
+    nomineeAddressLine1: (data.nominee as any)?.addressLine1 || '',
+    nomineeAddressLine2: (data.nominee as any)?.addressLine2 || '',
+    nomineeAddressCity: (data.nominee as any)?.addressCity || '',
+    nomineeAddressState: (data.nominee as any)?.addressState || '',
+    nomineeAddressCountry: (data.nominee as any)?.addressCountry || 'Singapore',
+    // UI fields for AddressInput (match applicant pattern)
+    nomineeBlock: (() => {
+      const addrNo = (data.nominee as any)?.addressNo || '';
+      return addrNo && String(addrNo).trim().toLowerCase() !== 'no' ? 'Block' : '';
+    })(),
+    nomineeBlockNo: ((data.nominee as any)?.addressLine1 || '').trim(),
+    nomineeStreetName: ((data.nominee as any)?.addressLine2 || '').trim(),
+    nomineeUnitNo: ((data.nominee as any)?.addressCity || '').trim(),
+    nomineePostalCode: ((data.nominee as any)?.addressState || '').trim(),
+    nomineeCountry: ((data.nominee as any)?.addressCountry || 'Singapore').trim(),
+    // Legacy single address field for backward compatibility
+    nomineeAddress: data.nominee?.address || '',
+    nomineePhone: data.nominee?.mobileNo || '',
+    nomineeEmail: data.nominee?.email || '',
+    nomineeName: data.nominee?.name || '',
+    nomineeIDNo: data.nominee?.idNo || '',
+    nomineeRelationship: data.nominee?.relationship || '',
 
     // Invoice & Receipt (Step 6)
     invoice: {

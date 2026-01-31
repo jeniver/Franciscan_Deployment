@@ -8,7 +8,6 @@ import {
   PieChartIcon,
   CalendarIcon,
   LoaderIcon,
-  AlertCircleIcon,
   XIcon,
   EyeIcon,
 } from 'lucide-react';
@@ -16,6 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { useReport } from '../hooks/useReport';
 import { useToast } from '../contexts/ToastContext';
 import { ReportViewerModal } from '../components/ReportViewerModal';
+import { DateInput } from '../components/common/DateInput';
 import reportService from '../services/reportService';
 
 interface ReportCategory {
@@ -53,12 +53,12 @@ const getLastSixMonthsRange = () => {
 
 export function ReportsPage() {
   const {
-    availableReports,
+    availableReports: _availableReports,
     loadingReports,
     reportsError,
     generatingReport,
     reportError,
-    lastErrorType,
+    lastErrorType: _lastErrorType,
     reportHistory,
     fetchAvailableReports,
     generateMonthlyReceiptsReport,
@@ -97,8 +97,7 @@ export function ReportsPage() {
   const [chapelMonth, setChapelMonth] = useState<number | ''>('');
   const [viewingReport, setViewingReport] = useState<Blob | null>(null);
   const [viewingReportTitle, setViewingReportTitle] = useState<string>('');
-  const [viewingJsonReport, setViewingJsonReport] = useState<any>(null);
-  const [viewingJsonReportTitle, setViewingJsonReportTitle] = useState<string>('');
+  const [viewingJsonReport, _setViewingJsonReport] = useState<any>(null);
 
   // Report categories
   const reportCategories: ReportCategory[] = [
@@ -594,20 +593,20 @@ export function ReportsPage() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">From Date</label>
-                    <input
-                      type="date"
+                    <DateInput
                       value={dateRange.fromDate}
-                      onChange={(e) => setDateRange({ ...dateRange, fromDate: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8b2828]/20 focus:border-[#8b2828] transition-all duration-200 hover:border-gray-400 bg-gray-50/50 focus:bg-white"
+                      onChange={(apiDate) => setDateRange({ ...dateRange, fromDate: apiDate })}
+                      className="px-4 py-3"
+                      placeholder="dd/mm/yyyy"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">To Date</label>
-                    <input
-                      type="date"
+                    <DateInput
                       value={dateRange.toDate}
-                      onChange={(e) => setDateRange({ ...dateRange, toDate: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8b2828]/20 focus:border-[#8b2828] transition-all duration-200 hover:border-gray-400 bg-gray-50/50 focus:bg-white"
+                      onChange={(apiDate) => setDateRange({ ...dateRange, toDate: apiDate })}
+                      className="px-4 py-3"
+                      placeholder="dd/mm/yyyy"
                     />
                   </div>
                 </div>

@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../services/api';
 
 // Types for Invoice/Application Data
@@ -83,6 +83,7 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
   taxAmount: number;
   taxPercentage: number;
   taxCode: string | null;
+  paymentMode?: string | null;
   
   // System
   userId: number;
@@ -146,23 +147,9 @@ export interface CreateInvoicePayload {
   createReceipt?: boolean;
 }
 
-// Create Receipt Request Type
-export interface CreateReceiptPayload {
-  invoice: {
-    invoiceId?: number;
-    invoiceCode: string;
-    customerName: string;
-    totalAmount: number;
-    payingAmount: number;
-    paymentMode: string;
-  };
-  invoiceDetails: Array<{
-    description: string;
-    quantity?: number;
-    unitPrice?: number;
-    amount: number;
-  }>;
-}
+// NOTE: Receipt table requires InvoiceId NOT NULL. So "receipt only" without an invoice
+// is not supported by the DB schema. Use invoice.createReceipt=true (invoice + receipt)
+// or /api/receipts/from-invoice for existing invoices.
 
 interface InvoiceState {
   currentData: InvoiceOrApplicationData | null;
@@ -200,7 +187,20 @@ export const fetchInvoiceOrApplication = createAsyncThunk<
   async (code: string, { rejectWithValue }) => {
     try {
       const response = await api.get(`/api/invoices/${code.trim()}`);
-      return response.data;
+
+      // Backend can return either:
+      // 1) { success: true, message: "...", data: { ...InvoiceOrApplicationData } }
+      // 2) { ...InvoiceOrApplicationData } (direct)
+      const body = response.data;
+      if (body && typeof body === 'object' && 'success' in body && 'data' in body) {
+        const wrapped: any = body;
+        if (wrapped.success === true && wrapped.data) {
+          return wrapped.data as InvoiceOrApplicationData;
+        }
+        return rejectWithValue(wrapped.message || 'Failed to fetch data');
+      }
+
+      return body as InvoiceOrApplicationData;
     } catch (error: any) {
       if (error.response?.status === 404) {
         return rejectWithValue('Invoice or application not found');
@@ -212,13 +212,14 @@ export const fetchInvoiceOrApplication = createAsyncThunk<
 
 // Create invoice from application
 export const createInvoice = createAsyncThunk<
-  { invoiceId: number; invoiceCode: string },
+  { invoiceId: number; invoiceCode: string; receiptCode?: string; receiptCreated?: boolean },
   CreateInvoicePayload,
   { rejectValue: string }
 >(
   'invoice/createInvoice',
   async (payload: CreateInvoicePayload, { rejectWithValue }) => {
     try {
+      // Backend route: POST /api/invoices  (expects { invoice, invoiceDetails, createReceipt })
       const response = await api.post('/api/invoices', payload);
       
       if (response.data.success === false) {
@@ -228,33 +229,14 @@ export const createInvoice = createAsyncThunk<
       return {
         invoiceId: response.data.data?.invoiceId || response.data.invoiceId,
         invoiceCode: response.data.data?.invoiceCode || response.data.invoiceCode,
+        receiptCode: response.data.data?.receiptCode || response.data.receiptCode,
+        receiptCreated: response.data.data?.receiptCreated || response.data.receiptCreated || false,
       };
     } catch (error: any) {
       if (error.response?.status === 409) {
         return rejectWithValue('Duplicate invoice - invoice already exists for this application');
       }
       return rejectWithValue(error.response?.data?.message || 'Failed to create invoice');
-    }
-  }
-);
-
-// Create receipt from invoice
-export const createReceipt = createAsyncThunk<
-  { receiptId: number; receiptCode: string },
-  CreateReceiptPayload,
-  { rejectValue: string }
->(
-  'invoice/createReceipt',
-  async (payload: CreateReceiptPayload, { rejectWithValue }) => {
-    try {
-      const response = await api.post('/api/receipts/from-invoice', payload);
-      
-      return {
-        receiptId: response.data.receiptId || response.data.data?.receiptId,
-        receiptCode: response.data.receiptCode || response.data.data?.receiptCode,
-      };
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to create receipt');
     }
   }
 );
@@ -310,6 +292,10 @@ const invoiceSlice = createSlice({
       state.creatingInvoice = false;
       state.createInvoiceSuccess = true;
       state.lastCreatedInvoiceCode = action.payload.invoiceCode;
+      if (action.payload.receiptCode) {
+        state.lastCreatedReceiptCode = action.payload.receiptCode;
+        state.createReceiptSuccess = true;
+      }
       state.error = null;
     });
     builder.addCase(createInvoice.rejected, (state, action) => {
@@ -318,23 +304,7 @@ const invoiceSlice = createSlice({
       state.error = action.payload || 'Failed to create invoice';
     });
     
-    // Create receipt
-    builder.addCase(createReceipt.pending, (state) => {
-      state.creatingReceipt = true;
-      state.error = null;
-      state.createReceiptSuccess = false;
-    });
-    builder.addCase(createReceipt.fulfilled, (state, action) => {
-      state.creatingReceipt = false;
-      state.createReceiptSuccess = true;
-      state.lastCreatedReceiptCode = action.payload.receiptCode;
-      state.error = null;
-    });
-    builder.addCase(createReceipt.rejected, (state, action) => {
-      state.creatingReceipt = false;
-      state.createReceiptSuccess = false;
-      state.error = action.payload || 'Failed to create receipt';
-    });
+    // Receipt is created together with invoice when createReceipt=true on createInvoice
   },
 });
 

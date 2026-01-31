@@ -3,6 +3,7 @@ import { EyeIcon, CheckIcon, AlertCircleIcon, ChevronLeftIcon, ChevronRightIcon,
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
+import { DateInput } from '../components/common/DateInput';
 import { useGateOfLife } from '../hooks/useGateOfLife';
 import { mapApiApplicationToFormData } from '../utils/gateOfLifeMapper';
 import { useToast } from '../contexts/ToastContext';
@@ -468,18 +469,18 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-gray-700">Booked From</label>
-              <Input
-                type="date"
+              <DateInput
                 value={applicationListFilters.bookedFrom}
-                onChange={(e) => handleSearchFieldChange('bookedFrom', e.target.value)}
+                onChange={(apiDate) => handleSearchFieldChange('bookedFrom', apiDate)}
+                placeholder="dd/mm/yyyy"
               />
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-gray-700">Booked To</label>
-              <Input
-                type="date"
+              <DateInput
                 value={applicationListFilters.bookedTo}
-                onChange={(e) => handleSearchFieldChange('bookedTo', e.target.value)}
+                onChange={(apiDate) => handleSearchFieldChange('bookedTo', apiDate)}
+                placeholder="dd/mm/yyyy"
               />
             </div>
           </div>
@@ -707,13 +708,12 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Date of Birth:
                     </label>
-                    <Input
-                      type="date"
+                    <DateInput
                       value={engraving.dateOfBirth}
-                      onChange={(e) => updateEngraving(index, 'dateOfBirth', e.target.value)}
+                      onChange={(apiDate) => updateEngraving(index, 'dateOfBirth', apiDate)}
                       className="w-full"
                       disabled={isReadOnly}
-                      readOnly={isReadOnly}
+                      placeholder="dd/mm/yyyy"
                     />
                   </div>
                   
@@ -721,13 +721,12 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Date of Death:
                     </label>
-                    <Input
-                      type="date"
+                    <DateInput
                       value={engraving.dateOfDeath}
-                      onChange={(e) => updateEngraving(index, 'dateOfDeath', e.target.value)}
+                      onChange={(apiDate) => updateEngraving(index, 'dateOfDeath', apiDate)}
                       className="w-full"
                       disabled={isReadOnly}
-                      readOnly={isReadOnly}
+                      placeholder="dd/mm/yyyy"
                     />
                   </div>
                   

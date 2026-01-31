@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { UsersIcon, PlusIcon, UserIcon, InfoIcon } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { UsersIcon, PlusIcon, InfoIcon } from 'lucide-react';
 import { AddBeneficiaryModal } from '../components/AddBeneficiaryModal';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -11,11 +11,21 @@ interface BeneficiaryDetailsProps {
 interface Beneficiary {
   id: number;
   fullName: string;
+  name?: string;
   nric: string;
-  relationship: string;
   dateOfBirth: string;
+  relationship: string;
+  relationshipToApp?: string;
+  relationshipToApplicant?: string;
   status: 'Active' | 'Unknown' | 'Inactive';
   religion: string;
+  sex?: string;
+  gender?: string;
+  isMale?: boolean;
+  isCatholic?: boolean;
+  religiousAffiliation?: string;
+  relationshipToNominee1?: string;
+  relationshipToNominee2?: string;
 }
 export function BeneficiaryDetails({
   formData,
@@ -29,20 +39,21 @@ export function BeneficiaryDetails({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBeneficiary, setEditingBeneficiary] = useState<Beneficiary | null>(null);
 
-  // Sync local state with Redux form data
+  // Sync local state with Redux form data only on mount or when formData changes externally
   useEffect(() => {
     if (formData.beneficiaries && Array.isArray(formData.beneficiaries)) {
-      setBeneficiaries(formData.beneficiaries);
+      // Only update if the beneficiaries are different (avoid infinite loop)
+      const currentIds = beneficiaries.map(b => b.id).sort().join(',');
+      const newIds = formData.beneficiaries.map((b: any) => b.id).sort().join(',');
+      
+      if (currentIds !== newIds) {
+        setBeneficiaries(formData.beneficiaries);
+      }
     }
   }, [formData.beneficiaries]);
-
-  // Update Redux whenever local beneficiaries change
-  useEffect(() => {
-    setFormData({
-      ...formData,
-      beneficiaries: beneficiaries
-    });
-  }, [beneficiaries]);
+  
+  // NOTE: Removed the automatic sync useEffect that was causing duplicates.
+  // Now beneficiaries are only updated via explicit setFormData calls in handlers.
   const handleAddBeneficiary = () => {
     setEditingBeneficiary(null);
     setIsModalOpen(true);
@@ -55,15 +66,17 @@ export function BeneficiaryDetails({
 
   const handleSaveBeneficiary = (beneficiaryData: any) => {
     // Normalize beneficiary data to ensure consistent field names
-    const normalizedBeneficiary = {
+    const normalizedBeneficiary: Beneficiary = {
       id: editingBeneficiary?.id || Date.now(),
       fullName: beneficiaryData.fullName || beneficiaryData.name || '',
+      name: beneficiaryData.name || beneficiaryData.fullName || '',
       nric: beneficiaryData.nric || '',
       dateOfBirth: beneficiaryData.dateOfBirth || '',
       sex: beneficiaryData.sex || beneficiaryData.gender || '',
       gender: beneficiaryData.gender || beneficiaryData.sex || '',
       relationship: beneficiaryData.relationship || beneficiaryData.relationshipToApp || '',
       relationshipToApp: beneficiaryData.relationshipToApp || beneficiaryData.relationship || '',
+      relationshipToApplicant: beneficiaryData.relationshipToApplicant || beneficiaryData.relationship || beneficiaryData.relationshipToApp || '',
       religion: beneficiaryData.religion || beneficiaryData.religiousAffiliation || '',
       religiousAffiliation: beneficiaryData.religiousAffiliation || beneficiaryData.religion || '',
       relationshipToNominee1: beneficiaryData.relationshipToNominee1 || '',
@@ -80,52 +93,28 @@ export function BeneficiaryDetails({
       );
       setBeneficiaries(updated);
       
-      // Update individual beneficiary fields for the first beneficiary (for API compatibility)
-      const firstBeneficiary = updated[0];
-      const updatedFormData = {
+      // Update formData with the beneficiaries array only
+      // No need to send beneficiary1/2/3 - backend now uses the beneficiaries array
+      setFormData({
         ...formData,
-        beneficiaries: updated,
-        // Update individual fields for first beneficiary
-        beneficiary1: firstBeneficiary ? {
-          name: firstBeneficiary.fullName || firstBeneficiary.name || '',
-          relationshipToApplicant: firstBeneficiary.relationshipToApp || firstBeneficiary.relationship || ''
-        } : { name: '', relationshipToApplicant: '' }
-      };
-      
-      setFormData(updatedFormData);
+        beneficiaries: updated
+      });
     } else {
       // Add new beneficiary
       const updated = [...beneficiaries, normalizedBeneficiary];
       setBeneficiaries(updated);
       
-      // Update individual beneficiary fields for the first beneficiary (for API compatibility)
-      const firstBeneficiary = updated[0];
-      const updatedFormData = {
+      // Update formData with the beneficiaries array only
+      // No need to send beneficiary1/2/3 - backend now uses the beneficiaries array
+      setFormData({
         ...formData,
-        beneficiaries: updated,
-        // Update individual fields for first beneficiary
-        beneficiary1: firstBeneficiary ? {
-          name: firstBeneficiary.fullName || firstBeneficiary.name || '',
-          relationshipToApplicant: firstBeneficiary.relationshipToApp || firstBeneficiary.relationship || ''
-        } : { name: '', relationshipToApplicant: '' }
-      };
-      
-      setFormData(updatedFormData);
+        beneficiaries: updated
+      });
     }
     setIsModalOpen(false);
     setEditingBeneficiary(null);
   };
-  const handleUpdateBeneficiary = (id: number, field: keyof Beneficiary, value: string) => {
-    const updated = beneficiaries.map(b => b.id === id ? {
-      ...b,
-      [field]: value
-    } : b);
-    setBeneficiaries(updated);
-    setFormData({
-      ...formData,
-      beneficiaries: updated
-    });
-  };
+  // Removed unused handleUpdateBeneficiary - beneficiaries are edited via modal only
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Active':
@@ -202,7 +191,7 @@ export function BeneficiaryDetails({
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {beneficiaries.map((beneficiary, index) => (
+                  {beneficiaries.map((beneficiary) => (
                     <tr key={beneficiary.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {beneficiary.fullName}

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { EyeIcon, RefreshCwIcon, CheckIcon, HashIcon, AlertCircleIcon, ChevronLeftIcon, ChevronRightIcon, UserIcon, CalendarIcon, ClockIcon } from 'lucide-react';
+import { EyeIcon, RefreshCwIcon, CheckIcon, AlertCircleIcon, ChevronLeftIcon, ChevronRightIcon, UserIcon, CalendarIcon, ClockIcon } from 'lucide-react';
 import { Button } from './common/Button';
 import { Input } from './common/Input';
+import { DateInput } from './common/DateInput';
 import { LoadingSpinner } from './common/LoadingSpinner';
 import { Card } from './common/Card';
 import { useWakeRoom } from '../hooks/useWakeRoom';
@@ -32,7 +33,7 @@ const steps = [
   }
 ];
 
-export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated }: WakeRoomBookingFormProps) {
+export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBookingUpdated }: WakeRoomBookingFormProps) {
   const dispatch = useDispatch<AppDispatch>();
   const [currentStep, setCurrentStep] = useState(1);
   const [bookingCode, setBookingCode] = useState('');
@@ -43,7 +44,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated }: Wake
 
   const {
     wakeRooms,
-    selectedWakeRoom,
+    selectedWakeRoom: _selectedWakeRoom,
     selectedBooking,
     availabilityCheck,
     loading,
@@ -672,12 +673,12 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated }: Wake
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Using Date: <span className="text-red-500">*</span>
                 </label>
-                <Input
-                  type="date"
+                <DateInput
                   value={bookingData.usingDate}
-                  onChange={(e) => setBookingData({...bookingData, usingDate: e.target.value})}
+                  onChange={(apiDate) => setBookingData({ ...bookingData, usingDate: apiDate })}
                   className="w-full"
                   required
+                  placeholder="dd/mm/yyyy"
                 />
               </div>
 

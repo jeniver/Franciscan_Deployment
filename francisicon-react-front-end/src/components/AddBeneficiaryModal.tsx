@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { XIcon, CalendarIcon } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { XIcon } from 'lucide-react';
 import { formatDateForInput } from '../utils/dateUtils';
+import { BeneficiaryDatePicker } from './BeneficiaryDatePicker';
 
 interface AddBeneficiaryModalProps {
   isOpen: boolean;
@@ -127,19 +128,14 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
 
           {/* Date Of Birth */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Date Of Birth
-            </label>
-            <div className="relative">
-              <input
-                type="date"
-                value={formData.dateOfBirth}
-                onChange={(e) => setFormData({...formData, dateOfBirth: e.target.value})}
-                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
-                placeholder="Select date of birth"
-              />
-              <CalendarIcon className="absolute right-3 top-2.5 w-5 h-5 text-gray-400 pointer-events-none" />
-            </div>
+            <BeneficiaryDatePicker
+              label="Date Of Birth"
+              value={formData.dateOfBirth}
+              onChange={(apiDate) => setFormData({ ...formData, dateOfBirth: apiDate })}
+              mode="full"
+              minYear={1900}
+              maxYear={new Date().getFullYear()}
+            />
           </div>
 
           {/* Gender */}

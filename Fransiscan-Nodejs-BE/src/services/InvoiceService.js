@@ -353,7 +353,9 @@ class InvoiceService extends BaseService {
       for (const detailData of invoiceDetails) {
         const detail = new InvoiceDetail({
           ...detailData,
-          invoiceId: 0 // Will be set after invoice is created
+          // InvoiceId is not known yet during validation; use a temporary positive value
+          // so InvoiceDetail.validate() can still validate other fields.
+          invoiceId: 1
         });
 
         const detailErrors = detail.validate();

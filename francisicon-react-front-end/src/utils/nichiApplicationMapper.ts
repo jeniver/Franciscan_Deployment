@@ -170,10 +170,23 @@ export function mapNichiBookingToApplicationRequest(formData: {
   }
 
   // Map niche (use provided data or minimal defaults) - for the nested structure
+  const toRowNumber = (value: unknown): number | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const str = String(value).trim();
+    if (!str) return null;
+    // Accept pure numeric or strings containing digits (e.g. "Row 12" -> 12)
+    const digits = str.match(/\d+/);
+    if (!digits) return null;
+    const parsed = parseInt(digits[0], 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+
   const niche = {
     number: formData.nicheNumber || formData.nicheCode || formData.refDocNumber || 'N/A',
     code: formData.nicheCode || formData.nicheNumber || formData.refDocNumber || 'N/A',
-    rowNumber: formData.rowNumber ? (typeof formData.rowNumber === 'string' ? formData.rowNumber : String(formData.rowNumber)) : null,
+    // `NichiNiche.rowNumber` is numeric in our types
+    rowNumber: toRowNumber(formData.rowNumber),
     wallName: formData.wallName || null,
     chapelName: formData.chapelName || null,
     totalAmount: formData.nichiUnitPrice,

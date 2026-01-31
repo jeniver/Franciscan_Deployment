@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Layout } from '../components/Layout';
 import { useNichiBooking } from '../hooks/useNichiBooking';
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { useToast } from '../contexts/ToastContext';
-import { ChurchIcon, BookOpenIcon, PlusIcon, ChevronDownIcon, LoaderIcon, EyeIcon, SearchIcon } from 'lucide-react';
+import { ChurchIcon, BookOpenIcon, PlusIcon, ChevronDownIcon, LoaderIcon, EyeIcon } from 'lucide-react';
 import inscriptionService from '../services/inscriptionService';
+import { DateInput } from '../components/common/DateInput';
 import type { BibleChoice } from '../services/inscriptionService';
 import type { DeceasedDetail } from '../store/nichibookingSlice';
 
@@ -26,8 +26,8 @@ export function NichiBookingPage() {
     loadingApplication,
     loadApplicationError,
     loadedApplication,
-    loading,
-    error,
+    loading: _loading,
+    error: _error,
     updateInvoiceNumber,
     updatePaymentMode,
     updateNichiQuantity,
@@ -35,13 +35,13 @@ export function NichiBookingPage() {
     updateRefDocNumber,
     updateLineTaxPercent,
     updateItemId,
-    handleCreateNichiBookingInvoice,
+    handleCreateNichiBookingInvoice: _handleCreateNichiBookingInvoice,
     handleCreateNichiApplication,
     handleViewNichiApplication,
-    handleClearError,
-    handleClearInvoiceResult,
-    handleClearApplicationResult,
-    handleClearLoadedApplication,
+    handleClearError: _handleClearError,
+    handleClearInvoiceResult: _handleClearInvoiceResult,
+    handleClearApplicationResult: _handleClearApplicationResult,
+    handleClearLoadedApplication: _handleClearLoadedApplication,
     handleResetForm,
     deceasedDetails,
     updateDeceasedDetails,
@@ -56,7 +56,7 @@ export function NichiBookingPage() {
     updateCrossType,
   } = useNichiBooking();
 
-  const { showError, showSuccess } = useToast();
+  const { showError, showSuccess: _showSuccess } = useToast();
 
   // Application number for viewing
   const [viewApplicationNumber, setViewApplicationNumber] = useState('');
@@ -188,7 +188,7 @@ export function NichiBookingPage() {
   };
 
   // Track previous refDocNumber to detect changes
-  const prevRefDocNumberRef = React.useRef<string>(refDocNumber);
+  const prevRefDocNumberRef = useRef<string>(refDocNumber);
 
   // CRITICAL: Reset niche state when application number (refDocNumber) changes
   // This ensures that when viewing a different application, previous niche selection is cleared
@@ -444,28 +444,25 @@ export function NichiBookingPage() {
                         />
                       </td>
                       <td className="py-4 px-4">
-                        <input
-                          type="date"
+                        <DateInput
                           value={beneficiary.dateBorn}
-                          onChange={(e) => handleUpdateBeneficiary(index, 'dateBorn', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
+                          onChange={(apiDate) => handleUpdateBeneficiary(index, 'dateBorn', apiDate)}
+                          className="rounded-lg py-2 px-3 text-sm"
                         />
                       </td>
                       <td className="py-4 px-4">
-                        <input
-                          type="date"
+                        <DateInput
                           value={beneficiary.dateDied}
-                          onChange={(e) => handleUpdateBeneficiary(index, 'dateDied', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
+                          onChange={(apiDate) => handleUpdateBeneficiary(index, 'dateDied', apiDate)}
+                          className="rounded-lg py-2 px-3 text-sm"
                         />
                       </td>
                       <td className="py-4 px-4">
                         <div className="flex gap-2">
-                          <input
-                            type="date"
+                          <DateInput
                             value={beneficiary.internmentDate}
-                            onChange={(e) => handleUpdateBeneficiary(index, 'internmentDate', e.target.value)}
-                            className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
+                            onChange={(apiDate) => handleUpdateBeneficiary(index, 'internmentDate', apiDate)}
+                            className="rounded-lg py-2 px-3 text-sm"
                           />
                           <input
                             type="time"

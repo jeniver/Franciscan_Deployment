@@ -2,6 +2,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { useCallback, useRef } from 'react';
 import { RootState, AppDispatch } from '../store';
+import { useToast } from '../contexts/ToastContext';
 import {
   updateFormData,
   setApplicationCode,
@@ -24,6 +25,7 @@ import gateOfLifeService, { GateOfLifeError, CreateGateOfLifeRequest, UpdateGate
 export function useGateOfLife() {
   const dispatch: AppDispatch = useDispatch();
   const navigate = useNavigate();
+  const { showError, showSuccess } = useToast();
 
   // Select state from Redux
   const formData = useSelector((state: RootState) => state.gateOfLife.formData);
@@ -263,6 +265,7 @@ export function useGateOfLife() {
   // Handle Delete Application from table
   const handleDeleteApplicationFromTable = useCallback(async (appCode: string) => {
     if (!appCode.trim()) {
+      showError('Error', 'Application code is required');
       return;
     }
     
@@ -275,16 +278,19 @@ export function useGateOfLife() {
       
       if (result.type.endsWith('/fulfilled')) {
         console.log('Application deleted successfully');
-        // Refresh the application list
+        showSuccess('Success', `Application ${appCode} has been deleted successfully`);
+        // Refresh the application list to reflect the deletion
         await searchApplicationList();
       } else {
         const errorData = result.payload as { message: string; type: string; statusCode: number };
         console.error('Error deleting application:', errorData.message);
+        showError('Delete Failed', errorData.message || 'Failed to delete application');
       }
     } catch (error: any) {
       console.error('Error deleting application:', error);
+      showError('Error', error.message || 'An unexpected error occurred while deleting the application');
     }
-  }, [dispatch, searchApplicationList]);
+  }, [dispatch, searchApplicationList, showError, showSuccess]);
 
   // Handle Print Agreement
   const handlePrintAgreement = useCallback(async (appCode?: string) => {

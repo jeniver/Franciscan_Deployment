@@ -1,5 +1,6 @@
 import React from 'react';
 import { Input } from '../components/common/Input';
+import { DateInput } from '../components/common/DateInput';
 
 interface WakeRoomBookingDetailsProps {
   formData: any;
@@ -65,22 +66,22 @@ export function WakeRoomBookingDetails({ formData, setFormData }: WakeRoomBookin
           <label className="block text-sm font-medium text-gray-700 mb-2">
             From Date:
           </label>
-          <Input
-            type="date"
+          <DateInput
             value={bookingDetails.fromDate || ''}
-            onChange={(e) => handleFieldChange('fromDate', e.target.value)}
+            onChange={(apiDate) => handleFieldChange('fromDate', apiDate)}
             className="w-full"
+            placeholder="dd/mm/yyyy"
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             To Date:
           </label>
-          <Input
-            type="date"
+          <DateInput
             value={bookingDetails.toDate || ''}
-            onChange={(e) => handleFieldChange('toDate', e.target.value)}
+            onChange={(apiDate) => handleFieldChange('toDate', apiDate)}
             className="w-full"
+            placeholder="dd/mm/yyyy"
           />
         </div>
       </div>
@@ -146,11 +147,11 @@ export function WakeRoomBookingDetails({ formData, setFormData }: WakeRoomBookin
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Funeral Service Date:
           </label>
-          <Input
-            type="date"
+          <DateInput
             value={bookingDetails.funeralServiceDate || ''}
-            onChange={(e) => handleFieldChange('funeralServiceDate', e.target.value)}
+            onChange={(apiDate) => handleFieldChange('funeralServiceDate', apiDate)}
             className="w-full"
+            placeholder="dd/mm/yyyy"
           />
         </div>
         <div>

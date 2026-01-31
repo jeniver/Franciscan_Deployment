@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { EyeIcon, ArrowLeftIcon, PlusIcon, ChevronDownIcon, UserIcon, ChurchIcon, BookOpenIcon, MailIcon, LoaderIcon } from 'lucide-react';
 import { useInscription } from '../hooks/useInscription';
-import { LoadingSpinner } from './common/LoadingSpinner';
+import { DateInput } from './common/DateInput';
 import { useToast } from '../contexts/ToastContext';
 
 interface InscriptionRequestProps {
@@ -22,7 +22,6 @@ interface Beneficiary {
 
 export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   
   const {
     inscriptionRequestNo,
@@ -36,7 +35,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
     mobile,
     homeTel,
     emailId,
-    inscriptionItems,
+    inscriptionItems: _inscriptionItems,
     itemsLoading,
     itemsError,
     creatingInvoice,
@@ -47,7 +46,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
     bibleChoicesError,
     selectedBibleChoiceId,
     phraseOfChoice,
-    updateInscriptionRequestNo,
+    updateInscriptionRequestNo: _updateInscriptionRequestNo,
     updateNicheApplicationCode,
     updateApplicantName,
     updateNricPassportNo,
@@ -64,7 +63,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
     updatePhraseOfChoice,
     handleResetForm,
     deceasedDetails,
-    updateDeceasedDetails,
+    updateDeceasedDetails: _updateDeceasedDetails,
     addDeceased,
     removeDeceased,
     updateDeceased,
@@ -463,28 +462,25 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
                       />
                     </td>
                     <td className="py-4 px-4">
-                      <input
-                        type="date"
+                      <DateInput
                         value={beneficiary.dateBorn}
-                        onChange={(e) => handleUpdateBeneficiary(index, 'dateBorn', e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
+                        onChange={(apiDate) => handleUpdateBeneficiary(index, 'dateBorn', apiDate)}
+                        className="rounded-lg py-2 px-3 text-sm"
                       />
                     </td>
                     <td className="py-4 px-4">
-                      <input
-                        type="date"
+                      <DateInput
                         value={beneficiary.dateDied}
-                        onChange={(e) => handleUpdateBeneficiary(index, 'dateDied', e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
+                        onChange={(apiDate) => handleUpdateBeneficiary(index, 'dateDied', apiDate)}
+                        className="rounded-lg py-2 px-3 text-sm"
                       />
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex gap-2">
-                        <input
-                          type="date"
+                        <DateInput
                           value={beneficiary.internmentDate}
-                          onChange={(e) => handleUpdateBeneficiary(index, 'internmentDate', e.target.value)}
-                          className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
+                          onChange={(apiDate) => handleUpdateBeneficiary(index, 'internmentDate', apiDate)}
+                          className="rounded-lg py-2 px-3 text-sm"
                         />
                         <input
                           type="time"

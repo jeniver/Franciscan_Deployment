@@ -22,16 +22,19 @@ class InvoiceRepository extends BaseRepository {
    * @param {number} personId - Person ID
    * @param {Object} options - Query options
    * @returns {Promise<Array>} Array of invoices
+   * @deprecated This method uses legacy schema. PersonId column does not exist in ASP.NET Invoice table.
    */
   async findByPerson(personId, options = {}) {
     try {
       const { page = 1, limit = 10 } = options;
       const offset = (page - 1) * limit;
 
+      // NOTE: Using correct table name "Invoice" (not "Invoices")
+      // WARNING: PersonId column does not exist in ASP.NET schema
       const query = `
-        SELECT * FROM Invoices 
+        SELECT * FROM Invoice 
         WHERE PersonId = @personId
-        ORDER BY CreatedDate DESC
+        ORDER BY TransactionDate DESC
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
       `;
 
@@ -54,10 +57,12 @@ class InvoiceRepository extends BaseRepository {
       const { page = 1, limit = 10 } = options;
       const offset = (page - 1) * limit;
 
+      // NOTE: Using correct table name "Invoice" (not "Invoices")
       const query = `
-        SELECT * FROM Invoices 
+        SELECT * FROM Invoice 
         WHERE ChurchId = @churchId
-        ORDER BY CreatedDate DESC
+          AND Status > 0
+        ORDER BY TransactionDate DESC
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
       `;
 
@@ -73,17 +78,20 @@ class InvoiceRepository extends BaseRepository {
    * Find overdue invoices
    * @param {Object} options - Query options
    * @returns {Promise<Array>} Array of overdue invoices
+   * @deprecated This method uses legacy schema. DueDate column does not exist in ASP.NET Invoice table.
    */
   async findOverdue(options = {}) {
     try {
       const { page = 1, limit = 10 } = options;
       const offset = (page - 1) * limit;
 
+      // NOTE: Using correct table name "Invoice" (not "Invoices")
+      // WARNING: DueDate column does not exist in ASP.NET schema
+      // In ASP.NET schema: Status 0=Deleted, 1=Active, 2=Paid
       const query = `
-        SELECT * FROM Invoices 
-        WHERE DueDate < GETDATE() 
-        AND Status != 'paid'
-        ORDER BY DueDate ASC
+        SELECT * FROM Invoice 
+        WHERE Status = 1
+        ORDER BY TransactionDate ASC
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
       `;
 
@@ -102,9 +110,11 @@ class InvoiceRepository extends BaseRepository {
    */
   async markAsPaid(invoiceId) {
     try {
+      // NOTE: Using correct table name "Invoice" (not "Invoices")
+      // In ASP.NET schema: Status 0=Deleted, 1=Active, 2=Paid
       const query = `
-        UPDATE Invoices 
-        SET Status = 'paid', PaidDate = GETDATE()
+        UPDATE Invoice 
+        SET Status = 2
         OUTPUT INSERTED.*
         WHERE InvoiceId = @invoiceId
       `;
@@ -125,9 +135,12 @@ class InvoiceRepository extends BaseRepository {
   async getLastInvoiceCode() {
     try {
       // Try to get max numeric code first (more efficient)
+      // ⚠️ CRITICAL FIX: Use UPDLOCK + HOLDLOCK to prevent race conditions
+      // This ensures exclusive access while generating the next code
+      // Matches document recommendation from ASP.NET analysis
       const maxQuery = `
         SELECT MAX(CAST(Code AS INT)) AS MaxCode
-        FROM Invoice WITH(NOLOCK)
+        FROM Invoice WITH(UPDLOCK, HOLDLOCK)
         WHERE ISNUMERIC(Code) = 1
           AND Status > 0
       `;
@@ -140,9 +153,10 @@ class InvoiceRepository extends BaseRepository {
       }
 
       // Fallback: Get last invoice by InvoiceId and parse code
+      // ⚠️ CRITICAL FIX: Use UPDLOCK + HOLDLOCK to prevent race conditions
       const query = `
         SELECT TOP 1 Code
-        FROM Invoice WITH(NOLOCK)
+        FROM Invoice WITH(UPDLOCK, HOLDLOCK)
         WHERE Status > 0
         ORDER BY InvoiceId DESC
       `;
@@ -421,6 +435,100 @@ class InvoiceRepository extends BaseRepository {
       const nichePrice = nicheDetails?.NichePrice || nicheDetails?.RowPrice || application.ApplicationDefaultAmount || application.ApplicationAmount || 0;
       const itemPrice = item?.ItemPrice || nichePrice;
 
+      // ✅ FIX: Step 5.5: Check for inscription items if inscription exists for this application
+      let inscriptionItems = [];
+      try {
+        const inscriptionQuery = `
+          SELECT TOP 1
+            nir.Code AS InscriptionCode,
+            nir.NicheBookingId
+          FROM NicheInscriptionRequest nir WITH(NOLOCK)
+          INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+          WHERE nb.NicheApplicationId = @nicheApplicationId
+            AND nir.Status > 0
+          ORDER BY nir.NicheInscriptionRequestId DESC
+        `;
+        const inscriptionResult = await executeQuery(inscriptionQuery, { 
+          nicheApplicationId: application.NicheApplicationId 
+        }, { timeout: 5000 });
+
+        if (inscriptionResult.recordset && inscriptionResult.recordset.length > 0) {
+          const inscriptionCode = inscriptionResult.recordset[0].InscriptionCode;
+          logger.info(`[getApplicationDetailsByCode] Found inscription for application ${application.ApplicationCode}: ${inscriptionCode}`);
+          
+          // Fetch inscription items using InscriptionInvoiceService
+          try {
+            const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+            const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscriptionCode, application.ChurchId);
+            
+            if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
+              // Map inscription items to invoice detail format
+              inscriptionItems = inscriptionData.items.map(inscriptionItem => ({
+                invoiceDetailId: null,
+                invoiceId: null,
+                itemId: inscriptionItem.ItemId || null,
+                itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
+                itemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
+                itemPrice: inscriptionItem.Price || 0,
+                itemDocType: inscriptionItem.DocType || 'INCR',
+                itemIsRefType: inscriptionItem.IsRefType || false,
+                quantity: 1,
+                unitAmount: inscriptionItem.Price || 0,
+                payingAmount: inscriptionItem.Price || 0,
+                totalPayingAmount: inscriptionItem.Price || 0,
+                refDocNumber: inscriptionCode, // Use inscription code as reference
+                refDocName: 'INCR',
+                refType: 'INCR',
+                outstandingAmount: 0,
+                lineTotalAmount: inscriptionItem.Price || 0,
+                lineTaxPercent: 9, // Default 9% GST for inscription items
+                lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
+              }));
+              logger.info(`[getApplicationDetailsByCode] Added ${inscriptionItems.length} inscription items to invoice details`);
+            }
+          } catch (inscriptionError) {
+            logger.warn(`[getApplicationDetailsByCode] Failed to fetch inscription items (non-critical):`, inscriptionError.message);
+            // Continue without inscription items - non-critical
+          }
+        }
+      } catch (inscriptionQueryError) {
+        logger.warn(`[getApplicationDetailsByCode] Failed to query inscription (non-critical):`, inscriptionQueryError.message);
+        // Continue without inscription items - non-critical
+      }
+
+      // Build details array: niche item + inscription items
+      const allDetails = [{
+        invoiceDetailId: null,
+        invoiceId: null,
+        itemId: item?.ItemId || null,
+        itemName: item?.ItemName || 'Niche',
+        itemCode: item?.ItemCode || null,
+        itemPrice: itemPrice,
+        itemDocType: item?.DocType || null,
+        itemIsRefType: item?.IsRefType || false,
+        quantity: 1,
+        unitAmount: itemPrice,
+        payingAmount: itemPrice,
+        totalPayingAmount: itemPrice,
+        refDocNumber: application.ApplicationCode,
+        refDocName: 'NAPP',
+        refType: 'NAPP',
+        outstandingAmount: 0,
+        lineTotalAmount: itemPrice,
+        lineTaxPercent: 0,
+        lineTaxAmount: 0
+      }];
+
+      // Add inscription items to details
+      if (inscriptionItems.length > 0) {
+        allDetails.push(...inscriptionItems);
+      }
+
+      // Calculate totals including inscription items
+      const subtotal = allDetails.reduce((sum, d) => sum + (d.lineTotalAmount || 0), 0);
+      const totalTax = allDetails.reduce((sum, d) => sum + (d.lineTaxAmount || 0), 0);
+      const grandTotal = subtotal + totalTax;
+
       // Step 6: Build comprehensive response
       const response = {
         // CRITICAL FLAGS for Frontend
@@ -466,14 +574,14 @@ class InvoiceRepository extends BaseRepository {
         nomineeName2: application.NomineeName2,
         nomineeIDNo2: application.NomineeIDNo2,
         
-        // Financial info
-        totalAmount: nichePrice,
-        payingAmount: nichePrice,
+        // Financial info (updated to include inscription items)
+        totalAmount: grandTotal,
+        payingAmount: grandTotal,
         applicationAmount: application.ApplicationAmount,
         applicationDefaultAmount: application.ApplicationDefaultAmount,
-        taxAmount: 0,
-        taxPercentage: 0,
-        taxCode: null,
+        taxAmount: totalTax,
+        taxPercentage: subtotal > 0 ? (totalTax / subtotal) * 100 : 0,
+        taxCode: totalTax > 0 ? 'GST' : null,
         
         // System fields
         userId: application.UserId,
@@ -528,35 +636,15 @@ class InvoiceRepository extends BaseRepository {
           nominee2IDNo: booking.Nominee2IDNo
         } : null,
         
-        // Invoice details (single line item for now)
-        details: [{
-          invoiceDetailId: null,
-          invoiceId: null,
-          itemId: item?.ItemId || null,
-          itemName: item?.ItemName || 'Niche',
-          itemCode: item?.ItemCode || null,
-          itemPrice: itemPrice,
-          itemDocType: item?.DocType || null,
-          itemIsRefType: item?.IsRefType || false,
-          quantity: 1,
-          unitAmount: itemPrice,
-          payingAmount: itemPrice,
-          totalPayingAmount: itemPrice,
-          refDocNumber: application.ApplicationCode,
-          refDocName: 'NAPP',
-          refType: 'NAPP',
-          outstandingAmount: 0,
-          lineTotalAmount: itemPrice,
-          lineTaxPercent: 0,
-          lineTaxAmount: 0
-        }],
+        // Invoice details: niche item + inscription items
+        details: allDetails,
         
-        // Summary
+        // Summary (updated to include inscription items)
         summary: {
-          totalItems: 1,
-          subtotal: itemPrice,
-          totalTax: 0,
-          grandTotal: itemPrice
+          totalItems: allDetails.length,
+          subtotal: subtotal,
+          totalTax: totalTax,
+          grandTotal: grandTotal
         }
       };
 

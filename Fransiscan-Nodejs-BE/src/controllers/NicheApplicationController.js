@@ -67,6 +67,14 @@ class NicheApplicationController {
     try {
       const { body, user } = req;
 
+      // ✅ DEBUG: Log the raw request body
+      logger.info('==================== CREATE APPLICATION DEBUG ====================');
+      logger.info('[Controller] Raw request body received:', JSON.stringify(body, null, 2));
+      logger.info('[Controller] Beneficiaries in request:', JSON.stringify(body.beneficiaries, null, 2));
+      logger.info('[Controller] Beneficiary1:', JSON.stringify(body.beneficiary1, null, 2));
+      logger.info('[Controller] User:', { userId: user?.userId, churchId: user?.churchId });
+      logger.info('================================================================');
+
       if (!user || !user.churchId) {
         return res.status(401).json({
           success: false,
