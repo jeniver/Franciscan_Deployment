@@ -155,7 +155,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Second Nominee (all data is in NicheApplication table)
         nominee2Name: mergedData.NomineeName2,
         nominee2AddressNo: mergedData.NomineeAddressNo2,
-        nominee2AddressLine1: mergedData.NomineeAddressLine12,
+        nominee2AddressLine1: mergedData.NomineeAddressLine21,
         nominee2AddressLine2: mergedData.NomineeAddressLine22,
         nominee2AddressCity: mergedData.NomineeAddressCity2,
         nominee2AddressCountry: mergedData.NomineeAddressCountry2,
