@@ -5,7 +5,7 @@ const morgan = require('morgan');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: __dirname + '/../.env' });
 
 const logger = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
@@ -30,6 +30,7 @@ const nicheBookingRoutes = require('./routes/nicheBookings');
 const nicheApplicationRoutes = require('./routes/nicheApplications');
 const gatesOfLifeRoutes = require('./routes/gatesOfLife');
 const inscriptionRoutes = require('./routes/inscriptions');
+const inscriptionAgreementRoutes = require('./routes/inscriptionAgreements');
 const receiptRoutes = require('./routes/receipts');
 const receiptItemRoutes = require('./routes/receiptItems');
 const itemRoutes = require('./routes/items');
@@ -53,10 +54,6 @@ app.use(cors({
 
     const allowedOrigins = [
       process.env.CORS_ORIGIN || 'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:4200',
-      'http://localhost:8080'
     ];
 
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
@@ -263,6 +260,8 @@ app.use('/api/gates-of-life', cacheMiddleware, gatesOfLifeRoutes);
 // Inscription APIs (INCR) - mounted under both /api/inscriptions and /inscriptions for backward compatibility
 app.use('/api/inscriptions', inscriptionRoutes);
 app.use('/inscriptions', inscriptionRoutes);
+// Inscription Agreement APIs
+app.use('/api/inscription-agreements', inscriptionAgreementRoutes);
 app.use('/api/persons', cacheMiddleware, personRoutes);
 app.use('/api/niche-agreements', cacheMiddleware, nicheAgreementRoutes);
 app.use('/api/wake-rooms', cacheMiddleware, wakeRoomRoutes);
@@ -299,6 +298,8 @@ app.get('/', (req, res) => {
       engraveApplications: '/api/engrave-applications',
       nicheBookings: '/api/niche-bookings',
       nicheApplications: '/api/niche-applications',
+      inscriptions: '/api/inscriptions',
+      inscriptionAgreements: '/api/inscription-agreements',
       receipts: '/api/receipts',
       utils: '/api/utils',
       reports: '/api/reports'
@@ -353,10 +354,11 @@ const startServer = async () => {
       logger.info('  GET  / - API information');
       logger.info('  POST /api/auth/login - User login');
       logger.info('  POST /api/auth/register - User registration');
-      logger.info('  GET  /api/niche-agreements/:applicationNumber - Get niche agreement details + Crystal Reports paths');
-      logger.info('  GET  /api/niche-agreements/:applicationNumber/reports - Get Crystal Reports info only');
-      logger.info('  GET  /api/niche-agreements/:applicationNumber/pdf - Get Agreement PDF data (JSON for frontend PDF generation)');
-      logger.info('  GET  /api/niche-agreements/:applicationNumber/invoice-pdf - Get Invoice PDF data (JSON for frontend PDF generation)');
+      logger.info('  GET  /api/inscription-agreements/:inscriptionCode - Get inscription agreement details');
+      logger.info('  GET  /api/inscription-agreements/:inscriptionCode/reports - Get Crystal Reports info');
+      logger.info('  GET  /api/inscription-agreements/:inscriptionCode/pdf - Get PDF data for frontend generation');
+      logger.info('  GET  /api/inscription-agreements/:inscriptionCode/validate - Validate agreement for generation');
+      logger.info('  GET  /api/inscription-agreements/:inscriptionCode/template/:format - Get template data for specific format');
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

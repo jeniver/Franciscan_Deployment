@@ -630,6 +630,153 @@ class EngraveApplicationRepository {
   }
 
   /**
+   * Search engrave applications with filters
+   * @param {Object} filters - Search filters
+   * @param {string} filters.searchTerm - Search term for code, applicant name, deceased names
+   * @param {string} filters.fromDate - Start date (YYYY-MM-DD)
+   * @param {string} filters.toDate - End date (YYYY-MM-DD)
+   * @param {number} filters.churchId - Church ID for ACL
+   * @param {number} filters.page - Page number (1-based)
+   * @param {number} filters.pageSize - Records per page
+   * @returns {Promise<Object>} { records: EngraveApplication[], total: number }
+   */
+  async search(filters = {}) {
+    try {
+      const {
+        searchTerm = '',
+        fromDate = null,
+        toDate = null,
+        churchId = null,
+        page = 1,
+        pageSize = 20
+      } = filters;
+
+      const offset = (page - 1) * pageSize;
+
+      // Build WHERE clause - exclude deceased name search from main query for performance
+      let whereConditions = [];
+      const params = {};
+
+      if (churchId) {
+        whereConditions.push('nir.ChurchId = @churchId');
+        params.churchId = churchId;
+      }
+
+      if (searchTerm) {
+        whereConditions.push(`(
+          nir.Code LIKE @searchTerm OR
+          nir.ApplicantName LIKE @searchTerm
+        )`);
+        params.searchTerm = `%${searchTerm}%`;
+      }
+
+      if (fromDate) {
+        whereConditions.push('nir.TranscationDate >= @fromDate');
+        params.fromDate = new Date(fromDate);
+      }
+
+      if (toDate) {
+        whereConditions.push('nir.TranscationDate <= @toDate');
+        params.toDate = new Date(toDate);
+      }
+
+      const whereClause = whereConditions.length > 0 
+        ? 'WHERE ' + whereConditions.join(' AND ') 
+        : '';
+
+      // Get total count - simpler query without join
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM NicheInscriptionRequest nir WITH (NOLOCK)
+        ${whereClause}
+      `;
+
+      const countResult = await executeQuery(countQuery, params);
+      const total = countResult.recordset?.[0]?.total || 0;
+
+      // Get records without joining deceased details for performance
+      const dataQuery = `
+        SELECT 
+          nir.NicheInscriptionRequestId,
+          nir.Code,
+          nir.ApplicantName,
+          '' as NicheApplicationCode,
+          1 as Status,
+          nir.TranscationDate as CreatedOn,
+          nir.ChurchId
+        FROM NicheInscriptionRequest nir WITH (NOLOCK)
+        ${whereClause}
+        ORDER BY nir.TranscationDate DESC
+        OFFSET @offset ROWS
+        FETCH NEXT @pageSize ROWS ONLY
+      `;
+
+      const dataParams = {
+        ...params,
+        offset,
+        pageSize
+      };
+
+      const dataResult = await executeQuery(dataQuery, dataParams);
+      const rows = dataResult.recordset || [];
+
+      // Process each record to get deceased details separately
+      const records = [];
+      for (const row of rows) {
+        // Get deceased details for this specific record
+        const deceasedQuery = `
+          SELECT 
+            NicheInscriptionRequestDecesedId,
+            NameOfDeceased,
+            DateDied,
+            DateOfBirth,
+            InternmentDate,
+            DeathCertificateNo,
+            BirthYear,
+            Remarks as InscriptionText
+          FROM NicheInscriptionRequestDecesed WITH (NOLOCK)
+          WHERE NicheInscriptionRequestId = @requestId
+        `;
+        const deceasedResult = await executeQuery(deceasedQuery, { requestId: row.NicheInscriptionRequestId });
+        
+        const deceasedDetails = deceasedResult.recordset ? deceasedResult.recordset.map(r => ({
+          nicheInscriptionRequestDecesedId: r.NicheInscriptionRequestDecesedId,
+          name: r.NameOfDeceased,
+          dateOfDeath: r.DateDied,
+          dateOfBirth: r.DateOfBirth,
+          internmentDate: r.InternmentDate,
+          deathCertificateNo: r.DeathCertificateNo,
+          birthYear: r.BirthYear,
+          inscriptionText: r.InscriptionText
+        })) : [];
+        
+        const application = new EngraveApplication({
+          nicheInscriptionRequestId: row.NicheInscriptionRequestId,
+          code: row.Code,
+          applicantName: row.ApplicantName,
+          nicheApplicationCode: row.NicheApplicationCode,
+          status: row.Status,
+          createdOn: row.CreatedOn,
+          churchId: row.ChurchId
+        });
+        
+        // Set deceased details on the application instance so toJSON() will include them
+        application.deceasedDetails = deceasedDetails;
+        
+        records.push(application);
+      }
+
+      return {
+        records,
+        total
+      };
+    } catch (error) {
+      logger.error('Failed to search engrave applications:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Direct confirmation method (fallback if SP doesn't exist)
    * @private
    */

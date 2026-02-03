@@ -558,6 +558,7 @@ class InvoiceRepository extends BaseRepository {
         applicantIsCatholic: application.ApplicantIsCatholic,
         
         // Address fields
+        
         addressNo: application.ApplicantAddressNo,
         address: application.ApplicantAddressLine1,
         address2: application.ApplicantAddressLine2,
@@ -647,6 +648,8 @@ class InvoiceRepository extends BaseRepository {
           grandTotal: grandTotal
         }
       };
+
+   
 
       logger.info(`Application details retrieved: ApplicationCode=${response.applicationCode}, NicheCode=${nicheDetails?.NicheCode || 'N/A'}, Price=${nichePrice}, ItemName=${item?.ItemName || 'N/A'}`);
 

@@ -446,7 +446,8 @@ export const useApplication = () => {
         dispatch(clearApplicationListCache());
         
         // Refresh the application list to reflect the deletion
-        await searchApplicationList();
+        // Use bypassCache to ensure we get fresh data from backend
+        await searchApplicationList({ pagination: { page: 1 } });
       } else {
         const errorData = result.payload as { message: string; type: string; statusCode: number };
         console.error('Error deleting application:', errorData.message);

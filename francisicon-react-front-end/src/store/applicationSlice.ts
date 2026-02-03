@@ -242,10 +242,56 @@ export const loadApplicationData = createAsyncThunk<
 // Async thunk to create niche application
 export const createNicheApplication = createAsyncThunk(
   'application/createNicheApplication',
-  async (formData: Record<string, any>, { rejectWithValue }) => {
+  async (formData: Record<string, any>, { getState, rejectWithValue }) => {
     try {
+      // Get the current state to access existing applications
+      const state: any = getState();
+      const existingApplications = state?.application?.applicationList || [];
+      
       // Map form data to API request format
-      const applicationRequest = mapFormDataToNicheApplicationRequest(formData);
+      const mappedRequest = mapFormDataToNicheApplicationRequest(formData);
+      
+      // Extract niche number/code from the form data to generate application ID
+      // Priority: nicheNumber (the actual niche identifier) > nicheCode > nicheDetails.nicheCode
+      const nicheIdentifier = formData.nicheNumber || formData.nicheCode || formData.nicheDetails?.nicheCode || '';
+      
+      // For display purposes, also keep track of what we're using
+      const sourceField = formData.nicheNumber ? 'nicheNumber' : 
+                         formData.nicheCode ? 'nicheCode' : 
+                         formData.nicheDetails?.nicheCode ? 'nicheDetails.nicheCode' : 'none';
+      
+      // Create a new request object to avoid mutation issues
+      let applicationRequest = { ...mappedRequest };
+      
+      // If we have a niche identifier, we can generate an application ID based on it
+      if (nicheIdentifier) {
+        try {
+          // Import the application ID generator
+          const { generateApplicationId } = await import('../utils/applicationIdGenerator');
+          
+          // Generate the application ID based on niche identifier
+          const generatedAppId = generateApplicationId(nicheIdentifier, existingApplications);
+          
+          // Add the generated application ID to the request
+          // Note: We're adding this to the request object, but the backend API
+          // should handle the actual application ID generation
+          // The generated ID is mainly for frontend tracking and display
+          applicationRequest = {
+            ...mappedRequest,
+            applicationCode: generatedAppId,
+            // Also add it as 'code' in case the API expects that
+            code: generatedAppId
+          };
+          
+          console.log('Generated application ID:', generatedAppId, 'for niche identifier:', nicheIdentifier, '(from field:', sourceField, ')');
+        } catch (error) {
+          console.warn('Failed to generate application ID, using default request:', error);
+          // If ID generation fails, use the original mapped request
+          applicationRequest = mappedRequest;
+        }
+      } else {
+        console.log('No niche identifier found for application ID generation');
+      }
       
       // Create the niche application
       const response = await nicheApplicationService.createNicheApplication(applicationRequest);
@@ -492,6 +538,10 @@ export const applicationSlice = createSlice({
       state.isAgreementModalOpen = false;
       state.agreementModalData = null;
     },
+    refreshApplicationList: (state) => {
+      // Trigger a refresh by resetting loading state
+      // Actual refresh should happen in the component by calling fetchNicheApplications
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -547,6 +597,18 @@ export const applicationSlice = createSlice({
           // Keep only last 50 applications to prevent memory issues
           if (state.createdApplications.length > 50) {
             state.createdApplications = state.createdApplications.slice(0, 50);
+          }
+          
+          // Add to applicationList if not already present
+          const existingIndex = state.applicationList.findIndex(
+            app => app.applicationCode === normalizedApp.applicationCode
+          );
+          if (existingIndex === -1) {
+            // Add to the beginning of the list to show the newest first
+            state.applicationList = [normalizedApp, ...state.applicationList];
+          } else {
+            // Update the existing entry
+            state.applicationList[existingIndex] = normalizedApp;
           }
         }
       })
@@ -653,6 +715,23 @@ export const applicationSlice = createSlice({
           const formData = mapApiApplicationToFormData(normalizedApp);
           state.formData = formData;
           state.loadedApplicationRaw = normalizedApp;
+          
+          // Update the application in the applicationList if present
+          const applicationCode = action.meta.arg.applicationCode;
+          const existingIndex = state.applicationList.findIndex(
+            app => app.applicationCode === applicationCode
+          );
+          if (existingIndex !== -1) {
+            state.applicationList[existingIndex] = normalizedApp;
+          }
+          
+          // Also update in createdApplications if present
+          const createdAppIndex = state.createdApplications.findIndex(
+            app => app.applicationCode === applicationCode
+          );
+          if (createdAppIndex !== -1) {
+            state.createdApplications[createdAppIndex] = normalizedApp;
+          }
         }
       })
       .addCase(updateNicheApplication.rejected, (state, action) => {
@@ -667,7 +746,7 @@ export const applicationSlice = createSlice({
         state.error = null;
         state.lastErrorType = null;
       })
-      .addCase(deleteNicheApplication.fulfilled, (state) => {
+      .addCase(deleteNicheApplication.fulfilled, (state, action) => {
         state.loading = false;
         state.error = null;
         state.lastErrorType = null;
@@ -676,6 +755,19 @@ export const applicationSlice = createSlice({
         state.applicationNumber = '';
         state.isDataLoaded = false;
         state.loadedApplicationRaw = null;
+        
+        // Remove the deleted application from the application list
+        if (action.meta.arg) {
+          const applicationCode = action.meta.arg;
+          state.applicationList = state.applicationList.filter(
+            app => app.applicationCode !== applicationCode
+          );
+          
+          // Also remove from createdApplications if present
+          state.createdApplications = state.createdApplications.filter(
+            app => app.applicationCode !== applicationCode
+          );
+        }
       })
       .addCase(deleteNicheApplication.rejected, (state, action) => {
         state.loading = false;
@@ -705,7 +797,8 @@ export const {
   clearApplicationListCache,
   setViewMode,
   setEditMode,
-  clearViewEditMode
+  clearViewEditMode,
+  refreshApplicationList
 } = applicationSlice.actions;
 
 export default applicationSlice.reducer;

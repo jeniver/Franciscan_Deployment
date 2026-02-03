@@ -307,7 +307,36 @@ const fetchAllApplicationsInChunks = async ({
 
 const invalidateNicheApplicationCache = () => {
   if (enableNicheApplicationCache) {
-    deleteByPrefix(NICHE_APPLICATION_CACHE_PREFIX);
+    logger.info('[invalidateNicheApplicationCache] Starting aggressive cache invalidation');
+    
+    // First, get all current keys before deletion for logging
+    const allKeysBefore = cache.keys();
+    const nicheAppKeysBefore = allKeysBefore.filter(key => key.startsWith(NICHE_APPLICATION_CACHE_PREFIX));
+    
+    logger.info(`[invalidateNicheApplicationCache] Found ${nicheAppKeysBefore.length} niche application cache entries before invalidation`);
+    
+    // Delete all niche application cache entries
+    const deletedCount = deleteByPrefix(NICHE_APPLICATION_CACHE_PREFIX);
+    
+    // Also flush the entire cache to ensure complete invalidation
+    // This is a more aggressive approach to prevent any stale data
+    cache.flushAll();
+    
+    logger.info(`[invalidateNicheApplicationCache] Cache invalidation completed. Deleted ${deletedCount} cache entries with prefix: ${NICHE_APPLICATION_CACHE_PREFIX}`);
+    logger.info('[invalidateNicheApplicationCache] Complete cache flush performed for maximum data freshness');
+    
+    // Additional debug logging to confirm cache has been cleared
+    if (process.env.NODE_ENV === 'development') {
+      const allKeysAfter = cache.keys();
+      const nicheAppKeysAfter = allKeysAfter.filter(key => key.startsWith(NICHE_APPLICATION_CACHE_PREFIX));
+      logger.debug(`[invalidateNicheApplicationCache] Remaining niche app cache keys after invalidation: ${nicheAppKeysAfter.length}`);
+      logger.debug(`[invalidateNicheApplicationCache] Total cache keys after flush: ${allKeysAfter.length}`);
+      if (nicheAppKeysAfter.length > 0) {
+        logger.debug(`[invalidateNicheApplicationCache] Remaining niche app keys:`, nicheAppKeysAfter.slice(0, 5));
+      }
+    }
+  } else {
+    logger.info('[invalidateNicheApplicationCache] Cache is disabled, skipping invalidation');
   }
 };
 
@@ -1119,8 +1148,8 @@ class NicheApplicationService {
       const skipTotal = query.skipTotal !== undefined
         ? String(query.skipTotal).toLowerCase() !== 'false'
         : true;
-      const bypassCache = String(query.bypassCache || '').toLowerCase() === 'true';
-      const allowCache = enableNicheApplicationCache && !fetchAllRequested;
+      const bypassCache = String(query.bypassCache || query.forceRefresh || '').toLowerCase() === 'true';
+      const allowCache = enableNicheApplicationCache && !fetchAllRequested && !bypassCache;
       const cacheKey = allowCache
         ? buildCacheKey(churchId, { page: responsePage, pageSize: query.pageSize || chunkSize, searchParams, skipTotal })
         : null;
@@ -1128,8 +1157,13 @@ class NicheApplicationService {
       if (allowCache && cacheKey && !bypassCache) {
         const cached = cache.get(cacheKey);
         if (cached) {
+          logger.debug(`[searchApplications] Cache HIT for churchId: ${churchId}, cacheKey: ${cacheKey}`);
           return cached;
+        } else {
+          logger.debug(`[searchApplications] Cache MISS for churchId: ${churchId}, cacheKey: ${cacheKey}`);
         }
+      } else if (bypassCache) {
+        logger.info(`[searchApplications] Cache bypass requested for churchId: ${churchId}`);
       }
 
       let result;
@@ -1351,6 +1385,7 @@ class NicheApplicationService {
 
       if (allowCache && cacheKey && !bypassCache) {
         cache.set(cacheKey, responsePayload, cacheTtlSeconds);
+        logger.debug(`[searchApplications] Cache SET for churchId: ${churchId}, cacheKey: ${cacheKey}, TTL: ${cacheTtlSeconds}s`);
       }
 
       return responsePayload;
@@ -1902,7 +1937,18 @@ class NicheApplicationService {
         }
       }
 
+      // Invalidate cache to ensure fresh data on next request
+      // Use aggressive invalidation strategy
       invalidateNicheApplicationCache();
+      
+      // Log cache invalidation for debugging
+      logger.info('[createApplication] Cache invalidated after creation, preparing response');
+      
+      // Additional cache verification
+      if (process.env.NODE_ENV === 'development') {
+        const remainingKeys = cache.keys().filter(key => key.startsWith(NICHE_APPLICATION_CACHE_PREFIX));
+        logger.debug(`[createApplication] Cache verification - remaining niche app keys: ${remainingKeys.length}`);
+      }
 
       return {
         success: true,
@@ -1946,8 +1992,10 @@ class NicheApplicationService {
       if (enableNicheApplicationCache && !bypassCache) {
         const cached = cache.get(cacheKey);
         if (cached) {
-          logger.debug(`Cache hit for single application lookup: ${code}`);
+          logger.debug(`[getApplicationByCode] Cache HIT for code: ${code}, churchId: ${churchId}`);
           return cached;
+        } else {
+          logger.debug(`[getApplicationByCode] Cache MISS for code: ${code}, churchId: ${churchId}`);
         }
       }
 
@@ -2023,6 +2071,7 @@ class NicheApplicationService {
       // Cache the result for better performance on repeated queries
       if (enableNicheApplicationCache && !bypassCache && cacheKey) {
         cache.set(cacheKey, result, cacheTtlSeconds);
+        logger.debug(`[getApplicationByCode] Cache SET for code: ${code}, churchId: ${churchId}, TTL: ${cacheTtlSeconds}s`);
       }
 
       const totalTime = Date.now() - startTime;
@@ -2320,7 +2369,18 @@ class NicheApplicationService {
         responsePayload.consentFormsStatusCode = NicheConcentForm.encodeConsentSelections(requestedConsentForms);
       }
 
+      // Invalidate cache to ensure fresh data on next request
+      // Use aggressive invalidation strategy
       invalidateNicheApplicationCache();
+      
+      // Log cache invalidation for debugging
+      logger.info('[updateApplication] Cache invalidated after update, preparing response');
+      
+      // Additional cache verification
+      if (process.env.NODE_ENV === 'development') {
+        const remainingKeys = cache.keys().filter(key => key.startsWith(NICHE_APPLICATION_CACHE_PREFIX));
+        logger.debug(`[updateApplication] Cache verification - remaining niche app keys: ${remainingKeys.length}`);
+      }
 
       return responsePayload;
     } catch (error) {
@@ -2371,10 +2431,19 @@ class NicheApplicationService {
 
       logger.info(`[deleteApplication] Successfully deleted application ${code}`);
 
-      // CRITICAL: Invalidate ALL cached application lists
-      // This ensures deleted items don't appear in subsequent list queries
+      // Invalidate cache to ensure fresh data on next request
+      // Use aggressive invalidation strategy
       invalidateNicheApplicationCache();
       logger.info('[deleteApplication] Cache invalidated - all niche application cache entries cleared');
+      
+      // Additional cache verification
+      if (process.env.NODE_ENV === 'development') {
+        const remainingKeys = cache.keys().filter(key => key.startsWith(NICHE_APPLICATION_CACHE_PREFIX));
+        logger.debug(`[deleteApplication] Cache verification - remaining niche app keys: ${remainingKeys.length}`);
+      }
+      
+      // Log cache invalidation for debugging
+      logger.info('[deleteApplication] Cache invalidated after deletion, preparing response');
 
       return {
         success: true,

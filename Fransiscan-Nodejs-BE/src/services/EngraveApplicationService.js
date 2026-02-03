@@ -202,6 +202,9 @@ class EngraveApplicationService {
       // Update in repository
       await EngraveApplicationRepository.update(code, application, details);
 
+      // Get the updated application to return current values
+      const updatedApplication = await EngraveApplicationRepository.getByCode(code);
+
       // Synchronize with niche application if it exists
       // Try to get nicheApplicationCode from existing inscription, or derive from code (I-7980-0 -> 7980-0)
       let nicheAppCode = existing.nicheApplicationCode;
@@ -257,6 +260,7 @@ class EngraveApplicationService {
       return {
         success: true,
         code,
+        data: updatedApplication ? updatedApplication.toJSON() : null,
         message: 'Application updated successfully'
       };
     } catch (error) {
@@ -333,6 +337,20 @@ class EngraveApplicationService {
         };
       }
 
+      throw error;
+    }
+  }
+
+  /**
+   * Search engrave applications with filters
+   * @param {Object} filters - Search filters
+   * @returns {Promise<Object>} { records: EngraveApplication[], total: number }
+   */
+  async searchApplications(filters) {
+    try {
+      return await EngraveApplicationRepository.search(filters);
+    } catch (error) {
+      logger.error('Service: Failed to search engrave applications:', error);
       throw error;
     }
   }

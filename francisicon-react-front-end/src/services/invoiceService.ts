@@ -101,7 +101,7 @@ export const invoiceService = {
         );
       }
 
-      return response.data.data || response.data;
+      return response.data.data || (response.data as CreateInvoiceResponse['data']);
     } catch (error: any) {
       if (error instanceof InvoiceError) {
         throw error;
@@ -226,6 +226,83 @@ export const invoiceService = {
       }
     }
   },
+
+  /**
+   * Get all items linked to an application code
+   * GET /api/invoices/application/:code
+   * 
+   * @param applicationCode - The application code (e.g., "1405-0")
+   * @returns Application items with automatic calculations and references
+   */
+  getApplicationItems: async (applicationCode: string): Promise<ApplicationItemsResponse> => {
+    try {
+      if (!applicationCode) {
+        throw new InvoiceError('Application code is required', 'validation');
+      }
+
+      const response = await api.get<ApplicationItemsResponse>(
+        `/api/invoices/application/${encodeURIComponent(applicationCode)}`
+      );
+
+      // Handle different response formats
+      if (response.data && typeof response.data === 'object') {
+        if ('success' in response.data && response.data.success === false) {
+          throw new InvoiceError(
+            (response.data as any).message || 'Failed to fetch application items',
+            'server',
+            response.status
+          );
+        }
+        
+        // Return the data directly or from nested structure
+        return (response.data as any).data || response.data;
+      }
+
+      throw new InvoiceError('Invalid response format', 'server', response.status);
+    } catch (error: any) {
+      if (error instanceof InvoiceError) {
+        throw error;
+      }
+
+      // Handle axios errors
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        if (status === 401 || status === 403) {
+          throw new InvoiceError(
+            errorData?.message || 'Unauthorized access',
+            'auth',
+            status
+          );
+        } else if (status === 400) {
+          throw new InvoiceError(
+            errorData?.message || 'Invalid application code',
+            'validation',
+            status
+          );
+        } else if (status === 404) {
+          throw new InvoiceError(
+            errorData?.message || `No items found for application code: ${applicationCode}`,
+            'validation',
+            status
+          );
+        } else if (status >= 500) {
+          throw new InvoiceError('Server error occurred', 'server', status);
+        } else {
+          throw new InvoiceError(
+            errorData?.message || 'Failed to fetch application items',
+            'server',
+            status
+          );
+        }
+      } else if (error.request) {
+        throw new InvoiceError('Network error: Unable to connect to server', 'network');
+      } else {
+        throw new InvoiceError(error.message || 'An unexpected error occurred', 'server');
+      }
+    }
+  },
 };
 
 export interface InvoiceListItem {
@@ -262,6 +339,45 @@ export interface InvoiceSearchParams {
   paymentMode?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+}
+
+// Application Items Types
+export interface ApplicationItem {
+  id: number;
+  itemType: 'niche' | 'inscription';
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  taxAmount: number;
+  grandTotal: number;
+  reference?: string;
+  refType?: string;
+  itemId?: number;
+  applicationCode?: string;
+}
+
+export interface ApplicationItemsResponse {
+  applicationCode: string;
+  items: ApplicationItem[];
+  summary: {
+    subtotal: number;
+    totalTax: number;
+    grandTotal: number;
+    totalItems: number;
+  };
+  references: {
+    NAPP: string[];
+    INCR: string[];
+    [key: string]: string[];
+  };
+  totalItems: number;
+}
+
+export interface ApplicationItemsError {
+  message: string;
+  status: number;
+  code?: string;
 }
 
 export default invoiceService;

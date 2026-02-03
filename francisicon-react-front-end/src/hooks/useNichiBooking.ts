@@ -39,7 +39,7 @@ import {
   loadNichiApplication,
   type DeceasedDetail,
 } from '../store/nichibookingSlice';
-import { mapNichiApplicationToFormData } from '../utils/nichiApplicationDataMapper';
+import { mapNichiApplicationToFormData } from '../utils/nicheApplicationMapper';
 import { useToast } from '../contexts/ToastContext';
 import { resetNicheState } from '../store/nicheSlice';
 
@@ -117,6 +117,36 @@ export function useNichiBooking() {
 
   const updateItemId = useCallback((value: number) => {
     dispatch(setItemId(value));
+  }, [dispatch]);
+
+  // Deceased Details handlers
+  const updateDeceasedDetails = useCallback((details: DeceasedDetail[]) => {
+    dispatch(setDeceasedDetails(details));
+  }, [dispatch]);
+
+  const addDeceased = useCallback((detail: DeceasedDetail) => {
+    dispatch(addDeceasedDetail(detail));
+  }, [dispatch]);
+
+  const removeDeceased = useCallback((index: number) => {
+    dispatch(removeDeceasedDetail(index));
+  }, [dispatch]);
+
+  const updateDeceased = useCallback((index: number, detail: Partial<DeceasedDetail>) => {
+    dispatch(updateDeceasedDetail({ index, detail }));
+  }, [dispatch]);
+
+  // Additional Details handlers
+  const updateSelectedBibleChoice = useCallback((choiceId: number | null) => {
+    dispatch(setSelectedBibleChoiceId(choiceId));
+  }, [dispatch]);
+
+  const updatePhraseOfChoice = useCallback((phrase: string) => {
+    dispatch(setPhraseOfChoice(phrase));
+  }, [dispatch]);
+
+  const updateCrossType = useCallback((crossType: string) => {
+    dispatch(setCrossType(crossType));
   }, [dispatch]);
 
   /**
@@ -203,11 +233,11 @@ export function useNichiBooking() {
           updateCrossType(formData.crossType);
         }
 
-        showSuccess(`Application ${applicationCode} loaded successfully`);
+        showSuccess('Success', `Application ${applicationCode} loaded successfully`);
         return result;
       } catch (error: any) {
         const errorMessage = error?.message || 'Failed to load Nichi application';
-        showError(errorMessage);
+        showError('Error', errorMessage);
         throw error;
       }
     },
@@ -289,11 +319,11 @@ export function useNichiBooking() {
 
         const result = await dispatch(createNichiApplication(formData)).unwrap();
 
-        showSuccess(`Nichi application created successfully: ${result.applicationCode || formData.refDocNumber}`);
+        showSuccess('Success', `Nichi application created successfully: ${result.applicationCode || formData.refDocNumber}`);
         return result;
       } catch (error: any) {
         const errorMessage = error?.message || 'Failed to create Nichi application';
-        showError(errorMessage);
+        showError('Error', errorMessage);
         throw error;
       }
     },
@@ -388,11 +418,11 @@ export function useNichiBooking() {
           })
         ).unwrap();
 
-        showSuccess(`Nichi booking invoice created successfully: ${result.invoiceCode || invoiceNum}`);
+        showSuccess('Success', `Nichi booking invoice created successfully: ${result.invoiceCode || invoiceNum}`);
         return result;
       } catch (error: any) {
         const errorMessage = error?.message || 'Failed to create Nichi booking invoice';
-        showError(errorMessage);
+        showError('Error', errorMessage);
         throw error;
       }
     },
@@ -428,36 +458,6 @@ export function useNichiBooking() {
   // Clear loaded application
   const handleClearLoadedApplication = useCallback(() => {
     dispatch(clearLoadedApplication());
-  }, [dispatch]);
-
-  // Deceased Details handlers
-  const updateDeceasedDetails = useCallback((details: DeceasedDetail[]) => {
-    dispatch(setDeceasedDetails(details));
-  }, [dispatch]);
-
-  const addDeceased = useCallback((detail: DeceasedDetail) => {
-    dispatch(addDeceasedDetail(detail));
-  }, [dispatch]);
-
-  const removeDeceased = useCallback((index: number) => {
-    dispatch(removeDeceasedDetail(index));
-  }, [dispatch]);
-
-  const updateDeceased = useCallback((index: number, detail: Partial<DeceasedDetail>) => {
-    dispatch(updateDeceasedDetail({ index, detail }));
-  }, [dispatch]);
-
-  // Additional Details handlers
-  const updateSelectedBibleChoice = useCallback((choiceId: number | null) => {
-    dispatch(setSelectedBibleChoiceId(choiceId));
-  }, [dispatch]);
-
-  const updatePhraseOfChoice = useCallback((phrase: string) => {
-    dispatch(setPhraseOfChoice(phrase));
-  }, [dispatch]);
-
-  const updateCrossType = useCallback((crossType: string) => {
-    dispatch(setCrossType(crossType));
   }, [dispatch]);
 
   // Reset form

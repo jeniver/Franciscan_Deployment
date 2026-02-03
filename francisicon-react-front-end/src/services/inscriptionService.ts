@@ -31,6 +31,19 @@ export interface InscriptionItem {
   DocType: string;
 }
 
+// Beneficiary type
+export interface Beneficiary {
+  name: string;
+  dateOfBirth: string;
+  birthYear: string;
+  idNo: string;
+  isCatholic: boolean;
+  isMale: boolean;
+  relationshipToApplicant: string;
+  relationshipToNominee1: string;
+  relationshipToNominee2: string;
+}
+
 export interface InscriptionItemsResponse {
   success: boolean;
   message?: string;
@@ -61,6 +74,7 @@ export interface InscriptionItemsResponse {
       birthYear: string;
       inscriptionText: string;
     }>;
+    beneficiaries: Beneficiary[];
     additionalDetails: {
       bibleInscriptionChoiceId: number | null;
       bibleInscriptionText: string;
@@ -104,6 +118,26 @@ export interface BibleChoicesResponse {
   data: {
     choices: BibleChoice[];
     count: number;
+  };
+}
+
+export interface InscriptionSearchResponse {
+  success: boolean;
+  message?: string;
+  data: {
+    records: Array<{
+      code: string;
+      applicantName: string;
+      nicheApplicationCode: string;
+      deceasedNames: string[];
+      status: string;
+      createdOn: string;
+      deceasedCount: number;
+    }>;
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
   };
 }
 
@@ -638,6 +672,99 @@ const inscriptionService = {
 
         throw new InscriptionError(
           errorData?.error?.message || errorData?.message || 'Failed to update inscription',
+          'server',
+          status,
+          errorData?.error?.code
+        );
+      }
+
+      if (error.request) {
+        throw new InscriptionError(
+          'Network error: Unable to connect to server',
+          'network'
+        );
+      }
+
+      throw new InscriptionError(
+        error.message || 'An unexpected error occurred',
+        'server'
+      );
+    }
+  },
+
+  /**
+   * Search inscription applications
+   * GET /api/inscriptions
+   */
+  async searchInscriptions(filters: {
+    searchTerm?: string;
+    fromDate?: string;
+    toDate?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<InscriptionSearchResponse['data']> {
+    try {
+      const params = new URLSearchParams();
+      
+      if (filters.searchTerm) {
+        params.append('searchTerm', filters.searchTerm);
+      }
+      if (filters.fromDate) {
+        params.append('fromDate', filters.fromDate);
+      }
+      if (filters.toDate) {
+        params.append('toDate', filters.toDate);
+      }
+      if (filters.page) {
+        params.append('page', filters.page.toString());
+      }
+      if (filters.pageSize) {
+        params.append('pageSize', filters.pageSize.toString());
+      }
+
+      const queryString = params.toString();
+      const url = `/api/inscriptions${queryString ? `?${queryString}` : ''}`;
+      
+      const response = await api.get<InscriptionSearchResponse>(url);
+
+      if (!response.data.success) {
+        throw new InscriptionError(
+          response.data.message || 'Failed to search inscriptions',
+          'server',
+          response.status
+        );
+      }
+
+      return response.data.data;
+    } catch (error: any) {
+      if (error instanceof InscriptionError) {
+        throw error;
+      }
+
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        if (status === 401) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Unauthorized',
+            'auth',
+            status,
+            errorData?.error?.code
+          );
+        }
+
+        if (status === 403) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Access denied',
+            'auth',
+            status,
+            errorData?.error?.code || 'FORBIDDEN'
+          );
+        }
+
+        throw new InscriptionError(
+          errorData?.error?.message || errorData?.message || 'Failed to search inscriptions',
           'server',
           status,
           errorData?.error?.code

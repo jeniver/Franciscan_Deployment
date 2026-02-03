@@ -573,6 +573,504 @@ class InvoiceController extends BaseController {
   });
 
   /**
+   * Get all items linked to an application code
+   * GET /api/invoices/application/:code
+   * Returns all items (niche, inscription, etc.) linked to the application code
+   * Includes automatic calculations for totals and taxes
+   * @param {string} code - Application code (e.g., "1405-0", "NAPP-52")
+   */
+  getApplicationItems = this.asyncHandler(async(req, res) => {
+    this.logRequest(req, 'Get Application Items');
+
+    try {
+      const { code } = req.params;
+      const churchId = req.user?.churchId;
+      
+      if (!code) {
+        return this.sendError(res, 'Application code is required', 400);
+      }
+
+      if (!churchId) {
+        return this.sendError(res, 'Authentication required with church ID', 401);
+      }
+
+      // Get all items linked to this application code
+      const applicationItems = await this.getApplicationItemsByCode(code, churchId);
+
+      if (!applicationItems || applicationItems.length === 0) {
+        return this.sendError(res, `No items found for application code: ${code}`, 404);
+      }
+
+      // Calculate totals and taxes
+      const calculatedItems = this.calculateItemTotals(applicationItems);
+      
+      // Build response with summary
+      const response = {
+        applicationCode: code,
+        items: calculatedItems.items,
+        summary: calculatedItems.summary,
+        references: calculatedItems.references,
+        totalItems: calculatedItems.items.length
+      };
+
+      return this.sendSuccess(res, response, 'Application items retrieved successfully');
+    } catch (error) {
+      logger.error('Controller: Failed to get application items:', error);
+      return this.sendError(res, 'Failed to retrieve application items', 500);
+    }
+  });
+
+  /**
+   * Get all items linked to an application code
+   * @param {string} applicationCode - Application code
+   * @param {number} churchId - Church ID
+   * @returns {Promise<Array>} Array of items with details
+   */
+  async getApplicationItemsByCode(applicationCode, churchId) {
+    try {
+      const { executeQuery } = require('../config/database');
+      const normalizedCode = applicationCode.trim().toUpperCase();
+      
+      logger.info(`Fetching all items for application code: ${applicationCode}, churchId: ${churchId}`);
+      
+      // Determine application type from code
+      let appType = null;
+      let baseCode = normalizedCode;
+      
+      if (normalizedCode.startsWith('NAPP-')) {
+        appType = 'NAPP';
+        baseCode = normalizedCode.substring(5);
+      } else if (normalizedCode.startsWith('INCR-')) {
+        appType = 'INCR';
+        baseCode = normalizedCode.substring(5);
+      } else if (normalizedCode.startsWith('I-NAPP-')) {
+        appType = 'INCR'; // Inscription referencing NAPP
+        baseCode = normalizedCode.substring(7);
+      } else if (/^\d+-\d+$/.test(normalizedCode)) {
+        appType = 'NAPP';
+      } else {
+        throw new Error(`Unsupported application code format: ${applicationCode}`);
+      }
+
+      let items = [];
+      
+      if (appType === 'NAPP') {
+        // Get niche application items
+        items = await this.getNicheApplicationItems(baseCode, churchId);
+      } else if (appType === 'INCR') {
+        // Get inscription items
+        items = await this.getInscriptionItems(baseCode, churchId);
+      }
+
+      return items;
+    } catch (error) {
+      logger.error('Error getting application items:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get niche application items (niche wall, inscription, etc.)
+   * @param {string} appCode - Niche application code
+   * @param {number} churchId - Church ID
+   * @returns {Promise<Array>} Array of items
+   */
+  async getNicheApplicationItems(appCode, churchId) {
+    try {
+      const { executeQuery } = require('../config/database');
+      
+      // Get niche application
+      const appQuery = `
+        SELECT TOP 1
+          na.NicheApplicationId,
+          na.Code,
+          na.NicheId,
+          na.ApplicantName,
+          na.Amount,
+          na.DefaultAmount,
+          na.ChurchId
+        FROM NicheApplication na WITH(NOLOCK)
+        WHERE na.Code = @code
+          AND na.ChurchId = @churchId
+          AND na.Status > 0
+      `;
+      
+      const appResult = await executeQuery(appQuery, { code: appCode, churchId });
+      
+      if (!appResult.recordset || appResult.recordset.length === 0) {
+        logger.warn(`Niche application not found: ${appCode}`);
+        return [];
+      }
+      
+      const application = appResult.recordset[0];
+      let items = [];
+      
+      // Get niche item
+      const nicheItem = await this.getNicheItem(application.NicheId, churchId, application);
+      if (nicheItem) {
+        items.push(nicheItem);
+      }
+      
+      // Get inscription items if they exist
+      const inscriptionItems = await this.getInscriptionItemsForNicheApplication(application.NicheApplicationId, churchId);
+      items = items.concat(inscriptionItems);
+      
+      return items;
+    } catch (error) {
+      logger.error('Error getting niche application items:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get niche item details
+   * @param {number} nicheId - Niche ID
+   * @param {number} churchId - Church ID
+   * @param {Object} application - Application data
+   * @returns {Promise<Object|null>} Niche item or null
+   */
+  async getNicheItem(nicheId, churchId, application) {
+    try {
+      const { executeQuery } = require('../config/database');
+      
+      // Get niche details
+      const nicheQuery = `
+        SELECT 
+          n.NicheId,
+          n.Code AS NicheCode,
+          n.DefaultAmount AS NichePrice,
+          nr.NicheLevel,
+          nr.DefaultAmount AS RowPrice,
+          w.Name AS WallName,
+          c.Name AS ChapelName
+        FROM Niche n WITH(NOLOCK)
+        INNER JOIN NicheRow nr ON n.NicheRowlId = nr.NicheRowlId
+        INNER JOIN NicheWall w ON nr.NicheWallId = w.NicheWallId
+        INNER JOIN Chapel c ON w.ChapelId = c.ChapelId
+        WHERE n.NicheId = @nicheId
+      `;
+      
+      const nicheResult = await executeQuery(nicheQuery, { nicheId });
+      
+      if (!nicheResult.recordset || nicheResult.recordset.length === 0) {
+        return null;
+      }
+      
+      const niche = nicheResult.recordset[0];
+      
+      // Get matching item
+      let item = null;
+      
+      // Try to get item by niche level
+      if (niche.NicheLevel) {
+        const levelItemQuery = `
+          SELECT TOP 1
+            i.ItemId,
+            i.Name,
+            i.Code,
+            i.Price,
+            i.DocType
+          FROM Item i WITH(NOLOCK)
+          WHERE i.ChurchId = @churchId
+            AND i.ItemId = @itemId
+            AND i.Status = 1
+        `;
+        
+        const levelItemResult = await executeQuery(levelItemQuery, { 
+          churchId, 
+          itemId: niche.NicheLevel 
+        });
+        
+        if (levelItemResult.recordset && levelItemResult.recordset.length > 0) {
+          item = levelItemResult.recordset[0];
+        }
+      }
+      
+      // Fallback to NAPP items
+      if (!item) {
+        const itemQuery = `
+          SELECT TOP 1
+            i.ItemId,
+            i.Name,
+            i.Code,
+            i.Price,
+            i.DocType
+          FROM Item i WITH(NOLOCK)
+          WHERE i.ChurchId = @churchId
+            AND (i.DocType = 'NAPP' OR i.Category = 'NICHES')
+            AND i.Status = 1
+          ORDER BY i.ItemId
+        `;
+        
+        const itemResult = await executeQuery(itemQuery, { churchId });
+        
+        if (itemResult.recordset && itemResult.recordset.length > 0) {
+          item = itemResult.recordset[0];
+        }
+      }
+      
+      if (!item) {
+        return null;
+      }
+      
+      // Calculate amount
+      const amount = application.Amount || 
+                    niche.NichePrice || 
+                    niche.RowPrice || 
+                    item.Price || 
+                    0;
+      
+      return {
+        itemId: item.ItemId,
+        itemName: item.Name || 'Niche',
+        itemCode: item.Code,
+        itemPrice: item.Price,
+        quantity: 1,
+        unitAmount: amount,
+        lineTotalAmount: amount,
+        lineTaxPercent: 9, // 9% GST
+        lineTaxAmount: amount * 0.09,
+        totalPayingAmount: amount * 1.09,
+        refDocNumber: application.Code,
+        refDocName: 'NAPP',
+        refType: 'NAPP',
+        description: `${niche.NicheCode} - ${niche.WallName} (${niche.ChapelName})`,
+        category: 'Niche',
+        nicheId: niche.NicheId,
+        nicheCode: niche.NicheCode,
+        wallName: niche.WallName,
+        chapelName: niche.ChapelName
+      };
+    } catch (error) {
+      logger.error('Error getting niche item:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get inscription items for niche application
+   * @param {number} nicheApplicationId - Niche Application ID
+   * @param {number} churchId - Church ID
+   * @returns {Promise<Array>} Array of inscription items
+   */
+  async getInscriptionItemsForNicheApplication(nicheApplicationId, churchId) {
+    try {
+      const { executeQuery } = require('../config/database');
+      
+      // Get niche booking
+      const bookingQuery = `
+        SELECT TOP 1
+          nb.NicheBookingId,
+          nb.NicheApplicationId
+        FROM NicheBooking nb WITH(NOLOCK)
+        WHERE nb.NicheApplicationId = @nicheApplicationId
+          AND nb.BookingStatus > 0
+      `;
+      
+      const bookingResult = await executeQuery(bookingQuery, { nicheApplicationId });
+      
+      if (!bookingResult.recordset || bookingResult.recordset.length === 0) {
+        return [];
+      }
+      
+      const booking = bookingResult.recordset[0];
+      
+      // Get inscription requests
+      const inscrQuery = `
+        SELECT 
+          nir.NicheInscriptionRequestId,
+          nir.Code,
+          nir.NicheBookingId,
+          nir.Status
+        FROM NicheInscriptionRequest nir WITH(NOLOCK)
+        WHERE nir.NicheBookingId = @nicheBookingId
+          AND nir.Status > 0
+        ORDER BY nir.NicheInscriptionRequestId
+      `;
+      
+      const inscrResult = await executeQuery(inscrQuery, { nicheBookingId: booking.NicheBookingId });
+      
+      if (!inscrResult.recordset || inscrResult.recordset.length === 0) {
+        return [];
+      }
+      
+      let items = [];
+      
+      // Get items for each inscription
+      for (const inscription of inscrResult.recordset) {
+        const inscrItems = await this.getInscriptionItems(inscription.Code, churchId);
+        items = items.concat(inscrItems);
+      }
+      
+      return items;
+    } catch (error) {
+      logger.error('Error getting inscription items for niche application:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get inscription items
+   * @param {string} inscrCode - Inscription code
+   * @param {number} churchId - Church ID
+   * @returns {Promise<Array>} Array of inscription items
+   */
+  async getInscriptionItems(inscrCode, churchId) {
+    try {
+      const { executeQuery } = require('../config/database');
+      
+      // Get inscription request
+      const inscrQuery = `
+        SELECT TOP 1
+          nir.NicheInscriptionRequestId,
+          nir.Code,
+          nir.NicheBookingId,
+          nb.NicheApplicationId
+        FROM NicheInscriptionRequest nir WITH(NOLOCK)
+        INNER JOIN NicheBooking nb ON nir.NicheBookingId = nb.NicheBookingId
+        WHERE nir.Code = @code
+          AND nir.Status > 0
+      `;
+      
+      const inscrResult = await executeQuery(inscrQuery, { code: inscrCode });
+      
+      if (!inscrResult.recordset || inscrResult.recordset.length === 0) {
+        return [];
+      }
+      
+      const inscription = inscrResult.recordset[0];
+      
+      // Get inscription items from InscriptionInvoiceService
+      try {
+        const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+        const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscrCode, churchId);
+        
+        if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items)) {
+          return inscriptionData.items.map(item => ({
+            itemId: item.ItemId,
+            itemName: item.Name || item.ItemName || 'Inscription',
+            itemCode: item.Code || item.ItemCode,
+            itemPrice: item.Price || 0,
+            quantity: 1,
+            unitAmount: item.Price || 0,
+            lineTotalAmount: item.Price || 0,
+            lineTaxPercent: 9, // 9% GST
+            lineTaxAmount: (item.Price || 0) * 0.09,
+            totalPayingAmount: (item.Price || 0) * 1.09,
+            refDocNumber: inscrCode,
+            refDocName: 'INCR',
+            refType: 'INCR',
+            description: item.Name || item.ItemName || 'Inscription Item',
+            category: 'Inscription',
+            inscriptionId: inscription.NicheInscriptionRequestId,
+            inscriptionCode: inscrCode
+          }));
+        }
+      } catch (serviceError) {
+        logger.warn('Failed to get inscription items from service:', serviceError.message);
+      }
+      
+      // Fallback: Get inscription items from database
+      const itemQuery = `
+        SELECT TOP 1
+          i.ItemId,
+          i.Name,
+          i.Code,
+          i.Price,
+          i.DocType
+        FROM Item i WITH(NOLOCK)
+        WHERE i.ChurchId = @churchId
+          AND (i.DocType = 'INCR' OR i.Category = 'INSCRIPTIONS')
+          AND i.Status = 1
+        ORDER BY i.ItemId
+      `;
+      
+      const itemResult = await executeQuery(itemQuery, { churchId });
+      
+      if (!itemResult.recordset || itemResult.recordset.length === 0) {
+        return [];
+      }
+      
+      const item = itemResult.recordset[0];
+      const amount = item.Price || 0;
+      
+      return [{
+        itemId: item.ItemId,
+        itemName: item.Name || 'Inscription',
+        itemCode: item.Code,
+        itemPrice: item.Price,
+        quantity: 1,
+        unitAmount: amount,
+        lineTotalAmount: amount,
+        lineTaxPercent: 9, // 9% GST
+        lineTaxAmount: amount * 0.09,
+        totalPayingAmount: amount * 1.09,
+        refDocNumber: inscrCode,
+        refDocName: 'INCR',
+        refType: 'INCR',
+        description: item.Name || 'Inscription Item',
+        category: 'Inscription',
+        inscriptionId: inscription.NicheInscriptionRequestId,
+        inscriptionCode: inscrCode
+      }];
+    } catch (error) {
+      logger.error('Error getting inscription items:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Calculate totals and taxes for items
+   * @param {Array} items - Array of items
+   * @returns {Object} Items with calculated totals
+   */
+  calculateItemTotals(items) {
+    try {
+      // Calculate individual item totals
+      const calculatedItems = items.map(item => {
+        const quantity = item.quantity || 1;
+        const unitAmount = item.unitAmount || 0;
+        const lineTotal = quantity * unitAmount;
+        const taxPercent = item.lineTaxPercent || 9;
+        const taxAmount = lineTotal * (taxPercent / 100);
+        const totalPaying = lineTotal + taxAmount;
+        
+        return {
+          ...item,
+          lineTotalAmount: lineTotal,
+          lineTaxAmount: taxAmount,
+          totalPayingAmount: totalPaying
+        };
+      });
+      
+      // Calculate summary
+      const subtotal = calculatedItems.reduce((sum, item) => sum + (item.lineTotalAmount || 0), 0);
+      const totalTax = calculatedItems.reduce((sum, item) => sum + (item.lineTaxAmount || 0), 0);
+      const grandTotal = calculatedItems.reduce((sum, item) => sum + (item.totalPayingAmount || 0), 0);
+      
+      // Extract unique references
+      const references = [...new Set(calculatedItems.map(item => 
+        `${item.refDocName || 'N/A'}-${item.refDocNumber || 'N/A'}`
+      ))].filter(Boolean);
+      
+      return {
+        items: calculatedItems,
+        summary: {
+          totalItems: calculatedItems.length,
+          subtotal: parseFloat(subtotal.toFixed(2)),
+          totalTax: parseFloat(totalTax.toFixed(2)),
+          grandTotal: parseFloat(grandTotal.toFixed(2)),
+          taxPercentage: subtotal > 0 ? parseFloat(((totalTax / subtotal) * 100).toFixed(2)) : 0
+        },
+        references: references
+      };
+    } catch (error) {
+      logger.error('Error calculating item totals:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Cancel invoice by code (soft delete: Status = 0)
    * POST /api/invoices/:code/cancel
    * Mirrors ASP.NET UpdateInvoice_Status behavior.

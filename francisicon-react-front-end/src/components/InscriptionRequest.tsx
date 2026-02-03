@@ -4,25 +4,44 @@ import { EyeIcon, ArrowLeftIcon, PlusIcon, ChevronDownIcon, UserIcon, ChurchIcon
 import { useInscription } from '../hooks/useInscription';
 import { DateInput } from './common/DateInput';
 import { useToast } from '../contexts/ToastContext';
+import { AddressInput } from './AddressInput';
+import { Beneficiary as BeneficiaryType } from '../services/inscriptionService';
+import { DeceasedDetail } from '../store/inscriptionSlice';
 
 interface InscriptionRequestProps {
   formData?: any;
   setFormData?: (data: any) => void;
 }
 
+interface AddressData {
+  block?: string;
+  blockNo?: string;
+  streetName?: string;
+  unitNo?: string;
+  postalCode?: string;
+  country?: string;
+  addressNo?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  addressCity?: string;
+  addressState?: string;
+  addressCountry?: string;
+}
+
 interface Beneficiary {
   selectBeneficiary: string;
   nameOfDeceased: string;
   dateBorn: string;
+  dateOfBirth?: string;  // Added for compatibility with service Beneficiary type
   dateDied: string;
   internmentDate: string;
   internmentTime: string;
   deathCertNo: string;
 }
 
-export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
+export function InscriptionRequest({ formData, setFormData }: InscriptionRequestProps = {}) {
   const navigate = useNavigate();
-  
+
   const {
     inscriptionRequestNo,
     nicheApplicationCode,
@@ -46,6 +65,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
     bibleChoicesError,
     selectedBibleChoiceId,
     phraseOfChoice,
+    beneficiaries: allBeneficiaries, // Get beneficiaries from Redux state
     updateInscriptionRequestNo: _updateInscriptionRequestNo,
     updateNicheApplicationCode,
     updateApplicantName,
@@ -75,35 +95,44 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
   } = useInscription();
 
   const { showError } = useToast();
-  
+
   // Track if we need to refresh after create/update
   // The hook already refreshes, but this ensures form state is updated
   const prevInscriptionRequestNoRef = useRef<string | null>(null);
-  
+
   useEffect(() => {
     // Only refresh if inscriptionRequestNo changed (new inscription created or updated)
-    if (inscriptionRequestNo && 
-        nicheApplicationCode && 
-        prevInscriptionRequestNoRef.current !== inscriptionRequestNo) {
+    if (inscriptionRequestNo &&
+      nicheApplicationCode &&
+      prevInscriptionRequestNoRef.current !== inscriptionRequestNo) {
       prevInscriptionRequestNoRef.current = inscriptionRequestNo;
       // The hook already calls fetchInscriptionItems, but we ensure form is refreshed
       // by letting the Redux state update naturally
     }
   }, [inscriptionRequestNo, nicheApplicationCode]);
-  
+
   // Handle back navigation to niche application
-  const handleBackToNiche = () => {
-    if (nicheApplicationCode) {
-      navigate(`/niche?applicationCode=${nicheApplicationCode}`);
-    } else {
-      // Fallback: navigate to niche page
-      navigate('/niche');
+  const handleBack = () => {
+    navigate(-1);
+  };
+
+  // Handle view action
+  const handleView = async () => {
+    if (!nicheApplicationCode.trim()) {
+      showError('Validation Error', 'Please enter a Niche Application Code to view items');
+      return;
+    }
+    try {
+      await handleFetchInscriptionItems(nicheApplicationCode);
+    } catch (error) {
+      // Error is handled by toast in the hook
     }
   };
 
+
   // Use Redux state for deceased details (mapped from API)
   // Initialize with empty if no data from Redux
-  const beneficiaries = deceasedDetails.length > 0 ? deceasedDetails : [
+  const beneficiaries: DeceasedDetail[] = deceasedDetails.length > 0 ? deceasedDetails : [
     {
       selectBeneficiary: '',
       nameOfDeceased: '',
@@ -137,7 +166,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
 
   const handleUpdateBeneficiary = (index: number, field: keyof Beneficiary, value: string) => {
     const updatedDetail = { [field]: value };
-    
+
     // Auto-calculate Internment Date/Time when Date Died is selected
     // Internment Date should be 30 years LATER than Date Died
     if (field === 'dateDied' && value) {
@@ -146,31 +175,43 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
         // Calculate internment date as 30 years later
         const internmentDate = new Date(dateDied);
         internmentDate.setFullYear(internmentDate.getFullYear() + 30);
-        
+
         // Format as YYYY-MM-DD for date input
         const year = internmentDate.getFullYear();
         const month = String(internmentDate.getMonth() + 1).padStart(2, '0');
         const day = String(internmentDate.getDate()).padStart(2, '0');
         const formattedDate = `${year}-${month}-${day}`;
-        
+
         // Set internment date to 30 years later
         updatedDetail.internmentDate = formattedDate;
         updatedDetail.internmentTime = '12:00';
       }
     }
-    
+
     updateDeceased(index, updatedDetail);
   };
 
-  const handleView = async () => {
-    if (!nicheApplicationCode.trim()) {
-      showError('Validation Error', 'Please enter a Niche Application Code to view items');
-      return;
-    }
-    try {
-      await handleFetchInscriptionItems(nicheApplicationCode);
-    } catch (error) {
-      // Error is handled by toast in the hook
+  // Handle beneficiary selection - auto populate fields based on selected beneficiary
+  const handleBeneficiarySelection = (index: number, beneficiaryName: string) => {
+    // Find the selected beneficiary from the Redux state
+    const selectedBeneficiary = allBeneficiaries.find((b: BeneficiaryType) => b.name === beneficiaryName);
+
+    if (selectedBeneficiary) {
+      // Update the deceased detail at the specified index with beneficiary data
+      updateDeceased(index, {
+        selectBeneficiary: selectedBeneficiary.name,
+        nameOfDeceased: selectedBeneficiary.name,
+        dateBorn: selectedBeneficiary.dateOfBirth || '',
+        dateDied: '', // Leave death date empty as it's not typically known from beneficiary info
+        internmentDate: '', // Will be auto-calculated when dateDied is entered
+        internmentTime: '12:00',
+        deathCertNo: '' // Leave death cert number empty
+      });
+    } else {
+      // If "Select" option or invalid selection, just update the select field
+      updateDeceased(index, {
+        selectBeneficiary: beneficiaryName
+      });
     }
   };
 
@@ -191,12 +232,12 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
       showError('Validation Error', 'Please enter a Niche Application Code');
       return;
     }
-    
+
     if (!applicantName.trim()) {
       showError('Validation Error', 'Please enter Applicant Name');
       return;
     }
-    
+
     try {
       if (inscriptionRequestNo) {
         // Update existing inscription
@@ -216,6 +257,15 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
     updateSelectedBibleChoice(null);
     updatePhraseOfChoice('');
     setCrossType('Crucifix');
+  };
+
+  const handleAddressChange = (addressData: any) => {
+    // Update the Redux store with the new address values
+    updateBlock(addressData.blockNo || '');
+    updateStreet(addressData.streetName || '');
+    updateUnitNo(addressData.unitNo || '');
+    updatePostalCode(addressData.postalCode || '');
+    // Note: country is typically Singapore for local addresses, so we may not need to update it
   };
 
   return (
@@ -260,7 +310,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
 
           {/* Second Row: Action Buttons */}
           <div className="flex flex-wrap gap-3 pt-2">
-            <button 
+            <button
               onClick={handleView}
               disabled={itemsLoading || !nicheApplicationCode.trim()}
               className="px-5 py-2.5 bg-[#801818] text-white rounded-lg font-semibold hover:opacity-90 hover:shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
@@ -278,13 +328,13 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
                 </>
               )}
             </button>
-            <button 
-              onClick={handleBackToNiche}
+            <button
+              onClick={handleBack}
               className="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 hover:shadow-md transition-all flex items-center justify-center gap-2"
               title="Back to Niche Application"
             >
               <ArrowLeftIcon className="w-4 h-4" />
-              Back to Niche
+              Back
             </button>
           </div>
 
@@ -335,7 +385,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
           </div>
 
           {/* Address Row */}
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <label className="text-sm font-semibold text-gray-700">Address</label>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-2">
@@ -379,7 +429,22 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
                 />
               </div>
             </div>
-          </div>
+          </div> */}
+          <AddressInput
+            fieldPrefix="applicant"
+            onAddressChange={handleAddressChange}
+            autoSync={false}
+            initialValues={{
+              // Provide backend-style fields for proper conversion
+              addressNo: formData?.applicantAddressNo || '',
+              addressLine1: formData?.applicantAddressLine1 || '',
+              addressLine2: formData?.applicantAddressLine2 || '',
+              addressCity: formData?.applicantAddressCity || '',
+              addressState: formData?.applicantAddressState || '',
+              addressCountry: formData?.applicantAddressCountry || 'Singapore'
+            }}
+            initialAddressString={formData?.applicantAddress || formData?.contactAddress || ''}
+          />
 
           {/* Contact Information Row */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -446,10 +511,15 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
                     <td className="py-4 px-4">
                       <select
                         value={beneficiary.selectBeneficiary}
-                        onChange={(e) => handleUpdateBeneficiary(index, 'selectBeneficiary', e.target.value)}
+                        onChange={(e) => handleBeneficiarySelection(index, e.target.value)}
                         className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
                       >
                         <option value="">Select</option>
+                        {allBeneficiaries.map((b: BeneficiaryType, idx: number) => (
+                          <option key={idx} value={b.name}>
+                            {b.name} ({b.relationshipToApplicant})
+                          </option>
+                        ))}
                       </select>
                     </td>
                     <td className="py-4 px-4">
@@ -463,7 +533,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
                     </td>
                     <td className="py-4 px-4">
                       <DateInput
-                        value={beneficiary.dateBorn}
+                        value={beneficiary.dateBorn || ''}
                         onChange={(apiDate) => handleUpdateBeneficiary(index, 'dateBorn', apiDate)}
                         className="rounded-lg py-2 px-3 text-sm"
                       />
@@ -588,7 +658,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
                     })
                     .map((choice) => {
                       // Combine number and text for display
-                      const displayText = choice.bibleInscriptionChoiceNoValue 
+                      const displayText = choice.bibleInscriptionChoiceNoValue
                         ? `${choice.bibleInscriptionChoiceNo} - ${choice.bibleInscriptionChoiceNoValue}`
                         : choice.bibleInscriptionChoiceNo;
                       return (
@@ -605,12 +675,16 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
                   </div>
                 )}
                 {selectedBibleChoiceId && (
-                  <button 
+                  <button
                     onClick={() => {
                       const selected = bibleChoices.find(c => c.bibleInscriptionChoiceId === selectedBibleChoiceId);
                       if (selected) {
                         // Show details in a more visible way or modal
-                        alert(`Bible Choice Details:\n\n${selected.bibleInscriptionChoiceNo}\n\n${selected.bibleInscriptionChoiceNoValue}`);
+                        alert(`Bible Choice Details:
+
+${selected.bibleInscriptionChoiceNo}
+
+${selected.bibleInscriptionChoiceNoValue}`);
                       }
                     }}
                     className="px-5 py-3 bg-[#801818] text-white rounded-lg text-sm font-semibold hover:opacity-90 hover:shadow-md transition-all"
@@ -745,7 +819,7 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
           {/* Secondary Actions */}
           <div className="flex flex-wrap gap-3">
             <div className="h-8 w-px bg-gray-300"></div>
-            <button 
+            <button
               onClick={handleCreateInvoiceClick}
               disabled={creatingInvoice || !nicheApplicationCode.trim()}
               className="px-6 py-3 bg-[#1a2a40] text-white rounded-lg font-semibold hover:opacity-90 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
@@ -760,13 +834,13 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
                 'Invoice / Receipt'
               )}
             </button>
-            <button 
+            <button
               className="px-6 py-3 bg-[#1a2a40] text-white rounded-lg font-semibold hover:opacity-90 hover:shadow-md transition-all"
               title="Navigate to receipt page"
             >
               Go to Receipt
             </button>
-            <button 
+            <button
               className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 hover:shadow-md transition-all flex items-center gap-2"
               title="Send email notification"
             >
@@ -779,4 +853,3 @@ export function InscriptionRequest({ }: InscriptionRequestProps = {}) {
     </div>
   );
 }
-

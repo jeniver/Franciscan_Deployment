@@ -642,9 +642,10 @@ class NicheAgreementRepository extends BaseRepository {
           nicheAgreement.nomineeName = row.NomineeName;
           nicheAgreement.nomineeAddressNo = row.NomineeAddressNo;
           nicheAgreement.nomineeAddressLine1 = row.NomineeAddressLine1;
-          nicheAgreement.nomineeAddressLine2 = row.NomineeAddressLine2;
-          nicheAgreement.nomineeAddressCity = row.NomineeAddressCity;
-          nicheAgreement.nomineeAddressState = row.NomineeAddressState;
+          // CRITICAL FIX: Ensure that if Person table has nominee address data, it overrides the NicheApplication data
+          nicheAgreement.nomineeAddressLine2 = row.NomineeAddressLine2 !== null ? row.NomineeAddressLine2 : nicheAgreement.nomineeAddressLine2;
+          nicheAgreement.nomineeAddressCity = row.NomineeAddressCity !== null ? row.NomineeAddressCity : nicheAgreement.nomineeAddressCity;
+          nicheAgreement.nomineeAddressState = row.NomineeAddressState !== null ? row.NomineeAddressState : nicheAgreement.nomineeAddressState;
           nicheAgreement.nomineeAddressCountry = row.NomineeAddressCountry;
           nicheAgreement.nomineeEmailID = row.NomineeEmailID;
           nicheAgreement.nomineeIDNo = row.NomineeIDNo;
@@ -659,9 +660,10 @@ class NicheAgreementRepository extends BaseRepository {
           nicheAgreement.nominee2Name = row.Nominee2Name;
           nicheAgreement.nominee2AddressNo = row.Nominee2AddressNo;
           nicheAgreement.nominee2AddressLine1 = row.Nominee2AddressLine1;
-          nicheAgreement.nominee2AddressLine2 = row.Nominee2AddressLine2;
-          nicheAgreement.nominee2AddressCity = row.Nominee2AddressCity;
-          nicheAgreement.nominee2AddressState = row.Nominee2AddressState;
+          // CRITICAL FIX: Ensure that if Person table has nominee2 address data, it overrides the NicheApplication data
+          nicheAgreement.nominee2AddressLine2 = row.Nominee2AddressLine2 !== null ? row.Nominee2AddressLine2 : nicheAgreement.nominee2AddressLine2;
+          nicheAgreement.nominee2AddressCity = row.Nominee2AddressCity !== null ? row.Nominee2AddressCity : nicheAgreement.nominee2AddressCity;
+          nicheAgreement.nominee2AddressState = row.Nominee2AddressState !== null ? row.Nominee2AddressState : nicheAgreement.nominee2AddressState;
           nicheAgreement.nominee2AddressCountry = row.Nominee2AddressCountry;
           nicheAgreement.nominee2EmailID = row.Nominee2EmailID;
           nicheAgreement.nominee2IDNo = row.Nominee2IDNo;
@@ -670,6 +672,9 @@ class NicheAgreementRepository extends BaseRepository {
           nicheAgreement.nominee2OfficeTelNo = row.Nominee2OfficeTelNo;
           nicheAgreement.nominee2Relationship = row.Nominee2Relationship;
         }
+      } else {
+        // If no NicheBooking record exists, log this as it might explain why address fields are null
+        logger.info(`No NicheBooking record found for application ID: ${nicheApplicationId}. Using NicheApplication address data only.`);
       }
     } catch (error) {
       logger.warn('Could not fetch nominee info from Person table:', error.message);

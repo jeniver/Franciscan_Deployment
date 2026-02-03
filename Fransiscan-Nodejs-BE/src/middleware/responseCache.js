@@ -44,6 +44,13 @@ const responseCache = (options = {}) => {
     
     // Check if bypass cache header is present
     if (req.headers['x-bypass-cache'] === 'true' || req.query.bypassCache === 'true') {
+      logger.debug(`Cache bypass requested for ${req.method} ${req.path}`);
+      return next();
+    }
+    
+    // Skip caching for POST/PUT/DELETE requests
+    if (req.method !== 'GET') {
+      logger.debug(`Skipping cache for ${req.method} ${req.path}`);
       return next();
     }
     
@@ -53,9 +60,11 @@ const responseCache = (options = {}) => {
     // Try to get from cache
     const cached = cache.get(cacheKey);
     if (cached) {
-      logger.debug(`Cache hit for ${req.method} ${req.path}`);
+      logger.debug(`Cache hit for ${req.method} ${req.path} - key: ${cacheKey}`);
       res.setHeader('X-Cache', 'HIT');
       return res.status(cached.statusCode).json(cached.data);
+    } else {
+      logger.debug(`Cache miss for ${req.method} ${req.path} - key: ${cacheKey}`);
     }
     
     // Store original json method

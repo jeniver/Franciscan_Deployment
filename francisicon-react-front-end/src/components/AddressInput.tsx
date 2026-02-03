@@ -7,6 +7,7 @@ import {
 } from '../store/addressSlice';
 import { Input } from './common/Input';
 import { FormSelect } from './FormSelect';
+import { createCompleteAddressObject, mapComponentToBackendFields, mapBackendToComponentFields } from '../utils/addressMapper';
 
 export interface ParsedAddress {
   block: string;
@@ -156,26 +157,49 @@ interface AddressInputProps {
   
   /**
    * Callback to update parent form data
+   * Provides both component-friendly fields and backend-compatible fields
    */
   onAddressChange?: (addressData: {
+    // Component-friendly fields
     block?: string;
     blockNo?: string;
     streetName?: string;
     unitNo?: string;
     postalCode?: string;
     country?: string;
+    // Backend-compatible fields (mapped automatically)
+    addressNo?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    addressCity?: string;
+    addressState?: string;
+    addressCountry?: string;
   }) => void;
   
   /**
+   * Whether to automatically sync changes (default: false for batched updates)
+   */
+  autoSync?: boolean;
+  
+  /**
    * Initial address values from form data
+   * Can accept either component fields or backend fields
    */
   initialValues?: {
+    // Component-friendly fields
     block?: string;
     blockNo?: string;
     streetName?: string;
     unitNo?: string;
     postalCode?: string;
     country?: string;
+    // Backend-compatible fields (will be converted automatically)
+    addressNo?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    addressCity?: string;
+    addressState?: string;
+    addressCountry?: string;
   };
   
   /**
@@ -228,22 +252,60 @@ export function AddressInput({
   error,
   showLabel = true,
   label = 'Address',
-  initialAddressString
+  initialAddressString,
+  autoSync = false
 }: AddressInputProps) {
   const dispatch = useDispatch<AppDispatch>();
   
-  // Use local state instead of shared Redux state to prevent cross-contamination
-  // between different AddressInput instances (Contact Person vs Nominee)
-  const [localAddressState, setLocalAddressState] = useState({
-    block: initialValues?.block || '',
-    blockNo: initialValues?.blockNo || '',
-    streetName: initialValues?.streetName || '',
-    unitNo: initialValues?.unitNo || '',
-    postalCode: initialValues?.postalCode || '',
-    country: initialValues?.country || 'Singapore',
-    isLookingUp: false,
-    lookupError: null as string | null
+  // Create a stable, unique instance ID using useRef to ensure consistency across renders
+  const instanceIdRef = useRef<string>(`${fieldPrefix || 'address'}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const instanceId = instanceIdRef.current;
+  
+  // Local state for this instance using the stable instance ID
+  const [localAddressState, setLocalAddressState] = useState(() => {
+    return {
+      block: initialValues?.block || '',
+      blockNo: initialValues?.blockNo || '',
+      streetName: initialValues?.streetName || '',
+      unitNo: initialValues?.unitNo || '',
+      postalCode: initialValues?.postalCode || '',
+      country: initialValues?.country || 'Singapore',
+      isLookingUp: false,
+      lookupError: null as string | null
+    };
   });
+  
+  // Helper functions to get/set values for this specific instance
+  const getAddressValue = (key: string): string => {
+    return localAddressState[key as keyof typeof localAddressState] as string || '';
+  };
+  
+  const setAddressValue = (key: string, value: any) => {
+    setLocalAddressState(prev => {
+      const newState = {
+        ...prev,
+        [key]: value
+      };
+      
+      // Trigger immediate address change callback for better responsiveness
+      if (onAddressChange) {
+        const componentFields = { 
+          block: newState.block, 
+          blockNo: newState.blockNo, 
+          streetName: newState.streetName, 
+          unitNo: newState.unitNo, 
+          postalCode: newState.postalCode, 
+          country: newState.country 
+        };
+        const completeAddress = createCompleteAddressObject(componentFields);
+        console.log('AddressInput: Immediate onAddressChange triggered for field:', key, 'with value:', value);
+        console.log('AddressInput: Complete address data:', completeAddress);
+        onAddressChange(completeAddress);
+      }
+      
+      return newState;
+    });
+  };
   
   // Get lookup state from Redux (for loading indicators)
   const addressLookupState = useSelector((state: RootState) => ({
@@ -261,6 +323,7 @@ export function AddressInput({
   // Initialize address fields from initialValues or initialAddressString
   // This effect runs when initialValues or initialAddressString change (e.g., when loading data in edit mode)
   useEffect(() => {
+    console.log('AddressInput: Initialization useEffect called with:', { initialValues, initialAddressString });
     // Create a string representation of current initialValues to detect changes
     const currentInitialValuesKey = JSON.stringify({
       block: initialValues?.block || '',
@@ -279,15 +342,19 @@ export function AddressInput({
 
     lastInitialValuesRef.current = currentInitialValuesKey;
 
-    // 1) Prefer explicit structured values if provided
-    if (initialValues && (
-      initialValues.block ||
-      initialValues.blockNo ||
-      initialValues.streetName ||
-      initialValues.unitNo ||
-      initialValues.postalCode ||
-      initialValues.country
-    )) {
+    // 1) Prefer explicit structured values if provided (component fields)
+    // Check if we have any meaningful initial values (not just empty strings)
+    const hasMeaningfulValues = initialValues && (
+      (initialValues.block && initialValues.block.trim() !== '') ||
+      (initialValues.blockNo && initialValues.blockNo.trim() !== '') ||
+      (initialValues.streetName && initialValues.streetName.trim() !== '') ||
+      (initialValues.unitNo && initialValues.unitNo.trim() !== '') ||
+      (initialValues.postalCode && initialValues.postalCode.trim() !== '') ||
+      (initialValues.country && initialValues.country.trim() !== '')
+    );
+    
+    if (hasMeaningfulValues) {
+      console.log('AddressInput: Initializing with structured values:', initialValues);
       setLocalAddressState(prev => ({
         ...prev,
         block: initialValues.block || '',
@@ -296,6 +363,42 @@ export function AddressInput({
         unitNo: initialValues.unitNo || '',
         postalCode: initialValues.postalCode || '',
         country: initialValues.country || 'Singapore'
+      }));
+      isInitializedRef.current = true;
+      return;
+    }
+
+    // 1b) Check if we have backend-style fields and convert them
+    if (initialValues && (
+      initialValues.addressNo ||
+      initialValues.addressLine1 ||
+      initialValues.addressLine2 ||
+      initialValues.addressCity ||
+      initialValues.addressState ||
+      initialValues.addressCountry
+    )) {
+      console.log('Converting backend fields to component fields:', initialValues);
+      // Convert backend fields to component fields
+      const backendFields = {
+        addressNo: initialValues.addressNo || '',
+        addressLine1: initialValues.addressLine1 || '',
+        addressLine2: initialValues.addressLine2 || '',
+        addressCity: initialValues.addressCity || '',
+        addressState: initialValues.addressState || '',
+        addressCountry: initialValues.addressCountry || 'Singapore'
+      };
+      
+      const componentFields = mapBackendToComponentFields(backendFields);
+      console.log('Converted to component fields:', componentFields);
+      
+      setLocalAddressState(prev => ({
+        ...prev,
+        block: componentFields.block || '',
+        blockNo: componentFields.blockNo || '',
+        streetName: componentFields.streetName || '',
+        unitNo: componentFields.unitNo || '',
+        postalCode: componentFields.postalCode || '',
+        country: componentFields.country || 'Singapore'
       }));
       isInitializedRef.current = true;
       return;
@@ -318,10 +421,11 @@ export function AddressInput({
     }
 
     // 3) If no initial values provided and not yet initialized, set defaults
+    // ✅ FIX: Auto-default block to "Block" selection
     if (!isInitializedRef.current) {
       setLocalAddressState(prev => ({
         ...prev,
-        block: '',
+        block: 'Block', // ✅ FIX: Default to Block instead of empty
         blockNo: '',
         streetName: '',
         unitNo: '',
@@ -332,45 +436,45 @@ export function AddressInput({
     }
   }, [initialValues, initialAddressString]);
 
-  // Sync local address state to parent component - only when values actually change
+  // Backup sync mechanism - should not be needed with the immediate approach above
   useEffect(() => {
+    // This effect mainly serves as a backup/fallback mechanism
     if (!onAddressChange) return;
+    
+    // Get current values
+    const block = localAddressState.block;
+    const blockNo = localAddressState.blockNo;
+    const streetName = localAddressState.streetName;
+    const unitNo = localAddressState.unitNo;
+    const postalCode = localAddressState.postalCode;
+    const country = localAddressState.country;
     
     // Create a string representation of current values to compare
     const currentValues = JSON.stringify({
-      block: localAddressState.block,
-      blockNo: localAddressState.blockNo,
-      streetName: localAddressState.streetName,
-      unitNo: localAddressState.unitNo,
-      postalCode: localAddressState.postalCode,
-      country: localAddressState.country
+      block,
+      blockNo,
+      streetName,
+      unitNo,
+      postalCode,
+      country
     });
     
-    // Only call onAddressChange if values actually changed
+    // Always call onAddressChange if values actually changed (regardless of autoSync)
     if (currentValues !== lastSyncedValuesRef.current) {
       lastSyncedValuesRef.current = currentValues;
-      onAddressChange({
-        block: localAddressState.block,
-        blockNo: localAddressState.blockNo,
-        streetName: localAddressState.streetName,
-        unitNo: localAddressState.unitNo,
-        postalCode: localAddressState.postalCode,
-        country: localAddressState.country
-      });
+      
+      // Create complete address object with both field formats
+      const componentFields = { block, blockNo, streetName, unitNo, postalCode, country };
+      const completeAddress = createCompleteAddressObject(componentFields);
+      
+      console.log('AddressInput: Backup useEffect triggering onAddressChange with:', completeAddress);
+      onAddressChange(completeAddress);
     }
-  }, [
-    localAddressState.block,
-    localAddressState.blockNo,
-    localAddressState.streetName,
-    localAddressState.unitNo,
-    localAddressState.postalCode,
-    localAddressState.country,
-    onAddressChange
-  ]);
+  }, [localAddressState, onAddressChange]);
 
   // Handle postal code change with auto-fill (only when postal code changes)
   const handlePostalCodeChange = useCallback((value: string) => {
-    setLocalAddressState(prev => ({ ...prev, postalCode: value }));
+    setAddressValue('postalCode', value);
     
     // Clear existing debounce
     if (postalCodeDebounceRef.current) {
@@ -383,19 +487,38 @@ export function AddressInput({
         dispatch(lookupAddressByPostalCode(value)).then((action) => {
           if (lookupAddressByPostalCode.fulfilled.match(action)) {
             // Update local state with lookup results
-            setLocalAddressState(prev => ({
-              ...prev,
-              blockNo: action.payload.blockNo || prev.blockNo,
-              streetName: action.payload.streetName || prev.streetName,
-              unitNo: action.payload.unitNo || prev.unitNo,
-              postalCode: action.payload.postalCode || prev.postalCode,
-              country: action.payload.country || prev.country
-            }));
+            setLocalAddressState(prev => {
+              const newState = {
+                ...prev,
+                blockNo: action.payload.blockNo || prev.blockNo,
+                streetName: action.payload.streetName || prev.streetName,
+                unitNo: action.payload.unitNo || prev.unitNo,
+                postalCode: action.payload.postalCode || prev.postalCode,
+                country: action.payload.country || prev.country
+              };
+              
+              // Trigger address change with updated values from postal code lookup
+              if (onAddressChange) {
+                const componentFields = { 
+                  block: newState.block, 
+                  blockNo: newState.blockNo, 
+                  streetName: newState.streetName, 
+                  unitNo: newState.unitNo, 
+                  postalCode: newState.postalCode, 
+                  country: newState.country 
+                };
+                const completeAddress = createCompleteAddressObject(componentFields);
+                console.log('AddressInput: Postal code lookup triggering onAddressChange with:', completeAddress);
+                onAddressChange(completeAddress);
+              }
+              
+              return newState;
+            });
           }
         });
       }
     }, 800);
-  }, [dispatch]);
+  }, [dispatch, onAddressChange, setAddressValue]);
 
   // Cleanup debounce timers
   useEffect(() => {
@@ -406,8 +529,8 @@ export function AddressInput({
     };
   }, []);
 
-  // Determine block type: if block has value, it's "Block", otherwise "No"
-  const blockType = localAddressState.block && localAddressState.block !== '' ? 'Block' : 'No';
+  // Determine block type: if block has value equal to 'Block', it's 'Block', otherwise 'No'
+  const blockType = localAddressState.block === 'Block' ? 'Block' : 'No';
 
   return (
     <div>
@@ -425,10 +548,7 @@ export function AddressInput({
             value={blockType}
             onChange={(e) => {
               const newBlockType = e.target.value;
-              setLocalAddressState(prev => ({
-                ...prev,
-                block: newBlockType === 'Block' ? 'Block' : ''
-              }));
+              setAddressValue('block', newBlockType === 'Block' ? 'Block' : '');
             }}
             disabled={isReadOnly}
             className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent text-sm"
@@ -443,9 +563,9 @@ export function AddressInput({
           <Input
             label=""
             type="text"
-            value={localAddressState.blockNo}
+            value={localAddressState.blockNo || ''}
             onChange={(e) => {
-              setLocalAddressState(prev => ({ ...prev, blockNo: e.target.value }));
+              setAddressValue('blockNo', e.target.value);
             }}
             placeholder={blockType === 'Block' ? "Block No" : "No"}
             disabled={isReadOnly}
@@ -458,9 +578,9 @@ export function AddressInput({
           <Input
             label=""
             type="text"
-            value={localAddressState.streetName}
+            value={localAddressState.streetName || ''}
             onChange={(e) => {
-              setLocalAddressState(prev => ({ ...prev, streetName: e.target.value }));
+              setAddressValue('streetName', e.target.value);
             }}
             placeholder="Street Name"
             disabled={isReadOnly}
@@ -473,9 +593,9 @@ export function AddressInput({
           <Input
             label=""
             type="text"
-            value={localAddressState.unitNo}
+            value={localAddressState.unitNo || ''}
             onChange={(e) => {
-              setLocalAddressState(prev => ({ ...prev, unitNo: e.target.value }));
+              setAddressValue('unitNo', e.target.value);
             }}
             placeholder="Unit No"
             disabled={isReadOnly}
@@ -488,7 +608,7 @@ export function AddressInput({
           <Input
             label=""
             type="text"
-            value={localAddressState.postalCode}
+            value={localAddressState.postalCode || ''}
             onChange={(e) => handlePostalCodeChange(e.target.value)}
             placeholder="Postal Code"
             disabled={isReadOnly}
@@ -516,7 +636,7 @@ export function AddressInput({
             label="Country"
             value={localAddressState.country || 'Singapore'}
             onChange={(value) => {
-              setLocalAddressState(prev => ({ ...prev, country: value || 'Singapore' }));
+              setAddressValue('country', value || 'Singapore');
             }}
             options={[
               { value: 'Singapore', label: 'Singapore' },
@@ -539,4 +659,3 @@ export function AddressInput({
     </div>
   );
 }
-

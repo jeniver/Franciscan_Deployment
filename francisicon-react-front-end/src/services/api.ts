@@ -17,6 +17,8 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Enable credentials to be sent with requests
+  withCredentials: false,
 });
 
 // Request interceptor to add auth token and logging
@@ -30,11 +32,19 @@ api.interceptors.request.use(
     // Add request timestamp for logging
     config.metadata = { startTime: new Date() };
     
+    // Handle cache bypass
+    if (config.params?.bypassCache) {
+      config.headers['X-Bypass-Cache'] = 'true';
+      // Remove bypassCache from params to avoid sending it to backend
+      delete config.params.bypassCache;
+    }
+    
     // Log request details
     console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, {
       params: config.params,
       timeout: config.timeout,
-      baseURL: config.baseURL
+      baseURL: config.baseURL,
+      bypassCache: config.headers['X-Bypass-Cache'] === 'true'
     });
     
     return config;

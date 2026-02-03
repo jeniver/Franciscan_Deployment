@@ -17,6 +17,8 @@ import { MiscInvoicePage } from './pages/MiscInvoicePage';
 import { InvoiceAndReceiptPage } from './pages/InvoiceAndReceiptPage';
 import { InvoiceAndReceiptManagementPage } from './pages/InvoiceAndReceiptManagementPage';
 import { InscriptionPage } from './pages/InscriptionPage';
+import { InscriptionManagementPage } from './pages/InscriptionManagementPage';
+import { InscriptionAgreementPage } from './pages/InscriptionAgreementPage';
 import { NichiBookingPage } from './pages/NichiBookingPage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 
@@ -69,6 +71,26 @@ export function AppRouter() {
         <Route path="/inscription" element={
           <ProtectedRoute>
             <InscriptionPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/inscriptions" element={
+          <ProtectedRoute>
+            <InscriptionManagementPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/inscriptions/new" element={
+          <ProtectedRoute>
+            <InscriptionPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/inscriptions/:id/edit" element={
+          <ProtectedRoute>
+            <InscriptionPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/inscription-agreement/:inscriptionCode" element={
+          <ProtectedRoute>
+            <InscriptionAgreementPage />
           </ProtectedRoute>
         } />
         <Route path="/wake-room" element={

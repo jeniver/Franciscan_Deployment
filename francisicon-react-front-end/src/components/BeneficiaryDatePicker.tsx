@@ -90,7 +90,7 @@ export function BeneficiaryDatePicker({
         onChange('');
       }
     }
-  }, [day, month, year, mode, onChange]);
+  }, [day, month, year, mode, onChange]); // Include onChange in dependencies to prevent infinite loop
 
   if (mode === 'year') {
     // Year-only picker

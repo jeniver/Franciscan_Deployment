@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeIcon, ReceiptIcon, DoorOpenIcon, BedIcon, FileTextIcon } from 'lucide-react';
+import { HomeIcon, ReceiptIcon, DoorOpenIcon, BedIcon, FileTextIcon, PenToolIcon } from 'lucide-react';
 
 interface MenuItem {
   label: string;
@@ -24,12 +24,12 @@ export function Sidebar({
       path: '/niche',
       icon: <HomeIcon className="w-5 h-5" />
     },
-    {
-      label: 'Receipts & Invoices',
-      path: '/receipt',
-      icon: <ReceiptIcon className="w-5 h-5" />
+      {
+      label: 'Inscriptions',
+      path: '/inscriptions',
+      icon: <PenToolIcon className="w-5 h-5" />
     },
-    {
+      {
       label: 'Gates of Life',
       path: '/gates-of-life',
       icon: <DoorOpenIcon className="w-5 h-5" />
@@ -40,10 +40,15 @@ export function Sidebar({
       icon: <BedIcon className="w-5 h-5" />
     },
     {
+      label: 'Receipts & Invoices',
+      path: '/receipt',
+      icon: <ReceiptIcon className="w-5 h-5" />
+    },
+    {
       label: 'Reports',
       path: '/reports',
       icon: <FileTextIcon className="w-5 h-5" />
-    }
+    },
   ];
 
   const handleMenuClick = (path: string) => {

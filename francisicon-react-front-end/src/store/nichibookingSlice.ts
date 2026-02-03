@@ -9,7 +9,7 @@ import nichiApplicationService, {
   CreateNichiApplicationRequest,
   NichiApplicationResponse,
 } from '../services/nichiApplicationService';
-import { mapNichiBookingToApplicationRequest } from '../utils/nichiApplicationMapper';
+import { mapNichiBookingToApplicationRequest } from '../utils/nicheApplicationMapper';
 
 // Deceased detail interface (from Inscription)
 export interface DeceasedDetail {
@@ -112,6 +112,12 @@ const initialState: NichiBookingState = {
   invoiceError: null,
   lastErrorType: null,
   createdInvoice: null,
+  creatingApplication: false,
+  applicationError: null,
+  createdApplication: null,
+  loadingApplication: false,
+  loadApplicationError: null,
+  loadedApplication: null,
   invoiceNumber: '',
   paymentMode: 'Cash',
   nichiQuantity: 1,

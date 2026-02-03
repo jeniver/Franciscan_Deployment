@@ -513,6 +513,47 @@ class NicheAgreementService {
         consentFormReady: agreementData.consentForm.status === 'completed'
       };
 
+      // CRITICAL FIX: Ensure nominee address data is properly formatted in the response
+      // If nominee address fields are null in the response, make sure they are properly mapped
+      if (agreementData.nominee) {
+        logger.info(`[processNicheAgreementData] Nominee address data before fix:`, {
+          addressLine2: agreementData.nominee.addressLine2,
+          addressCity: agreementData.nominee.addressCity,
+          addressState: agreementData.nominee.addressState,
+          address: agreementData.nominee.address
+        });
+
+        // Ensure address fields are explicitly set in the response even if null
+        agreementData.nominee.addressLine2 = agreementData.nominee.addressLine2 !== undefined ? agreementData.nominee.addressLine2 : null;
+        agreementData.nominee.addressCity = agreementData.nominee.addressCity !== undefined ? agreementData.nominee.addressCity : null;
+        agreementData.nominee.addressState = agreementData.nominee.addressState !== undefined ? agreementData.nominee.addressState : null;
+
+        logger.info(`[processNicheAgreementData] Nominee address data after fix:`, {
+          addressLine2: agreementData.nominee.addressLine2,
+          addressCity: agreementData.nominee.addressCity,
+          addressState: agreementData.nominee.addressState
+        });
+      }
+
+      if (agreementData.nominee2) {
+        logger.info(`[processNicheAgreementData] Nominee2 address data before fix:`, {
+          addressLine2: agreementData.nominee2.addressLine2,
+          addressCity: agreementData.nominee2.addressCity,
+          addressState: agreementData.nominee2.addressState
+        });
+
+        // Ensure address fields are explicitly set in the response even if null
+        agreementData.nominee2.addressLine2 = agreementData.nominee2.addressLine2 !== undefined ? agreementData.nominee2.addressLine2 : null;
+        agreementData.nominee2.addressCity = agreementData.nominee2.addressCity !== undefined ? agreementData.nominee2.addressCity : null;
+        agreementData.nominee2.addressState = agreementData.nominee2.addressState !== undefined ? agreementData.nominee2.addressState : null;
+
+        logger.info(`[processNicheAgreementData] Nominee2 address data after fix:`, {
+          addressLine2: agreementData.nominee2.addressLine2,
+          addressCity: agreementData.nominee2.addressCity,
+          addressState: agreementData.nominee2.addressState
+        });
+      }
+
       return agreementData;
     } catch (error) {
       logger.error('Error processing niche agreement data:', error);

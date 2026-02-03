@@ -127,7 +127,14 @@ export const mapApiResponseToFormData = (apiResponse: NicheAgreementResponse) =>
         email: data.nominee.email,
         address: data.nominee.address,
         homeTelNo: data.nominee.homeTelNo,
-        officeTelNo: data.nominee.officeTelNo
+        officeTelNo: data.nominee.officeTelNo,
+        // Include structured address fields
+        block: (data.nominee.addressNo?.toLowerCase() === 'block') ? 'Block' : 'No',
+        blockNo: data.nominee.addressLine1 || '',
+        streetName: data.nominee.addressLine2 || '',
+        unitNo: data.nominee.addressCity || '',
+        postalCode: data.nominee.addressState || '',
+        country: data.nominee.addressCountry || 'Singapore'
       } : null,
       data.nominee2 ? {
         id: 2,
@@ -139,7 +146,14 @@ export const mapApiResponseToFormData = (apiResponse: NicheAgreementResponse) =>
         email: data.nominee2.email,
         address: data.nominee2.address,
         homeTelNo: data.nominee2.homeTelNo,
-        officeTelNo: data.nominee2.officeTelNo
+        officeTelNo: data.nominee2.officeTelNo,
+        // Include structured address fields
+        block: (data.nominee2.addressNo?.toLowerCase() === 'block') ? 'Block' : 'No',
+        blockNo: data.nominee2.addressLine1 || '',
+        streetName: data.nominee2.addressLine2 || '',
+        unitNo: data.nominee2.addressCity || '',
+        postalCode: data.nominee2.addressState || '',
+        country: data.nominee2.addressCountry || 'Singapore'
       } : null
     ].filter(Boolean),
     
@@ -160,13 +174,69 @@ export const mapApiResponseToFormData = (apiResponse: NicheAgreementResponse) =>
     nomineeUnitNo: ((data.nominee as any)?.addressCity || '').trim(),
     nomineePostalCode: ((data.nominee as any)?.addressState || '').trim(),
     nomineeCountry: ((data.nominee as any)?.addressCountry || 'Singapore').trim(),
+    // Extract second nominee's structured address fields
+    nomineeAddressNo2: (data.nominee2 as any)?.addressNo || '',
+    nomineeAddressLine12: (data.nominee2 as any)?.addressLine1 || '',
+    nomineeAddressLine22: (data.nominee2 as any)?.addressLine2 || '',
+    nomineeAddressCity2: (data.nominee2 as any)?.addressCity || '',
+    nomineeAddressState2: (data.nominee2 as any)?.addressState || '',
+    nomineeAddressCountry2: (data.nominee2 as any)?.addressCountry || 'Singapore',
+    // UI fields for AddressInput for second nominee
+    nomineeBlock2: (() => {
+      const addrNo = (data.nominee2 as any)?.addressNo || '';
+      return addrNo && String(addrNo).trim().toLowerCase() !== 'no' ? 'Block' : '';
+    })(),
+    nomineeBlockNo2: ((data.nominee2 as any)?.addressLine1 || '').trim(),
+    nomineeStreetName2: ((data.nominee2 as any)?.addressLine2 || '').trim(),
+    nomineeUnitNo2: ((data.nominee2 as any)?.addressCity || '').trim(),
+    nomineePostalCode2: ((data.nominee2 as any)?.addressState || '').trim(),
+    nomineeCountry2: ((data.nominee2 as any)?.addressCountry || 'Singapore').trim(),
     // Legacy single address field for backward compatibility
     nomineeAddress: data.nominee?.address || '',
+    nomineeAddress2: data.nominee2?.address || '',
     nomineePhone: data.nominee?.mobileNo || '',
+    nomineePhone2: data.nominee2?.mobileNo || '',
     nomineeEmail: data.nominee?.email || '',
+    nomineeEmail2: data.nominee2?.email || '',
     nomineeName: data.nominee?.name || '',
+    nomineeName2: data.nominee2?.name || '',
     nomineeIDNo: data.nominee?.idNo || '',
+    nomineeIDNo2: data.nominee2?.idNo || '',
     nomineeRelationship: data.nominee?.relationship || '',
+    nomineeRelationship2: data.nominee2?.relationship || '',
+    // Add structured nominee objects for full compatibility
+    nominee: data.nominee ? {
+      name: data.nominee.name || '',
+      address: data.nominee.address || '',
+      addressNo: data.nominee.addressNo || '',
+      addressLine1: data.nominee.addressLine1 || '',
+      addressLine2: data.nominee.addressLine2 || null,
+      addressCity: data.nominee.addressCity || null,
+      addressState: data.nominee.addressState || null,
+      addressCountry: data.nominee.addressCountry || 'Singapore',
+      email: data.nominee.email || '',
+      idNo: data.nominee.idNo || '',
+      mobileNo: data.nominee.mobileNo || '',
+      homeTelNo: data.nominee.homeTelNo || '',
+      officeTelNo: data.nominee.officeTelNo || '',
+      relationship: data.nominee.relationship || ''
+    } : undefined,
+    nominee2: data.nominee2 ? {
+      name: data.nominee2.name || '',
+      address: data.nominee2.address || '',
+      addressNo: data.nominee2.addressNo || '',
+      addressLine1: data.nominee2.addressLine1 || '',
+      addressLine2: data.nominee2.addressLine2 || null,
+      addressCity: data.nominee2.addressCity || null,
+      addressState: data.nominee2.addressState || null,
+      addressCountry: data.nominee2.addressCountry || 'Singapore',
+      email: data.nominee2.email || '',
+      idNo: data.nominee2.idNo || '',
+      mobileNo: data.nominee2.mobileNo || '',
+      homeTelNo: data.nominee2.homeTelNo || '',
+      officeTelNo: data.nominee2.officeTelNo || '',
+      relationship: data.nominee2.relationship || ''
+    } : undefined,
 
     // Invoice & Receipt (Step 6)
     invoice: {

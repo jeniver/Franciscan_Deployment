@@ -28,9 +28,9 @@ import {
   fetchBibleChoices,
   createInscription,
   updateInscription,
-  type CreateInvoiceRequest,
   type DeceasedDetail
 } from '../store/inscriptionSlice';
+import { CreateInvoiceRequest } from '../services/inscriptionService';
 import { useToast } from '../contexts/ToastContext';
 
 export function useInscription() {
@@ -70,6 +70,7 @@ export function useInscription() {
   const phraseOfChoice = useSelector((state: RootState) => state.inscription.phraseOfChoice);
   
   const deceasedDetails = useSelector((state: RootState) => state.inscription.deceasedDetails);
+  const beneficiaries = useSelector((state: RootState) => state.inscription.beneficiaries);
   
   const creatingInscription = useSelector((state: RootState) => state.inscription.creatingInscription);
   const updatingInscription = useSelector((state: RootState) => state.inscription.updatingInscription);
@@ -124,11 +125,11 @@ export function useInscription() {
   const handleFetchInscriptionItems = useCallback(async (code: string) => {
     try {
       const result = await dispatch(fetchInscriptionItems(code)).unwrap();
-      showSuccess('Inscription items loaded successfully');
+      showSuccess('Success', 'Inscription items loaded successfully');
       return result;
     } catch (error: any) {
       const errorMessage = error?.message || 'Failed to load inscription items';
-      showError(errorMessage);
+      showError('Error', errorMessage);
       throw error;
     }
   }, [dispatch, showSuccess, showError]);
@@ -137,11 +138,11 @@ export function useInscription() {
   const handleCreateInvoice = useCallback(async (code: string, body?: CreateInvoiceRequest) => {
     try {
       const result = await dispatch(createInscriptionInvoice({ code, body })).unwrap();
-      showSuccess(`Invoice created successfully: ${result.invoiceCode}`);
+      showSuccess('Success', `Invoice created successfully: ${result.invoiceCode}`);
       return result;
     } catch (error: any) {
       const errorMessage = error?.message || 'Failed to create invoice';
-      showError(errorMessage);
+      showError('Error', errorMessage);
       throw error;
     }
   }, [dispatch, showSuccess, showError]);
@@ -242,7 +243,7 @@ export function useInscription() {
       };
 
       const result = await dispatch(createInscription(data)).unwrap();
-      showSuccess(`Inscription created successfully: ${result.code}`);
+      showSuccess('Success', `Inscription created successfully: ${result.code}`);
       
       // Refresh inscription items to get the new inscription data
       if (nicheApplicationCode) {
@@ -259,7 +260,7 @@ export function useInscription() {
       return result;
     } catch (error: any) {
       const errorMessage = error?.message || 'Failed to create inscription';
-      showError(errorMessage);
+      showError('Error', errorMessage);
       throw error;
     }
   }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, nicheApplicationCode]);
@@ -305,7 +306,7 @@ export function useInscription() {
       };
 
       const result = await dispatch(updateInscription(data)).unwrap();
-      showSuccess(`Inscription updated successfully: ${result.code}`);
+      showSuccess('Success', `Inscription updated successfully: ${result.code}`);
       
       // Refresh inscription items to get the updated inscription data
       if (nicheApplicationCode) {
@@ -315,7 +316,7 @@ export function useInscription() {
       return result;
     } catch (error: any) {
       const errorMessage = error?.message || 'Failed to update inscription';
-      showError(errorMessage);
+      showError('Error', errorMessage);
       throw error;
     }
   }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, nicheApplicationCode]);
@@ -353,6 +354,7 @@ export function useInscription() {
     bibleChoicesError,
     selectedBibleChoiceId,
     phraseOfChoice,
+    beneficiaries, // Add beneficiaries to the returned state
     loading,
     error,
     lastErrorType,
@@ -392,4 +394,3 @@ export function useInscription() {
     handleUpdateInscription
   };
 }
-

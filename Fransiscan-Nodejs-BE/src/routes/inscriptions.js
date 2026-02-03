@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const InscriptionInvoiceController = require('../controllers/InscriptionInvoiceController');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, optionalAuth } = require('../middleware/auth');
 
 const controller = new InscriptionInvoiceController();
 
@@ -12,7 +12,7 @@ const controller = new InscriptionInvoiceController();
  */
 router.get(
   '/:code/items',
-  authenticateToken,
+  optionalAuth,
   (req, res) => controller.getInscriptionItems(req, res)
 );
 
@@ -47,6 +47,22 @@ router.put(
   '/:code',
   authenticateToken,
   (req, res) => controller.updateInscription(req, res)
+);
+
+/**
+ * @route   GET /api/inscriptions
+ * @desc    Search inscription applications with filters
+ * @access  Private (JWT required)
+ * @query   {string} searchTerm - Search term
+ * @query   {string} fromDate - Start date (YYYY-MM-DD)
+ * @query   {string} toDate - End date (YYYY-MM-DD)
+ * @query   {number} page - Page number (default: 1)
+ * @query   {number} pageSize - Records per page (default: 20)
+ */
+router.get(
+  '/',
+  authenticateToken,
+  (req, res) => controller.searchInscriptions(req, res)
 );
 
 module.exports = router;

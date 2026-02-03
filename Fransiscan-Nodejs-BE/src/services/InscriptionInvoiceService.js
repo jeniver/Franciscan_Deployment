@@ -402,53 +402,81 @@ class InscriptionInvoiceService {
    */
   _parseAddress(addressNo, addressLine1, addressLine2, addressCity) {
     const parsed = {
-      block: null,
-      blockNo: null,
-      street: null,
-      streetName: null,
-      unitNo: null,
-      postalCode: null
+      block: '',
+      blockNo: '',
+      street: '',
+      streetName: '',
+      unitNo: '',
+      postalCode: ''
     };
 
-    // Parse Block and Block No. from addressNo (e.g., "Blk 123" or "123")
-    if (addressNo) {
-      const blockMatch = addressNo.match(/(?:Blk|Block)\s*(\d+)/i);
-      if (blockMatch) {
-        parsed.block = `Blk ${blockMatch[1]}`;
-        parsed.blockNo = blockMatch[1];
-      } else {
-        const numMatch = addressNo.match(/(\d+)/);
-        if (numMatch) {
-          parsed.block = `Blk ${numMatch[1]}`;
-          parsed.blockNo = numMatch[1];
+    // Combine all address parts to create a complete address string for parsing
+    const fullAddress = [
+      addressNo || '',
+      addressLine1 || '',
+      addressLine2 || '',
+      addressCity || ''
+    ].filter(part => part.trim() !== '').join(' ');
+
+    // Extract unit number first (e.g., #4545)
+    const unitMatch = fullAddress.match(/#([A-Z0-9]+-?[A-Z0-9]*)/i);
+    if (unitMatch) {
+      parsed.unitNo = `#${unitMatch[1]}`;
+    }
+
+    // Extract block/building number with "No" prefix (e.g., "No 162")
+    const blockMatch = fullAddress.match(/(?:No\.?|Number|\b)\s*(\d+)/i);
+    if (blockMatch) {
+      parsed.blockNo = blockMatch[1];
+      parsed.block = `Blk ${blockMatch[1]}`;
+    } else {
+      // Fallback to general number extraction for block
+      const generalBlockMatch = fullAddress.match(/\b(\d+)\b/);
+      if (generalBlockMatch) {
+        parsed.blockNo = generalBlockMatch[1];
+        parsed.block = `Blk ${generalBlockMatch[1]}`;
+      }
+    }
+
+    // Extract street name (everything except unit number and block number)
+    // Remove unit number and block number from the address string
+    let streetPart = fullAddress;
+    
+    if (parsed.unitNo) {
+      streetPart = streetPart
+    }
+    
+    if (parsed.blockNo) {
+      streetPart = streetPart.replace(new RegExp(`(?:No\.?|Number|\b)\s*${parsed.blockNo}`, 'gi'), '').trim();
+    }
+    
+    // Clean up extra spaces and common prefixes
+    streetPart = streetPart.replace(/\s+/g, ' ').trim();
+    
+    // Extract street name (typically after the number, could be avenue, road, etc.)
+    if (streetPart) {
+      // Look for common street types
+      const streetTypeMatch = streetPart.match(/\b(Street|St|Rd|Road|Ave|Avenue|Drive|Dr|Lane|Ln|Way|Walk|Place|Pl|Crescent|Cres|Close|Cl|Circuit|Ctr|Grove|Gr|Terrace|Ter)\b/i);
+      
+      if (streetTypeMatch) {
+        // Find the complete street name including the type
+        const streetWords = streetPart.split(' ');
+        const streetTypeIndex = streetWords.findIndex(word => 
+          word.toLowerCase() === streetTypeMatch[1].toLowerCase()
+        );
+        
+        if (streetTypeIndex >= 0) {
+          // Include the street type and any preceding words
+          const streetStartIndex = Math.max(0, streetTypeIndex - 3); // Look back up to 3 words
+          parsed.street = streetWords.slice(streetStartIndex).join(' ').trim();
+          parsed.streetName = parsed.street;
         } else {
-          parsed.block = addressNo;
-        }
-      }
-    }
-
-    // Parse Street and Street Name from addressLine1 (e.g., "Bishan Street 11")
-    if (addressLine1) {
-      const streetMatch = addressLine1.match(/(.+?)\s+(Street|St|Rd|Road|Ave|Avenue|Drive|Dr|Lane|Ln|Way|Walk|Place|Pl|Crescent|Cres|Close|Cl)\s*(\d+)?/i);
-      if (streetMatch) {
-        parsed.street = streetMatch[0].trim();
-        parsed.streetName = streetMatch[1].trim();
-        if (streetMatch[3]) {
-          parsed.streetName += ` ${streetMatch[3]}`;
+          parsed.street = streetPart;
+          parsed.streetName = streetPart;
         }
       } else {
-        parsed.street = addressLine1;
-        parsed.streetName = addressLine1;
-      }
-    }
-
-    // Parse Unit No. from addressLine2 (e.g., "#07-111" or "#XX-XX")
-    if (addressLine2) {
-      const unitMatch = addressLine2.match(/#?([A-Z0-9]+-?[A-Z0-9]*)/i);
-      if (unitMatch) {
-        parsed.unitNo = `#${unitMatch[1]}`;
-      } else {
-        parsed.unitNo = addressLine2;
+        parsed.street = streetPart;
+        parsed.streetName = streetPart;
       }
     }
 
@@ -461,6 +489,141 @@ class InscriptionInvoiceService {
     }
 
     return parsed;
+  }
+
+  /**
+   * Extract block number from address string
+   * @param {string} address - Address string
+   * @returns {string} Block number
+   */
+  _extractBlockNumber(address) {
+    if (!address) return '';
+    
+    // Look for block number patterns like "No 123", "Blk 123", etc.
+    const match = address.match(/(?:No\.?|Number|Blk|Block)\s*(\d+)/i);
+    return match ? match[1] : '';
+  }
+  
+  /**
+   * Extract postal code from address string
+   * @param {string} address - Address string
+   * @returns {string} Postal code
+   */
+  _extractPostalCode(address) {
+    if (!address) return '';
+    
+    // Look for 6-digit postal code
+    const match = address.match(/(\d{6})/);
+    return match ? match[1] : '';
+  }
+
+  /**
+   * Format date string to standard display format
+   * @param {string|Date} dateString - Date string in various formats
+   * @returns {string} Formatted date string (DD/MM/YYYY)
+   */
+  _formatDate(dateString) {
+    if (!dateString) return '';
+    
+    try {
+      // Handle different date formats
+      let date;
+      
+      if (typeof dateString === 'string') {
+        // Handle format like "Feb 16 2012 5:30AM"
+        if (dateString.match(/^[A-Za-z]{3}\s+\d{1,2}\s+\d{4}/)) {
+          date = new Date(dateString);
+        } else {
+          // Try to parse other string formats
+          date = new Date(dateString);
+        }
+      } else if (dateString instanceof Date) {
+        date = dateString;
+      } else {
+        return String(dateString);
+      }
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return String(dateString);
+      }
+      
+      // Format as DD/MM/YYYY
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      
+      return `${day}/${month}/${year}`;
+    } catch (error) {
+      logger.warn('Failed to format date:', { dateString, error: error.message });
+      return String(dateString);
+    }
+  }
+
+  /**
+   * Get beneficiary details for a niche application
+   * @param {number} nicheApplicationId - Niche application ID
+   * @returns {Promise<Array>} Array of beneficiary details
+   */
+  async _getBeneficiariesForNicheApplication(nicheApplicationId) {
+    try {
+      const { executeQuery } = require('../config/database');
+      
+      logger.info('DIAGNOSTIC: Executing beneficiary query for niche application:', { nicheApplicationId });
+      
+      const beneficiaryQuery = `
+        SELECT 
+          Name,
+          RelationshipToApplicant,
+          DateOfBirth,
+          BirthYear,
+          IDNo,
+          IsCatholic,
+          IsMale,
+          RelationshipToNominee1,
+          RelationshipToNominee2
+        FROM NicheApplicationBeneficiary WITH (NOLOCK)
+        WHERE NicheApplicationId = @nicheApplicationId
+        ORDER BY NicheApplicationBeneficiaryId
+      `;
+      
+      logger.info('DIAGNOSTIC: Beneficiary query:', { beneficiaryQuery, nicheApplicationId });
+      
+      const beneficiaryResult = await executeQuery(beneficiaryQuery, { nicheApplicationId });
+      
+      logger.info('DIAGNOSTIC: Beneficiary query result:', {
+        hasRecordset: !!beneficiaryResult.recordset,
+        recordCount: beneficiaryResult.recordset?.length || 0,
+        rawResults: beneficiaryResult.recordset || []
+      });
+      
+      if (!beneficiaryResult.recordset || beneficiaryResult.recordset.length === 0) {
+        logger.info('DIAGNOSTIC: No beneficiaries found for niche application:', { nicheApplicationId });
+        return [];
+      }
+      
+      const beneficiaries = beneficiaryResult.recordset.map(beneficiary => ({
+        name: beneficiary.Name || '',
+        dateOfBirth: this._formatDate(beneficiary.DateOfBirth) || '',
+        birthYear: beneficiary.BirthYear || '',
+        idNo: beneficiary.IDNo || '',
+        isCatholic: Boolean(beneficiary.IsCatholic),
+        isMale: Boolean(beneficiary.IsMale),
+        relationshipToApplicant: beneficiary.RelationshipToApplicant || '',
+        relationshipToNominee1: beneficiary.RelationshipToNominee1 || '',
+        relationshipToNominee2: beneficiary.RelationshipToNominee2 || ''
+      }));
+      
+      logger.info('DIAGNOSTIC: Mapped beneficiaries:', {
+        count: beneficiaries.length,
+        beneficiaries: beneficiaries
+      });
+      
+      return beneficiaries;
+    } catch (error) {
+      logger.error('Failed to fetch beneficiaries for niche application:', error);
+      return [];
+    }
   }
 
   /**
@@ -619,13 +782,15 @@ class InscriptionInvoiceService {
             });
             
             // Return applicant details from niche application without inscription
-            // This allows the frontend to show the form for creating an inscription
-            const addressComponents = this._parseAddress(
-              nicheApp.applicantAddressNo,
-              nicheApp.applicantAddressLine1,
-              nicheApp.applicantAddressLine2,
-              nicheApp.applicantAddressCity
-            );
+            // Pass address values as raw data without parsing
+            const addressComponents = {
+              block: nicheApp.applicantAddressNo || '',
+              blockNo: this._extractBlockNumber(nicheApp.applicantAddressNo) || '',
+              street: nicheApp.applicantAddressLine1 || '',
+              streetName: nicheApp.applicantAddressLine1 || '',
+              unitNo: nicheApp.applicantAddressLine2 || '',
+              postalCode: this._extractPostalCode(nicheApp.applicantAddressCity) || ''
+            };
             
             // Get items for inscription task
             const parameters = [
@@ -638,8 +803,40 @@ class InscriptionInvoiceService {
               churchId
             );
             
+            // Get beneficiaries from the niche application
+            let beneficiaries = [];
+            try {
+              logger.info('DIAGNOSTIC: Attempting to fetch beneficiaries for niche application:', {
+                nicheApplicationId: nicheApp.nicheApplicationId,
+                nicheApplicationCode: applicationCode
+              });
+              
+              beneficiaries = await this._getBeneficiariesForNicheApplication(nicheApp.nicheApplicationId);
+              
+              logger.info('DIAGNOSTIC: Beneficiaries retrieved for fallback case:', {
+                nicheApplicationId: nicheApp.nicheApplicationId,
+                beneficiaryCount: beneficiaries.length,
+                beneficiaries: beneficiaries
+              });
+              
+              // Log individual beneficiary details for debugging
+              if (beneficiaries.length > 0) {
+                beneficiaries.forEach((beneficiary, index) => {
+                  logger.info(`DIAGNOSTIC: Beneficiary ${index + 1}:`, {
+                    name: beneficiary.name,
+                    relationshipToApplicant: beneficiary.relationshipToApplicant,
+                    idNo: beneficiary.idNo
+                  });
+                });
+              }
+            } catch (beneficiaryError) {
+              logger.error('Failed to fetch beneficiaries for fallback case:', beneficiaryError);
+              // Don't fail the entire request if beneficiaries fail
+              beneficiaries = [];
+            }
+            
             // Return response with only applicant details (no inscriptionRequestNo)
-            return {
+            const response = {
               // No inscriptionRequestNo - indicates inscription doesn't exist yet
               inscriptionRequestNo: null,
               
@@ -666,6 +863,9 @@ class InscriptionInvoiceService {
               // No deceased details yet (will be added when inscription is created)
               deceasedDetails: [],
               
+              // Beneficiary details
+              beneficiaries: beneficiaries,
+              
               // Additional Details
               additionalDetails: {
                 bibleInscriptionChoiceId: null,
@@ -676,6 +876,20 @@ class InscriptionInvoiceService {
                 nicheBookingId: null
               }
             };
+            
+            logger.info('DIAGNOSTIC: Final response being returned:', {
+              inscriptionRequestNo: response.inscriptionRequestNo,
+              itemsCount: response.items?.length || 0,
+              hasApplicant: !!response.applicant,
+              applicantName: response.applicant?.name || null,
+              deceasedDetailsCount: response.deceasedDetails?.length || 0,
+              beneficiariesCount: response.beneficiaries?.length || 0,
+              hasBeneficiaries: Array.isArray(response.beneficiaries) && response.beneficiaries.length > 0,
+              beneficiarySample: response.beneficiaries?.[0] || null,
+              nicheApplicationCode: response.additionalDetails?.nicheApplicationCode || null
+            });
+            
+            return response;
           }
         } catch (autoCreateError) {
           logger.error('DIAGNOSTIC: Failed to auto-create inscription in getInscriptionItems:', {
@@ -769,6 +983,16 @@ class InscriptionInvoiceService {
       application.applicantAddressCity
     );
 
+    // Apply consistent address extraction for all address fields
+    const processedAddressComponents = {
+      block: addressComponents.block,
+      blockNo: this._extractBlockNumber(application.applicantAddressNo),
+      street: application.applicantAddressLine1 || '',
+      streetName: application.applicantAddressLine1 || '',
+      unitNo: application.applicantAddressLine2 || '',
+      postalCode: this._extractPostalCode(application.applicantAddressCity)
+    };
+
     // Map AdditionalInscriptionPhrase to both bibleInscriptionText and additionalInscriptionPhrase for API compatibility
     const inscriptionPhrase = application.additionalInscriptionPhrase || application.bibleInscriptionText || application.remarks || '';
 
@@ -789,6 +1013,32 @@ class InscriptionInvoiceService {
       nicheApplicationCode: application.nicheApplicationCode
     });
 
+    // Get beneficiaries if niche application code exists
+    let beneficiaries = [];
+    if (application.nicheApplicationCode) {
+      try {
+        // First, we need to get the NicheApplicationId from the code
+        const { executeQuery } = require('../config/database');
+        
+        const nicheAppQuery = `
+          SELECT NicheApplicationId
+          FROM NicheApplication WITH (NOLOCK)
+          WHERE Code = @code
+        `;
+        
+        const nicheAppResult = await executeQuery(nicheAppQuery, { code: application.nicheApplicationCode });
+        
+        if (nicheAppResult.recordset && nicheAppResult.recordset.length > 0) {
+          const nicheApplicationId = nicheAppResult.recordset[0].NicheApplicationId;
+          beneficiaries = await this._getBeneficiariesForNicheApplication(nicheApplicationId);
+        }
+      } catch (beneficiaryError) {
+        logger.error('Failed to fetch beneficiaries for inscription:', beneficiaryError);
+        // Don't fail the entire request if beneficiaries fail
+        beneficiaries = [];
+      }
+    }
+
     // Build enhanced response
     return {
       // Inscription Request No. (Auto-generated)
@@ -801,14 +1051,7 @@ class InscriptionInvoiceService {
       applicant: {
         name: application.applicantName || '',
         nricPassportNo: application.applicantIDNo || '',
-        address: {
-          block: addressComponents.block || '',
-          blockNo: addressComponents.blockNo || '',
-          street: addressComponents.street || '',
-          streetName: addressComponents.streetName || '',
-          unitNo: addressComponents.unitNo || '',
-          postalCode: addressComponents.postalCode || ''
-        },
+        address: processedAddressComponents,
         mobile: application.applicantMobileNo || '',
         homeTel: application.applicantHomeTelNo || '',
         emailId: application.applicantEmailID || ''
@@ -817,13 +1060,16 @@ class InscriptionInvoiceService {
       // Details of Deceased
       deceasedDetails: (application.deceasedDetails || []).map(detail => ({
         name: detail.name || '',
-        dateOfDeath: detail.dateOfDeath || '',
-        dateOfBirth: detail.dateOfBirth || '',
-        internmentDate: detail.internmentDate || '',
+        dateOfDeath: this._formatDate(detail.dateOfDeath) || '',
+        dateOfBirth: this._formatDate(detail.dateOfBirth) || '',
+        internmentDate: this._formatDate(detail.internmentDate) || '',
         deathCertificateNo: detail.deathCertificateNo || '',
         birthYear: detail.birthYear || '',
         inscriptionText: detail.inscriptionText || ''
       })),
+      
+      // Beneficiary details
+      beneficiaries: beneficiaries,
       
       // Additional Details of Inscription
       additionalDetails: {

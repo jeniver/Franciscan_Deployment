@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { XIcon } from 'lucide-react';
 import { formatDateForInput } from '../utils/dateUtils';
 import { BeneficiaryDatePicker } from './BeneficiaryDatePicker';
@@ -80,6 +80,14 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
     onClose();
   };
 
+  const handleDateOfBirthChange = useCallback((apiDate: string) => {
+    setFormData(prevFormData => ({ ...prevFormData, dateOfBirth: apiDate }));
+  }, [setFormData]);
+
+  const handleDateChange = useCallback((apiDate: string) => {
+    setFormData(prevFormData => ({ ...prevFormData, dateOfBirth: apiDate }));
+  }, [setFormData]);
+
   if (!isOpen) return null;
 
   return (
@@ -106,7 +114,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <input
               type="text"
               value={formData.name}
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              onChange={(e) => setFormData(prev => ({...prev, name: e.target.value}))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
               placeholder="Enter beneficiary name"
             />
@@ -120,7 +128,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <input
               type="text"
               value={formData.nric}
-              onChange={(e) => setFormData({...formData, nric: e.target.value})}
+              onChange={(e) => setFormData(prev => ({...prev, nric: e.target.value}))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
               placeholder="Enter NRIC/Passport number"
             />
@@ -131,7 +139,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <BeneficiaryDatePicker
               label="Date Of Birth"
               value={formData.dateOfBirth}
-              onChange={(apiDate) => setFormData({ ...formData, dateOfBirth: apiDate })}
+              onChange={handleDateChange}
               mode="full"
               minYear={1900}
               maxYear={new Date().getFullYear()}
@@ -150,7 +158,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
                   name="gender"
                   value="Male"
                   checked={formData.gender === 'Male'}
-                  onChange={(e) => setFormData({...formData, gender: e.target.value})}
+                  onChange={(e) => setFormData(prev => ({...prev, gender: e.target.value}))}
                   className="mr-2 text-[#8b5a2b] focus:ring-[#8b5a2b]"
                 />
                 <span className="text-sm text-gray-700">Male</span>
@@ -161,7 +169,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
                   name="gender"
                   value="Female"
                   checked={formData.gender === 'Female'}
-                  onChange={(e) => setFormData({...formData, gender: e.target.value})}
+                  onChange={(e) => setFormData(prev => ({...prev, gender: e.target.value}))}
                   className="mr-2 text-[#8b5a2b] focus:ring-[#8b5a2b]"
                 />
                 <span className="text-sm text-gray-700">Female</span>
@@ -177,7 +185,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <input
               type="text"
               value={formData.relationshipToApp}
-              onChange={(e) => setFormData({...formData, relationshipToApp: e.target.value})}
+              onChange={(e) => setFormData(prev => ({...prev, relationshipToApp: e.target.value}))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
               placeholder="Enter relationship to applicant"
             />
@@ -195,7 +203,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
                   name="religion"
                   value="Catholic"
                   checked={formData.religiousAffiliation === 'Catholic'}
-                  onChange={(e) => setFormData({...formData, religiousAffiliation: e.target.value})}
+                  onChange={(e) => setFormData(prev => ({...prev, religiousAffiliation: e.target.value}))}
                   className="mr-2 text-[#8b5a2b] focus:ring-[#8b5a2b]"
                 />
                 <span className="text-sm text-gray-700">Catholic</span>
@@ -206,7 +214,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
                   name="religion"
                   value="Non Catholic"
                   checked={formData.religiousAffiliation === 'Non Catholic'}
-                  onChange={(e) => setFormData({...formData, religiousAffiliation: e.target.value})}
+                  onChange={(e) => setFormData(prev => ({...prev, religiousAffiliation: e.target.value}))}
                   className="mr-2 text-[#8b5a2b] focus:ring-[#8b5a2b]"
                 />
                 <span className="text-sm text-gray-700">Non Catholic</span>
@@ -222,7 +230,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <input
               type="text"
               value={formData.relationshipToNominee1}
-              onChange={(e) => setFormData({...formData, relationshipToNominee1: e.target.value})}
+              onChange={(e) => setFormData(prev => ({...prev, relationshipToNominee1: e.target.value}))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
               placeholder="Enter relationship to nominee 1"
             />
@@ -236,7 +244,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <input
               type="text"
               value={formData.relationshipToNominee2}
-              onChange={(e) => setFormData({...formData, relationshipToNominee2: e.target.value})}
+              onChange={(e) => setFormData(prev => ({...prev, relationshipToNominee2: e.target.value}))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
               placeholder="Enter relationship to nominee 2"
             />
@@ -247,7 +255,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
         <div className="flex items-center justify-between p-6 border-t border-gray-200">
           <div className="flex space-x-2">
             <button
-              onClick={() => setFormData({...formData, status: 'Occupied'})}
+              onClick={() => setFormData(prev => ({...prev, status: 'Occupied'}))}
               className={`px-4 py-2 rounded-md text-sm font-medium ${
                 formData.status === 'Occupied'
                   ? 'bg-[#8b5a2b] text-white'
@@ -257,7 +265,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
               Occupied
             </button>
             <button
-              onClick={() => setFormData({...formData, status: 'Not Occupied'})}
+              onClick={() => setFormData(prev => ({...prev, status: 'Not Occupied'}))}
               className={`px-4 py-2 rounded-md text-sm font-medium ${
                 formData.status === 'Not Occupied'
                   ? 'bg-[#8b5a2b] text-white'

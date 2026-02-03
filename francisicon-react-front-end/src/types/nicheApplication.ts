@@ -86,6 +86,28 @@ export interface NicheApplicationFormData {
   nomineeCountry?: string;
   nomineeHomeTel?: string;
   nomineeOfficeTel?: string;
+  // Structured nominee address fields (second nominee)
+  nomineeBlock2?: string;
+  nomineeBlockNo2?: string;
+  nomineeStreetName2?: string;
+  nomineeUnitNo2?: string;
+  nomineePostalCode2?: string;
+  nomineeCountry2?: string;
+  nomineeAddressNo2?: string;
+  nomineeAddressLine12?: string;
+  nomineeAddressLine22?: string;
+  nomineeAddressCity2?: string;
+  nomineeAddressState2?: string;
+  nomineeAddressCountry2?: string;
+  nomineePhone2?: string;
+  nomineeEmail2?: string;
+  nomineeName2?: string;
+  nomineeIDNo2?: string;
+  nomineeRelationship2?: string;
+  nomineeAddress2?: string;
+  nomineeStatus2?: string;
+  nomineeHomeTel2?: string;
+  nomineeOfficeTel2?: string;
   
   // Step 6: Invoice & Receipt
   invoice?: {
@@ -198,6 +220,21 @@ export const normalizeFormData = (formData: Record<string, any>): NicheApplicati
     nomineeUnitNo: formData.nomineeUnitNo || '',
     nomineePostalCode: formData.nomineePostalCode || '',
     nomineeCountry: formData.nomineeCountry || formData.applicantCountry || 'Singapore',
+    nomineeName2: formData.nomineeName2 || formData.nominees?.[1]?.fullName || formData.nominees?.[1]?.name || '',
+    nomineeIDNo2: formData.nomineeIDNo2 || formData.nominees?.[1]?.nric || '',
+    nomineeRelationship2: formData.nomineeRelationship2 || formData.nominees?.[1]?.relationship || '',
+    nomineeAddress2: formData.nomineeAddress2 || formData.nominees?.[1]?.address || '',
+    nomineePhone2: formData.nomineePhone2 || formData.nominees?.[1]?.contactNumber || formData.nominees?.[1]?.phone || '',
+    nomineeEmail2: formData.nomineeEmail2 || formData.nominees?.[1]?.email || '',
+    nomineeStatus2: formData.nomineeStatus2 || formData.nominees?.[1]?.status || 'Active',
+    nomineeHomeTel2: formData.nomineeHomeTel2 || formData.nominees?.[1]?.homeTelNo || '',
+    nomineeOfficeTel2: formData.nomineeOfficeTel2 || formData.nominees?.[1]?.officeTelNo || '',
+    nomineeBlock2: formData.nomineeBlock2 || '',
+    nomineeBlockNo2: formData.nomineeBlockNo2 || '',
+    nomineeStreetName2: formData.nomineeStreetName2 || '',
+    nomineeUnitNo2: formData.nomineeUnitNo2 || '',
+    nomineePostalCode2: formData.nomineePostalCode2 || '',
+    nomineeCountry2: formData.nomineeCountry2 || formData.applicantCountry || 'Singapore',
     
     // Step 6: Invoice & Receipt
     invoice: formData.invoice || {}
@@ -207,6 +244,7 @@ export const normalizeFormData = (formData: Record<string, any>): NicheApplicati
 // Helper function to create API request from normalized form data
 export const createNicheApplicationRequest = (formData: NicheApplicationFormData) => {
   const normalizedData = normalizeFormData(formData);
+  console.log('Normalized Data:', normalizedData)
   
   return {
     nicheId: normalizedData.nicheId,
@@ -243,6 +281,17 @@ export const createNicheApplicationRequest = (formData: NicheApplicationFormData
     nomineeStatus: normalizedData.nomineeStatus || 'Active',
     nomineeHomeTel: normalizedData.nomineeHomeTel,
     nomineeOfficeTel: normalizedData.nomineeOfficeTel,
+    nomineeAddressNo2: normalizedData.nomineeBlock2 && normalizedData.nomineeBlock2 !== '' ? normalizedData.nomineeBlock2 : 'No',
+    nomineeAddressLine12: normalizedData.nomineeBlockNo2,
+    nomineeAddressLine22: normalizedData.nomineeStreetName2,
+    nomineeAddressCity2: normalizedData.nomineeUnitNo2,
+    nomineeAddressState2: normalizedData.nomineePostalCode2,
+    nomineeAddressCountry2: normalizedData.nomineeCountry2 || normalizedData.applicantCountry,
+    nomineePhone2: normalizedData.nomineePhone2,
+    nomineeEmail2: normalizedData.nomineeEmail2,
+    nomineeStatus2: normalizedData.nomineeStatus2 || 'Active',
+    nomineeHomeTel2: normalizedData.nomineeHomeTel2,
+    nomineeOfficeTel2: normalizedData.nomineeOfficeTel2,
     beneficiary1: normalizedData.beneficiary1,
     beneficiaries: (normalizedData.beneficiaries || []).map((beneficiary: any, index: number) => ({
       id: beneficiary.id || index + 1,

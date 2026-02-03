@@ -4,13 +4,15 @@ import inscriptionService, {
   InscriptionItem,
   CreateInvoiceRequest,
   BibleChoice,
-  InscriptionItemsResponse
+  InscriptionItemsResponse,
+  Beneficiary
 } from '../services/inscriptionService';
 
 export interface DeceasedDetail {
   selectBeneficiary: string;
   nameOfDeceased: string;
   dateBorn: string;
+  dateOfBirth?: string;  // Added for compatibility with service Beneficiary type
   dateDied: string;
   internmentDate: string;
   internmentTime: string;
@@ -61,6 +63,9 @@ export interface InscriptionState {
   selectedBibleChoiceId: number | null;
   phraseOfChoice: string;
 
+  // Beneficiary data
+  beneficiaries: Beneficiary[];
+
   // UI State
   loading: boolean;
   error: string | null;
@@ -91,6 +96,7 @@ const initialState: InscriptionState = {
   bibleChoicesError: null,
   selectedBibleChoiceId: null,
   phraseOfChoice: '',
+  beneficiaries: [],
   loading: false,
   error: null,
   lastErrorType: null,
@@ -391,6 +397,23 @@ const inscriptionSlice = createSlice({
       }
     },
 
+    // Beneficiary updates
+    setBeneficiaries: (state, action: PayloadAction<Beneficiary[]>) => {
+      state.beneficiaries = action.payload;
+    },
+    addBeneficiary: (state, action: PayloadAction<Beneficiary>) => {
+      state.beneficiaries.push(action.payload);
+    },
+    removeBeneficiary: (state, action: PayloadAction<number>) => {
+      state.beneficiaries = state.beneficiaries.filter((_, index) => index !== action.payload);
+    },
+    updateBeneficiary: (state, action: PayloadAction<{ index: number; beneficiary: Partial<Beneficiary> }>) => {
+      const { index, beneficiary } = action.payload;
+      if (state.beneficiaries[index]) {
+        state.beneficiaries[index] = { ...state.beneficiaries[index], ...beneficiary };
+      }
+    },
+
     // Clear errors
     clearError: (state) => {
       state.error = null;
@@ -558,6 +581,13 @@ const inscriptionSlice = createSlice({
           }
         }
         
+        // Map beneficiaries if available
+        if (data.beneficiaries && Array.isArray(data.beneficiaries)) {
+          state.beneficiaries = data.beneficiaries;
+        } else {
+          state.beneficiaries = [];
+        }
+        
         // CRITICAL: Ensure nicheApplicationCode is set from the code parameter if not already set
         // This handles cases where the API doesn't return it in additionalDetails
         if (!state.nicheApplicationCode && action.meta.arg) {
@@ -660,6 +690,10 @@ export const {
   updateDeceasedDetail,
   setSelectedBibleChoiceId,
   setPhraseOfChoice,
+  setBeneficiaries,
+  addBeneficiary,
+  removeBeneficiary,
+  updateBeneficiary,
   clearError,
   clearInvoiceResult,
   resetForm

@@ -18,9 +18,11 @@ import { Button } from './components/common/Button';
 import { Input } from './components/common/Input';
 import { DateInput } from './components/common/DateInput';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
-import { useDispatch } from 'react-redux';
-import { setViewMode as setViewModeAction, setEditMode } from './store/applicationSlice';
+import { useDispatch, useSelector } from 'react-redux';
+import { setViewMode as setViewModeAction, setEditMode, resetApplicationListState } from './store/applicationSlice';
 import type { ApplicationListFilters } from './store/applicationSlice';
+import { useBatchedUpdates } from './hooks/useBatchedUpdates';
+import { InscriptionRequest } from './components/InscriptionRequest';
 
 const DEFAULT_LIST_FILTERS: ApplicationListFilters = {
   applicationCode: '',
@@ -103,6 +105,12 @@ export function App() {
     closeAgreementModal
   } = useApplication();
 
+  // Batched updates hook for edit mode
+  const { isDirty, saveChanges, isUpdating } = useBatchedUpdates({
+    applicationCode: applicationNumber,
+    isEnabled: isEditMode
+  });
+
   const {
     validateAndShowToast,
     showSuccessMessage,
@@ -153,9 +161,10 @@ export function App() {
       clearTimeout(searchDebounceRef.current);
       searchDebounceRef.current = null;
     }
-    // Clear cache before new search
+    // Clear cache before new search to ensure fresh data
+    dispatch(resetApplicationListState());
     await searchApplicationList({ pagination: { page: 1 } });
-  }, [searchApplicationList]);
+  }, [searchApplicationList, dispatch]);
 
   const handleResetSearch = useCallback(async () => {
     // Clear any pending debounced searches
@@ -166,11 +175,12 @@ export function App() {
     const resetFilters: ApplicationListFilters = { ...DEFAULT_LIST_FILTERS };
     updateListFilters(resetFilters);
     // Clear cache and reset to first page
+    dispatch(resetApplicationListState());
     await searchApplicationList({
       filters: resetFilters,
       pagination: { page: 1 }
     });
-  }, [updateListFilters, searchApplicationList]);
+  }, [updateListFilters, searchApplicationList, dispatch]);
 
   const handleCreateNewFromTable = useCallback(() => {
     // Set flag to prevent useEffect from switching back to table view
@@ -436,10 +446,26 @@ Application Code: ${applicationCode}
 Status: Created
 ${contactEmail ? `\nConfirmation and invoice emails have been sent to ${contactEmail}.` : ''}
 
-You will now be redirected to the Invoice & Receipt page.`);
+The application list will be refreshed to show your new application.`);
 
-        // Navigate directly to Invoice & Receipt for this application
-        await handleGoToInvoice(applicationCode);
+        // Set the last created code to highlight the new application in the table
+        setLastCreatedCode(applicationCode);
+        
+        // Refresh the application list to show the newly created application
+        // Clear cache and force fresh data with bypass cache flag
+        dispatch(resetApplicationListState());
+        await searchApplicationList({ 
+          pagination: { page: 1 },
+          // Force bypass cache to get fresh data
+          filters: { bypassCache: true } as any
+        });
+        
+        // Navigate to niche list to show the created application
+        navigate('/niche');
+        setViewMode('table');
+        
+        // Optional: Still navigate to Invoice & Receipt for this application
+        // await handleGoToInvoice(applicationCode);
       }
     } catch (error) {
       console.error('Error creating niche application:', error);
@@ -1107,11 +1133,30 @@ You will now be redirected to the Invoice & Receipt page.`);
                     >
                       ← Previous Step
                     </Button>
+                    {isDirty && (
+                      <Button
+                        variant="primary"
+                        onClick={saveChanges}
+                        disabled={isUpdating}
+                        icon={isUpdating ? <LoadingSpinner size="sm" text="" /> : undefined}
+                      >
+                        {isUpdating ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                    )}
                     <Button
                       variant="primary"
                       onClick={async () => {
                         if (currentStep === 5) {
-                          // Save the application - only Consent Forms can update when editing
+                          // First, save any pending batched changes
+                          if (isDirty) {
+                            const saveResult = await saveChanges();
+                            if (!saveResult.success) {
+                              showErrorMessage(saveResult.error || 'Failed to save pending changes');
+                              return;
+                            }
+                          }
+                          
+                          // Then update the application
                           const result = await handleUpdateApplication(applicationNumber, formData);
                           if (result.success) {
                             showSuccessMessage('Application updated successfully!');

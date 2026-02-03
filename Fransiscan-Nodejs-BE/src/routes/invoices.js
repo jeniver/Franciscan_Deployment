@@ -98,6 +98,13 @@ router.post('/:code',
   invoiceController.createInvoiceByCode
 );
 
+// Get application items by application code
+// GET /api/invoices/application/:code - Retrieves all items linked to an application code
+router.get('/application/:code',
+  authenticateToken,
+  invoiceController.getApplicationItems
+);
+
 // Get invoice by code
 // GET /api/invoices/:code - Retrieves invoice by invoice code or application code
 router.get('/:code',

@@ -5,6 +5,7 @@ import { FormSelect } from '../components/FormSelect';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { AddressInput } from '../components/AddressInput';
+import { useBatchedUpdates } from '../hooks/useBatchedUpdates';
 
 interface ContactPersonDetailsProps {
   formData: any;
@@ -20,6 +21,11 @@ export function ContactPersonDetails({
   // Get validation errors from Redux store
   const validationErrors = useSelector((state: RootState) => state.application.validationErrors);
   
+  const { addMultipleChanges, isDirty } = useBatchedUpdates({
+    applicationCode: formData.applicationNumber || formData.applicationCode || formData.code || formData.refDocNumber,
+    isEnabled: true
+  });
+  
   // const isInitializedRef = useRef(false);
 
   // Handle address change from AddressInput component - memoized to prevent infinite loops
@@ -30,57 +36,100 @@ export function ContactPersonDetails({
     unitNo?: string;
     postalCode?: string;
     country?: string;
+    // Backend-compatible fields (mapped automatically)
+    addressNo?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    addressCity?: string;
+    addressState?: string;
+    addressCountry?: string;
   }) => {
+    console.log('ContactPersonDetails: handleAddressChange called with:', addressData);
+    
     // NOTE: Avoid parsing/converting address strings here. We store structured fields directly.
     // (Old legacy string builder removed/commented out to prevent incorrect formatting like "##14-07".)
 
-    const rawBlock = (addressData.block || '').trim();
-    const isBlock = rawBlock.toLowerCase() === 'block' || rawBlock.toLowerCase() === 'blk';
-    const addressNo = isBlock ? 'Blk' : 'No';
-
-    const unitNoRaw = (addressData.unitNo || '').trim();
-    const unitNoNormalized = unitNoRaw ? (unitNoRaw.startsWith('#') ? unitNoRaw : `#${unitNoRaw}`) : '';
-    const country = (addressData.country || 'Singapore').trim() || 'Singapore';
-    const postalCode = (addressData.postalCode || '').trim();
-
-    // Build a consistent legacy address string for display/backward compatibility only
-    // Format: "Blk 1B Pine Grove #14-07 Singapore 591001"
-    const legacyAddress =
-      addressData.blockNo && addressData.streetName
-        ? `${addressNo !== 'No' ? `${addressNo} ` : ''}${(addressData.blockNo || '').trim()} ${(addressData.streetName || '').trim()}${unitNoNormalized ? ` ${unitNoNormalized}` : ''}${postalCode ? ` ${country} ${postalCode}` : ''}`.trim()
-        : (formData.applicantAddress || formData.contactAddress || '');
-
-    // Update formData with address fields - must pass plain object, not function
-    setFormData({
+    // Use the complete address data that includes both component and backend fields
+    const updatedFormData = {
       ...formData,
       // UI fields used by AddressInput
-      applicantBlock: isBlock ? 'Block' : '',
+      applicantBlock: addressData.block || '',
       applicantBlockNo: addressData.blockNo || '',
       applicantStreetName: addressData.streetName || '',
-      applicantUnitNo: unitNoRaw, // store raw; keep user input (may include '#')
-      applicantPostalCode: postalCode,
-      applicantCountry: country,
+      applicantUnitNo: addressData.unitNo || '', // store raw; keep user input (may include '#')
+      applicantPostalCode: addressData.postalCode || '',
+      applicantCountry: addressData.country || 'Singapore',
 
       // API-facing structured applicant fields (maps exactly to applicant.addressNo/Line1/Line2/City/State/Country)
-      applicantAddressNo: addressNo,
-      applicantAddressLine1: (addressData.blockNo || '').trim(),
-      applicantAddressLine2: (addressData.streetName || '').trim(),
-      applicantAddressCity: unitNoNormalized, // keep with '#', matching backend sample
-      applicantAddressState: postalCode,
-      applicantAddressCountry: country,
+      applicantAddressNo: addressData.addressNo || '',
+      applicantAddressLine1: addressData.addressLine1 || '',
+      applicantAddressLine2: addressData.addressLine2 || '',
+      applicantAddressCity: addressData.addressCity || '',
+      applicantAddressState: addressData.addressState || '',
+      applicantAddressCountry: addressData.addressCountry || 'Singapore',
 
       // Also maintain legacy address field for backward compatibility
-      applicantAddress: legacyAddress,
-      contactAddress: legacyAddress
+      applicantAddress: formData.applicantAddress || formData.contactAddress || ''
+    };
+    
+    console.log('ContactPersonDetails: Updating formData with:', updatedFormData);
+    setFormData(updatedFormData);
+    
+    // Add changes to batch instead of immediate update
+    addMultipleChanges({
+      applicantBlock: addressData.block || '',
+      applicantBlockNo: addressData.blockNo || '',
+      applicantStreetName: addressData.streetName || '',
+      applicantUnitNo: addressData.unitNo || '',
+      applicantPostalCode: addressData.postalCode || '',
+      applicantCountry: addressData.country || 'Singapore',
+      applicantAddressNo: addressData.addressNo || '',
+      applicantAddressLine1: addressData.addressLine1 || '',
+      applicantAddressLine2: addressData.addressLine2 || '',
+      applicantAddressCity: addressData.addressCity || '',
+      applicantAddressState: addressData.addressState || '',
+      applicantAddressCountry: addressData.addressCountry || 'Singapore',
+      applicantAddress: formData.applicantAddress || formData.contactAddress || ''
     });
-    console.log("formData", formData)
-  }, [formData, setFormData]);
+    
+    console.log("Address data updated in formData:", {
+      uiFields: {
+        applicantBlock: addressData.block,
+        applicantBlockNo: addressData.blockNo,
+        applicantStreetName: addressData.streetName,
+        applicantUnitNo: addressData.unitNo,
+        applicantPostalCode: addressData.postalCode,
+        applicantCountry: addressData.country,
+      },
+      backendFields: {
+        applicantAddressNo: addressData.addressNo,
+        applicantAddressLine1: addressData.addressLine1,
+        applicantAddressLine2: addressData.addressLine2,
+        applicantAddressCity: addressData.addressCity,
+        applicantAddressState: addressData.addressState,
+        applicantAddressCountry: addressData.addressCountry,
+      },
+      legacyAddressField: formData.applicantAddress || formData.contactAddress || ''
+    });
+  }, [formData, setFormData, addMultipleChanges]);
 
   useEffect(() => {
     if (!formData.contactStatus) {
       setFormData({
         ...formData,
         contactStatus: 'Active'
+      });
+    }
+  }, [formData, setFormData]);
+
+  // ✅ FIX: Default Contact Person religion to Catholic if not set
+  useEffect(() => {
+    if (!formData.applicantReligion && formData.applicantIsCatholic === undefined) {
+      setFormData({
+        ...formData,
+        applicantReligion: 'Catholic',
+        contactReligion: 'Catholic',
+        applicantIsCatholic: true
       });
     }
   }, [formData, setFormData]);
@@ -108,44 +157,122 @@ export function ContactPersonDetails({
     if (key === lastAddressSyncKeyRef.current) return;
     lastAddressSyncKeyRef.current = key;
 
-    const hasAnyUiAddress =
+    console.log('Address sync triggered with formData:', {
+      hasStructuredData: !!(formData.applicantAddressNo && formData.applicantAddressNo.trim()) ||
+                        !!(formData.applicantAddressLine1 && formData.applicantAddressLine1.trim()) ||
+                        !!(formData.applicantAddressLine2 && formData.applicantAddressLine2.trim()) ||
+                        !!(formData.applicantAddressCity && formData.applicantAddressCity.trim()) ||
+                        !!(formData.applicantAddressState && formData.applicantAddressState.trim()) ||
+                        !!(formData.applicantAddressCountry && formData.applicantAddressCountry.trim()),
+      hasUiAddress: !!(formData.applicantBlockNo || formData.applicantStreetName || formData.applicantUnitNo || formData.applicantPostalCode),
+      structuredFields: {
+        applicantAddressNo: formData.applicantAddressNo,
+        applicantAddressLine1: formData.applicantAddressLine1,
+        applicantAddressLine2: formData.applicantAddressLine2,
+        applicantAddressCity: formData.applicantAddressCity,
+        applicantAddressState: formData.applicantAddressState,
+        applicantAddressCountry: formData.applicantAddressCountry,
+      },
+      uiFields: {
+        applicantBlock: formData.applicantBlock,
+        applicantBlockNo: formData.applicantBlockNo,
+        applicantStreetName: formData.applicantStreetName,
+        applicantUnitNo: formData.applicantUnitNo,
+        applicantPostalCode: formData.applicantPostalCode,
+        applicantCountry: formData.applicantCountry,
+      }
+    });
+
+    // Check if we have structured data that should populate UI fields
+    const hasStructuredData =
+      !!(formData.applicantAddressNo && formData.applicantAddressNo.trim()) ||
+      !!(formData.applicantAddressLine1 && formData.applicantAddressLine1.trim()) ||
+      !!(formData.applicantAddressLine2 && formData.applicantAddressLine2.trim()) ||
+      !!(formData.applicantAddressCity && formData.applicantAddressCity.trim()) ||
+      !!(formData.applicantAddressState && formData.applicantAddressState.trim()) ||
+      !!(formData.applicantAddressCountry && formData.applicantAddressCountry.trim());
+
+    // Check if we have UI data that should populate structured fields
+    const hasUiAddress =
       !!(formData.applicantBlockNo || formData.applicantStreetName || formData.applicantUnitNo || formData.applicantPostalCode);
 
-    if (!hasAnyUiAddress) return;
+    // If we have structured data but no UI data, populate UI fields
+    if (hasStructuredData && !hasUiAddress) {
+      // Convert structured fields to UI fields
+      const isBlock = formData.applicantAddressNo === 'Blk';
+      const unitNoRaw = formData.applicantAddressCity?.replace('#', '') || '';
+      const country = formData.applicantAddressCountry || 'Singapore';
+      const postalCode = formData.applicantAddressState || '';
 
-    const alreadyHasStructured =
-      !!(formData.applicantAddressNo ||
-        formData.applicantAddressLine1 ||
-        formData.applicantAddressLine2 ||
-        formData.applicantAddressCity ||
-        formData.applicantAddressState ||
-        formData.applicantAddressCountry);
+      setFormData({
+        ...formData,
+        // Populate UI fields from structured data
+        applicantBlock: isBlock ? 'Block' : '',
+        applicantBlockNo: formData.applicantAddressLine1 || '',
+        applicantStreetName: formData.applicantAddressLine2 || '',
+        applicantUnitNo: unitNoRaw,
+        applicantPostalCode: postalCode,
+        applicantCountry: country,
+      });
+      return;
+    }
 
-    // If structured fields already exist, don't overwrite (user may be editing in other steps).
-    if (alreadyHasStructured) return;
+    // If we have UI data but no meaningful structured data, populate structured fields
+    if (hasUiAddress) {
+      // Check if structured fields have meaningful values (not just empty strings)
+      const hasMeaningfulStructuredData =
+        !!(formData.applicantAddressNo && formData.applicantAddressNo.trim()) ||
+        !!(formData.applicantAddressLine1 && formData.applicantAddressLine1.trim()) ||
+        !!(formData.applicantAddressLine2 && formData.applicantAddressLine2.trim()) ||
+        !!(formData.applicantAddressCity && formData.applicantAddressCity.trim()) ||
+        !!(formData.applicantAddressState && formData.applicantAddressState.trim()) ||
+        !!(formData.applicantAddressCountry && formData.applicantAddressCountry.trim());
 
-    const rawBlock = String(formData.applicantBlock || '').trim();
-    const isBlock = rawBlock.toLowerCase() === 'block' || rawBlock.toLowerCase() === 'blk';
-    const applicantAddressNo = isBlock ? 'Blk' : 'No';
+      // Only skip if we have meaningful structured data
+      // Empty strings should be overwritten with proper values
+      if (hasMeaningfulStructuredData) return;
 
-    const unitNoRaw = String(formData.applicantUnitNo || '').trim();
-    const unitNoNormalized = unitNoRaw ? (unitNoRaw.startsWith('#') ? unitNoRaw : `#${unitNoRaw}`) : '';
-    const country = String(formData.applicantCountry || 'Singapore').trim() || 'Singapore';
-    const postalCode = String(formData.applicantPostalCode || '').trim();
+      const rawBlock = String(formData.applicantBlock || '').trim();
+      const isBlock = rawBlock.toLowerCase() === 'block' || rawBlock.toLowerCase() === 'blk';
+      const applicantAddressNo = isBlock ? 'Blk' : 'No';
 
-    setFormData({
-      ...formData,
-      // Normalize UI dropdown value if older mapper stored "Blk"
-      applicantBlock: isBlock ? 'Block' : '',
+      const unitNoRaw = String(formData.applicantUnitNo || '').trim();
+      const unitNoNormalized = unitNoRaw ? (unitNoRaw.startsWith('#') ? unitNoRaw : `#${unitNoRaw}`) : '';
+      const country = String(formData.applicantCountry || 'Singapore').trim() || 'Singapore';
+      const postalCode = String(formData.applicantPostalCode || '').trim();
 
-      // API-facing structured fields
-      applicantAddressNo,
-      applicantAddressLine1: String(formData.applicantBlockNo || '').trim(),
-      applicantAddressLine2: String(formData.applicantStreetName || '').trim(),
-      applicantAddressCity: unitNoNormalized,
-      applicantAddressState: postalCode,
-      applicantAddressCountry: country,
-    });
+      // Create properly formatted address string for legacy purposes
+      const addressParts = [];
+      if (isBlock) addressParts.push('Blk');
+      if (formData.applicantBlockNo) addressParts.push(String(formData.applicantBlockNo));
+      if (formData.applicantStreetName) addressParts.push(String(formData.applicantStreetName));
+      if (unitNoNormalized) addressParts.push(unitNoNormalized);
+      if (country && postalCode) {
+        addressParts.push(`${country} ${postalCode}`);
+      } else {
+        if (country) addressParts.push(country);
+        if (postalCode) addressParts.push(postalCode);
+      }
+      
+      const formattedAddress = addressParts.filter(Boolean).join(' ');
+
+      setFormData({
+        ...formData,
+        // Normalize UI dropdown value if older mapper stored "Blk"
+        applicantBlock: isBlock ? 'Block' : '',
+
+        // API-facing structured fields
+        applicantAddressNo,
+        applicantAddressLine1: String(formData.applicantBlockNo || '').trim(),
+        applicantAddressLine2: String(formData.applicantStreetName || '').trim(),
+        applicantAddressCity: unitNoNormalized,
+        applicantAddressState: postalCode,
+        applicantAddressCountry: country,
+        
+        // Update the legacy address field with properly formatted string
+        applicantAddress: formattedAddress,
+      });
+    }
   }, [formData, setFormData]);
 
   // Ensure Religion dropdown reflects applicantIsCatholic when loading existing data
@@ -180,11 +307,21 @@ export function ContactPersonDetails({
             <FormInput 
               label="Name" 
               value={formData.applicantName || formData.contactName || ''} 
-              onChange={value => setFormData({
-                ...formData,
-                applicantName: value,
-                contactName: value
-              })} 
+              onChange={async (value) => {
+                const updatedFormData = {
+                  ...formData,
+                  applicantName: value,
+                  contactName: value
+                };
+                
+                setFormData(updatedFormData);
+                
+                // Add change to batch
+                addMultipleChanges({
+                  applicantName: value,
+                  contactName: value
+                });
+              }} 
               placeholder="Enter full name" 
               icon={<UserIcon className="w-4 h-4" />}
               error={validationErrors.applicantName || validationErrors.contactName}
@@ -193,11 +330,21 @@ export function ContactPersonDetails({
             <FormInput 
               label="NRIC/Passport No." 
               value={formData.applicantIDNo || formData.contactNric || ''} 
-              onChange={value => setFormData({
-                ...formData,
-                applicantIDNo: value,
-                contactNric: value
-              })} 
+              onChange={async (value) => {
+                const updatedFormData = {
+                  ...formData,
+                  applicantIDNo: value,
+                  contactNric: value
+                };
+                
+                setFormData(updatedFormData);
+                
+                // Add change to batch
+                addMultipleChanges({
+                  applicantIDNo: value,
+                  contactNric: value
+                });
+              }} 
               placeholder="Enter NRIC/Passport" 
               error={validationErrors.applicantIDNo || validationErrors.contactNric}
               disabled={isReadOnly}
@@ -210,18 +357,15 @@ export function ContactPersonDetails({
           <AddressInput
             fieldPrefix="applicant"
             onAddressChange={handleAddressChange}
+            autoSync={false}
             initialValues={{
-              // Prefer structured applicant fields if present; otherwise fallback to UI fields
-              block:
-                (formData.applicantAddressNo || formData.applicantBlock) &&
-                String(formData.applicantAddressNo || formData.applicantBlock).toLowerCase() !== 'no'
-                  ? 'Block'
-                  : '',
-              blockNo: formData.applicantAddressLine1 ?? formData.applicantBlockNo,
-              streetName: formData.applicantAddressLine2 ?? formData.applicantStreetName,
-              unitNo: formData.applicantAddressCity ?? formData.applicantUnitNo,
-              postalCode: formData.applicantAddressState ?? formData.applicantPostalCode,
-              country: formData.applicantAddressCountry ?? formData.applicantCountry
+              // Provide backend-style fields for proper conversion
+              addressNo: formData.applicantAddressNo || '',
+              addressLine1: formData.applicantAddressLine1 || '',
+              addressLine2: formData.applicantAddressLine2 || '',
+              addressCity: formData.applicantAddressCity || '',
+              addressState: formData.applicantAddressState || '',
+              addressCountry: formData.applicantAddressCountry || 'Singapore'
             }}
             initialAddressString={formData.applicantAddress || formData.contactAddress || ''}
             isReadOnly={isReadOnly}
@@ -231,11 +375,21 @@ export function ContactPersonDetails({
             <FormInput 
               label="Email Address" 
               value={formData.applicantEmail || formData.contactEmail || ''} 
-              onChange={value => setFormData({
-                ...formData,
-                applicantEmail: value,
-                contactEmail: value
-              })} 
+              onChange={async (value) => {
+                const updatedFormData = {
+                  ...formData,
+                  applicantEmail: value,
+                  contactEmail: value
+                };
+                
+                setFormData(updatedFormData);
+                
+                // Add change to batch
+                addMultipleChanges({
+                  applicantEmail: value,
+                  contactEmail: value
+                });
+              }} 
               placeholder="email@example.com" 
               type="email" 
               required 
@@ -246,11 +400,21 @@ export function ContactPersonDetails({
             <FormInput 
               label="Mobile No." 
               value={formData.applicantPhone || formData.contactPhone || ''} 
-              onChange={value => setFormData({
-                ...formData,
-                applicantPhone: value,
-                contactPhone: value
-              })} 
+              onChange={async (value) => {
+                const updatedFormData = {
+                  ...formData,
+                  applicantPhone: value,
+                  contactPhone: value
+                };
+                
+                setFormData(updatedFormData);
+                
+                // Add change to batch
+                addMultipleChanges({
+                  applicantPhone: value,
+                  contactPhone: value
+                });
+              }} 
               placeholder="+65 1234 5678" 
               type="tel" 
               icon={<PhoneIcon className="w-4 h-4" />}
@@ -262,11 +426,21 @@ export function ContactPersonDetails({
             <FormInput 
               label="Home Telephone" 
               value={formData.applicantHomeTel || formData.contactHomeTel || ''} 
-              onChange={value => setFormData({
-                ...formData,
-                applicantHomeTel: value,
-                contactHomeTel: value
-              })} 
+              onChange={async (value) => {
+                const updatedFormData = {
+                  ...formData,
+                  applicantHomeTel: value,
+                  contactHomeTel: value
+                };
+                
+                setFormData(updatedFormData);
+                
+                // Add change to batch
+                addMultipleChanges({
+                  applicantHomeTel: value,
+                  contactHomeTel: value
+                });
+              }} 
               placeholder="Enter home telephone" 
               type="tel"
               error={validationErrors.applicantHomeTel || validationErrors.contactHomeTel}
@@ -275,11 +449,21 @@ export function ContactPersonDetails({
             <FormInput 
               label="Office Telephone" 
               value={formData.applicantOfficeTel || formData.contactOfficeTel || ''} 
-              onChange={value => setFormData({
-                ...formData,
-                applicantOfficeTel: value,
-                contactOfficeTel: value
-              })} 
+              onChange={async (value) => {
+                const updatedFormData = {
+                  ...formData,
+                  applicantOfficeTel: value,
+                  contactOfficeTel: value
+                };
+                
+                setFormData(updatedFormData);
+                
+                // Add change to batch
+                addMultipleChanges({
+                  applicantOfficeTel: value,
+                  contactOfficeTel: value
+                });
+              }} 
               placeholder="Enter office telephone" 
               type="tel"
               error={validationErrors.applicantOfficeTel || validationErrors.contactOfficeTel}
@@ -295,12 +479,21 @@ export function ContactPersonDetails({
                   ? 'Catholic'
                   : formData.applicantIsCatholic === false
                     ? 'Non Catholic'
-                    : '')
+                    : 'Catholic') // ✅ FIX: Default to Catholic
               }
-              onChange={value => {
+              onChange={async (value) => {
                 const isCatholic = value === 'Catholic';
-                setFormData({
+                const updatedFormData = {
                   ...formData,
+                  applicantReligion: value,
+                  contactReligion: value,
+                  applicantIsCatholic: value ? isCatholic : undefined
+                };
+                
+                setFormData(updatedFormData);
+                
+                // Add change to batch
+                addMultipleChanges({
                   applicantReligion: value,
                   contactReligion: value,
                   applicantIsCatholic: value ? isCatholic : undefined
@@ -317,10 +510,19 @@ export function ContactPersonDetails({
             <FormSelect
               label="Status"
               value={formData.contactStatus || 'Active'}
-              onChange={value => setFormData({
-                ...formData,
-                contactStatus: value || 'Active'
-              })}
+              onChange={async (value) => {
+                const updatedFormData = {
+                  ...formData,
+                  contactStatus: value || 'Active'
+                };
+                
+                setFormData(updatedFormData);
+                
+                // Add change to batch
+                addMultipleChanges({
+                  contactStatus: value || 'Active'
+                });
+              }}
               options={[
                 { value: 'Active', label: 'Active' },
                 { value: 'Non-Active', label: 'Non-Active' }

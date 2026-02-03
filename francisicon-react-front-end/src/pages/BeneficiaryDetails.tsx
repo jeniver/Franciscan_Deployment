@@ -3,6 +3,7 @@ import { UsersIcon, PlusIcon, InfoIcon } from 'lucide-react';
 import { AddBeneficiaryModal } from '../components/AddBeneficiaryModal';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import { useBatchedUpdates } from '../hooks/useBatchedUpdates';
 interface BeneficiaryDetailsProps {
   formData: any;
   setFormData: (data: any) => void;
@@ -35,25 +36,33 @@ export function BeneficiaryDetails({
   // Get validation errors from Redux store
   const validationErrors = useSelector((state: RootState) => state.application.validationErrors);
   
-  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>(formData.beneficiaries || []);
+  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>(formData.beneficiaries && Array.isArray(formData.beneficiaries) ? [...formData.beneficiaries] : []);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBeneficiary, setEditingBeneficiary] = useState<Beneficiary | null>(null);
+  
+  const { addMultipleChanges } = useBatchedUpdates({
+    applicationCode: formData.applicationNumber || formData.applicationCode || formData.code || formData.refDocNumber,
+    isEnabled: true
+  });
 
-  // Sync local state with Redux form data only on mount or when formData changes externally
+  // Sync local state with Redux form data only when formData changes externally
   useEffect(() => {
     if (formData.beneficiaries && Array.isArray(formData.beneficiaries)) {
-      // Only update if the beneficiaries are different (avoid infinite loop)
-      const currentIds = beneficiaries.map(b => b.id).sort().join(',');
-      const newIds = formData.beneficiaries.map((b: any) => b.id).sort().join(',');
+      // Update local state when external changes occur
+      // Only update if the data is actually different to prevent unnecessary re-renders
+      const currentBeneficiariesJson = JSON.stringify(beneficiaries);
+      const newBeneficiariesJson = JSON.stringify(formData.beneficiaries);
       
-      if (currentIds !== newIds) {
-        setBeneficiaries(formData.beneficiaries);
+      if (currentBeneficiariesJson !== newBeneficiariesJson) {
+        setBeneficiaries([...formData.beneficiaries]);
+      }
+    } else {
+      // If there are no beneficiaries in formData, ensure local state is also empty
+      if (beneficiaries.length > 0) {
+        setBeneficiaries([]);
       }
     }
   }, [formData.beneficiaries]);
-  
-  // NOTE: Removed the automatic sync useEffect that was causing duplicates.
-  // Now beneficiaries are only updated via explicit setFormData calls in handlers.
   const handleAddBeneficiary = () => {
     setEditingBeneficiary(null);
     setIsModalOpen(true);
@@ -64,7 +73,7 @@ export function BeneficiaryDetails({
     setIsModalOpen(true);
   };
 
-  const handleSaveBeneficiary = (beneficiaryData: any) => {
+  const handleSaveBeneficiary = async (beneficiaryData: any) => {
     // Normalize beneficiary data to ensure consistent field names
     const normalizedBeneficiary: Beneficiary = {
       id: editingBeneficiary?.id || Date.now(),
@@ -86,31 +95,33 @@ export function BeneficiaryDetails({
       isCatholic: beneficiaryData.isCatholic !== undefined ? beneficiaryData.isCatholic : (beneficiaryData.religion === 'Catholic' || beneficiaryData.religiousAffiliation === 'Catholic')
     };
 
+    let updatedBeneficiaries;
     if (editingBeneficiary) {
       // Update existing beneficiary
-      const updated = beneficiaries.map(b => 
+      updatedBeneficiaries = beneficiaries.map(b => 
         b.id === editingBeneficiary.id ? normalizedBeneficiary : b
       );
-      setBeneficiaries(updated);
-      
-      // Update formData with the beneficiaries array only
-      // No need to send beneficiary1/2/3 - backend now uses the beneficiaries array
-      setFormData({
-        ...formData,
-        beneficiaries: updated
-      });
     } else {
       // Add new beneficiary
-      const updated = [...beneficiaries, normalizedBeneficiary];
-      setBeneficiaries(updated);
-      
-      // Update formData with the beneficiaries array only
-      // No need to send beneficiary1/2/3 - backend now uses the beneficiaries array
-      setFormData({
-        ...formData,
-        beneficiaries: updated
-      });
+      updatedBeneficiaries = [...beneficiaries, normalizedBeneficiary];
     }
+    
+    // Update local state
+    setBeneficiaries(updatedBeneficiaries);
+    
+    // Update formData with the beneficiaries array
+    const updatedFormData = {
+      ...formData,
+      beneficiaries: updatedBeneficiaries
+    };
+    
+    setFormData(updatedFormData);
+    
+    // Add changes to batch instead of immediate update
+    addMultipleChanges({
+      beneficiaries: updatedBeneficiaries
+    });
+    
     setIsModalOpen(false);
     setEditingBeneficiary(null);
   };
@@ -184,8 +195,6 @@ export function BeneficiaryDetails({
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sex</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catholic</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Relationship to Applicant</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Relationship to Nominee 1</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Relationship to Nominee 2</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Edit</th>
                   </tr>
@@ -207,13 +216,7 @@ export function BeneficiaryDetails({
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {(beneficiary as any).relationship || (beneficiary as any).relationshipToApp || 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {(beneficiary as any).relationshipToNominee1 || ' '}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {(beneficiary as any).relationshipToNominee2 || ' '}
-                      </td>
+                      </td> 
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(beneficiary.status)}`}>
                           {beneficiary.status}

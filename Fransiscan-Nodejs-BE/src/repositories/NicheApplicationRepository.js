@@ -651,33 +651,102 @@ class NicheApplicationRepository {
    */
   async _createWithDirectInsert(application, beneficiaries) {
     try {
-      // Generate code: XXXX-0 format (numeric prefix + "-0")
-      // Only accept codes that start with digits and end with "-0"
-      const lastCodeQuery = `
-        SELECT TOP 1 Code
-        FROM NicheApplication WITH (NOLOCK)
-        WHERE ChurchId = @churchId
-          AND Code LIKE '[0-9]%-0'
-        ORDER BY
-          TRY_CAST(LEFT(Code, NULLIF(CHARINDEX('-', Code), 0) - 1) AS INT) DESC,
-          NicheApplicationId DESC
-      `;
-
-      const lastCodeResult = await executeQuery(lastCodeQuery, { churchId: application.churchId });
-      let nextNumber = 1;
-
-      if (lastCodeResult.recordset && lastCodeResult.recordset.length > 0) {
-        const lastCode = lastCodeResult.recordset[0].Code;
-        const numericPart = lastCode && lastCode.includes('-')
-          ? lastCode.split('-')[0]
-          : lastCode;
-        const parsedNumber = parseInt(numericPart, 10);
-        if (!Number.isNaN(parsedNumber)) {
-          nextNumber = parsedNumber + 1;
+      // Get the actual niche identifier from the niche data
+      const nicheId = application.nicheId;
+      let nicheIdentifier = null;
+      
+      if (nicheId) {
+        // Query to get the actual niche code/identifier
+        const nicheQuery = `
+          SELECT Code
+          FROM Niche WITH (NOLOCK)
+          WHERE NicheId = @nicheId
+        `;
+        
+        const nicheResult = await executeQuery(nicheQuery, { nicheId });
+        if (nicheResult.recordset && nicheResult.recordset.length > 0) {
+          // Extract the numeric part from the niche code (e.g., from "1409-0" extract "1409")
+          const nicheCode = nicheResult.recordset[0].Code;
+          if (nicheCode) {
+            // Extract numeric part before any non-numeric characters
+            const match = nicheCode.match(/^\d+/);
+            if (match) {
+              nicheIdentifier = match[0];
+              logger.info(`[createWithDirectInsert] Extracted niche identifier ${nicheIdentifier} from niche code: ${nicheCode}`);
+            }
+          }
         }
       }
+      
+      if (!nicheIdentifier) {
+        // Fallback to incremental numbering if we can't get the niche identifier
+        logger.warn('[createWithDirectInsert] Could not get niche identifier, using fallback sequential numbering');
+        
+        const lastCodeQuery = `
+          SELECT TOP 1 Code
+          FROM NicheApplication WITH (NOLOCK)
+          WHERE ChurchId = @churchId
+            AND Code LIKE '[0-9]%-0'
+          ORDER BY
+            TRY_CAST(LEFT(Code, NULLIF(CHARINDEX('-', Code), 0) - 1) AS INT) DESC,
+            NicheApplicationId DESC
+        `;
 
-      const code = `${nextNumber}-0`;
+        const lastCodeResult = await executeQuery(lastCodeQuery, { churchId: application.churchId });
+        let nextNumber = 1;
+
+        if (lastCodeResult.recordset && lastCodeResult.recordset.length > 0) {
+          const lastCode = lastCodeResult.recordset[0].Code;
+          const numericPart = lastCode && lastCode.includes('-')
+            ? lastCode.split('-')[0]
+            : lastCode;
+          const parsedNumber = parseInt(numericPart, 10);
+          if (!Number.isNaN(parsedNumber)) {
+            nextNumber = parsedNumber + 1;
+          }
+        }
+        
+        nicheIdentifier = nextNumber.toString();
+      }
+
+      // Generate code using the actual niche identifier
+      // Check if there are existing applications with the same niche identifier
+      const existingQuery = `
+        SELECT Code
+        FROM NicheApplication WITH (NOLOCK)
+        WHERE ChurchId = @churchId
+          AND Code LIKE @nichePattern
+        ORDER BY Code DESC
+      `;
+      
+      const existingResult = await executeQuery(existingQuery, { 
+        churchId: application.churchId, 
+        nichePattern: `${nicheIdentifier}-%` 
+      });
+      
+      let suffix = 0;
+      if (existingResult.recordset && existingResult.recordset.length > 0) {
+        // Find the highest suffix number and increment it
+        const existingCodes = existingResult.recordset
+          .map(row => row.Code)
+          .filter(code => code != null);
+        
+        const suffixNumbers = existingCodes
+          .map(code => {
+            const parts = code.split('-');
+            return parts.length > 1 ? parseInt(parts[1], 10) : 0;
+          })
+          .filter(num => !Number.isNaN(num));
+        
+        if (suffixNumbers.length > 0) {
+          suffix = Math.max(...suffixNumbers) + 1;
+        } else {
+          suffix = 0;
+        }
+      }
+      
+      const code = `${nicheIdentifier}-${suffix}`;
+      logger.info(`[createWithDirectInsert] Generated application code: ${code} using niche identifier: ${nicheIdentifier}`);
 
       // Insert main application
       const insertQuery = `
@@ -1206,6 +1275,97 @@ class NicheApplicationRepository {
       return true;
     } catch (error) {
       logger.error('Failed to delete niche application:', error);
+      throw error;
+    }
+  }
+  /**
+   * Get application by Niche Code
+   * @param {string} nicheCode - Niche Code (e.g., "7980-0")
+   * @param {number} churchId - Church ID (optional)
+   * @returns {Promise<NicheApplication|null>} Application or null
+   */
+  async getByNicheCode(nicheCode, churchId = null) {
+    try {
+      if (!nicheCode || nicheCode.trim().length === 0) {
+        logger.warn('getByNicheCode called with empty niche code');
+        return null;
+      }
+
+      const searchCode = nicheCode.trim();
+      logger.info(`Fetching application for niche code: ${searchCode}, churchId: ${churchId}`);
+
+      // Query to get application by joining with Niche table
+      let query = `
+        SELECT 
+          na.*,
+          n.Code AS NicheCode
+        FROM NicheApplication na WITH (NOLOCK)
+        INNER JOIN Niche n WITH (NOLOCK) ON na.NicheId = n.NicheId
+        WHERE n.Code = @nicheCode AND na.Status > 0
+      `;
+
+      const params = { nicheCode: searchCode };
+
+      if (churchId) {
+        query += ' AND na.ChurchId = @churchId';
+        params.churchId = churchId;
+      }
+
+      const result = await executeQuery(query, params, { timeout: 10000 });
+
+      if (!result.recordset || result.recordset.length === 0) {
+        logger.info(`No application found for niche code: ${searchCode}`);
+        return null;
+      }
+
+      return new NicheApplication(result.recordset[0]);
+    } catch (error) {
+      logger.error('Failed to get application by niche code:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get Niche Code for given Application Code
+   * @param {string} applicationCode - Application Code
+   * @param {number} churchId - Church ID (optional)
+   * @returns {Promise<string|null>} Niche Code or null
+   */
+  async getNicheCodeByApplicationCode(applicationCode, churchId = null) {
+    try {
+      if (!applicationCode || applicationCode.trim().length === 0) {
+        logger.warn('getNicheCodeByApplicationCode called with empty application code');
+        return null;
+      }
+
+      const searchCode = applicationCode.trim();
+      logger.info(`Fetching niche code for application: ${searchCode}, churchId: ${churchId}`);
+
+      let query = `
+        SELECT 
+          n.Code AS NicheCode
+        FROM NicheApplication na WITH (NOLOCK)
+        INNER JOIN Niche n WITH (NOLOCK) ON na.NicheId = n.NicheId
+        WHERE na.Code = @applicationCode AND na.Status > 0
+      `;
+
+      const params = { applicationCode: searchCode };
+
+      if (churchId) {
+        query += ' AND na.ChurchId = @churchId';
+        params.churchId = churchId;
+      }
+
+      const result = await executeQuery(query, params, { timeout: 5000 });
+
+      if (!result.recordset || result.recordset.length === 0) {
+        logger.info(`No niche found for application code: ${searchCode}`);
+        return null;
+      }
+
+      return result.recordset[0].NicheCode;
+    } catch (error) {
+      logger.error('Failed to get niche code by application code:', error);
       throw error;
     }
   }
