@@ -35,6 +35,14 @@ export function mapNichiBookingToApplicationRequest(formData: {
   applicantHomeTel?: string;
   applicantOfficeTel?: string;
   applicantIsCatholic?: boolean;
+  // Inscription address fields
+  inscriptionAddress?: string;
+  inscriptionAddressNo?: string;
+  inscriptionAddressLine1?: string;
+  inscriptionAddressLine2?: string;
+  inscriptionAddressCity?: string;
+  inscriptionAddressState?: string;
+  inscriptionAddressCountry?: string;
   
   // Optional: Nominee details (if provided)
   nomineeName?: string;
@@ -130,6 +138,14 @@ export function mapNichiBookingToApplicationRequest(formData: {
     homeTelNo: formData.applicantHomeTel || '',
     officeTelNo: formData.applicantOfficeTel || '',
     isCatholic: formData.applicantIsCatholic ?? false,
+    // Add inscription address
+    inscriptionAddress: formData.inscriptionAddress || '',
+    inscriptionAddressNo: formData.inscriptionAddressNo || '',
+    inscriptionAddressLine1: formData.inscriptionAddressLine1 || '',
+    inscriptionAddressLine2: formData.inscriptionAddressLine2 || '',
+    inscriptionAddressCity: formData.inscriptionAddressCity || '',
+    inscriptionAddressState: formData.inscriptionAddressState || '',
+    inscriptionAddressCountry: formData.inscriptionAddressCountry || 'Singapore',
   };
 
   // Map nominee (optional)
@@ -628,135 +644,327 @@ function mapPaymentModeToString(paymentMode: number | string): string {
 }
 
 /**
- * Maps form data to niche application request structure
+ * Maps form data to niche application request structure (OPTIMIZED)
  * @param formData - The form data to map
- * @returns Mapped request data
+ * @returns Mapped request data in optimized structure
  */
 export function mapFormDataToNicheApplicationRequest(formData: Record<string, any>): any {
-  // Map applicant address fields using utility function
-  const applicantComponentFields = {
-    block: formData.applicantBlock || '',
-    blockNo: formData.applicantBlockNo || '',
-    streetName: formData.applicantStreetName || '',
-    unitNo: formData.applicantUnitNo || '',
-    postalCode: formData.applicantPostalCode || '',
-    country: formData.applicantCountry || 'Singapore'
+  // Generate clean optimized payload that removes duplicate fields
+  return generateOptimizedPayload(formData);
+}
+
+/**
+ * Generates clean optimized payload for niche application API
+ * Removes duplicate fields and organizes data into proper structure
+ * @param formData - The raw form data
+ * @returns Clean optimized payload
+ */
+export function generateOptimizedPayload(formData: Record<string, any>): any {
+  // Generate clean optimized payload that removes all duplicate fields
+  
+  // Build chapel information
+  const chapel = {
+    id: formData.chapelId,
+    name: formData.chapelName || formData.chapel,
+    code: formData.chapelCode || formData.chapel
   };
   
-  const applicantBackendFields = mapComponentToBackendFields(applicantComponentFields);
-  
-  // Map nominee address fields using utility function
-  const nomineeComponentFields = {
-    block: formData.nomineeBlock || '',
-    blockNo: formData.nomineeBlockNo || '',
-    streetName: formData.nomineeStreetName || '',
-    unitNo: formData.nomineeUnitNo || '',
-    postalCode: formData.nomineePostalCode || '',
-    country: formData.nomineeCountry || formData.applicantCountry || 'Singapore'
+  // Build niche information
+  const nicheId = formData.nicheId || (formData.nicheCode ? parseInt(formData.nicheCode, 10) : undefined);
+  const niche = {
+    id: nicheId,
+    code: formData.nicheCode || formData.nicheNumber,
+    number: formData.nicheNumber || formData.nicheCode
   };
   
-  const nomineeBackendFields = mapComponentToBackendFields(nomineeComponentFields);
-  
-  // Map second nominee address fields using utility function
-  const nominee2ComponentFields = {
-    block: formData.nomineeBlock2 || '',
-    blockNo: formData.nomineeBlockNo2 || '',
-    streetName: formData.nomineeStreetName2 || '',
-    unitNo: formData.nomineeUnitNo2 || '',
-    postalCode: formData.nomineePostalCode2 || '',
-    country: formData.nomineeCountry2 || formData.applicantCountry || 'Singapore'
+  // Build applicant information (clean structure)
+  const applicant = {
+    name: formData.applicantName || '',
+    email: formData.applicantEmail || '',
+    phone: formData.applicantPhone || '',
+    homeTel: formData.applicantHomeTel || '',
+    officeTel: formData.applicantOfficeTel || '',
+    idNo: formData.applicantIDNo || '',
+    isCatholic: formData.applicantIsCatholic ?? (formData.applicantReligion === 'Catholic'),
+    religion: formData.applicantReligion || (formData.applicantIsCatholic ? 'Catholic' : 'Non Catholic'),
+    address: {
+      no: formData.applicantAddressNo || '',
+      line1: formData.applicantAddressLine1 || '',
+      line2: formData.applicantAddressLine2 || '',
+      city: formData.applicantAddressCity || '',
+      state: formData.applicantAddressState || '',
+      country: formData.applicantAddressCountry || formData.applicantCountry || 'Singapore'
+    }
   };
   
-  const nominee2BackendFields = mapComponentToBackendFields(nominee2ComponentFields);
+  // Build nominees array (organized)
+  const nominees = buildCleanNominees(formData);
   
-  // Map structured nominee objects if they exist
-  const structuredNominee = formData.nominee;
-  const structuredNominee2 = formData.nominee2;
+  // Build beneficiaries array (organized)
+  const beneficiaries = buildCleanBeneficiaries(formData);
   
-  // Create mapped request with proper field structure
-  const mappedRequest = {
-    ...formData,
-    // Applicant address fields (backend format)
-    applicantAddressNo: applicantBackendFields.addressNo,
-    applicantAddressLine1: applicantBackendFields.addressLine1,
-    applicantAddressLine2: applicantBackendFields.addressLine2,
-    applicantAddressCity: applicantBackendFields.addressCity,
-    applicantAddressState: applicantBackendFields.addressState,
-    applicantAddressCountry: applicantBackendFields.addressCountry,
+  // Create the clean optimized payload
+  const optimizedPayload = {
+    // Core information
+    chapel,
+    niche,
+    selectedNiches: formData.selectedNiches || (nicheId ? [nicheId] : []),
+    code: formData.applicationCode || formData.code || '',
     
-    // Nominee address fields (backend format)
-    nomineeAddressNo: nomineeBackendFields.addressNo,
-    nomineeAddressLine1: nomineeBackendFields.addressLine1,
-    nomineeAddressLine2: nomineeBackendFields.addressLine2,
-    nomineeAddressCity: nomineeBackendFields.addressCity,
-    nomineeAddressState: nomineeBackendFields.addressState,
-    nomineeAddressCountry: nomineeBackendFields.addressCountry,
+    // Main entities
+    applicant,
+    nominees,
+    beneficiaries,
     
-    // Second nominee address fields (backend format)
-    nomineeAddressNo2: nominee2BackendFields.addressNo,
-    nomineeAddressLine12: nominee2BackendFields.addressLine1,
-    nomineeAddressLine22: nominee2BackendFields.addressLine2,
-    nomineeAddressCity2: nominee2BackendFields.addressCity,
-    nomineeAddressState2: nominee2BackendFields.addressState,
-    nomineeAddressCountry2: nominee2BackendFields.addressCountry,
-    
-    // Structured nominee objects (new format) - prioritize these over individual fields
-    ...(structuredNominee && {
-      nominee: {
-        name: formData.nomineeName || structuredNominee.name || '',
-        address: formData.nomineeAddress || structuredNominee.address || '',
-        addressNo: formData.nomineeAddressNo || structuredNominee.addressNo || '',
-        addressLine1: formData.nomineeBlockNo || structuredNominee.addressLine1 || '',
-        addressLine2: formData.nomineeStreetName || structuredNominee.addressLine2 || null,
-        addressCity: formData.nomineeUnitNo || structuredNominee.addressCity || null,
-        addressState: formData.nomineePostalCode || structuredNominee.addressState || null,
-        addressCountry: formData.nomineeCountry || structuredNominee.addressCountry || 'Singapore',
-        email: formData.nomineeEmail || structuredNominee.email || '',
-        idNo: formData.nomineeIDNo || structuredNominee.idNo || '',
-        mobileNo: formData.nomineePhone || structuredNominee.mobileNo || '',
-        homeTelNo: formData.nomineeHomeTel || structuredNominee.homeTelNo || '',
-        officeTelNo: formData.nomineeOfficeTel || structuredNominee.officeTelNo || '',
-        relationship: formData.nomineeRelationship || structuredNominee.relationship || ''
+    // Contact info (minimal duplicate for compatibility)
+    contact: {
+      name: formData.contactName || applicant.name,
+      email: formData.contactEmail || applicant.email,
+      phone: formData.contactPhone || applicant.phone,
+      nric: formData.contactNric || applicant.idNo,
+      religion: formData.contactReligion || applicant.religion,
+      status: formData.contactStatus || 'Active'
+    }
+  };
+  
+  return optimizedPayload;
+}
+
+/**
+ * Build clean nominees array from form data (removes duplicate fields)
+ */
+function buildCleanNominees(formData: Record<string, any>): Array<Record<string, any>> {
+  const nominees: Array<Record<string, any>> = [];
+  
+  // Add first nominee if present
+  if (formData.nomineeName || formData.nominee?.name) {
+    nominees.push({
+      id: Date.now(), // Generate unique ID
+      name: formData.nomineeName || formData.nominee?.name || '',
+      email: formData.nomineeEmail || formData.nominee?.email || '',
+      phone: formData.nomineePhone || formData.nominee?.mobileNo || '',
+      homeTel: formData.nomineeHomeTel || formData.nominee?.homeTelNo || '',
+      officeTel: formData.nomineeOfficeTel || formData.nominee?.officeTelNo || '',
+      idNo: formData.nomineeIDNo || formData.nominee?.idNo || '',
+      relationship: formData.nomineeRelationship || formData.nominee?.relationship || '',
+      status: formData.nomineeStatus || 'Active',
+      address: {
+        no: formData.nomineeAddressNo || '',
+        line1: formData.nomineeAddressLine1 || '',
+        line2: formData.nomineeAddressLine2 || '',
+        city: formData.nomineeAddressCity || '',
+        state: formData.nomineeAddressState || '',
+        country: formData.nomineeAddressCountry || formData.nomineeCountry || 'Singapore'
       }
-    }),
-    ...(structuredNominee2 && {
-      nominee2: {
-        name: formData.nomineeName2 || structuredNominee2.name || '',
-        address: formData.nomineeAddress2 || structuredNominee2.address || '',
-        addressNo: formData.nomineeAddressNo2 || structuredNominee2.addressNo || '',
-        addressLine1: formData.nomineeBlockNo2 || structuredNominee2.addressLine1 || '',
-        addressLine2: formData.nomineeStreetName2 || structuredNominee2.addressLine2 || null,
-        addressCity: formData.nomineeUnitNo2 || structuredNominee2.addressCity || null,
-        addressState: formData.nomineePostalCode2 || structuredNominee2.addressState || null,
-        addressCountry: formData.nomineeCountry2 || structuredNominee2.addressCountry || 'Singapore',
-        email: formData.nomineeEmail2 || structuredNominee2.email || '',
-        idNo: formData.nomineeIDNo2 || structuredNominee2.idNo || '',
-        mobileNo: formData.nomineePhone2 || structuredNominee2.mobileNo || '',
-        homeTelNo: formData.nomineeHomeTel2 || structuredNominee2.homeTelNo || '',
-        officeTelNo: formData.nomineeOfficeTel2 || structuredNominee2.officeTelNo || '',
-        relationship: formData.nomineeRelationship2 || structuredNominee2.relationship || ''
-      }
-    }),
-    
-    // Ensure required fields are present
-    applicantName: formData.applicantName || '',
-    applicantIDNo: formData.applicantIDNo || '',
-    applicantEmail: formData.applicantEmail || '',
-    applicantPhone: formData.applicantPhone || '',
-    nomineeName: formData.nomineeName || '',
-    nomineeIDNo: formData.nomineeIDNo || '',
-    nomineeEmail: formData.nomineeEmail || '',
-    nomineePhone: formData.nomineePhone || '',
-    nomineeName2: formData.nomineeName2 || '',
-    nomineeIDNo2: formData.nomineeIDNo2 || '',
-    nomineeEmail2: formData.nomineeEmail2 || '',
-    nomineePhone2: formData.nomineePhone2 || '',
-    
-    // Application ID generation should be handled by the backend
-    // but we can prepare the data structure here if needed
-  };
+    });
+  }
   
-  return mappedRequest;
+  // Add second nominee if present
+  if (formData.nomineeName2 || formData.nominee2?.name) {
+    nominees.push({
+      id: Date.now() + 1, // Generate unique ID
+      name: formData.nomineeName2 || formData.nominee2?.name || '',
+      email: formData.nomineeEmail2 || formData.nominee2?.email || '',
+      phone: formData.nomineePhone2 || formData.nominee2?.mobileNo || '',
+      homeTel: formData.nomineeHomeTel2 || formData.nominee2?.homeTelNo || '',
+      officeTel: formData.nomineeOfficeTel2 || formData.nominee2?.officeTelNo || '',
+      idNo: formData.nomineeIDNo2 || formData.nominee2?.idNo || '',
+      relationship: formData.nomineeRelationship2 || formData.nominee2?.relationship || '',
+      status: formData.nomineeStatus2 || 'Active',
+      address: {
+        no: formData.nomineeAddressNo2 || '',
+        line1: formData.nomineeAddressLine12 || '',
+        line2: formData.nomineeAddressLine22 || '',
+        city: formData.nomineeAddressCity2 || '',
+        state: formData.nomineeAddressState2 || '',
+        country: formData.nomineeAddressCountry2 || formData.nomineeCountry2 || 'Singapore'
+      }
+    });
+  }
+  
+  return nominees;
+}
+
+/**
+ * Build clean beneficiaries array from form data (removes duplicate fields)
+ */
+function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<string, any>> {
+  const beneficiaries: Array<Record<string, any>> = [];
+  
+  // Process individual beneficiary fields (beneficiary1, beneficiary2, etc.)
+  const beneficiaryFields = [
+    'beneficiary1', 'beneficiary2', 'beneficiary3', 'beneficiary4', 'beneficiary5'
+  ];
+  
+  beneficiaryFields.forEach((fieldPrefix, index) => {
+    const name = formData[`${fieldPrefix}Name`] || formData[fieldPrefix]?.name;
+    if (name) {
+      beneficiaries.push({
+        id: Date.now() + index + 2, // Generate unique ID
+        name: name,
+        idNo: formData[`${fieldPrefix}IDNo`] || formData[fieldPrefix]?.idNo || '',
+        isCatholic: formData[`${fieldPrefix}IsCatholic`] || formData[fieldPrefix]?.isCatholic || false,
+        isMale: formData[`${fieldPrefix}IsMale`] || formData[fieldPrefix]?.isMale || false,
+        gender: formData[`${fieldPrefix}Gender`] || formData[fieldPrefix]?.gender || 
+                (formData[`${fieldPrefix}IsMale`] ? 'Male' : 'Female'),
+        relationship: formData[`${fieldPrefix}Relationship`] || formData[fieldPrefix]?.relationship || '',
+        dateOfBirth: formData[`${fieldPrefix}DateOfBirth`] || formData[fieldPrefix]?.dateOfBirth || '',
+        birthYear: formData[`${fieldPrefix}BirthYear`] || formData[fieldPrefix]?.birthYear || '',
+        status: formData[`${fieldPrefix}Status`] || formData[fieldPrefix]?.status || 'Not Occupied',
+        relationshipToNominee1: formData[`${fieldPrefix}RelationshipToNominee1`] || 
+                              formData[fieldPrefix]?.relationshipToNominee1 || '',
+        relationshipToNominee2: formData[`${fieldPrefix}RelationshipToNominee2`] || 
+                              formData[fieldPrefix]?.relationshipToNominee2 || '',
+        religion: formData[`${fieldPrefix}Religion`] || formData[fieldPrefix]?.religion || ''
+      });
+    }
+  });
+  
+  return beneficiaries;
+}
+
+/**
+ * Build optimized nominees array from form data
+ */
+function buildOptimizedNominees(formData: Record<string, any>, nomineeFields: any, nominee2Fields: any): Array<Record<string, any>> {
+  const nominees: Array<Record<string, any>> = [];
+  
+  // Add first nominee if present
+  if (formData.nomineeName || formData.nominee?.name) {
+    nominees.push({
+      id: formData.nominee?.id,
+      name: formData.nomineeName || formData.nominee?.name || '',
+      email: formData.nomineeEmail || formData.nominee?.email || '',
+      phone: formData.nomineePhone || formData.nominee?.mobileNo || '',
+      homeTel: formData.nomineeHomeTel || formData.nominee?.homeTelNo || '',
+      officeTel: formData.nomineeOfficeTel || formData.nominee?.officeTelNo || '',
+      idNo: formData.nomineeIDNo || formData.nominee?.idNo || '',
+      relationship: formData.nomineeRelationship || formData.nominee?.relationship || '',
+      status: formData.nomineeStatus || 'Active',
+      address: {
+        no: formData.nomineeAddressNo || nomineeFields.addressNo || '',
+        line1: formData.nomineeAddressLine1 || nomineeFields.addressLine1 || '',
+        line2: formData.nomineeAddressLine2 || nomineeFields.addressLine2 || '',
+        city: formData.nomineeAddressCity || nomineeFields.addressCity || '',
+        state: formData.nomineeAddressState || nomineeFields.addressState || '',
+        country: formData.nomineeAddressCountry || nomineeFields.addressCountry || formData.nomineeCountry || 'Singapore',
+        blockNo: formData.nomineeBlockNo || '',
+        streetName: formData.nomineeStreetName || '',
+        unitNo: formData.nomineeUnitNo || '',
+        postalCode: formData.nomineePostalCode || ''
+      }
+    });
+  }
+  
+  // Add second nominee if present
+  if (formData.nomineeName2 || formData.nominee2?.name) {
+    nominees.push({
+      id: formData.nominee2?.id,
+      name: formData.nomineeName2 || formData.nominee2?.name || '',
+      email: formData.nomineeEmail2 || formData.nominee2?.email || '',
+      phone: formData.nomineePhone2 || formData.nominee2?.mobileNo || '',
+      homeTel: formData.nomineeHomeTel2 || formData.nominee2?.homeTelNo || '',
+      officeTel: formData.nomineeOfficeTel2 || formData.nominee2?.officeTelNo || '',
+      idNo: formData.nomineeIDNo2 || formData.nominee2?.idNo || '',
+      relationship: formData.nomineeRelationship2 || formData.nominee2?.relationship || '',
+      status: formData.nomineeStatus2 || 'Active',
+      address: {
+        no: formData.nomineeAddressNo2 || nominee2Fields.addressNo || '',
+        line1: formData.nomineeAddressLine12 || nominee2Fields.addressLine1 || '',
+        line2: formData.nomineeAddressLine22 || nominee2Fields.addressLine2 || '',
+        city: formData.nomineeAddressCity2 || nominee2Fields.addressCity || '',
+        state: formData.nomineeAddressState2 || nominee2Fields.addressState || '',
+        country: formData.nomineeAddressCountry2 || nominee2Fields.addressCountry || formData.nomineeCountry2 || 'Singapore',
+        blockNo: formData.nomineeBlockNo2 || '',
+        streetName: formData.nomineeStreetName2 || '',
+        unitNo: formData.nomineeUnitNo2 || '',
+        postalCode: formData.nomineePostalCode2 || ''
+      }
+    });
+  }
+  
+  // Add any additional nominees from nominees array if present
+  if (Array.isArray(formData.nominees)) {
+    formData.nominees.forEach((nominee: any) => {
+      // Avoid duplicates by checking if already added
+      const exists = nominees.some((n: Record<string, any>) => 
+        (n.name === nominee.name && n.idNo === nominee.idNo) ||
+        n.name === nominee.name
+      );
+      if (!exists) {
+        nominees.push({
+          id: nominee.id,
+          name: nominee.name || nominee.fullName,
+          email: nominee.email,
+          phone: nominee.phone || nominee.contactNumber || nominee.mobileNo,
+          idNo: nominee.idNo || nominee.nric,
+          relationship: nominee.relationship || nominee.relationshipToApplicant,
+          status: nominee.status,
+          address: nominee.address ? {
+            formatted: nominee.address
+          } : undefined
+        });
+      }
+    });
+  }
+  
+  return nominees;
+}
+
+/**
+ * Build optimized beneficiaries array from form data
+ */
+function buildOptimizedBeneficiaries(formData: Record<string, any>): Array<Record<string, any>> {
+  const beneficiaries: Array<Record<string, any>> = [];
+  
+  // Process beneficiaries array if provided
+  if (Array.isArray(formData.beneficiaries) && formData.beneficiaries.length > 0) {
+    formData.beneficiaries.forEach((beneficiary: any, index: number) => {
+      beneficiaries.push({
+        id: beneficiary.id,
+        name: beneficiary.name || beneficiary.fullName,
+        idNo: beneficiary.idNo || beneficiary.nric,
+        isCatholic: beneficiary.isCatholic,
+        isMale: beneficiary.isMale,
+        gender: beneficiary.gender || (beneficiary.isMale ? 'Male' : 'Female'),
+        relationship: beneficiary.relationship || beneficiary.relationshipToApplicant,
+        dateOfBirth: beneficiary.dateOfBirth,
+        birthYear: beneficiary.birthYear,
+        status: beneficiary.status || 'Not Occupied',
+        relationshipToNominee1: beneficiary.relationshipToNominee1,
+        relationshipToNominee2: beneficiary.relationshipToNominee2,
+        religion: beneficiary.religion
+      });
+    });
+  } else {
+    // Fallback to individual beneficiary fields
+    const beneficiaryFields = [
+      'beneficiary1', 'beneficiary2', 'beneficiary3', 'beneficiary4', 'beneficiary5'
+    ];
+    
+    beneficiaryFields.forEach((fieldPrefix, index) => {
+      const name = formData[`${fieldPrefix}Name`] || formData[fieldPrefix]?.name;
+      if (name) {
+        beneficiaries.push({
+          id: formData[`${fieldPrefix}Id`] || formData[fieldPrefix]?.id,
+          name: name,
+          idNo: formData[`${fieldPrefix}IDNo`] || formData[fieldPrefix]?.idNo,
+          isCatholic: formData[`${fieldPrefix}IsCatholic`] || formData[fieldPrefix]?.isCatholic,
+          isMale: formData[`${fieldPrefix}IsMale`] || formData[fieldPrefix]?.isMale,
+          gender: formData[`${fieldPrefix}Gender`] || formData[fieldPrefix]?.gender || (formData[`${fieldPrefix}IsMale`] ? 'Male' : 'Female'),
+          relationship: formData[`${fieldPrefix}Relationship`] || formData[fieldPrefix]?.relationship,
+          dateOfBirth: formData[`${fieldPrefix}DateOfBirth`] || formData[fieldPrefix]?.dateOfBirth,
+          birthYear: formData[`${fieldPrefix}BirthYear`] || formData[fieldPrefix]?.birthYear,
+          status: formData[`${fieldPrefix}Status`] || formData[fieldPrefix]?.status || 'Not Occupied',
+          relationshipToNominee1: formData[`${fieldPrefix}RelationshipToNominee1`] || formData[fieldPrefix]?.relationshipToNominee1,
+          relationshipToNominee2: formData[`${fieldPrefix}RelationshipToNominee2`] || formData[fieldPrefix]?.relationshipToNominee2,
+          religion: formData[`${fieldPrefix}Religion`] || formData[fieldPrefix]?.religion
+        });
+      }
+    });
+  }
+  
+  return beneficiaries;
 }
 
 /**
@@ -805,6 +1013,37 @@ export function mapApiApplicationToFormData(apiData: any): Record<string, any> {
       officeTelNo: apiData.nominee2.officeTelNo || '',
       relationship: apiData.nominee2.relationship || ''
     };
+  }
+  
+  // Process beneficiaries to handle dateOfBirth and birthYear mapping
+  if (apiData.beneficiaries && Array.isArray(apiData.beneficiaries)) {
+    formData.beneficiaries = apiData.beneficiaries.map((beneficiary: any) => {
+      let processedBeneficiary = { ...beneficiary };
+      
+      // Handle date mapping: if dateOfBirth is null but birthYear exists, use birthYear
+      // If dateOfBirth exists but birthYear is null, use dateOfBirth
+      if ((processedBeneficiary.dateOfBirth === null || processedBeneficiary.dateOfBirth === '') && 
+          processedBeneficiary.birthYear !== null && 
+          processedBeneficiary.birthYear !== '') {
+        // Convert birthYear to date format (e.g., "2009" to "01-Jan-2009")
+        const year = processedBeneficiary.birthYear.toString();
+        processedBeneficiary.dateOfBirth = `01-Jan-${year}`;
+      } else if (processedBeneficiary.dateOfBirth !== null && 
+                 processedBeneficiary.dateOfBirth !== '' &&
+                 (processedBeneficiary.birthYear === null || processedBeneficiary.birthYear === '')) {
+        // Extract year from dateOfBirth and set birthYear
+        if (processedBeneficiary.dateOfBirth.includes('-')) {
+          const parts = processedBeneficiary.dateOfBirth.split('-');
+          if (parts.length === 3) {
+            processedBeneficiary.birthYear = parts[2]; // year is the third part in DD-MMM-YYYY format
+          }
+        }
+      }
+      
+      return processedBeneficiary;
+    });
+  } else {
+    formData.beneficiaries = [];
   }
   
   return formData;

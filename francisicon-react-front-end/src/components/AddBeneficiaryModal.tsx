@@ -17,7 +17,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
     dateOfBirth: formatDateForInput(beneficiary?.dateOfBirth) || '',
     gender: beneficiary?.sex === 'Male' ? 'Male' : beneficiary?.sex === 'Female' ? 'Female' : 'Male',
     relationshipToApp: beneficiary?.relationship || '',
-    religiousAffiliation: beneficiary?.religion === 'Catholic' ? 'Catholic' : 'Non Catholic',
+    religiousAffiliation: beneficiary?.religion === 'Non Catholic' ? 'Non Catholic' : 'Catholic',
     relationshipToNominee1: beneficiary?.relationshipToNominee1 || '',
     relationshipToNominee2: beneficiary?.relationshipToNominee2 || '',
     status: beneficiary?.status === 'Occupied' ? 'Occupied' : 'Not Occupied'
@@ -32,7 +32,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
         dateOfBirth: formatDateForInput(beneficiary.dateOfBirth) || '',
         gender: beneficiary.sex === 'Male' ? 'Male' : beneficiary.sex === 'Female' ? 'Female' : 'Male',
         relationshipToApp: beneficiary.relationship || '',
-        religiousAffiliation: beneficiary.religion === 'Catholic' ? 'Catholic' : 'Non Catholic',
+        religiousAffiliation: beneficiary.religion === 'Non Catholic' ? 'Non Catholic' : 'Catholic',
         relationshipToNominee1: beneficiary.relationshipToNominee1 || '',
         relationshipToNominee2: beneficiary.relationshipToNominee2 || '',
         status: beneficiary.status === 'Occupied' ? 'Occupied' : 'Not Occupied'
@@ -66,7 +66,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
         dateOfBirth: '',
         gender: 'Male',
         relationshipToApp: '',
-        religiousAffiliation: 'Non Catholic',
+        religiousAffiliation: 'Catholic',
         relationshipToNominee1: '',
         relationshipToNominee2: '',
         status: 'Not Occupied'

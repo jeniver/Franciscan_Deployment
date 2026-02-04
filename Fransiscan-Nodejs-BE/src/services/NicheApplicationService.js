@@ -569,8 +569,16 @@ const buildBeneficiaryEntity = (input = {}) => {
         : input.sex
   );
 
-  // NOTE: relationshipToNominee1/2 columns do NOT exist in NicheApplicationBeneficiary table
-  // These were removed to match the actual database schema
+  // Map relationship to nominee fields
+  const relationshipToNominee1 = pickFirst(
+    input.relationshipToNominee1,
+    input.relationshipToNomineeOne
+  );
+  
+  const relationshipToNominee2 = pickFirst(
+    input.relationshipToNominee2,
+    input.relationshipToNomineeTwo
+  );
 
   const result = new NicheApplicationBeneficiary({
     name,
@@ -580,6 +588,8 @@ const buildBeneficiaryEntity = (input = {}) => {
     idNo: idNo || null,
     isCatholic,
     isMale,
+    relationshipToNominee1: relationshipToNominee1 || null,
+    relationshipToNominee2: relationshipToNominee2 || null
   });
 
   // Log the processed result
@@ -1082,6 +1092,35 @@ class NicheApplicationService {
     let searchParams = null;
 
     try {
+      // Log received parameters for debugging
+      logger.info('[Service] Received search query parameters:', {
+        query: query,
+        churchId: churchId,
+        hasApplicationCode: !!query.applicationCode,
+        hasApplicantName: !!query.applicantName,
+        hasNomineeName: !!query.nomineeName,
+        hasFromDate: !!query.fromDate,
+        hasToDate: !!query.toDate,
+        hasSearchTerm: !!query.searchTerm
+      });
+      
+      // Log specific parameter values
+      if (query.fromDate) {
+        logger.info('[Service] From Date value:', query.fromDate, 'Type:', typeof query.fromDate);
+      }
+      if (query.toDate) {
+        logger.info('[Service] To Date value:', query.toDate, 'Type:', typeof query.toDate);
+      }
+      if (query.applicationCode) {
+        logger.info('[Service] Application Code:', query.applicationCode);
+      }
+      if (query.applicantName) {
+        logger.info('[Service] Applicant Name:', query.applicantName);
+      }
+      if (query.nomineeName) {
+        logger.info('[Service] Nominee Name:', query.nomineeName);
+      }
+      
       const rawPageValue = parseInt(query.page, 10);
       const rawPageSizeValue = parseInt(query.pageSize, 10);
       const rawFetchAllChunkValue = parseInt(query.fetchAllChunkSize || query.chunkSize, 10);
@@ -1434,360 +1473,104 @@ class NicheApplicationService {
   }
 
   /**
-   * Create new niche application
+   * Create new niche application with optimized payload structure
    * Based on: CaptureNewNicheApplication WebMethod
-   * @param {Object} data - Application data
+   * @param {Object} data - Optimized application data structure
    * @param {number} userId - User ID
    * @param {number} churchId - Church ID
    * @returns {Promise<Object>} Created application code
    */
   async createApplication(data, userId, churchId) {
     try {
+      logger.info('[Service] Starting createApplication with data:', JSON.stringify(data, null, 2));
+      
+      // Validate optimized payload structure
+      const validation = this.validateOptimizedPayload(data);
+      logger.info('[Service] Payload validation result:', validation);
+      
+      if (!validation.isValid) {
+        logger.warn('[Service] Payload validation failed:', validation.errors);
+        return {
+          success: false,
+          error: {
+            code: 'VALIDATION_FAILED',
+            message: 'Invalid application data structure',
+            details: validation.errors
+          }
+        };
+      }
+
+      // Extract and transform data from optimized structure
       const applicantInput = data.applicant || {};
-      const nomineeArray = Array.isArray(data.nominees) ? data.nominees : [];
-      const nomineeInput = data.nominee || nomineeArray[0] || {};
-      const nominee2Input = data.nominee2 || nomineeArray[1] || null;
-      const consentFormsRequested = normalizeConsentForms(data.consentForms || {});
+      const nomineesArray = Array.isArray(data.nominees) ? data.nominees : [];
+      const nomineeInput = nomineesArray[0] || {};
+      const nominee2Input = nomineesArray[1] || null;
+      const beneficiariesArray = Array.isArray(data.beneficiaries) ? data.beneficiaries : [];
 
-      const nicheId = resolveNicheIdFromPayload(data);
-      const appliedDate = parseDateValue(data.appliedDate) || new Date();
-      const agreementDate = parseDateValue(data.agreementDate) || appliedDate;
-
-      const amountValue = pickFirst(
-        data.amount,
-        data.nicheDetails?.amount,
-        data.nicheDetails?.price,
-        data.defaultAmount
-      );
-      const defaultAmountValue = pickFirst(
-        data.defaultAmount,
-        data.nicheDetails?.defaultAmount,
-        data.nicheDetails?.price,
-        amountValue
-      );
-
-      const applicantIsCatholic = deriveIsCatholic(
-        data.applicantIsCatholic !== undefined && data.applicantIsCatholic !== null
-          ? data.applicantIsCatholic
-          : applicantInput.isCatholic !== undefined && applicantInput.isCatholic !== null
-            ? applicantInput.isCatholic
-            : data.applicantReligion
-      );
-
-      const nomineeIsCatholic = deriveIsCatholic(
-        data.nomineeIsCatholic !== undefined && data.nomineeIsCatholic !== null
-          ? data.nomineeIsCatholic
-          : nomineeInput?.isCatholic !== undefined && nomineeInput?.isCatholic !== null
-            ? nomineeInput.isCatholic
-            : data.nomineeReligion
-      );
-
-      const nominee2IsCatholic = deriveIsCatholic(
-        data.nomineeIsCatholic2 !== undefined && data.nomineeIsCatholic2 !== null
-          ? data.nomineeIsCatholic2
-          : nominee2Input?.isCatholic !== undefined && nominee2Input?.isCatholic !== null
-            ? nominee2Input.isCatholic
-            : data.nominee2Religion
-      );
-
-      // Create application object with normalized payload
+      // Build application entity
       const application = new NicheApplication({
-        nicheId,
-        appliedDate,
-        agreementDate,
-        status: 1,
-        amount: coerceNumber(amountValue, 0),
-        defaultAmount: coerceNumber(defaultAmountValue, 0),
-        applicantName: pickFirst(data.applicantName, applicantInput.fullName, applicantInput.name),
-        applicantIDNo: pickFirst(data.applicantIDNo, applicantInput.idNo, applicantInput.nric),
-        applicantEmailID: pickFirst(
-          data.applicantEmailID,
-          data.applicantEmail,
-          applicantInput.emailID,
-          applicantInput.email
-        ),
-        applicantMobileNo: normalizePhone(
-          pickFirst(
-            data.applicantMobileNo,
-            data.applicantPhone,
-            applicantInput.mobileNo,
-            applicantInput.mobile,
-            applicantInput.contactNumber
-          )
-        ),
-        applicantHomeTelNo: normalizePhone(
-          pickFirst(data.applicantHomeTelNo, data.applicantHomeTel, applicantInput.homeTelNo, applicantInput.homeTel)
-        ),
-        applicantOfficeTelNo: normalizePhone(
-          pickFirst(
-            data.applicantOfficeTelNo,
-            data.applicantOfficeTel,
-            applicantInput.officeTelNo,
-            applicantInput.officeTel
-          )
-        ),
-        applicantIsCatholic: coerceBoolean(applicantIsCatholic, false),
-        applicantAddressNo: pickFirst(data.applicantAddressNo, applicantInput.addressNo),
-        applicantAddressLine1: pickFirst(
-          data.applicantAddressLine1,
-          data.applicantAddress,
-          applicantInput.addressLine1,
-          applicantInput.address
-        ),
-        applicantAddressLine2: pickFirst(data.applicantAddressLine2, applicantInput.addressLine2),
-        applicantAddressCity: pickFirst(data.applicantAddressCity, applicantInput.addressCity),
-        applicantAddressState: pickFirst(data.applicantAddressState, applicantInput.addressState),
-        applicantAddressCountry: pickFirst(
-          data.applicantAddressCountry,
-          applicantInput.addressCountry,
-          data.country
-        ),
-        nomineeName: pickFirst(data.nomineeName, nomineeInput.fullName, nomineeInput.name),
-        nomineeIDNo: pickFirst(data.nomineeIDNo, nomineeInput.idNo, nomineeInput.nric),
-        nomineeEmailID: pickFirst(
-          data.nomineeEmailID,
-          data.nomineeEmail,
-          nomineeInput.emailID,
-          nomineeInput.email,
-          nomineeInput.contactEmail
-        ),
-        nomineeMobileNo: normalizePhone(
-          pickFirst(
-            data.nomineeMobileNo,
-            data.nomineePhone,
-            nomineeInput.mobileNo,
-            nomineeInput.contactNumber,
-            nomineeInput.phone
-          )
-        ),
-        nomineeHomeTelNo: normalizePhone(
-          pickFirst(data.nomineeHomeTelNo, data.nomineeHomeTel, nomineeInput.homeTelNo, nomineeInput.homeTel)
-        ),
-        nomineeOfficeTelNo: normalizePhone(
-          pickFirst(
-            data.nomineeOfficeTelNo,
-            data.nomineeOfficeTel,
-            nomineeInput.officeTelNo,
-            nomineeInput.officeTel
-          )
-        ),
-        nomineeRelationship: pickFirst(
-          data.nomineeRelationship,
-          nomineeInput.relationship,
-          nomineeInput.relationshipToApplicant,
-          data.relationshipToNominee1
-        ),
-        nomineeIsCatholic: coerceBoolean(nomineeIsCatholic, false),
-        nomineeAddressNo: pickFirst(data.nomineeAddressNo, nomineeInput.addressNo),
-        nomineeAddressLine1: pickFirst(
-          data.nomineeAddressLine1,
-          data.nomineeAddress,
-          nomineeInput.addressLine1,
-          nomineeInput.address
-        ),
-        nomineeAddressLine2: pickFirst(data.nomineeAddressLine2, nomineeInput.addressLine2),
-        nomineeAddressCity: pickFirst(data.nomineeAddressCity, nomineeInput.addressCity),
-        nomineeAddressState: pickFirst(data.nomineeAddressState, nomineeInput.addressState),
-        nomineeAddressCountry: pickFirst(data.nomineeAddressCountry, nomineeInput.addressCountry),
-        nomineeName2: pickFirst(data.nomineeName2, nominee2Input?.fullName, nominee2Input?.name),
-        nomineeIDNo2: pickFirst(data.nomineeIDNo2, nominee2Input?.idNo, nominee2Input?.nric),
-        nomineeEmailID2: pickFirst(
-          data.nomineeEmailID2,
-          data.nomineeEmail2,
-          nominee2Input?.emailID,
-          nominee2Input?.email,
-          nominee2Input?.contactEmail
-        ),
-        nomineeMobileNo2: normalizePhone(
-          pickFirst(
-            data.nomineeMobileNo2,
-            data.nomineePhone2,
-            nominee2Input?.mobileNo,
-            nominee2Input?.contactNumber,
-            nominee2Input?.phone
-          )
-        ),
-        nomineeHomeTelNo2: normalizePhone(
-          pickFirst(data.nomineeHomeTelNo2, nominee2Input?.homeTelNo, nominee2Input?.homeTel)
-        ),
-        nomineeOfficeTelNo2: normalizePhone(
-          pickFirst(data.nomineeOfficeTelNo2, nominee2Input?.officeTelNo, nominee2Input?.officeTel)
-        ),
-        nomineeRelationship2: pickFirst(
-          data.nomineeRelationship2,
-          nominee2Input?.relationship,
-          nominee2Input?.relationshipToApplicant,
-          data.relationshipToNominee2
-        ),
-        nomineeIsCatholic2: coerceBoolean(nominee2IsCatholic, false),
-        nomineeAddressNo2: pickFirst(data.nomineeAddressNo2, nominee2Input?.addressNo),
-        nomineeAddressLine12: pickFirst(
-          data.nomineeAddressLine12,
-          data.nominee2Address,
-          nominee2Input?.addressLine1,
-          nominee2Input?.address
-        ),
-        nomineeAddressLine22: pickFirst(data.nomineeAddressLine22, nominee2Input?.addressLine2),
-        nomineeAddressCity2: pickFirst(data.nomineeAddressCity2, nominee2Input?.addressCity),
-        nomineeAddressState2: pickFirst(data.nomineeAddressState2, nominee2Input?.addressState),
-        nomineeAddressCountry2: pickFirst(data.nomineeAddressCountry2, nominee2Input?.addressCountry),
-        remarks: pickFirst(data.remarks, data.applicationRemarks),
+        nicheId: data.niche?.id || data.nicheId,
+        appliedDate: data.appliedDate || new Date(),
+        agreementDate: data.agreementDate || new Date(),
+        applicantName: applicantInput.name,
+        applicantAddressNo: applicantInput.address?.no,
+        applicantAddressLine1: applicantInput.address?.line1,
+        applicantAddressLine2: applicantInput.address?.line2,
+        applicantAddressCity: applicantInput.address?.city,
+        applicantAddressState: applicantInput.address?.state,
+        applicantAddressCountry: applicantInput.address?.country,
+        applicantEmailID: applicantInput.email,
+        applicantIDNo: applicantInput.idNo,
+        applicantMobileNo: applicantInput.phone,
+        applicantHomeTelNo: applicantInput.homeTel,
+        applicantOfficeTelNo: applicantInput.officeTel,
+        applicantIsCatholic: applicantInput.isCatholic,
+        nomineeName: nomineeInput.name,
+        nomineeAddressNo: nomineeInput.address?.no,
+        nomineeAddressLine1: nomineeInput.address?.line1,
+        nomineeAddressLine2: nomineeInput.address?.line2,
+        nomineeAddressCity: nomineeInput.address?.city,
+        nomineeAddressState: nomineeInput.address?.state,
+        nomineeAddressCountry: nomineeInput.address?.country,
+        nomineeEmailID: nomineeInput.email,
+        nomineeIDNo: nomineeInput.idNo,
+        nomineeMobileNo: nomineeInput.phone,
+        nomineeHomeTelNo: nomineeInput.homeTel,
+        nomineeOfficeTelNo: nomineeInput.officeTel,
+        nomineeRelationship: nomineeInput.relationship,
+        nomineeName2: nominee2Input?.name || null,
+        nomineeAddressNo2: nominee2Input?.address?.no || null,
+        nomineeAddressLine12: nominee2Input?.address?.line1 || null,
+        nomineeAddressLine22: nominee2Input?.address?.line2 || null,
+        nomineeAddressCity2: nominee2Input?.address?.city || null,
+        nomineeAddressState2: nominee2Input?.address?.state || null,
+        nomineeAddressCountry2: nominee2Input?.address?.country || null,
+        nomineeEmailID2: nominee2Input?.email || null,
+        nomineeIDNo2: nominee2Input?.idNo || null,
+        nomineeMobileNo2: nominee2Input?.phone || null,
+        nomineeHomeTelNo2: nominee2Input?.homeTel || null,
+        nomineeOfficeTelNo2: nominee2Input?.officeTel || null,
+        nomineeRelationship2: nominee2Input?.relationship || null,
         churchId,
         userId,
-        refDocType: pickFirst(data.refDocType, 'NAPP')
+        status: 'Draft',
+        code: data.code
       });
 
-      // Create beneficiary objects
-      // ✅ DEBUG: Log raw beneficiary data before processing
-      logger.info('[Service.createApplication] Raw beneficiary data from payload:');
-      logger.info('[Service.createApplication]   data.beneficiaries:', JSON.stringify(data.beneficiaries, null, 2));
-      logger.info('[Service.createApplication]   data.beneficiary1:', JSON.stringify(data.beneficiary1, null, 2));
-      logger.info('[Service.createApplication]   data.beneficiary2:', JSON.stringify(data.beneficiary2, null, 2));
-      logger.info('[Service.createApplication]   data.beneficiary3:', JSON.stringify(data.beneficiary3, null, 2));
-      
-      const beneficiaries = extractBeneficiariesFromPayload(data);
-      
-      // ✅ DEBUG: Log processed beneficiaries
-      logger.info('[Service.createApplication] Processed beneficiaries count:', beneficiaries.length);
-      beneficiaries.forEach((ben, index) => {
-        logger.info(`[Service.createApplication] Beneficiary ${index + 1}:`, JSON.stringify(ben.toJSON(), null, 2));
-      });
-
-      // --- Business rule: prevent duplicate nominees / beneficiaries within the same application ---
-      // Build nominee list:
-      //  - Prefer the explicit nominees[] array when present
-      //  - Fallback to legacy nominee/nominee2 fields
-      const nomineeCandidates = [];
-      if (nomineeArray.length > 0) {
-        nomineeArray.forEach((nominee) => {
-          if (!nominee) return;
-          nomineeCandidates.push({
-            name: pickFirst(nominee.fullName, nominee.name),
-            idNo: pickFirst(nominee.nric, nominee.idNo, nominee.identificationNumber, nominee.idNumber),
-            email: pickFirst(nominee.email, nominee.emailID, nominee.emailId),
-            mobileNo: pickFirst(
-              nominee.mobileNo,
-              nominee.contactNumber,
-              nominee.phone,
-              nominee.mobile
-            )
-          });
-        });
-      } else {
-        // Legacy single / second nominee fields
-        if (nomineeInput && (nomineeInput.name || nomineeInput.fullName || nomineeInput.nric || nomineeInput.idNo)) {
-          nomineeCandidates.push({
-            name: pickFirst(nomineeInput.fullName, nomineeInput.name),
-            idNo: pickFirst(nomineeInput.nric, nomineeInput.idNo, nomineeInput.identificationNumber, nomineeInput.idNumber),
-            email: pickFirst(nomineeInput.email, nomineeInput.emailID, nomineeInput.emailId),
-            mobileNo: pickFirst(
-              nomineeInput.mobileNo,
-              nomineeInput.contactNumber,
-              nomineeInput.phone,
-              nomineeInput.mobile
-            )
-          });
-        }
-        if (nominee2Input && (nominee2Input.name || nominee2Input.fullName || nominee2Input.nric || nominee2Input.idNo)) {
-          nomineeCandidates.push({
-            name: pickFirst(nominee2Input.fullName, nominee2Input.name),
-            idNo: pickFirst(nominee2Input.nric, nominee2Input.idNo, nominee2Input.identificationNumber, nominee2Input.idNumber),
-            email: pickFirst(nominee2Input.email, nominee2Input.emailID, nominee2Input.emailId),
-            mobileNo: pickFirst(
-              nominee2Input.mobileNo,
-              nominee2Input.contactNumber,
-              nominee2Input.phone,
-              nominee2Input.mobile
-            )
-          });
-        }
-      }
-
-      const nomineeKeys = new Set();
-      const duplicateNomineeDescriptions = new Set();
-      nomineeCandidates.forEach((nominee) => {
-        const key = buildPersonKey(nominee);
-        if (!key) {
-          return;
-        }
-        if (nomineeKeys.has(key)) {
-          duplicateNomineeDescriptions.add(
-            pickFirst(nominee.name, nominee.idNo, nominee.email, nominee.mobileNo) || 'Unknown nominee'
-          );
-        } else {
-          nomineeKeys.add(key);
-        }
-      });
-
-      const beneficiaryKeys = new Set();
-      const duplicateBeneficiaryDescriptions = new Set();
-      beneficiaries.forEach((beneficiary) => {
-        if (!beneficiary) return;
-        const key = buildPersonKey({
-          name: beneficiary.name,
-          idNo: beneficiary.idNo
-        });
-        if (!key) {
-          return;
-        }
-        if (beneficiaryKeys.has(key)) {
-          duplicateBeneficiaryDescriptions.add(
-            pickFirst(beneficiary.name, beneficiary.idNo) || 'Unknown beneficiary'
-          );
-        } else {
-          beneficiaryKeys.add(key);
-        }
-      });
-
-      if (duplicateNomineeDescriptions.size > 0 || duplicateBeneficiaryDescriptions.size > 0) {
-        const errors = [];
-        if (duplicateNomineeDescriptions.size > 0) {
-          errors.push(
-            `Same person cannot be added as multiple nominees: ${Array.from(duplicateNomineeDescriptions).join(', ')}`
-          );
-        }
-        if (duplicateBeneficiaryDescriptions.size > 0) {
-          errors.push(
-            `Same person cannot be added as multiple beneficiaries: ${Array.from(duplicateBeneficiaryDescriptions).join(', ')}`
-          );
-        }
-
+      // Validate application data
+      const validationResult = application.validate();
+      if (!validationResult.isValid) {
         return {
           success: false,
           error: {
             code: 'VALIDATION_FAILED',
-            message: errors.join(' | ')
+            message: 'Application validation failed',
+            details: validationResult.errors
           }
         };
       }
 
-      // Validate application
-      const appValidation = application.validate();
-      if (!appValidation.isValid) {
-        return {
-          success: false,
-          error: {
-            code: 'VALIDATION_FAILED',
-            message: appValidation.errors.join(', ')
-          }
-        };
-      }
-
-      // Validate beneficiaries
-      for (const beneficiary of beneficiaries) {
-        const beneficiaryValidation = beneficiary.validate();
-        if (!beneficiaryValidation.isValid) {
-          return {
-            success: false,
-            error: {
-              code: 'VALIDATION_FAILED',
-              message: `Beneficiary validation failed: ${beneficiaryValidation.errors.join(', ')}`
-            }
-          };
-        }
-      }
-
-      // Check for duplicate (same niche + agreement date)
+      // Check for duplicate
       const duplicate = await NicheApplicationRepository.checkDuplicate(
         application.nicheId,
         application.agreementDate
@@ -1806,6 +1589,11 @@ class NicheApplicationService {
         };
       }
 
+      // Create beneficiary objects from optimized structure using the buildBeneficiaryEntity function
+      const beneficiaries = beneficiariesArray.map(beneficiary => {
+        return buildBeneficiaryEntity(beneficiary);
+      }).filter(beneficiary => beneficiary !== null); // Remove any null beneficiaries
+
       // Create in repository
       const code = await NicheApplicationRepository.create(application, beneficiaries);
 
@@ -1819,44 +1607,16 @@ class NicheApplicationService {
 
       if (createdApplication) {
         const applicationJson = createdApplication.toJSON();
-        responseData = buildApplicationResponse(createdApplication, {
-          requestPayload: data,
-          nomineeArray
-        });
-        const applicantForResponse = responseData.applicant || {};
-        const nicheDetails = responseData.nicheDetails || {};
-        const applicantAddressFormatted = responseData.applicantAddress || null;
-
+        responseData = this.buildOptimizedApplicationResponse(createdApplication, data);
+        
         if (attachInvoicePdf) {
           try {
             const invoicePayload = {
-              applicationCode: responseData.code,
-              agreementDate: applicationJson.agreementDate,
-              applicant: {
-                name: applicantForResponse.name,
-                address: applicantAddressFormatted || '',
-                mobileNo: applicantForResponse.mobileNo || '',
-                email: applicantForResponse.email || '',
-                nric: applicantForResponse.idNo || ''
-              },
-              niche: {
-                chapelName: nicheDetails.chapel || 'Franciscan Columbarium',
-                number: nicheDetails.nicheCode || String(nicheDetails.nicheId || ''),
-                totalAmount: (coerceNumber(nicheDetails.amount, 0)).toFixed(2)
-              },
-              invoice: {
-                invoiceNo: `${responseData.code}-INV`,
-                invoiceDate: new Date().toLocaleDateString('en-SG', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                }),
-                additionalCharges: null,
-                receiptAmount: null
-              },
-              metadata: {
-                applicationNumber: responseData.code
-              }
+              applicationCode: code,
+              applicantName: applicationJson.applicant?.name,
+              nicheNumber: applicationJson.niche?.nicheId,
+              amount: applicationJson.niche?.amount,
+              refDocType: pickFirst(data.refDocType, 'NAPP')
             };
 
             const invoiceFileName = await pdfService.generateInvoicePdf(invoicePayload);
@@ -1879,81 +1639,15 @@ class NicheApplicationService {
         };
       }
 
-      let consentFormRecord = null;
-      try {
-        const consentEntity = buildConsentFormEntityFromApplication({
-          consentSelections: consentFormsRequested,
-          application: createdApplication,
-          userId
-        });
-
-        if (consentEntity) {
-          consentFormRecord = await NicheConcentFormRepository.upsert(consentEntity);
-        } else if (createdApplication?.code) {
-          consentFormRecord = await NicheConcentFormRepository.getByCode(createdApplication.code);
-        }
-      } catch (consentError) {
-        logger.error('Service: Failed to persist consent form for niche application:', consentError);
-      }
-
-      const consentFormsPayload = buildConsentFormsPayload({
-        selections: consentFormRecord?.consentForms || consentFormsRequested,
-        consentRecord: consentFormRecord
-      });
-
-      responseData.consentForms = consentFormsPayload.selections;
-      responseData.consentFormsOptions = consentFormsPayload.options;
-      responseData.consentFormsStatusCode = consentFormsPayload.encodedStatus;
-      responseData.consentFormsSource = consentFormsPayload.source;
-      responseData.consentFormsUpdatedAt = consentFormsPayload.updatedAt;
-      responseData.consentFormId = consentFormsPayload.consentFormId;
-
-      if (autoSendInvoiceEmail && responseData?.code) {
-        const autoRecipients = collectAutoEmailRecipients({
-          requestPayload: data,
-          responseData,
-          nomineeArray
-        });
-
-        if (autoRecipients.length > 0) {
-          // Fire-and-forget: do not block the main response on email sending
-          Promise.resolve().then(() => {
-            return this.sendInvoiceEmail(responseData.code, churchId, {
-              to: autoRecipients.join(', ')
-            });
-          }).then((emailResult) => {
-            if (!emailResult?.success) {
-              logger.warn(
-                `Auto invoice email did not complete successfully for application ${responseData.code}:`,
-                emailResult?.error?.message || emailResult?.message || 'Unknown reason'
-              );
-            }
-          }).catch((autoEmailError) => {
-            logger.warn(
-              `Auto invoice email failed for application ${responseData.code}:`,
-              autoEmailError?.message || autoEmailError
-            );
-          });
-        }
-      }
-
       // Invalidate cache to ensure fresh data on next request
-      // Use aggressive invalidation strategy
       invalidateNicheApplicationCache();
       
-      // Log cache invalidation for debugging
       logger.info('[createApplication] Cache invalidated after creation, preparing response');
       
-      // Additional cache verification
-      if (process.env.NODE_ENV === 'development') {
-        const remainingKeys = cache.keys().filter(key => key.startsWith(NICHE_APPLICATION_CACHE_PREFIX));
-        logger.debug(`[createApplication] Cache verification - remaining niche app keys: ${remainingKeys.length}`);
-      }
-
       return {
         success: true,
         code,
-        applicationNumber: code, // Explicit field for clarity
+        applicationNumber: code,
         data: responseData,
         message: 'Niche application created successfully'
       };
@@ -1970,6 +1664,166 @@ class NicheApplicationService {
       logger.error('Service: Failed to create niche application:', error);
       throw error;
     }
+  }
+
+  /**
+   * Validate optimized payload structure
+   */
+  validateOptimizedPayload(data) {
+    const errors = [];
+    
+    // Required fields validation
+    if (!data.niche?.id && !data.nicheId) {
+      errors.push('Niche ID is required');
+    }
+    
+    if (!data.applicant?.name) {
+      errors.push('Applicant name is required');
+    }
+    
+    if (!data.applicant?.idNo) {
+      errors.push('Applicant ID/NRIC is required');
+    }
+    
+    // Validate nominees array structure
+    if (Array.isArray(data.nominees)) {
+      data.nominees.forEach((nominee, index) => {
+        if (!nominee.name) {
+          errors.push(`Nominee ${index + 1}: Name is required`);
+        }
+        if (!nominee.idNo) {
+          errors.push(`Nominee ${index + 1}: ID/NRIC is required`);
+        }
+      });
+    }
+    
+    // Validate beneficiaries array structure
+    if (Array.isArray(data.beneficiaries)) {
+      data.beneficiaries.forEach((beneficiary, index) => {
+        if (!beneficiary.name) {
+          errors.push(`Beneficiary ${index + 1}: Name is required`);
+        }
+        if (!beneficiary.relationship) {
+          errors.push(`Beneficiary ${index + 1}: Relationship is required`);
+        }
+      });
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * Build optimized response structure matching the desired format
+   */
+  buildOptimizedApplicationResponse(application, requestData) {
+    if (!application) {
+      return null;
+    }
+
+    const applicationJson = application.toJSON ? application.toJSON() : application;
+
+    // Build address strings
+    const buildAddressString = (address) => {
+      if (!address) return null;
+      return [
+        address.no, 
+        address.line1, 
+        address.line2, 
+        address.city, 
+        address.state, 
+        address.country
+      ].filter(Boolean).join(', ');
+    };
+
+    const applicantAddressFormatted = buildAddressString(applicationJson.applicant?.address);
+    const nomineeAddressFormatted = applicationJson.nominee 
+      ? buildAddressString(applicationJson.nominee.address) 
+      : null;
+    const nominee2AddressFormatted = applicationJson.nominee2 
+      ? buildAddressString(applicationJson.nominee2.address) 
+      : null;
+
+    // Transform beneficiaries to response format
+    const beneficiariesForResponse = (applicationJson.beneficiaries || []).map((beneficiary, index) => ({
+      name: beneficiary.name,
+      idNo: beneficiary.idNo,
+      isCatholic: beneficiary.isCatholic,
+      isMale: beneficiary.isMale,
+      relationshipToApplicant: beneficiary.relationshipToApplicant,
+      dateOfBirth: beneficiary.dateOfBirth,
+      birthYear: beneficiary.birthYear,
+      relationshipToNominee1: beneficiary.relationshipToNominee1,
+      relationshipToNominee2: beneficiary.relationshipToNominee2,
+      status: beneficiary.status || 'Not Occupied',
+      sex: beneficiary.isMale ? 'Male' : 'Female'
+    }));
+
+    // Transform nominees to response format
+    const nomineesForResponse = [];
+    if (applicationJson.nominee) {
+      nomineesForResponse.push({
+        name: applicationJson.nominee.name,
+        idNo: applicationJson.nominee.idNo,
+        email: applicationJson.nominee.email,
+        mobileNo: applicationJson.nominee.mobileNo,
+        relationship: applicationJson.nominee.relationship,
+        address: nomineeAddressFormatted,
+        status: 'Active'
+      });
+    }
+    if (applicationJson.nominee2) {
+      nomineesForResponse.push({
+        name: applicationJson.nominee2.name,
+        idNo: applicationJson.nominee2.idNo,
+        email: applicationJson.nominee2.email,
+        mobileNo: applicationJson.nominee2.mobileNo,
+        relationship: applicationJson.nominee2.relationship,
+        address: nominee2AddressFormatted,
+        status: 'Active'
+      });
+    }
+
+    return {
+      applicationCode: applicationJson.code,
+      appliedDate: applicationJson.appliedDate,
+      agreementDate: applicationJson.agreementDate,
+      applicant: {
+        name: applicationJson.applicant?.name,
+        address: applicantAddressFormatted,
+        addressNo: applicationJson.applicant?.address?.no,
+        addressLine1: applicationJson.applicant?.address?.line1,
+        addressLine2: applicationJson.applicant?.address?.line2,
+        addressCity: applicationJson.applicant?.address?.city,
+        addressState: applicationJson.applicant?.address?.state,
+        addressCountry: applicationJson.applicant?.address?.country,
+        email: applicationJson.applicant?.email,
+        idNo: applicationJson.applicant?.idNo,
+        mobileNo: applicationJson.applicant?.mobileNo,
+        homeTelNo: applicationJson.applicant?.homeTelNo,
+        officeTelNo: applicationJson.applicant?.officeTelNo,
+        isCatholic: applicationJson.applicant?.isCatholic
+      },
+      nominees: nomineesForResponse,
+      beneficiaries: beneficiariesForResponse,
+      niche: {
+        number: applicationJson.niche?.nicheId?.toString(),
+        code: applicationJson.niche?.code,
+        rowNumber: applicationJson.niche?.rowNumber,
+        wallName: applicationJson.niche?.wallName,
+        chapelName: applicationJson.niche?.chapel,
+        totalAmount: applicationJson.niche?.amount || 0,
+        lineAmount: applicationJson.niche?.defaultAmount || 0
+      },
+      status: applicationJson.status,
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        beneficiaryCount: beneficiariesForResponse.length,
+        nomineeCount: nomineesForResponse.length
+      }
+    };
   }
 
   /**
@@ -2182,17 +2036,35 @@ class NicheApplicationService {
         existing.defaultAmount || 0
       );
 
-      // Create beneficiary objects
+      // Create beneficiary objects - handle both old flat structure and new optimized structure
       const beneficiaries = [];
-
-      if (data.beneficiary1 && data.beneficiary1.name) {
-        beneficiaries.push(new NicheApplicationBeneficiary(data.beneficiary1));
-      }
-      if (data.beneficiary2 && data.beneficiary2.name) {
-        beneficiaries.push(new NicheApplicationBeneficiary(data.beneficiary2));
-      }
-      if (data.beneficiary3 && data.beneficiary3.name) {
-        beneficiaries.push(new NicheApplicationBeneficiary(data.beneficiary3));
+      
+      // Process beneficiaries from array format (optimized structure)
+      if (Array.isArray(data.beneficiaries)) {
+        data.beneficiaries.forEach(beneficiary => {
+          if (beneficiary && beneficiary.name) {
+            beneficiaries.push(new NicheApplicationBeneficiary({
+              name: beneficiary.name,
+              relationshipToApplicant: beneficiary.relationship,
+              dateOfBirth: beneficiary.dateOfBirth ? new Date(beneficiary.dateOfBirth) : null,
+              birthYear: beneficiary.birthYear,
+              idNo: beneficiary.idNo,
+              isCatholic: beneficiary.isCatholic,
+              isMale: beneficiary.isMale
+            }));
+          }
+        });
+      } else {
+        // Process beneficiaries from old flat structure
+        if (data.beneficiary1 && data.beneficiary1.name) {
+          beneficiaries.push(new NicheApplicationBeneficiary(data.beneficiary1));
+        }
+        if (data.beneficiary2 && data.beneficiary2.name) {
+          beneficiaries.push(new NicheApplicationBeneficiary(data.beneficiary2));
+        }
+        if (data.beneficiary3 && data.beneficiary3.name) {
+          beneficiaries.push(new NicheApplicationBeneficiary(data.beneficiary3));
+        }
       }
 
       // --- Business rule: prevent duplicate nominees / beneficiaries on update as well ---
@@ -2704,6 +2576,93 @@ class NicheApplicationService {
       };
     } catch (error) {
       logger.error('Service: Failed to send invoice email:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Confirm booking and change application status from Draft to Booked
+   * @param {string} code - Application code
+   * @param {number} churchId - Church ID for ACL
+   * @returns {Promise<Object>} Result with success status and updated application data
+   */
+  async confirmBooking(code, churchId) {
+    try {
+      // Check existing application
+      const existing = await NicheApplicationRepository.getByCode(code);
+
+      if (!existing) {
+        return {
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Application not found'
+          }
+        };
+      }
+
+      // Check church ACL
+      if (existing.churchId !== churchId) {
+        return {
+          success: false,
+          error: {
+            code: 'ACCESS_DENIED',
+            message: 'Access denied - Church ID mismatch'
+          }
+        };
+      }
+
+      // Check current status - must be Draft (1) to confirm booking
+      if (existing.status !== 1) {
+        if (existing.status === 3) {
+          return {
+            success: false,
+            error: {
+              code: 'ALREADY_BOOKED',
+              message: 'Application is already booked'
+            }
+          };
+        }
+        
+        return {
+          success: false,
+          error: {
+            code: 'INVALID_STATUS',
+            message: `Cannot confirm booking for application with status: ${existing.getStatusText()}`
+          }
+        };
+      }
+
+      // Update status from Draft (1) to Booked (3)
+      const updateResult = await NicheApplicationRepository.updateStatus(code, 3);
+      
+      if (!updateResult) {
+        return {
+          success: false,
+          error: {
+            code: 'UPDATE_FAILED',
+            message: 'Failed to update application status'
+          }
+        };
+      }
+
+      // Invalidate cache to ensure fresh data
+      invalidateNicheApplicationCache();
+
+      logger.info(`[confirmBooking] Successfully changed application ${code} status from Draft to Booked`);
+
+      return {
+        success: true,
+        data: {
+          code: existing.code,
+          previousStatus: 1,
+          newStatus: 3,
+          statusText: 'Booked'
+        },
+        message: 'Application booking confirmed successfully'
+      };
+    } catch (error) {
+      logger.error('Service: Failed to confirm booking:', error);
       throw error;
     }
   }

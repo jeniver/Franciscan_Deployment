@@ -17,13 +17,29 @@ export const pdfTemplateService = {
             niche,
             invoice,
             deceased,
-            storage
+            storage,
+            consentForm,
+            agreement,
+            metadata,
+            crystalReports,
+            printReady
         } = data;
 
         // Helper function to format currency
         const formatCurrency = (amount: any) => {
             const num = parseFloat(amount || 0);
             return num.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+
+        // Helper function to format date/time
+        const formatDateTime = (dateStr: string | null | undefined): string => {
+            if (!dateStr) return '';
+            try {
+                const date = new Date(dateStr);
+                return date.toLocaleString();
+            } catch {
+                return dateStr || '';
+            }
         };
 
         // Helper function to format address into lines from a single string
@@ -147,7 +163,7 @@ export const pdfTemplateService = {
         const nominee2AddressLines = buildAddressLinesFromEntity(nominee2 || {});
         
         // Get consideration sum (total amount) from invoice or niche
-        const considerationSum = invoice?.totalAmount || invoice?.invoicePayingAmount || niche?.totalAmount || 7000;
+        const considerationSum =  niche?.totalAmount || 7000;
         
         // Get chapel name and niche number
         const chapelName = niche?.chapelName || niche?.location?.chapel?.chapelName || '';

@@ -118,6 +118,9 @@ class NicheAgreement {
     this.storageFrom = data.storageFrom || null;
     this.storageTo = data.storageTo || null;
 
+    // Status
+    this.status = parseInt(data.Status || data.status || 0);
+    
     // Consent form statuses and timestamps
     this.consentFormStatus = data.consentFormStatus || null;
     this.consentFormTimestamp = data.consentFormTimestamp || null;
@@ -287,11 +290,11 @@ class NicheAgreement {
   extractBlockNumber(fullAddress) {
     if (!fullAddress || typeof fullAddress !== 'string') return null;
     
-    // Extract block number (typically at the beginning)
+    // Extract block number (typically at the beginning) with better edge case handling
     const blockPatterns = [
-      /^Block\s+(\d+[A-Z]*)/i,  // Block followed by number
-      /^Blk\s+(\d+[A-Z]*)/i,    // Blk followed by number
-      /^(\d+[A-Z]*)\s+/         // Number at the beginning followed by space
+      /Bl\[iao]?[sc(kv]?\s+(\d+[A-Z]*)/i,  // Block/Blk/Bik/Blc variations followed by number
+      /^(\d+[A-Z]*)\s+/i,                  // Number at the beginning followed by space
+      /(?:^|\s)(\d+[A-Z]*)(?:\s|$)/i       // Number with word boundaries
     ];
     
     for (const pattern of blockPatterns) {
@@ -304,12 +307,28 @@ class NicheAgreement {
     return null;
   }
 
+  /**
+   * Get human-readable status text
+   */
+  getStatusText() {
+    const statusMap = {
+      0: 'Deleted',
+      1: 'Draft',
+      2: 'Pending',
+      3: 'Booked',
+      4: 'Completed'
+    };
+    return statusMap[this.status] || 'Unknown';
+  }
+
   // Convert to JSON (remove sensitive data if needed)
   toJSON() {
     return {
       applicationCode: this.applicationCode,
       appliedDate: this.appliedDate,
       agreementDate: this.agreementDate,
+      status: this.status,
+      statusText: this.getStatusText(),
 
       // Applicant
       applicant: {

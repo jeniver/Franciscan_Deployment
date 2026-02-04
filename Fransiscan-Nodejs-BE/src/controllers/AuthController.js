@@ -1,6 +1,7 @@
 const BaseController = require('./BaseController');
 const AuthService = require('../services/AuthService');
 const UserRepository = require('../repositories/UserRepository');
+const logger = require('../utils/logger');
 
 /**
  * Authentication controller

@@ -393,23 +393,13 @@ export const useApplication = () => {
     }
     
     try {
-      // Map form data to API request format (only send changed fields)
-      const { mapFormDataToNicheApplicationRequest } = await import('../utils/nicheApplicationMapper');
-      const fullRequest = mapFormDataToNicheApplicationRequest(applicationData);
-      
-      // Only send fields that are typically updatable
-      const updateData: Partial<typeof fullRequest> = {
-        applicantPhone: fullRequest.applicantPhone,
-        nomineeName: fullRequest.nomineeName,
-        beneficiary1: fullRequest.beneficiary1,
-        beneficiary2: fullRequest.beneficiary2,
-        beneficiary3: fullRequest.beneficiary3,
-        // Add other updatable fields as needed
-      };
+      // Map form data to API request format using optimized payload
+      const { generateOptimizedPayload } = await import('../utils/nicheApplicationMapper');
+      const optimizedPayload = generateOptimizedPayload(applicationData);
       
       const result = await dispatch(updateNicheApplication({
         applicationCode: applicationCode.trim(),
-        applicationData: updateData
+        applicationData: optimizedPayload
       }));
       
       if (result.type.endsWith('/fulfilled')) {

@@ -10,6 +10,7 @@ import { NomineeDetails } from './pages/NomineeDetails';
 import { InvoiceReceipt } from './pages/InvoiceReceipt';
 import { NicheAgreementDetailsModal } from './components/NicheAgreementDetailsModal';
 import { AgreementViewerModal } from './components/AgreementViewerModal';
+import { NicheApplicationDetailsModal } from './components/NicheApplicationDetailsModal';
 import { applicationEmailService } from './services/applicationEmailService';
 import { EyeIcon, PrinterIcon, PlusIcon, FileTextIcon, HomeIcon, UserIcon, UsersIcon, UserCheckIcon, AlertCircleIcon, PenToolIcon } from 'lucide-react';
 import { useApplication } from './hooks/useApplication';
@@ -19,7 +20,9 @@ import { Input } from './components/common/Input';
 import { DateInput } from './components/common/DateInput';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { useDispatch, useSelector } from 'react-redux';
+import type { RootState } from './store';
 import { setViewMode as setViewModeAction, setEditMode, resetApplicationListState } from './store/applicationSlice';
+import { store } from './store';
 import type { ApplicationListFilters } from './store/applicationSlice';
 import { useBatchedUpdates } from './hooks/useBatchedUpdates';
 import { InscriptionRequest } from './components/InscriptionRequest';
@@ -77,6 +80,7 @@ export function App() {
     createdApplication,
     creationError,
     createApplication,
+    loadApplication,
     handleViewApplication,
     handleViewApplicationFromTable,
     handleEditApplicationFromTable,
@@ -117,11 +121,68 @@ export function App() {
     showErrorMessage
   } = useFormValidation();
 
+  // Helper function to normalize application data for the modal
+  const normalizeApplicationForModal = useCallback((applicationData: any) => {
+    if (!applicationData) return null;
+    
+    // Handle API response structure where data is wrapped in 'data' property
+    const actualData = applicationData.data || applicationData;
+    
+    // Determine status based on the application data structure
+    let status = 1; // Default to Draft
+    if (applicationData.status !== undefined) {
+      status = applicationData.status;
+    } else if (actualData.status !== undefined) {
+      status = actualData.status;
+    } else if (applicationData.applicationStatus !== undefined) {
+      status = applicationData.applicationStatus;
+    } else if (actualData.applicationStatus !== undefined) {
+      status = actualData.applicationStatus;
+    } else if (actualData.agreement?.status === 'completed') {
+      status = 3; // Booked
+    } else if (actualData.consentForm?.status === 'completed') {
+      status = 3; // Booked
+    } else if (actualData.agreement?.status === 'pending' || actualData.consentForm?.status === 'pending') {
+      status = 1; // Draft
+    }
+    
+    return {
+      // Spread the actual data
+      ...actualData,
+      // Override with root-level properties if they exist
+      ...applicationData,
+      // Ensure the status field exists
+      status: status,
+      // Ensure code is available
+      code: applicationData.code || applicationData.applicationCode || applicationData.applicationNumber || actualData.applicationCode || '—',
+      // Ensure applicant info is properly structured
+      applicant: applicationData.applicant || applicationData.applicantInfo || applicationData.contactPerson || actualData.applicant || {},
+      // Ensure nominee info is properly structured
+      nominee: applicationData.nominee || applicationData.nomineeInfo || actualData.nominee || {},
+      // Ensure nominee2 info is also handled
+      nominee2: applicationData.nominee2 || actualData.nominee2 || {},
+      // Ensure niche info is properly structured
+      niche: applicationData.niche || applicationData.nicheDetails || actualData.niche || {},
+      // Ensure beneficiaries are properly structured
+      beneficiaries: applicationData.beneficiaries || applicationData.beneficiaryList || applicationData.beneficiaryDetails || actualData.beneficiaries || [],
+      // Ensure dates are properly formatted
+      appliedDate: applicationData.appliedDate || applicationData.createdDate || applicationData.createdAt || applicationData.applicationDate || actualData.appliedDate,
+      agreementDate: applicationData.agreementDate || applicationData.confirmedDate || applicationData.updatedAt || actualData.agreementDate,
+      // Ensure amount is properly formatted
+      amount: applicationData.amount || applicationData.totalAmount || applicationData.grandTotal || actualData.niche?.totalAmount || actualData.invoice?.totalAmount || 0
+    };
+  }, []);
+
   const [lastCreatedCode, setLastCreatedCode] = useState<string | null>(null);
   const [isAgreementDetailsModalOpen, setIsAgreementDetailsModalOpen] = useState(false);
+  const [isApplicationDetailsModalOpen, setIsApplicationDetailsModalOpen] = useState(false);
+  const [selectedApplicationForModal, setSelectedApplicationForModal] = useState<any>(null);
+  const [isConfirmingBooking, setIsConfirmingBooking] = useState(false);
   // Track if we're intentionally creating a new application to prevent auto-switching to table view
   const isCreatingNewRef = useRef(false);
   const [selectedApplicationCode, setSelectedApplicationCode] = useState<string | null>(null);
+  // Get loaded application data from Redux state
+  const loadedApplicationRaw = useSelector((state: RootState) => state.application.loadedApplicationRaw);
   // Track last processed route to prevent infinite loops
   const lastProcessedRouteRef = useRef<string>('');
   const routeProcessingRef = useRef(false);
@@ -137,6 +198,37 @@ export function App() {
   const handleGoToInvoiceWithFeedback = useCallback(async () => {
     await handleGoToInvoice();
   }, [handleGoToInvoice]);
+
+  // Handler for confirming booking
+  const handleConfirmBooking = useCallback(async () => {
+    if (!selectedApplicationForModal?.code) {
+      showErrorMessage('No application selected for booking confirmation');
+      return;
+    }
+
+    setIsConfirmingBooking(true);
+    
+    try {
+      const { confirmBookingService } = await import('./services/confirmBookingService');
+      const result = await confirmBookingService.confirmBooking(selectedApplicationForModal.code);
+      
+      if (result.success) {
+        showSuccessMessage(result.message || 'Application booking confirmed successfully!');
+        
+        // Close the modal
+        setIsApplicationDetailsModalOpen(false);
+        setSelectedApplicationForModal(null);
+        
+        // Refresh the application list to show updated status
+        await searchApplicationList({ pagination: { page: 1 } });
+      }
+    } catch (error: any) {
+      console.error('Error confirming booking:', error);
+      showErrorMessage(error.message || 'Failed to confirm booking');
+    } finally {
+      setIsConfirmingBooking(false);
+    }
+  }, [selectedApplicationForModal, showErrorMessage, showSuccessMessage, searchApplicationList]);
 
   const isFormView = viewMode === 'form';
 
@@ -161,10 +253,22 @@ export function App() {
       clearTimeout(searchDebounceRef.current);
       searchDebounceRef.current = null;
     }
+    
+    // Preserve current filters before resetting state
+    const currentFilters = { ...applicationListFilters };
+    
     // Clear cache before new search to ensure fresh data
     dispatch(resetApplicationListState());
-    await searchApplicationList({ pagination: { page: 1 } });
-  }, [searchApplicationList, dispatch]);
+    
+    // Apply current filters after reset
+    updateListFilters(currentFilters);
+    
+    // Perform search with current filters
+    await searchApplicationList({ 
+      filters: currentFilters,
+      pagination: { page: 1 } 
+    });
+  }, [searchApplicationList, dispatch, applicationListFilters, updateListFilters]);
 
   const handleResetSearch = useCallback(async () => {
     // Clear any pending debounced searches
@@ -765,8 +869,36 @@ The application list will be refreshed to show your new application.`);
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => {
-                                handleViewApplicationFromTable(applicationCode, navigate);
+                              onClick={async () => {
+                                try {
+                                  // Load the application data first
+                                  const result = await loadApplication(applicationCode);
+                                  
+                                  // Wait for the Redux state to update completely
+                                  await new Promise(resolve => setTimeout(resolve, 150));
+                                  
+                                  if (result.type.endsWith('/fulfilled')) {
+                                    // Get the application data from Redux state
+                                    const updatedState = store.getState();
+                                    let applicationData = updatedState.application.loadedApplicationRaw;
+                                    
+                                    // Ensure application data has the correct structure for the modal
+                                    if (applicationData) {
+                                      // Normalize the application data structure for the modal
+                                      const normalizedApplication = normalizeApplicationForModal(applicationData);
+                                      
+                                      setSelectedApplicationForModal(normalizedApplication);
+                                      setIsApplicationDetailsModalOpen(true);
+                                    } else {
+                                      showErrorMessage('Failed to load application details');
+                                    }
+                                  } else {
+                                    showErrorMessage('Failed to load application details');
+                                  }
+                                } catch (error) {
+                                  console.error('Error loading application for modal:', error);
+                                  showErrorMessage('Failed to load application details');
+                                }
                               }}
                               className="text-blue-600 hover:text-blue-800 hover:underline"
                               title="View Application Details"
@@ -1133,51 +1265,46 @@ The application list will be refreshed to show your new application.`);
                     >
                       ← Previous Step
                     </Button>
-                    {isDirty && (
-                      <Button
-                        variant="primary"
-                        onClick={saveChanges}
-                        disabled={isUpdating}
-                        icon={isUpdating ? <LoadingSpinner size="sm" text="" /> : undefined}
-                      >
-                        {isUpdating ? 'Saving...' : 'Save Changes'}
-                      </Button>
-                    )}
                     <Button
                       variant="primary"
                       onClick={async () => {
                         if (currentStep === 5) {
-                          // First, save any pending batched changes
-                          if (isDirty) {
-                            const saveResult = await saveChanges();
-                            if (!saveResult.success) {
-                              showErrorMessage(saveResult.error || 'Failed to save pending changes');
-                              return;
+                          // For step 5, save all changes and update the application
+                          try {
+                            // First, save any pending batched changes
+                            if (isDirty) {
+                              const saveResult = await saveChanges();
+                              if (!saveResult.success) {
+                                showErrorMessage(saveResult.error || 'Failed to save pending changes');
+                                return;
+                              }
                             }
-                          }
-                          
-                          // Then update the application
-                          const result = await handleUpdateApplication(applicationNumber, formData);
-                          if (result.success) {
-                            showSuccessMessage('Application updated successfully!');
-                            // Switch to view mode after successful update
-                            dispatch(setViewModeAction(true));
-                            dispatch(setEditMode(false));
-                            // Reload the application to show updated data and navigate to view
-                            await handleViewApplicationFromTable(applicationNumber, navigate);
-                            // Ensure we're in form view mode (handleViewApplicationFromTable already does this)
-                          } else {
-                            showErrorMessage(result.error || 'Failed to update application');
+                            
+                            // Then update the application with all current form data
+                            const result = await handleUpdateApplication(applicationNumber, formData);
+                            if (result.success) {
+                              showSuccessMessage('Application updated successfully!');
+                              // Switch to view mode after successful update
+                              dispatch(setViewModeAction(true));
+                              dispatch(setEditMode(false));
+                              // Reload the application to show updated data and navigate to view
+                              await handleViewApplicationFromTable(applicationNumber, navigate);
+                            } else {
+                              showErrorMessage(result.error || 'Failed to update application');
+                            }
+                          } catch (error) {
+                            console.error('Error updating application:', error);
+                            showErrorMessage('Failed to update application');
                           }
                         } else {
                           // For steps 1-4, just move to next step
                           nextStep();
                         }
                       }}
-                      disabled={loading}
-                      icon={loading ? <LoadingSpinner size="sm" text="" /> : undefined}
+                      disabled={loading || isUpdating}
+                      icon={(loading || isUpdating) ? <LoadingSpinner size="sm" text="" /> : undefined}
                     >
-                      {loading ? 'Saving...' :
+                      {(loading || isUpdating) ? 'Saving...' :
                         currentStep === 5 ? 'Update Application' : 'Next Step →'}
                     </Button>
                   </div>
@@ -1244,6 +1371,18 @@ The application list will be refreshed to show your new application.`);
       agreementData={agreementModalData}
       applicationNumber={applicationNumber}
       loading={loading}
+    />
+
+    {/* Niche Application Details Modal */}
+    <NicheApplicationDetailsModal
+      isOpen={isApplicationDetailsModalOpen}
+      onClose={() => {
+        setIsApplicationDetailsModalOpen(false);
+        setSelectedApplicationForModal(null);
+      }}
+      application={selectedApplicationForModal}
+      onConfirmBooking={handleConfirmBooking}
+      isConfirming={isConfirmingBooking}
     />
   </Layout>;
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface BeneficiaryDatePickerProps {
   value: string; // YYYY-MM-DD format or just YYYY for year-only
@@ -24,6 +24,9 @@ export function BeneficiaryDatePicker({
   const [day, setDay] = useState("");
   const [month, setMonth] = useState("");
   const [year, setYear] = useState("");
+  
+  // Ref to prevent infinite loops when calling onChange
+  const isUpdatingRef = useRef(false);
 
   const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i).reverse();
   const months = [
@@ -43,7 +46,7 @@ export function BeneficiaryDatePicker({
   
   const days = Array.from({ length: 31 }, (_, i) => i + 1);
 
-  // Parse incoming value (YYYY-MM-DD or YYYY)
+  // Parse incoming value (YYYY-MM-DD, DD-MMM-YYYY or YYYY)
   useEffect(() => {
     if (!value) {
       setDay("");
@@ -57,12 +60,29 @@ export function BeneficiaryDatePicker({
       const yearValue = value.toString().slice(0, 4);
       setYear(yearValue);
     } else {
-      // Full date mode - parse YYYY-MM-DD
+      // Full date mode - handle both YYYY-MM-DD and DD-MMM-YYYY formats
       const parts = value.split('-');
       if (parts.length === 3) {
-        setYear(parts[0]);
-        setMonth(parts[1]);
-        setDay(parts[2]);
+        // Check if format is DD-MMM-YYYY (e.g., "03-Mar-1953") or YYYY-MM-DD (e.g., "1953-03-03")
+        // If first part is 4 digits, it's YYYY-MM-DD format
+        if (parts[0].length === 4) {
+          // YYYY-MM-DD format
+          setYear(parts[0]);
+          setMonth(parts[1]);
+          setDay(parts[2]);
+        } else {
+          // DD-MMM-YYYY format
+          setDay(parts[0]);
+          
+          // Convert month name to number
+          const monthNames = [
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+          ];
+          const monthIndex = monthNames.findIndex(m => m.toUpperCase() === parts[1].toUpperCase());
+          setMonth(monthIndex !== -1 ? (monthIndex + 1).toString().padStart(2, '0') : parts[1]);
+          setYear(parts[2]);
+        }
       } else if (parts.length === 1 && parts[0].length === 4) {
         // Only year provided
         setYear(parts[0]);
@@ -74,23 +94,44 @@ export function BeneficiaryDatePicker({
 
   // Update parent when selections change
   useEffect(() => {
-    if (mode === 'year') {
-      // Year only mode
-      if (year) {
-        onChange(year);
-      } else {
-        onChange('');
-      }
-    } else {
-      // Full date mode
-      if (year && month && day) {
-        const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-        onChange(formattedDate);
-      } else if (!year && !month && !day) {
-        onChange('');
-      }
+    // Prevent infinite loops
+    if (isUpdatingRef.current) {
+      return;
     }
-  }, [day, month, year, mode, onChange]); // Include onChange in dependencies to prevent infinite loop
+    
+    isUpdatingRef.current = true;
+    
+    try {
+      if (mode === 'year') {
+        // Year only mode
+        if (year) {
+          onChange(year);
+        } else {
+          onChange('');
+        }
+      } else {
+        // Full date mode - return in DD-MMM-YYYY format to match API expectations
+        if (year && month && day) {
+          // Convert month number back to month name
+          const monthNames = [
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+          ];
+          const monthIndex = parseInt(month, 10) - 1;
+          const monthName = monthNames[monthIndex] || month;
+          const formattedDate = `${day.padStart(2, '0')}-${monthName}-${year}`;
+          onChange(formattedDate);
+        } else if (!year && !month && !day) {
+          onChange('');
+        }
+      }
+    } finally {
+      // Reset the flag after a brief delay to ensure the update cycle completes
+      setTimeout(() => {
+        isUpdatingRef.current = false;
+      }, 0);
+    }
+  }, [day, month, year, mode, onChange]); // Include onChange but use ref to prevent infinite loop
 
   if (mode === 'year') {
     // Year-only picker

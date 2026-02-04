@@ -1,4 +1,5 @@
 import React from 'react';
+import { PDF_ASSETS } from '../constants/pdfConstants';
 
 interface AgreementPdfTemplateProps {
   data: {
@@ -41,6 +42,7 @@ interface AgreementPdfTemplateProps {
       invoicePayingAmount?: number;
       paymentMethod?: string;
       balance?: number;
+      description?: string;
     };
     deceased?: {
       deceased1?: {
@@ -178,307 +180,704 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({ data
   const paymentMethod = invoice?.paymentMethod || 'Cash';
   const balance = invoice?.balance || 0;
 
+
+  const TableRow = ({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode
+  className?: string
+}) => (
+  <div className={`flex border-b border-black last:border-b-0 ${className}`}>
+    {children}
+  </div>
+)
+const LabelCell = ({
+  children,
+  width = 'w-32',
+  className = '',
+}: {
+  children: React.ReactNode
+  width?: string
+  className?: string
+}) => (
+  <div
+    className={`${width} border-r border-black p-1 pl-2 text-sm font-medium flex-shrink-0 ${className}`}
+  >
+    {children}
+  </div>
+)
+const ValueCell = ({
+  children,
+  className = '',
+  width = 'flex-1',
+}: {
+  children: React.ReactNode
+  className?: string
+  width?: string
+}) => (
+  <div className={`${width} p-1 pl-2 text-sm font-serif ${className}`}>
+    {children}
+  </div>
+)
+const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+  <div className="border border-black border-t-0 px-2 py-1 text-sm font-bold bg-gray-50">
+    {children}
+  </div>
+)
+
   return (
-    <div className="w-full h-full bg-white" style={{ width: '51em', height: '66em', fontSize: '1em' }}>
-      {/* Header Image */}
-      <div className="relative w-full" style={{ height: '6.6em' }}>
-        <img 
-          src="/logo.png" 
-          alt="Header" 
-          className="absolute object-contain"
-          style={{
-            clip: 'rect(5.958333em, 47.93333em, 63.04167em, 3.145833em)',
-            width: '100%',
-            pointerEvents: 'none'
-          }}
-        />
-      </div>
-
-      {/* Content Area */}
-      <div className="relative" style={{ width: '51em' }}>
-        {/* Title */}
-        <div className="absolute whitespace-nowrap" style={{ left: '8.7833em', top: '6.2977em' }}>
-          <span className="text-2xl font-bold text-black leading-none tracking-tight">F</span>
-          <span className="text-xl font-bold text-black leading-none tracking-tight" style={{ wordSpacing: '0.0245em' }}>RANCISCAN </span>
-          <span className="text-2xl font-bold text-black leading-none" style={{ letterSpacing: '0.0004em' }}>C</span>
-          <span className="text-xl font-bold text-black leading-none">OLUMBARIUM &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '22.4833em', top: '9.1587em' }}>
-          <span className="text-lg italic text-black leading-none">AGREEMENT &nbsp;</span>
-        </div>
+    <div className="min-h-screen bg-gray-100 py-8 font-sans text-gray-900">
+      {/* Page 1 */}
+      <div className="max-w-[210mm] mx-auto bg-white shadow-lg p-8 mb-8 min-h-[297mm]">
+        {/* Header */}
+        <header className="flex justify-between items-start mb-6">
+          <div className="flex-1 text-center pt-2">
+            <h1
+              className="text-2xl tracking-[0.25em] mb-1 uppercase"
+              style={{
+                fontFamily: 'Times New Roman, Georgia, serif',
+                fontVariant: 'small-caps',
+              }}
+            >
+              Franciscan Columbarium
+            </h1>
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <span
+                className="text-lg"
+                style={{
+                  fontFamily: 'Times New Roman, Georgia, serif',
+                }}
+              >
+                ❧
+              </span>
+              <span
+                className="text-base tracking-[0.15em] uppercase"
+                style={{
+                  fontFamily: 'Times New Roman, Georgia, serif',
+                }}
+              >
+                Agreement
+              </span>
+              <span
+                className="text-lg"
+                style={{
+                  fontFamily: 'Times New Roman, Georgia, serif',
+                }}
+              >
+                ❧
+              </span>
+            </div>
+          </div>
+          <div className="w-32 h-32 flex-shrink-0">
+            <img
+              src={PDF_ASSETS.headerImageBase64}
+              alt="Franciscan Columbarium Logo"
+              className="w-full h-full object-contain"
+            />
+          </div>
+        </header>
 
         {/* Between Section */}
-        <div className="absolute whitespace-nowrap" style={{ left: '3.0833em', top: '12.5357em' }}>
-          <span className="text-sm font-bold text-black leading-none">Between &nbsp;</span>
-        </div>
-        <div className="absolute whitespace-nowrap" style={{ left: '12.0833em', top: '12.5357em' }}>
-          <span className="text-sm font-bold text-black leading-none">:</span>
-        </div>
-
-        {/* Order Information */}
-        <div className="absolute" style={{ left: '3.1875em', top: '13.6998em', width: '44.7458em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0068em' }}>
-            The Order of Friars Minor (Singapore) Limited, a company limited by guarantee of 5 Bukit Batok East Ave 2, Singapore 659918 &nbsp;
-          </span>
-        </div>
-        <div className="absolute" style={{ left: '3.1875em', top: '14.6998em', width: '44.7458em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0053em' }}>
-            ("The Order"). Co & GST Reg No. 2010163236M. Tel:6560-6361, HP:9774-7053, e-mail:franciscan.columbarium@gmail.com &nbsp;
-          </span>
+        <div className="mb-4 text-sm">
+          <div className="flex mb-1">
+            <span className="w-24 font-medium">Between</span>
+            <span>:</span>
+          </div>
+          <p className="text-justify leading-snug mb-2">
+            The Order of Friars Minor (Singapore) Limited, a company limited by
+            guarantee of 5 Bukit Batok East Ave 2, Singapore 659918 ("The
+            Order"). Co & GST Reg No. 201016323M. Tel:6560-6361, HP:9774-7053,
+            e-mail:franciscan.columbarium@gmail.com
+          </p>
         </div>
 
         {/* Applicant Section */}
-        <div className="absolute whitespace-nowrap" style={{ left: '3.3292em', top: '16.1373em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0002em' }}>And : &nbsp;</span>
+        <div className="flex justify-between items-end mb-1 text-sm">
+          <div className="flex gap-2">
+            <span className="font-medium">And :</span>
+          </div>
+          <div className="font-medium">
+            Application Code :{' '}
+            <span className="font-normal font-serif ml-2">{applicationCode || '0000-0'}</span>
+          </div>
         </div>
 
-        <div className="absolute whitespace-nowrap" style={{ left: '3.8125em', top: '17.554em' }}>
-          <span className="text-sm leading-relaxed">Name &nbsp;</span>
+        <div className="border border-black mb-0">
+          <TableRow>
+            <LabelCell>Name</LabelCell>
+            <ValueCell>{applicantName}</ValueCell>
+            <LabelCell width="w-32" className="border-l border-black">
+              NRIC/Passport No.
+            </LabelCell>
+            <ValueCell width="w-48" className="border-l border-black">
+              {applicantIdNo}
+            </ValueCell>
+          </TableRow>
+
+          <div className="flex border-b border-black">
+            <LabelCell className="h-24 border-b-0">Address</LabelCell>
+            <div className="flex-1 flex flex-col">
+              <div className="flex border-b border-black h-8">
+                <ValueCell className="flex-1">{applicantAddressLines[0]}</ValueCell>
+                <LabelCell
+                  width="w-32"
+                  className="border-l border-black border-r-0"
+                >
+                  Mobile No.
+                </LabelCell>
+                <ValueCell width="w-48" className="border-l border-black">
+                  {applicantMobileNo}
+                </ValueCell>
+              </div>
+              <div className="flex border-b border-black h-8">
+                <ValueCell className="flex-1">{applicantAddressLines[1]}</ValueCell>
+                <LabelCell
+                  width="w-32"
+                  className="border-l border-black border-r-0"
+                >
+                  Home Tel.
+                </LabelCell>
+                <ValueCell
+                  width="w-48"
+                  className="border-l border-black"
+                >{applicantAddressLines[2]}</ValueCell>
+              </div>
+              <div className="flex h-8">
+                <ValueCell className="flex-1">{applicantAddressLines[2]}</ValueCell>
+                <LabelCell
+                  width="w-32"
+                  className="border-l border-black border-r-0"
+                >
+                  Office Tel.
+                </LabelCell>
+                <ValueCell
+                  width="w-48"
+                  className="border-l border-black"
+                >
+                  {' '}
+                </ValueCell>
+              </div>
+            </div>
+          </div>
+
+          <TableRow>
+            <LabelCell>e-mail</LabelCell>
+            <ValueCell>{applicantEmail}</ValueCell>
+            <LabelCell width="w-32" className="border-l border-black">
+              Catholic
+            </LabelCell>
+            <ValueCell width="w-48" className="border-l border-black">
+              {applicantIsCatholicText}
+            </ValueCell>
+          </TableRow>
+        </div>
+        <SectionLabel>("The Applicant")</SectionLabel>
+
+        {/* Consideration Text */}
+        <div className="my-4 text-sm text-justify leading-relaxed">
+          In consideration of the sum of{' '}
+          <span className="inline-block w-32 border-b border-black text-center font-serif">
+            $ {formatCurrency(considerationSum)}
+          </span>{' '}
+          from the Applicant as the fee ("fee"), for which the Order
+          acknowledges receipt, the Order agrees to the interment and storage at
+          the Franciscan Columbarium located at 5 Bukit East Ave 2, Singapore
+          659918 ("The Columbarium")
         </div>
 
-        <div className="absolute whitespace-nowrap" style={{ left: '40.9458em', top: '16.1441em' }}>
-          <span className="text-sm font-bold text-black leading-none">{applicationCode || ''} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '34.2417em', top: '16.2207em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0002em' }}>Application Code : &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '35.9958em', top: '17.5107em' }}>
-          <span className="text-sm font-bold text-black leading-none">{applicantIdNo} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '10.3125em', top: '17.6107em' }}>
-          <span className="text-sm font-bold text-black leading-none" style={{ wordSpacing: '0.0064em' }}>{applicantName} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '28.1958em', top: '17.5873em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0005em' }}>NRIC/Passport No. &nbsp;</span>
-        </div>
-
-        {/* Address */}
-        <div className="absolute whitespace-nowrap" style={{ left: '10.3792em', top: '19.1191em' }}>
-          <span className="text-sm font-bold text-black leading-none" style={{ wordSpacing: '0.0001em' }}>{applicantAddressLines[0] || ''} &nbsp;</span>
-        </div>
-        <div className="absolute whitespace-nowrap" style={{ left: '10.3792em', top: '20.1191em' }}>
-          <span className="text-sm font-bold text-black leading-none">{applicantAddressLines[1] || ''} &nbsp;</span>
-        </div>
-        <div className="absolute whitespace-nowrap" style={{ left: '10.3792em', top: '21.1191em' }}>
-          <span className="text-sm font-bold text-black leading-none" style={{ wordSpacing: '0.0001em' }}>{applicantAddressLines[2] || ''} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '3.8125em', top: '19.304em' }}>
-          <span className="text-sm leading-relaxed">Address &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '35.9958em', top: '19.4441em' }}>
-          <span className="text-sm font-bold text-black leading-none">{applicantMobileNo} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '28.1958em', top: '19.754em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0003em' }}>Mobile No. &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '28.1958em', top: '21.254em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '-0.0168em' }}>Home Tel. &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '28.1958em', top: '23.004em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '-0.0103em' }}>Office Tel. &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '28.1958em', top: '24.554em' }}>
-          <span className="text-sm leading-relaxed">Catholic &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '3.75em', top: '24.3248em' }}>
-          <span className="text-sm leading-relaxed">e-mail &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '10.25em', top: '24.3607em' }}>
-          <a href={applicantEmail ? `mailto:${applicantEmail}` : '#'} target="_blank" className="no-underline">
-            <span className="text-sm font-bold text-black leading-none">{applicantEmail || ''} &nbsp;</span>
-          </a>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '36.1625em', top: '24.4941em' }}>
-          <span className="text-sm font-bold text-black leading-none" style={{ letterSpacing: '-0.0286em' }}>{applicantIsCatholicText} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '4.4292em', top: '25.654em' }}>
-          <span className="text-sm italic leading-relaxed" style={{ wordSpacing: '-0.0424em' }}>("The Applicant") &nbsp;</span>
-        </div>
-
-        {/* Consideration Section */}
-        <div className="absolute whitespace-nowrap" style={{ left: '1.6292em', top: '27.0207em', width: '46.3042em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0003em' }}>
-            In consideration of the sum of <span className="text-sm leading-relaxed">SGD{formatCurrency(considerationSum)}</span> from the Applicant as the fee ("fee"), for which the Order acknowledges receipt, &nbsp;
+        {/* Chapel Info */}
+        <div className="flex items-center gap-2 text-sm mb-4">
+          <span>In the Chapel of :</span>
+          <span className="flex-1 border-b-2 border-black font-serif px-2 text-center">
+            {chapelName}
           </span>
-        </div>
-
-        <div className="absolute" style={{ left: '3.6292em', top: '28.0707em', width: '44.3042em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0003em' }}>
-            the Order agrees to the interment and storage at the Franciscan Columbarium located at 5&nbsp;
-            <span style={{ wordSpacing: '0.1725em' }}>&nbsp;</span>
-            <span style={{ wordSpacing: '-0.0071em' }}>Bukit East Ave 2, Singapore &nbsp;</span>
+          <span>Niche No:</span>
+          <span className="w-24 border-b-2 border-black font-serif px-2 text-center">
+            {nicheNumber}
           </span>
+          <span>of an urn(s) containing the ashes of</span>
         </div>
 
-        <div className="absolute whitespace-nowrap" style={{ left: '3.6292em', top: '29.0707em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0002em' }}>659918 ("The Columbarium") &nbsp;</span>
+        {/* Nominee 1 */}
+        <div className="flex border border-black mb-0">
+          <div className="w-8 border-r border-black flex items-center justify-center font-bold bg-gray-50">
+            1
+          </div>
+          <div className="flex-1">
+            <TableRow>
+              <LabelCell width="w-40">Name</LabelCell>
+              <ValueCell>{nominee?.name || ''}</ValueCell>
+              <LabelCell width="w-32" className="border-l border-black">
+                NRIC/Passport No.
+              </LabelCell>
+              <ValueCell width="w-40" className="border-l border-black">
+                {nominee?.idNo || ''}
+              </ValueCell>
+            </TableRow>
+            <TableRow>
+              <LabelCell width="w-40">Date of Birth</LabelCell>
+              <ValueCell>{nominee?.dateOfBirth || ''}</ValueCell>
+              <LabelCell width="w-32" className="border-l border-black">
+                Sex
+              </LabelCell>
+              <ValueCell width="w-40" className="border-l border-black">
+                {nominee?.sex || ''}
+              </ValueCell>
+            </TableRow>
+            <TableRow>
+              <LabelCell width="w-40">Relationship to Applicant</LabelCell>
+              <ValueCell>{nominee?.relationshipToApplicant || ''}</ValueCell>
+              <LabelCell width="w-32" className="border-l border-black">
+                Catholic
+              </LabelCell>
+              <ValueCell width="w-40" className="border-l border-black">
+                {nominee?.isCatholic ? 'Yes' : 'No'}
+              </ValueCell>
+            </TableRow>
+            <div className="flex">
+              <LabelCell width="w-40" className="text-xs text-gray-500">
+                Relationship to Nominee1
+              </LabelCell>
+              <ValueCell className="bg-gray-100">
+                {' '}
+              </ValueCell>
+              <LabelCell
+                width="w-32"
+                className="border-l border-black text-xs text-gray-500"
+              >
+                Relationship to Nominee2
+              </LabelCell>
+              <ValueCell
+                width="w-40"
+                className="border-l border-black bg-gray-100"
+              >
+                {' '}
+              </ValueCell>
+            </div>
+          </div>
+        </div>
+        <div className="h-2"></div>
+
+        {/* Nominee 2 */}
+        <div className="flex border border-black mb-4">
+          <div className="w-8 border-r border-black flex items-center justify-center font-bold bg-gray-50">
+            2
+          </div>
+          <div className="flex-1">
+            <TableRow>
+              <LabelCell width="w-40">Name</LabelCell>
+              <ValueCell>{nominee2?.name || ''}</ValueCell>
+              <LabelCell width="w-32" className="border-l border-black">
+                NRIC/Passport No.
+              </LabelCell>
+              <ValueCell width="w-40" className="border-l border-black">
+                {nominee2?.idNo || ''}
+              </ValueCell>
+            </TableRow>
+            <TableRow>
+              <LabelCell width="w-40">Date of Birth</LabelCell>
+              <ValueCell>{nominee2?.dateOfBirth || ''}</ValueCell>
+              <LabelCell width="w-32" className="border-l border-black">
+                Sex
+              </LabelCell>
+              <ValueCell width="w-40" className="border-l border-black">
+                {nominee2?.sex || ''}
+              </ValueCell>
+            </TableRow>
+            <TableRow>
+              <LabelCell width="w-40">Relationship to Applicant</LabelCell>
+              <ValueCell>{nominee2?.relationshipToApplicant || ''}</ValueCell>
+              <LabelCell width="w-32" className="border-l border-black">
+                Catholic
+              </LabelCell>
+              <ValueCell width="w-40" className="border-l border-black">
+                {nominee2?.isCatholic ? 'Yes' : 'No'}
+              </ValueCell>
+            </TableRow>
+            <div className="flex">
+              <LabelCell width="w-40" className="text-xs text-gray-500">
+                Relationship to Nominee1
+              </LabelCell>
+              <ValueCell className="bg-gray-100">
+                {' '}
+              </ValueCell>
+              <LabelCell
+                width="w-32"
+                className="border-l border-black text-xs text-gray-500"
+              >
+                Relationship to Nominee2
+              </LabelCell>
+              <ValueCell
+                width="w-40"
+                className="border-l border-black bg-gray-100"
+              >
+                {' '}
+              </ValueCell>
+            </div>
+          </div>
         </div>
 
-        {/* Chapel and Niche */}
-        <div className="absolute whitespace-nowrap" style={{ left: '14.7375em', top: '30.2607em' }}>
-          <span className="text-sm font-bold text-black leading-none" style={{ wordSpacing: '-0.0398em' }}>{chapelName} &nbsp;</span>
+        <SectionLabel>("The Beneficiary")</SectionLabel>
+
+        {/* Consent Text */}
+        <div className="mt-4 text-sm text-justify mb-6">
+          <p className="mb-2">
+            By submitting this form, I consent to any my personal data being
+            collected, used or disclosed by the Order of Friars Minor (S) Ltd in
+            accordance with its Personal Data Protection Policy statement which
+            may be found at{' '}
+            <span className="underline">www.franciscans.sg</span>. Additionally,
+            where personal data of any third party is provided by you to OFMS
+            you represent and warrant that:
+          </p>
+          <ul className="list-disc pl-8 space-y-1">
+            <li>
+              you have the authority of that third party to disclose the said
+              personal data to OFMS
+            </li>
+            <li>
+              the third party is aware that his/her personal data is being
+              disclosed to OFMS
+            </li>
+            <li>such personal data is true, current and accurate</li>
+          </ul>
+          <p className="mt-2">
+            The form overleaf, the Conditions and the Regulations attached form
+            an integral part of this Agreement.
+          </p>
         </div>
 
-        <div className="absolute whitespace-nowrap" style={{ left: '29.2708em', top: '30.4441em' }}>
-          <span className="text-sm font-bold text-black leading-none">{nicheNumber} &nbsp;</span>
+        {/* Signatures */}
+        <div className="border border-black p-4 mt-auto">
+          <div className="grid grid-cols-2 gap-8">
+            <div>
+              <p className="mb-12 font-medium">The Applicant Personally :</p>
+              <div className="border-b border-black mb-2"></div>
+              <div className="flex mb-2">
+                <span className="w-24">Name :</span>
+                <span className="font-serif">{applicantName}</span>
+              </div>
+              <div className="flex">
+                <span className="w-24">Agreement Date :</span>
+                <span className="font-serif">{footerAgreementDate}</span>
+              </div>
+            </div>
+            <div>
+              <p className="mb-1">For and on Behalf of</p>
+              <p className="mb-12 font-medium">
+                The Order of Friars Minor (Singapore) Limited
+              </p>
+              <div className="border-b border-black mb-2"></div>
+              <div className="mb-2">
+                <span className="font-serif">Fr Justin Lim</span>
+              </div>
+              <div>
+                <span>Friar - Manager</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Page 2 */}
+      <div className="max-w-[210mm] mx-auto bg-white shadow-lg p-8 min-h-[297mm]">
+        {/* Contact Nominee 1 */}
+        <p className="mb-2 text-sm font-medium">
+          The Applicant's 1st nominee for contact purposes ("Nominee") is :
+        </p>
+        <div className="border border-black mb-6">
+          <TableRow>
+            <LabelCell>Name</LabelCell>
+            <ValueCell>{nominee?.name || ''}</ValueCell>
+            <LabelCell width="w-32" className="border-l border-black">
+              NRIC/Passport No.
+            </LabelCell>
+            <ValueCell width="w-40" className="border-l border-black">
+              {nominee?.idNo || ''}
+            </ValueCell>
+          </TableRow>
+
+          <div className="flex border-b border-black">
+            <LabelCell className="h-24 border-b-0">Address</LabelCell>
+            <div className="flex-1 flex flex-col">
+              <div className="flex border-b border-black h-8">
+                <ValueCell className="flex-1">
+                  {buildAddressLinesFromEntity(nominee || {})[0]}
+                </ValueCell>
+                <LabelCell
+                  width="w-32"
+                  className="border-l border-black border-r-0"
+                >
+                  Mobile No.
+                </LabelCell>
+                <ValueCell width="w-40" className="border-l border-black">
+                  {nominee?.mobileNo || ''}
+                </ValueCell>
+              </div>
+              <div className="flex border-b border-black h-8">
+                <ValueCell className="flex-1">{buildAddressLinesFromEntity(nominee || {})[1]}</ValueCell>
+                <LabelCell
+                  width="w-32"
+                  className="border-l border-black border-r-0"
+                >
+                  Home Tel.
+                </LabelCell>
+                <ValueCell
+                  width="w-40"
+                  className="border-l border-black"
+                >{buildAddressLinesFromEntity(nominee || {})[2]}</ValueCell>
+              </div>
+              <div className="flex h-8">
+                <ValueCell className="flex-1">{buildAddressLinesFromEntity(nominee || {})[2]}</ValueCell>
+                <LabelCell
+                  width="w-32"
+                  className="border-l border-black border-r-0"
+                >
+                  Office Tel.
+                </LabelCell>
+                <ValueCell
+                  width="w-40"
+                  className="border-l border-black"
+                >
+                  {' '}
+                </ValueCell>
+              </div>
+            </div>
+          </div>
+
+          <TableRow>
+            <LabelCell>e-mail</LabelCell>
+            <ValueCell>{nominee?.email || ''}</ValueCell>
+            <LabelCell width="w-40" className="border-l border-black">
+              Relationship to Applicant
+            </LabelCell>
+            <ValueCell width="w-32" className="border-l border-black">
+              {nominee?.relationshipToApplicant || ''}
+            </ValueCell>
+          </TableRow>
         </div>
 
-        <div className="absolute whitespace-nowrap" style={{ left: '3.8125em', top: '30.4707em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0003em' }}>In the Chapel of : &nbsp;</span>
+        {/* Contact Nominee 2 */}
+        <p className="mb-2 text-sm font-medium">
+          The Applicant's 2nd nominee for contact purposes ("Nominee") is
+        </p>
+        <div className="border border-black mb-6">
+          <TableRow>
+            <LabelCell>Name</LabelCell>
+            <ValueCell>{nominee2?.name || ''}</ValueCell>
+            <LabelCell width="w-32" className="border-l border-black">
+              NRIC/Passport No.
+            </LabelCell>
+            <ValueCell width="w-40" className="border-l border-black">
+              {nominee2?.idNo || ''}
+            </ValueCell>
+          </TableRow>
+
+          <div className="flex border-b border-black">
+            <LabelCell className="h-24 border-b-0">Address</LabelCell>
+            <div className="flex-1 flex flex-col">
+              <div className="flex border-b border-black h-8">
+                <ValueCell className="flex-1">
+                  {buildAddressLinesFromEntity(nominee2 || {})[0]}
+                </ValueCell>
+                <LabelCell
+                  width="w-32"
+                  className="border-l border-black border-r-0"
+                >
+                  Mobile No.
+                </LabelCell>
+                <ValueCell width="w-40" className="border-l border-black">
+                  {nominee2?.mobileNo || ''}
+                </ValueCell>
+              </div>
+              <div className="flex border-b border-black h-8">
+                <ValueCell className="flex-1">{buildAddressLinesFromEntity(nominee2 || {})[1]}</ValueCell>
+                <LabelCell
+                  width="w-32"
+                  className="border-l border-black border-r-0"
+                >
+                  Home Tel.
+                </LabelCell>
+                <ValueCell
+                  width="w-40"
+                  className="border-l border-black"
+                >{buildAddressLinesFromEntity(nominee2 || {})[2]}</ValueCell>
+              </div>
+              <div className="flex h-8">
+                <ValueCell className="flex-1">{buildAddressLinesFromEntity(nominee2 || {})[2]}</ValueCell>
+                <LabelCell
+                  width="w-32"
+                  className="border-l border-black border-r-0"
+                >
+                  Office Tel.
+                </LabelCell>
+                <ValueCell
+                  width="w-40"
+                  className="border-l border-black"
+                >
+                  {' '}
+                </ValueCell>
+              </div>
+            </div>
+          </div>
+
+          <TableRow>
+            <LabelCell>e-mail</LabelCell>
+            <ValueCell>{nominee2?.email || ''}</ValueCell>
+            <LabelCell width="w-40" className="border-l border-black">
+              Relationship to Applicant
+            </LabelCell>
+            <ValueCell width="w-32" className="border-l border-black">
+              {nominee2?.relationshipToApplicant || ''}
+            </ValueCell>
+          </TableRow>
         </div>
 
-        <div className="absolute whitespace-nowrap" style={{ left: '23.3125em', top: '30.4707em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0003em' }}>Niche No: &nbsp;</span>
+        {/* Chapel Details Table */}
+        <div className="border border-black mb-8">
+          <div className="flex border-b border-black">
+            <div className="w-40 p-1 pl-2 text-sm font-medium border-r border-black">
+              Chapel Name
+            </div>
+            <div className="flex-1 p-1 pl-2 text-sm font-serif border-r border-black">
+              {chapelName}
+            </div>
+            <div className="w-40 p-1 pl-2 text-sm font-medium border-r border-black">
+              Niche No
+            </div>
+            <div className="w-40 p-1 pl-2 text-sm font-serif">{nicheNumber}</div>
+          </div>
+          <div className="flex border-b border-black">
+            <div className="w-40 p-1 pl-2 text-sm font-medium border-r border-black">
+              1st Interment Date
+            </div>
+            <div className="flex-1 p-1 pl-2 text-sm font-serif border-r border-black">
+              {firstIntermentDate}
+            </div>
+            <div className="w-40 p-1 pl-2 text-sm font-medium border-r border-black">
+              2nd Interment Date
+            </div>
+            <div className="w-40 p-1 pl-2 text-sm font-serif">{secondIntermentDate}</div>
+          </div>
+          <div className="flex">
+            <div className="w-40 p-1 pl-2 text-sm font-medium border-r border-black">
+              Storage Period From
+            </div>
+            <div className="flex-1 p-1 pl-2 text-sm font-serif border-r border-black">
+              {storageFrom}
+            </div>
+            <div className="w-40 p-1 pl-2 text-sm font-medium border-r border-black">
+              Storage Period To
+            </div>
+            <div className="w-40 p-1 pl-2 text-sm font-serif">{storageTo}</div>
+          </div>
         </div>
 
-        <div className="absolute whitespace-nowrap" style={{ left: '33.3125em', top: '30.4707em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0003em' }}>of an urn(s) containing the ashes of &nbsp;</span>
+        {/* Payment Table */}
+        <div className="border border-black mb-12">
+          {/* Header */}
+          <div className="flex border-b border-black bg-gray-50 font-medium text-sm">
+            <div className="w-32 p-1 pl-2 border-r border-black">Date</div>
+            <div className="w-32 p-1 pl-2 border-r border-black">
+              Inv/ Receipt
+            </div>
+            <div className="flex-1 p-1 pl-2 border-r border-black">
+              Description
+            </div>
+            <div className="w-24 p-1 pl-2 border-r border-black text-right">
+              Amount
+            </div>
+            <div className="w-24 p-1 pl-2 border-r border-black">GST</div>
+            <div className="w-24 p-1 pl-2 text-right pr-2">Total</div>
+          </div>
+
+          {/* Row 1 */}
+          <div className="flex border-b border-black text-sm h-8">
+            <div className="w-32 p-1 pl-2 border-r border-black">
+              {invoiceDate1}
+            </div>
+            <div className="w-32 p-1 pl-2 border-r border-black">{invoiceNo1}</div>
+            <div className="flex-1 p-1 pl-2 border-r border-black flex justify-end pr-2">
+              {invoice?.description || 'Niche Fee'}
+            </div>
+            <div className="w-24 p-1 pl-2 border-r border-black text-right">
+              $ {formatCurrency(nicheAmount)}
+            </div>
+            <div className="w-24 p-1 pl-2 border-r border-black text-right">
+              $ {formatCurrency(taxAmount)}
+            </div>
+            <div className="w-24 p-1 pl-2 text-right pr-2">$ {formatCurrency(totalAmount)}</div>
+          </div>
+
+          {/* Row 2 */}
+          <div className="flex border-b border-black text-sm h-8">
+            <div className="w-32 p-1 pl-2 border-r border-black">
+              {invoiceDate2}
+            </div>
+            <div className="w-32 p-1 pl-2 border-r border-black">{invoiceNo2}</div>
+            <div className="flex-1 p-1 pl-2 border-r border-black flex justify-end pr-2">
+              {paymentMethod}
+            </div>
+            <div className="w-24 p-1 pl-2 border-r border-black bg-gray-100">
+              {' '}
+            </div>
+            <div className="w-24 p-1 pl-2 border-r border-black flex items-center justify-center">
+              -
+            </div>
+            <div className="w-24 p-1 pl-2 text-right pr-2">$ {formatCurrency(balance)}</div>
+          </div>
+
+          {/* Empty Row */}
+          <div className="flex border-b border-black text-sm h-8">
+            <div className="w-32 border-r border-black"></div>
+            <div className="w-32 border-r border-black"></div>
+            <div className="flex-1 border-r border-black"></div>
+            <div className="w-24 border-r border-black"></div>
+            <div className="w-24 border-r border-black"></div>
+            <div className="w-24"></div>
+          </div>
+
+          {/* Total Row */}
+          <div className="flex text-sm h-8">
+            <div className="w-32"></div>
+            <div className="w-32"></div>
+            <div className="flex-1"></div>
+            <div className="w-24"></div>
+            <div className="w-24 p-1 pr-4 text-right font-medium">Total</div>
+            <div className="w-24 p-1 pl-2 text-right pr-2 border border-black border-t-0 border-r-0 border-b-0">
+              $ {formatCurrency(totalAmount)}
+            </div>
+          </div>
         </div>
 
-        {/* Beneficiaries */}
-        <div className="absolute whitespace-nowrap" style={{ left: '13.2292em', top: '31.6774em' }}>
-          <span className="text-sm font-bold text-black leading-none" style={{ wordSpacing: '0.0001em' }}>{beneficiary1?.name || ''} &nbsp;</span>
-        </div>
-
-        {/* Storage Dates */}
-        <div className="absolute whitespace-nowrap" style={{ left: '15.0792em', top: '31.1524em' }}>
-          <span className="text-sm font-bold text-black leading-none">{storageFrom || ''} &nbsp;</span>
-        </div>
-        <div className="absolute whitespace-nowrap" style={{ left: '38.3125em', top: '31.1524em' }}>
-          <span className="text-sm font-bold text-black leading-none">{storageTo || ''} &nbsp;</span>
-        </div>
-
-        {/* Invoice Section */}
-        <div className="absolute whitespace-nowrap" style={{ left: '3.7125em', top: '33.9191em' }}>
-          <span className="text-sm font-bold text-black leading-none">Date &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '32.025em', top: '33.904em' }}>
-          <span className="text-sm leading-relaxed">Amount &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '31.675em', top: '35.2748em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0001em' }}>$ {formatCurrency(nicheAmount)} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '35.9em', top: '33.904em' }}>
-          <span className="text-sm italic leading-relaxed">GST &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '13.525em', top: '33.9816em' }}>
-          <span className="text-sm font-bold text-black leading-none" style={{ wordSpacing: '0.0004em' }}>Inv/ Receipt &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '20.5875em', top: '33.9816em' }}>
-          <span className="text-sm font-bold text-black leading-none">Description &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '44.8292em', top: '34.029em' }}>
-          <span className="text-sm leading-relaxed">Total &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '3.5875em', top: '35.3149em' }}>
-          <span className="text-sm font-bold text-black leading-none">{invoiceDate1 || ''} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '3.775em', top: '36.9399em' }}>
-          <span className="text-sm font-bold text-black leading-none">{invoiceDate2 || ''} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '42.7333em', top: '35.3373em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0001em' }}>$ {formatCurrency(totalAmount)} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '13.4625em', top: '35.3774em' }}>
-          <span className="text-sm font-bold text-black leading-none">{invoiceNo1 || ''} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '36.1083em', top: '35.3998em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0002em' }}>$ {formatCurrency(taxAmount)} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '37.7542em', top: '40.154em' }}>
-          <span className="text-sm leading-relaxed">Total &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '20.5875em', top: '35.5248em' }}>
-          <span className="text-sm leading-relaxed">{nicheNumber || ''}-1 &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '27.4625em', top: '36.7748em' }}>
-          <span className="text-sm leading-relaxed">{paymentMethod || 'Cash'} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '40.9917em', top: '36.8415em' }}>
-          <span className="text-sm leading-relaxed">-</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '43.1083em', top: '36.8373em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0002em' }}>$ {formatCurrency(totalAmount)} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '44.2958em', top: '39.8373em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0001em' }}>$ {formatCurrency(balance)} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '13.525em', top: '37.0024em' }}>
-          <span className="text-sm font-bold text-black leading-none">{invoiceNo2 || ''} &nbsp;</span>
-        </div>
-
-        {/* Deceased Information */}
-        <div className="absolute whitespace-nowrap" style={{ left: '5.125em', top: '46.8123em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0004em' }}>Name of Deceased &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '28.25em', top: '46.8123em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0001em' }}>Death Certificate No. &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '38.6875em', top: '46.8123em' }}>
-          <span className="text-sm leading-relaxed" style={{ wordSpacing: '0.0004em' }}>Date of Deceased &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '39.25em', top: '48.2857em' }}>
-          <span className="text-sm font-bold text-black leading-none">{firstDeceasedDate || ''} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '39.3125em', top: '49.5982em' }}>
-          <span className="text-sm font-bold text-black leading-none">{secondDeceasedDate || ''} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '5.125em', top: '48.3482em' }}>
-          <span className="text-sm font-bold text-black leading-none" style={{ wordSpacing: '0.0025em' }}>{firstDeceasedName || ''} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '28.2583em', top: '48.3482em' }}>
-          <span className="text-sm font-bold text-black leading-none">{firstDeceasedDeathCert || ''} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '5.25em', top: '49.5982em' }}>
-          <span className="text-sm font-bold text-black leading-none" style={{ wordSpacing: '0.0001em' }}>{secondDeceasedName || ''} &nbsp;</span>
-        </div>
-
-        <div className="absolute whitespace-nowrap" style={{ left: '28.2583em', top: '49.5982em' }}>
-          <span className="text-sm font-bold text-black leading-none">{secondDeceasedDeathCert || ''} &nbsp;</span>
+        {/* Deceased Table */}
+        <div className="border border-black">
+          <div className="flex border-b border-black bg-gray-50 font-medium text-sm">
+            <div className="flex-1 p-1 pl-2 border-r border-black">
+              Name of Deceased
+            </div>
+            <div className="w-48 p-1 pl-2 border-r border-black">
+              Death Certificate No.
+            </div>
+            <div className="w-48 p-1 pl-2">Date of Deceased</div>
+          </div>
+          <div className="flex border-b border-black text-sm h-8">
+            <div className="flex-1 p-1 pl-2 border-r border-black">
+              {firstDeceasedName}
+            </div>
+            <div className="w-48 p-1 pl-2 border-r border-black">{firstDeceasedDeathCert}</div>
+            <div className="w-48 p-1 pl-2">{firstDeceasedDate}</div>
+          </div>
+          <div className="flex text-sm h-8">
+            <div className="flex-1 p-1 pl-2 border-r border-black">
+              {secondDeceasedName}
+            </div>
+            <div className="w-48 p-1 pl-2 border-r border-black">{secondDeceasedDeathCert}</div>
+            <div className="w-48 p-1 pl-2">{secondDeceasedDate}</div>
+          </div>
         </div>
       </div>
     </div>
   );
 };
-
-

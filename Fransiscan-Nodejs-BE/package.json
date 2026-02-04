@@ -10,7 +10,6 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
     "test-db": "node -e \"require('dotenv').config(); const { connectDatabase } = require('./src/config/database'); connectDatabase().then(() => { console.log('✅ Database connected successfully!'); process.exit(0); }).catch(err => { console.error('❌ Database connection failed:', err.message); process.exit(1); });\"",
     "fix-permissions": "node scripts/fix-receipt-report-permissions.js",
     "diagnose": "node scripts/diagnose-niche-booking.js",

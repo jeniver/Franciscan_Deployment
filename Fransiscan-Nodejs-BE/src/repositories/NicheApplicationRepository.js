@@ -848,11 +848,13 @@ class NicheApplicationRepository {
         const beneficiaryQuery = `
           INSERT INTO NicheApplicationBeneficiary (
             NicheApplicationId, Name, RelationshipToApplicant, 
-            DateOfBirth, BirthYear, IDNo, IsCatholic, IsMale
+            DateOfBirth, BirthYear, IDNo, IsCatholic, IsMale,
+            RelationshipToNominee1, RelationshipToNominee2
           )
           VALUES (
             @applicationId, @name, @relationshipToApplicant,
-            @dateOfBirth, @birthYear, @idNo, @isCatholic, @isMale
+            @dateOfBirth, @birthYear, @idNo, @isCatholic, @isMale,
+            @relationshipToNominee1, @relationshipToNominee2
           )
         `;
 
@@ -864,7 +866,9 @@ class NicheApplicationRepository {
           birthYear: beneficiary.birthYear,
           idNo: beneficiary.idNo,
           isCatholic: beneficiary.isCatholic,
-          isMale: beneficiary.isMale
+          isMale: beneficiary.isMale,
+          relationshipToNominee1: beneficiary.relationshipToNominee1 || null,
+          relationshipToNominee2: beneficiary.relationshipToNominee2 || null
         });
       }
 
@@ -940,7 +944,9 @@ class NicheApplicationRepository {
               BirthYear,
               IDNo,
               IsCatholic,
-              IsMale
+              IsMale,
+              RelationshipToNominee1,
+              RelationshipToNominee2
             FROM NicheApplicationBeneficiary WITH (NOLOCK)
             WHERE NicheApplicationId = @applicationId
             ORDER BY NicheApplicationBeneficiaryId
@@ -1012,7 +1018,9 @@ class NicheApplicationRepository {
                 birthYear: formattedBirthYear,
                 idNo: row.IDNo,
                 isCatholic: row.IsCatholic,
-                isMale: row.IsMale
+                isMale: row.IsMale,
+                relationshipToNominee1: row.RelationshipToNominee1,
+                relationshipToNominee2: row.RelationshipToNominee2
               });
             });
         } catch (beneficiaryError) {
@@ -1169,11 +1177,13 @@ class NicheApplicationRepository {
         const beneficiaryQuery = `
           INSERT INTO NicheApplicationBeneficiary (
             NicheApplicationId, Name, RelationshipToApplicant,
-            DateOfBirth, BirthYear, IDNo, IsCatholic, IsMale
+            DateOfBirth, BirthYear, IDNo, IsCatholic, IsMale,
+            RelationshipToNominee1, RelationshipToNominee2
           )
           VALUES (
             @applicationId, @name, @relationshipToApplicant,
-            @dateOfBirth, @birthYear, @idNo, @isCatholic, @isMale
+            @dateOfBirth, @birthYear, @idNo, @isCatholic, @isMale,
+            @relationshipToNominee1, @relationshipToNominee2
           )
         `;
 
@@ -1185,13 +1195,54 @@ class NicheApplicationRepository {
           birthYear: beneficiary.birthYear,
           idNo: beneficiary.idNo,
           isCatholic: beneficiary.isCatholic,
-          isMale: beneficiary.isMale
+          isMale: beneficiary.isMale,
+          relationshipToNominee1: beneficiary.relationshipToNominee1 || null,
+          relationshipToNominee2: beneficiary.relationshipToNominee2 || null
         });
       }
 
       return true;
     } catch (error) {
       logger.error('Failed to update niche application:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update application status
+   * @param {string} code - Application code
+   * @param {number} newStatus - New status value
+   * @returns {Promise<boolean>} Success status
+   */
+  async updateStatus(code, newStatus) {
+    try {
+      logger.info(`[NicheApplicationRepository.updateStatus] Updating status for code: ${code} to: ${newStatus}`);
+      
+      // Validate new status
+      if (![1, 2, 3, 4].includes(newStatus)) {
+        throw new Error(`Invalid status value: ${newStatus}. Valid values: 1=Draft, 2=Pending, 3=Booked, 4=Completed`);
+      }
+
+      // Check if application exists
+      const existing = await this.getByCode(code);
+      if (!existing) {
+        logger.warn(`[NicheApplicationRepository.updateStatus] Application not found: ${code}`);
+        return false;
+      }
+
+      // Update status
+      const updateQuery = `
+        UPDATE NicheApplication 
+        SET Status = @status
+        WHERE Code = @code
+      `;
+
+      await executeQuery(updateQuery, { code, status: newStatus });
+      
+      logger.info(`[NicheApplicationRepository.updateStatus] Successfully updated status for code: ${code} from ${existing.status} to ${newStatus}`);
+      return true;
+    } catch (error) {
+      logger.error('Failed to update application status:', error);
       throw error;
     }
   }

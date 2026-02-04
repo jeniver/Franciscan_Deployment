@@ -727,19 +727,7 @@ export function NomineeDetails({
       </div>
     )}
 
-    {nominees.length > 0 && (
-      <div className="flex justify-end mb-4">
-        <button
-          onClick={handleAddNominee}
-          disabled={isReadOnly}
-          className={`flex items-center gap-2 px-4 py-2 bg-[#8b5a2b] text-white rounded-md hover:bg-[#6d4420] transition-colors ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-        >
-          <PlusIcon className="w-4 h-4" />
-          Add Nominee
-        </button>
-      </div>
-    )}
+    
 
     <div className="space-y-6">
       {nominees.map((nominee, index) => (
@@ -1029,6 +1017,20 @@ export function NomineeDetails({
           )}
         </div>
       ))}
+
+      {nominees.length > 0 && (
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={handleAddNominee}
+          disabled={isReadOnly}
+          className={`flex items-center gap-2 px-4 py-2 bg-[#8b5a2b] text-white rounded-md hover:bg-[#6d4420] transition-colors ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+        >
+          <PlusIcon className="w-4 h-4" />
+          Add Nominee
+        </button>
+      </div>
+    )}
 
       {/* Empty State */}
       {nominees.length === 0 && (

@@ -39,6 +39,8 @@ export interface InscriptionState {
   mobile: string;
   homeTel: string;
   emailId: string;
+  // Inscription Address
+  inscriptionAddress: string;
 
   // Deceased Details
   deceasedDetails: DeceasedDetail[];
@@ -84,6 +86,7 @@ const initialState: InscriptionState = {
   mobile: '',
   homeTel: '',
   emailId: '',
+  inscriptionAddress: '',
   deceasedDetails: [],
   inscriptionItems: [],
   itemsLoading: false,
@@ -354,6 +357,9 @@ const inscriptionSlice = createSlice({
     },
     setEmailId: (state, action: PayloadAction<string>) => {
       state.emailId = action.payload;
+    },
+    setInscriptionAddress: (state, action: PayloadAction<string>) => {
+      state.inscriptionAddress = action.payload;
     },
 
     // Deceased Details
@@ -684,6 +690,7 @@ export const {
   setMobile,
   setHomeTel,
   setEmailId,
+  setInscriptionAddress,
   setDeceasedDetails,
   addDeceasedDetail,
   removeDeceasedDetail,

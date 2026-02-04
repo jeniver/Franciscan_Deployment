@@ -115,9 +115,38 @@ class NicheAgreementRepository extends BaseRepository {
       };
 
       logger.info(`Found application: ${mergedData.Code} in Chapel: ${mergedData.ChapelCode || 'N/A'}, Wall: ${mergedData.WallCode || 'N/A'}`);
+      console.log( "Adresss finder",mergedData)
+      // Helper function to extract street address from full address
+      const extractStreetAddress = (fullAddress) => {
+        if (!fullAddress || typeof fullAddress !== 'string') {
+          return fullAddress;
+        }
+        
+        // Remove "Block" prefix if present
+        let cleanedAddress = fullAddress.replace(/^\s*Block\s+\d+\s*,?\s*/i, '');
+        
+        // Look for unit number patterns like "#floor-unit" or "-floor-unit"
+        const unitPattern = /[#\-]\d+[\-\/]\d+/;
+        const unitMatch = cleanedAddress.match(unitPattern);
+        
+        if (unitMatch) {
+          // Split by the unit number and take the first part (street address)
+          const parts = cleanedAddress.split(unitMatch[0]);
+          cleanedAddress = parts[0].trim();
+        }
+        
+        // Remove postal code if it exists at the end (usually 6 digits)
+        cleanedAddress = cleanedAddress.replace(/\s+\d{6}\s*$/, '').trim();
+        
+        // Remove city name if it ends with "Singapore"
+        cleanedAddress = cleanedAddress.replace(/\s*,?\s*Singapore\s*$/i, '').trim();
+        
+        return cleanedAddress;
+      };
 
       // Build the niche agreement object using data from NicheApplication
       const nicheAgreement = new NicheAgreement({
+        Status: mergedData.Status,
         applicationCode: mergedData.Code,
         appliedDate: mergedData.AppliedDate,
         agreementDate: mergedData.AgreementDate,
@@ -125,7 +154,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Applicant (all data is in NicheApplication table)
         applicantName: mergedData.ApplicantName,
         applicantAddressNo: mergedData.ApplicantAddressNo,
-        applicantAddressLine1: mergedData.ApplicantAddressLine1,
+        applicantAddressLine1:mergedData.ApplicantAddressLine1,
         applicantAddressLine2: mergedData.ApplicantAddressLine2,
         applicantAddressCity: mergedData.ApplicantAddressCity,
         applicantAddressCountry: mergedData.ApplicantAddressCountry,
@@ -155,7 +184,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Second Nominee (all data is in NicheApplication table)
         nominee2Name: mergedData.NomineeName2,
         nominee2AddressNo: mergedData.NomineeAddressNo2,
-        nominee2AddressLine1: mergedData.NomineeAddressLine21,
+        nominee2AddressLine1: extractStreetAddress(mergedData.NomineeAddressLine12),
         nominee2AddressLine2: mergedData.NomineeAddressLine22,
         nominee2AddressCity: mergedData.NomineeAddressCity2,
         nominee2AddressCountry: mergedData.NomineeAddressCountry2,
@@ -369,7 +398,17 @@ class NicheAgreementRepository extends BaseRepository {
           IsMale,
           RelationshipToApplicant,
           DateOfBirth,
-          BirthYear
+          BirthYear,
+          CASE 
+            WHEN COL_LENGTH('NicheApplicationBeneficiary', 'RelationshipToNominee1') IS NOT NULL 
+            THEN RelationshipToNominee1 
+            ELSE NULL 
+          END AS RelationshipToNominee1,
+          CASE 
+            WHEN COL_LENGTH('NicheApplicationBeneficiary', 'RelationshipToNominee2') IS NOT NULL 
+            THEN RelationshipToNominee2 
+            ELSE NULL 
+          END AS RelationshipToNominee2
         FROM NicheApplicationBeneficiary WITH (NOLOCK)
         WHERE NicheApplicationId = @nicheApplicationId
         ORDER BY NicheApplicationBeneficiaryId
@@ -390,7 +429,9 @@ class NicheAgreementRepository extends BaseRepository {
           DateOfBirth: bene1.DateOfBirth,
           DateOfBirthType: typeof bene1.DateOfBirth,
           BirthYear: bene1.BirthYear,
-          BirthYearType: typeof bene1.BirthYear
+          BirthYearType: typeof bene1.BirthYear,
+          RelationshipToNominee1: bene1.RelationshipToNominee1,
+          RelationshipToNominee2: bene1.RelationshipToNominee2
         });
         
         nicheAgreement.beneName_1 = bene1.Name;
@@ -410,9 +451,9 @@ class NicheAgreementRepository extends BaseRepository {
           birthYear: nicheAgreement.beneBirthYear_1
         });
         
-        // Note: RelationshipToNominee1/2 columns don't exist in NicheApplicationBeneficiary table
-        nicheAgreement.ben1_NomineeRelationship = null;
-        nicheAgreement.ben1_Nominee2Relationship = null;
+        // ✅ Set nominee relationships from the query result (will be null if columns don't exist)
+        nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1 || null;
+        nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2 || null;
       }
 
       if (primaryResult.recordset.length > 1) {
@@ -422,7 +463,9 @@ class NicheAgreementRepository extends BaseRepository {
           DateOfBirth: bene2.DateOfBirth,
           DateOfBirthType: typeof bene2.DateOfBirth,
           BirthYear: bene2.BirthYear,
-          BirthYearType: typeof bene2.BirthYear
+          BirthYearType: typeof bene2.BirthYear,
+          RelationshipToNominee1: bene2.RelationshipToNominee1,
+          RelationshipToNominee2: bene2.RelationshipToNominee2
         });
         
         nicheAgreement.beneName_2 = bene2.Name;
@@ -442,9 +485,9 @@ class NicheAgreementRepository extends BaseRepository {
           birthYear: nicheAgreement.beneBirthYear_2
         });
         
-        // Note: RelationshipToNominee1/2 columns don't exist in NicheApplicationBeneficiary table
-        nicheAgreement.ben2_NomineeRelationship = null;
-        nicheAgreement.ben2_Nominee2Relationship = null;
+        // ✅ Set nominee relationships from the query result (will be null if columns don't exist)
+        nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1 || null;
+        nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2 || null;
       }
 
       // FALLBACK: If no data found, try NicheBookingBeneficiary (legacy/booking data)
@@ -499,8 +542,8 @@ class NicheAgreementRepository extends BaseRepository {
             birthYear: nicheAgreement.beneBirthYear_1
           });
           
-          nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1;
-          nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2;
+          nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1 || null;
+          nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2 || null;
         }
 
         if (fallbackResult.recordset.length > 1) {
@@ -530,8 +573,8 @@ class NicheAgreementRepository extends BaseRepository {
             birthYear: nicheAgreement.beneBirthYear_2
           });
           
-          nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1;
-          nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2;
+          nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1 || null;
+          nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2 || null;
         }
       }
       
@@ -624,7 +667,7 @@ class NicheAgreementRepository extends BaseRepository {
         if (row.ApplicantName) {
           nicheAgreement.applicantName = row.ApplicantName;
           nicheAgreement.applicantAddressNo = row.ApplicantAddressNo;
-          nicheAgreement.applicantAddressLine1 = row.ApplicantAddressLine1;
+          nicheAgreement.applicantAddressLine1 = extractStreetAddress(row.ApplicantAddressLine1);
           nicheAgreement.applicantAddressLine2 = row.ApplicantAddressLine2;
           nicheAgreement.applicantAddressCity = row.ApplicantAddressCity;
           nicheAgreement.applicantAddressState = row.ApplicantAddressState;
@@ -641,7 +684,7 @@ class NicheAgreementRepository extends BaseRepository {
         if (row.NomineeName) {
           nicheAgreement.nomineeName = row.NomineeName;
           nicheAgreement.nomineeAddressNo = row.NomineeAddressNo;
-          nicheAgreement.nomineeAddressLine1 = row.NomineeAddressLine1;
+          nicheAgreement.nomineeAddressLine1 = extractStreetAddress(row.NomineeAddressLine1);
           // CRITICAL FIX: Ensure that if Person table has nominee address data, it overrides the NicheApplication data
           nicheAgreement.nomineeAddressLine2 = row.NomineeAddressLine2 !== null ? row.NomineeAddressLine2 : nicheAgreement.nomineeAddressLine2;
           nicheAgreement.nomineeAddressCity = row.NomineeAddressCity !== null ? row.NomineeAddressCity : nicheAgreement.nomineeAddressCity;
@@ -659,7 +702,7 @@ class NicheAgreementRepository extends BaseRepository {
         if (row.Nominee2Name) {
           nicheAgreement.nominee2Name = row.Nominee2Name;
           nicheAgreement.nominee2AddressNo = row.Nominee2AddressNo;
-          nicheAgreement.nominee2AddressLine1 = row.Nominee2AddressLine1;
+          nicheAgreement.nominee2AddressLine1 = extractStreetAddress(row.Nominee2AddressLine1);
           // CRITICAL FIX: Ensure that if Person table has nominee2 address data, it overrides the NicheApplication data
           nicheAgreement.nominee2AddressLine2 = row.Nominee2AddressLine2 !== null ? row.Nominee2AddressLine2 : nicheAgreement.nominee2AddressLine2;
           nicheAgreement.nominee2AddressCity = row.Nominee2AddressCity !== null ? row.Nominee2AddressCity : nicheAgreement.nominee2AddressCity;

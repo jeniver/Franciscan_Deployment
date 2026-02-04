@@ -410,81 +410,30 @@ class InscriptionInvoiceService {
       postalCode: ''
     };
 
-    // Combine all address parts to create a complete address string for parsing
-    const fullAddress = [
-      addressNo || '',
-      addressLine1 || '',
-      addressLine2 || '',
-      addressCity || ''
-    ].filter(part => part.trim() !== '').join(' ');
-
-    // Extract unit number first (e.g., #4545)
-    const unitMatch = fullAddress.match(/#([A-Z0-9]+-?[A-Z0-9]*)/i);
-    if (unitMatch) {
-      parsed.unitNo = `#${unitMatch[1]}`;
-    }
-
-    // Extract block/building number with "No" prefix (e.g., "No 162")
-    const blockMatch = fullAddress.match(/(?:No\.?|Number|\b)\s*(\d+)/i);
-    if (blockMatch) {
-      parsed.blockNo = blockMatch[1];
-      parsed.block = `Blk ${blockMatch[1]}`;
-    } else {
-      // Fallback to general number extraction for block
-      const generalBlockMatch = fullAddress.match(/\b(\d+)\b/);
-      if (generalBlockMatch) {
-        parsed.blockNo = generalBlockMatch[1];
-        parsed.block = `Blk ${generalBlockMatch[1]}`;
-      }
-    }
-
-    // Extract street name (everything except unit number and block number)
-    // Remove unit number and block number from the address string
-    let streetPart = fullAddress;
+    // Direct mapping of database fields to frontend format
+    // addressNo -> block ("No", "Blk", etc.)
+    parsed.block = addressNo || '';
     
-    if (parsed.unitNo) {
-      streetPart = streetPart
-    }
+    // addressLine1 -> blockNo (actual block number or street name)
+    parsed.blockNo = addressLine1 || '';
     
-    if (parsed.blockNo) {
-      streetPart = streetPart.replace(new RegExp(`(?:No\.?|Number|\b)\s*${parsed.blockNo}`, 'gi'), '').trim();
-    }
+    // addressLine2 -> unitNo (unit number like #01-123)
+    parsed.unitNo = addressLine2 || '';
     
-    // Clean up extra spaces and common prefixes
-    streetPart = streetPart.replace(/\s+/g, ' ').trim();
-    
-    // Extract street name (typically after the number, could be avenue, road, etc.)
-    if (streetPart) {
-      // Look for common street types
-      const streetTypeMatch = streetPart.match(/\b(Street|St|Rd|Road|Ave|Avenue|Drive|Dr|Lane|Ln|Way|Walk|Place|Pl|Crescent|Cres|Close|Cl|Circuit|Ctr|Grove|Gr|Terrace|Ter)\b/i);
-      
-      if (streetTypeMatch) {
-        // Find the complete street name including the type
-        const streetWords = streetPart.split(' ');
-        const streetTypeIndex = streetWords.findIndex(word => 
-          word.toLowerCase() === streetTypeMatch[1].toLowerCase()
-        );
-        
-        if (streetTypeIndex >= 0) {
-          // Include the street type and any preceding words
-          const streetStartIndex = Math.max(0, streetTypeIndex - 3); // Look back up to 3 words
-          parsed.street = streetWords.slice(streetStartIndex).join(' ').trim();
-          parsed.streetName = parsed.street;
-        } else {
-          parsed.street = streetPart;
-          parsed.streetName = streetPart;
-        }
-      } else {
-        parsed.street = streetPart;
-        parsed.streetName = streetPart;
-      }
-    }
-
-    // Parse Postal Code from addressCity (e.g., "Singapore 123456")
+    // addressCity -> either postal code or street name depending on content
     if (addressCity) {
+      // Check if addressCity contains postal code
       const postalMatch = addressCity.match(/(\d{6})/);
       if (postalMatch) {
         parsed.postalCode = postalMatch[1];
+        // If addressCity contains both postal code and other text, treat the rest as street
+        const streetPart = addressCity.replace(postalMatch[1], '').trim();
+        parsed.street = streetPart;
+        parsed.streetName = streetPart;
+      } else {
+        // If no postal code, treat as street name
+        parsed.street = addressCity;
+        parsed.streetName = addressCity;
       }
     }
 
@@ -530,9 +479,17 @@ class InscriptionInvoiceService {
       let date;
       
       if (typeof dateString === 'string') {
-        // Handle format like "Feb 16 2012 5:30AM"
+        // Handle SQL Server datetime format like "Jan  1 2009 12:00AM"
         if (dateString.match(/^[A-Za-z]{3}\s+\d{1,2}\s+\d{4}/)) {
-          date = new Date(dateString);
+          // Create a new date string in a more standardized format
+          const parts = dateString.split(/\s+/).filter(p => p); // Split by whitespace and remove empty parts
+          if (parts.length >= 3) {
+            const [month, day, year] = parts;
+            // Create a proper date string that JavaScript can parse consistently
+            date = new Date(`${month} ${day} ${year}`);
+          } else {
+            date = new Date(dateString);
+          }
         } else {
           // Try to parse other string formats
           date = new Date(dateString);
@@ -548,12 +505,13 @@ class InscriptionInvoiceService {
         return String(dateString);
       }
       
-      // Format as DD/MM/YYYY
+      // Format as DD-MMM-YYYY which is the standard format used throughout the system
       const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = months[date.getMonth()];
       const year = date.getFullYear();
       
-      return `${day}/${month}/${year}`;
+      return `${day}-${month}-${year}`;
     } catch (error) {
       logger.warn('Failed to format date:', { dateString, error: error.message });
       return String(dateString);
@@ -782,14 +740,22 @@ class InscriptionInvoiceService {
             });
             
             // Return applicant details from niche application without inscription
-            // Pass address values as raw data without parsing
-            const addressComponents = {
-              block: nicheApp.applicantAddressNo || '',
-              blockNo: this._extractBlockNumber(nicheApp.applicantAddressNo) || '',
-              street: nicheApp.applicantAddressLine1 || '',
-              streetName: nicheApp.applicantAddressLine1 || '',
-              unitNo: nicheApp.applicantAddressLine2 || '',
-              postalCode: this._extractPostalCode(nicheApp.applicantAddressCity) || ''
+            // Parse address components properly
+            const addressComponents = this._parseAddress(
+              nicheApp.applicantAddressNo,
+              nicheApp.applicantAddressLine1,
+              nicheApp.applicantAddressLine2,
+              nicheApp.applicantAddressCity
+            );
+            
+            // Apply consistent address extraction for all address fields
+            const processedAddressComponents = {
+              block: addressComponents.block || nicheApp.applicantAddressNo || '',
+              blockNo: addressComponents.blockNo || this._extractBlockNumber(nicheApp.applicantAddressNo),
+              street: addressComponents.street || nicheApp.applicantAddressLine1 || '',
+              streetName: addressComponents.streetName || nicheApp.applicantAddressLine1 || '',
+              unitNo: addressComponents.unitNo || nicheApp.applicantAddressLine2 || '',
+              postalCode: addressComponents.postalCode || this._extractPostalCode(nicheApp.applicantAddressCity) || nicheApp.applicantAddressState || ''
             };
             
             // Get items for inscription task
@@ -847,14 +813,7 @@ class InscriptionInvoiceService {
               applicant: {
                 name: nicheApp.applicantName || '',
                 nricPassportNo: nicheApp.applicantIDNo || '',
-                address: {
-                  block: addressComponents.block || '',
-                  blockNo: addressComponents.blockNo || '',
-                  street: addressComponents.street || '',
-                  streetName: addressComponents.streetName || '',
-                  unitNo: addressComponents.unitNo || '',
-                  postalCode: addressComponents.postalCode || ''
-                },
+                address: processedAddressComponents,
                 mobile: nicheApp.applicantMobileNo || '',
                 homeTel: nicheApp.applicantHomeTelNo || '',
                 emailId: nicheApp.applicantEmailID || ''
@@ -985,12 +944,12 @@ class InscriptionInvoiceService {
 
     // Apply consistent address extraction for all address fields
     const processedAddressComponents = {
-      block: addressComponents.block,
-      blockNo: this._extractBlockNumber(application.applicantAddressNo),
-      street: application.applicantAddressLine1 || '',
-      streetName: application.applicantAddressLine1 || '',
-      unitNo: application.applicantAddressLine2 || '',
-      postalCode: this._extractPostalCode(application.applicantAddressCity)
+      block: addressComponents.block || application.applicantAddressNo || '',
+      blockNo: addressComponents.blockNo || this._extractBlockNumber(application.applicantAddressNo),
+      street: addressComponents.street || application.applicantAddressLine1 || '',
+      streetName: addressComponents.streetName || application.applicantAddressLine1 || '',
+      unitNo: addressComponents.unitNo || application.applicantAddressLine2 || '',
+      postalCode: addressComponents.postalCode || this._extractPostalCode(application.applicantAddressCity) || application.applicantAddressState || ''
     };
 
     // Map AdditionalInscriptionPhrase to both bibleInscriptionText and additionalInscriptionPhrase for API compatibility

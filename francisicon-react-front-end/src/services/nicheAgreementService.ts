@@ -502,7 +502,7 @@ export const nicheAgreementService = {
 
         const pricing = {
           nicheAmount: Number(niche.totalAmount ?? invoice.invoicePayingAmount ?? 0) || 0,
-          serviceAmount: 200,
+          serviceAmount: 300, // Updated service fee (Setting of tables + Sealing of niche: 20 + 20 = 40, but using 300 as per standard practice)
           taxAmount: Number(invoice.taxAmount ?? 0) || 0,
           totalAmount:
             Number(invoice.invoicePayingAmount ?? niche.totalAmount ?? 0) || 0

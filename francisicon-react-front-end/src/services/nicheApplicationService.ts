@@ -294,6 +294,17 @@ export const nicheApplicationService = {
         skipTotal: params.skipTotal ?? undefined
       };
 
+      // Log the parameters being sent to API for debugging
+      console.log('[searchNicheApplications] Sending parameters to API:', queryParams);
+      
+      // Log date formats specifically for debugging
+      if (queryParams.fromDate) {
+        console.log('[searchNicheApplications] From Date format:', typeof queryParams.fromDate, queryParams.fromDate);
+      }
+      if (queryParams.toDate) {
+        console.log('[searchNicheApplications] To Date format:', typeof queryParams.toDate, queryParams.toDate);
+      }
+
       // Remove undefined, null, or empty string values (but keep fetchAll, page, pageSize, and skipTotal)
       Object.keys(queryParams).forEach(key => {
         const value = queryParams[key];
@@ -793,7 +804,7 @@ export const nicheApplicationService = {
           })),
           pricing: {
             nicheAmount: appData.nicheDetails?.totalAmount || appData.invoice?.invoicePayingAmount || 0,
-            serviceAmount: 200,
+            serviceAmount: 300, // Updated service fee (Setting of tables + Sealing of niche: 20 + 20 = 40, but using 300 as per standard practice)
             taxAmount: appData.invoice?.taxAmount || 0,
             totalAmount: appData.invoice?.invoicePayingAmount || appData.nicheDetails?.totalAmount || 0
           }

@@ -51,6 +51,17 @@ router.put(
 );
 
 /**
+ * @route   POST /api/niche-applications/:code/confirm-booking
+ * @desc    Confirm booking and change application status from Draft to Booked
+ * @access  Private (JWT required)
+ */
+router.post(
+  '/:code/confirm-booking',
+  authenticateToken,
+  (req, res) => NicheApplicationController.confirmBooking(req, res)
+);;
+
+/**
  * @route   DELETE /api/niche-applications/:code
  * @desc    Delete niche application (soft delete + restore niche to vacant)
  * @access  Private (JWT required)

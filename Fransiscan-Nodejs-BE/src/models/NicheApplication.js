@@ -220,9 +220,8 @@ class NicheApplication {
 /**
  * NicheApplicationBeneficiary entity model
  * 
- * Note: RelationshipToNominee1 and RelationshipToNominee2 are NOT in the database schema
- * but are kept in the model for backward compatibility and potential future use.
- * These fields will not be persisted to the database.
+ * Note: RelationshipToNominee1 and RelationshipToNominee2 are now in the database schema
+ * and will be persisted to the database. These fields were added via database migration.
  */
 class NicheApplicationBeneficiary {
   constructor(data = {}) {
@@ -235,8 +234,8 @@ class NicheApplicationBeneficiary {
     this.idNo = data.idNo || data.IDNo || null;
     this.isCatholic = data.isCatholic !== undefined ? data.isCatholic : (data.IsCatholic || null);
     this.isMale = data.isMale !== undefined ? data.isMale : (data.IsMale || null);
-    // Note: These fields exist in the model but NOT in the database table
-    // They are kept for backward compatibility with the application code
+    // Note: These fields now exist in both the model and database table
+    // They will be persisted to the database
     this.relationshipToNominee1 = data.relationshipToNominee1 || data.RelationshipToNominee1 || null;
     this.relationshipToNominee2 = data.relationshipToNominee2 || data.RelationshipToNominee2 || null;
   }

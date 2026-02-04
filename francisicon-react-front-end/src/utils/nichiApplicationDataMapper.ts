@@ -152,6 +152,16 @@ export function mapNichiApplicationToFormData(
     }
     formData.applicantHomeTel = applicationData.applicant.homeTelNo || '';
     formData.applicantOfficeTel = applicationData.applicant.officeTelNo || '';
+    
+    // Map inscription address fields
+    formData.inscriptionAddress = (applicationData.applicant as any).inscriptionAddress || '';
+    formData.inscriptionAddressNo = (applicationData.applicant as any).inscriptionAddressNo || '';
+    formData.inscriptionAddressLine1 = (applicationData.applicant as any).inscriptionAddressLine1 || '';
+    formData.inscriptionAddressLine2 = (applicationData.applicant as any).inscriptionAddressLine2 || '';
+    formData.inscriptionAddressCity = (applicationData.applicant as any).inscriptionAddressCity || '';
+    formData.inscriptionAddressState = (applicationData.applicant as any).inscriptionAddressState || '';
+    formData.inscriptionAddressCountry = (applicationData.applicant as any).inscriptionAddressCountry || 'Singapore';
+    
     // Map religion dropdown from isCatholic when possible
     formData.applicantIsCatholic = applicationData.applicant.isCatholic ?? false;
     if (!formData.applicantReligion) {

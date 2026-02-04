@@ -245,9 +245,41 @@ export function NicheAgreementDetailsModal({
                                   <span className="text-gray-600 text-sm">Name</span>
                                   <span className="font-semibold text-sm">{beneficiary.name || 'N/A'}</span>
                                 </div>
-                                <div className="flex justify-between py-2">
+                                <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Relation</span>
                                   <span className="font-semibold text-sm">{beneficiary.relationshipToApplicant || 'N/A'}</span>
+                                </div>
+                                <div className="flex justify-between py-2 border-b border-pink-100">
+                                  <span className="text-gray-600 text-sm">Date of Birth</span>
+                                  <span className="font-semibold text-sm">
+                                    {beneficiary.dateOfBirth 
+                                      ? typeof beneficiary.dateOfBirth === 'string' 
+                                        ? new Date(beneficiary.dateOfBirth).toLocaleDateString('en-SG')
+                                        : beneficiary.dateOfBirth.toLocaleDateString('en-SG')
+                                      : 'N/A'
+                                    }
+                                  </span>
+                                </div>
+                                <div className="flex justify-between py-2 border-b border-pink-100">
+                                  <span className="text-gray-600 text-sm">Birth Year</span>
+                                  <span className="font-semibold text-sm">
+                                    {beneficiary.birthYear 
+                                      ? typeof beneficiary.birthYear === 'number' 
+                                        ? beneficiary.birthYear
+                                        : parseInt(beneficiary.birthYear, 10) || 'N/A'
+                                      : 'N/A'
+                                    }
+                                  </span>
+                                </div>
+                                <div className="flex justify-between py-2 border-b border-pink-100">
+                                  <span className="text-gray-600 text-sm">Relationship to Nominee 1</span>
+                                  <span className="font-semibold text-sm">
+                                    {beneficiary.relationshipToNominee1 || 'N/A'}</span>
+                                </div>
+                                <div className="flex justify-between py-2">
+                                  <span className="text-gray-600 text-sm">Relationship to Nominee 2</span>
+                                  <span className="font-semibold text-sm">
+                                    {beneficiary.relationshipToNominee2 || 'N/A'}</span>
                                 </div>
                               </div>
                             </div>

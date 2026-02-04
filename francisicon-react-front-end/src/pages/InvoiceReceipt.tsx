@@ -80,7 +80,7 @@ export function InvoiceReceipt({
             new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
           totalAmount: Number(agreementInvoice.invoicePayingAmount ?? niche.totalAmount ?? 0) || 0,
           nicheAmount: Number(niche.totalAmount ?? 0) || 0,
-          serviceAmount: 200,
+          serviceAmount: 300, // Updated service fee (Setting of tables + Sealing of niche: 20 + 20 = 40, but using 300 as per standard practice)
           taxAmount: Number(agreementInvoice.taxAmount ?? 0) || 0,
           status: (data.agreement?.status || 'Pending') as string,
           // Applicant details (from backend)
@@ -158,8 +158,8 @@ export function InvoiceReceipt({
       : { defaultAmount: 0 };
 
     const nicheAmount = selectedNiche.defaultAmount || 0;
-    const serviceAmount = 200; // Fixed service fee
-    const taxAmount = Math.round((nicheAmount + serviceAmount) * 0.07); // 7% GST
+    const serviceAmount = 300; // Updated service fee (Setting of tables + Sealing of niche: 20 + 20 = 40, but using 300 as per standard practice)
+    const taxAmount = Math.round((nicheAmount + serviceAmount) * 0.09); // 9% GST (updated from 7%)
     const totalAmount = nicheAmount + serviceAmount + taxAmount;
 
     // Generate invoice data based on form data - use stable invoice number

@@ -238,14 +238,37 @@ export function InvoiceAndReceiptPage() {
       }
     }
 
-    // Address (best-effort; backend fields differ between invoice/application)
-    const fullAddress =
-      currentData.address ||
-      [currentData.addressNo, currentData.address2, currentData.addressCity, currentData.country]
-        .filter(Boolean)
-        .join(', ');
-    if (fullAddress) {
-      applyParsedAddress(fullAddress);
+    // Address (direct mapping from backend fields to frontend component fields)
+    // Map individual address fields from backend response to frontend component fields
+    if (currentData.addressNo) {
+      setAddressNumber(currentData.addressNo);
+    }
+    if (currentData.address) {
+      setAddressStreet(currentData.address);
+    }
+    if (currentData.address2) {
+      setAddressUnit(currentData.address2);
+    }
+    if (currentData.addressCity) {
+      setAddressPostalCode(currentData.addressCity);
+    }
+    if (currentData.country) {
+      setAddressCountry(currentData.country);
+    }
+    // For districtCode, if needed elsewhere, it's available as currentData.districtCode
+    
+    // As a fallback, if address fields were not individually mapped properly,
+    // try to parse the combined address string
+    if (!currentData.addressNo && !currentData.address && !currentData.address2 && 
+        !currentData.addressCity && !currentData.country && currentData.address) {
+      const fullAddress =
+        currentData.address ||
+        [currentData.addressNo, currentData.address2, currentData.addressCity, currentData.country]
+          .filter(Boolean)
+          .join(', ');
+      if (fullAddress) {
+        applyParsedAddress(fullAddress);
+      }
     }
 
     // Details → table items
@@ -507,7 +530,7 @@ export function InvoiceAndReceiptPage() {
         taxCode: currentData.taxCode || null,
         nicheApplicationId: currentData.nicheApplicationId,
         addressNo: addressNumber || currentData.addressNo,
-        address: buildCustomerAddress() || currentData.address,
+        address: addressStreet || currentData.address,
         address2: addressUnit || currentData.address2,
         addressCity: addressPostalCode || currentData.addressCity,
         districtCode: currentData.districtCode,
