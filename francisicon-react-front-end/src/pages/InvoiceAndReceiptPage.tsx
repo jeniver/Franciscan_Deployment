@@ -10,6 +10,7 @@ import { parseRawAddress } from '../components/AddressInput';
 import { PrinterIcon, EyeIcon, LoaderIcon, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
 import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
 import { ReceiptDetailModal } from '../components/ReceiptDetailModal';
+import { AgreementViewerModal } from '../components/AgreementViewerModal';
 import { InvoiceTemplateData } from '../services/invoiceTemplateService';
 import { receiptService, type Receipt as ReceiptType, type InvoiceDetail } from '../services/receiptService';
 import type { AppDispatch, RootState } from '../store';
@@ -111,6 +112,11 @@ export function InvoiceAndReceiptPage() {
 
   // Receipt detail modal state
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  // Agreement viewer modal state
+  const [isAgreementViewerOpen, setIsAgreementViewerOpen] = useState(false);
+  const [agreementData, setAgreementData] = useState<any | null>(null);
+  const [secondNomineeAgreementData, setSecondNomineeAgreementData] = useState<any | null>(null);
   
   // Ref for debouncing postal code lookup
   const postalCodeDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -315,7 +321,31 @@ export function InvoiceAndReceiptPage() {
       
       // Small delay to ensure data is loaded before opening viewer
       setTimeout(() => {
-        const customerAddress = buildCustomerAddress();
+        // Recalculate totals for the current items
+        const calculatedTotals = {
+          total: items.reduce((sum, item) => sum + item.totalNoTax, 0),
+          taxAmount: items.reduce((sum, item) => sum + item.taxAmount, 0),
+          totalPayable: items.reduce((sum, item) => sum + item.totalAmount, 0),
+        };
+        
+        // Calculate customer address directly
+        const customerAddressParts: string[] = [];
+        if (addressBlock && addressNumber) {
+          customerAddressParts.push(`${addressBlock} ${addressNumber}`);
+        }
+        if (addressStreet) {
+          customerAddressParts.push(addressStreet);
+        }
+        if (addressUnit) {
+          customerAddressParts.push(addressUnit);
+        }
+        if (addressPostalCode) {
+          customerAddressParts.push(addressPostalCode);
+        }
+        if (addressCountry) {
+          customerAddressParts.push(addressCountry);
+        }
+        const customerAddress = customerAddressParts.join(', ') || '';
         
         // Format transaction date
         let formattedDate = transactionDate;
@@ -361,8 +391,8 @@ export function InvoiceAndReceiptPage() {
           customerName: payeeName || 'N/A',
           customerAddress: customerAddress || undefined,
           paymentMode: paymentMode || undefined,
-          totalAmount: totals.totalPayable || 0,
-          taxAmount: totals.taxAmount || 0,
+          totalAmount: calculatedTotals.totalPayable || 0,
+          taxAmount: calculatedTotals.taxAmount || 0,
           items: templateItems.length > 0 ? templateItems : undefined,
         };
 
@@ -370,7 +400,7 @@ export function InvoiceAndReceiptPage() {
         setIsInvoiceViewerOpen(true);
       }, 500); // Delay to allow state updates
     }
-  }, [createInvoiceSuccess, lastCreatedInvoiceCode, dispatch, showSuccess, payeeName, paymentMode, items, totals, transactionDate, buildCustomerAddress]);
+  }, [createInvoiceSuccess, lastCreatedInvoiceCode, dispatch, showSuccess, payeeName, paymentMode, items, transactionDate]);
 
   useEffect(() => {
     if (createReceiptSuccess && lastCreatedReceiptCode) {
@@ -394,6 +424,13 @@ export function InvoiceAndReceiptPage() {
           return d;
         };
 
+        // Recalculate totals for the current items
+        const calculatedTotals = {
+          total: items.reduce((sum, item) => sum + item.totalNoTax, 0),
+          taxAmount: items.reduce((sum, item) => sum + item.taxAmount, 0),
+          totalPayable: items.reduce((sum, item) => sum + item.totalAmount, 0),
+        };
+
         const invoiceDetails: InvoiceDetail[] = items.map((item) => ({
           description: item.selectItem || 'Item',
           quantity: item.quantity || 1,
@@ -406,8 +443,8 @@ export function InvoiceAndReceiptPage() {
           invoiceCode: lastCreatedInvoiceCode || undefined,
           applicationCode: applicationNumber || applicationNumberFromRoute || undefined,
           customerName: payeeName || currentData?.customerName || 'N/A',
-          totalAmount: totals.totalPayable || 0,
-          payingAmount: totals.totalPayable || 0,
+          totalAmount: calculatedTotals.totalPayable || 0,
+          payingAmount: calculatedTotals.totalPayable || 0,
           paymentMode: paymentMode || 'Cash',
           receiptDate: parseTransactionDateToIso(transactionDate),
           invoiceDetails,
@@ -417,7 +454,7 @@ export function InvoiceAndReceiptPage() {
         setIsDetailModalOpen(true);
       }, 500); // Delay to allow state updates
     }
-  }, [createReceiptSuccess, lastCreatedReceiptCode, lastCreatedInvoiceCode, dispatch, showSuccess, payeeName, paymentMode, items, totals, transactionDate, applicationNumber, applicationNumberFromRoute, currentData]);
+  }, [createReceiptSuccess, lastCreatedReceiptCode, lastCreatedInvoiceCode, dispatch, showSuccess, payeeName, paymentMode, items, transactionDate, applicationNumber, applicationNumberFromRoute, currentData]);
 
   useEffect(() => {
     if (invoiceError) {
@@ -773,6 +810,52 @@ export function InvoiceAndReceiptPage() {
     }
   };
 
+  // Handle print second nominee agreement
+  const handlePrintSecondNomineeAgreement = async () => {
+    try {
+      if (!applicationNumber.trim()) {
+        showError('Error', 'Application number is required to print second nominee agreement');
+        return;
+      }
+
+      // Try to fetch the second nominee agreement data
+      // This would typically involve an API call to get the second nominee agreement
+      // For now, I'll simulate the data based on current application data
+      // In a real scenario, this would be fetched from the backend
+      
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Create mock data for second nominee agreement based on current data
+      // This should be replaced with an actual API call to fetch the second nominee agreement
+      const mockSecondNomineeData = {
+        applicationNumber: applicationNumber,
+        customerName: payeeName || currentData?.customerName || 'N/A',
+        nicheInfo: currentData?.niche,
+        bookingInfo: currentData?.booking,
+        details: currentData?.details || [],
+        // Add specific second nominee fields here
+        secondNomineeName: currentData?.booking?.nomineeName || 'Second Nominee',
+        contactPerson: currentData?.booking?.contactPersonName || 'Contact Person',
+        transactionDate: currentData?.transactionDate || new Date().toISOString(),
+        // Include address information
+        addressNo: addressNumber || currentData?.addressNo,
+        address: addressStreet || currentData?.address,
+        address2: addressUnit || currentData?.address2,
+        addressCity: addressPostalCode || currentData?.addressCity,
+        country: addressCountry || currentData?.country,
+      };
+
+      setSecondNomineeAgreementData(mockSecondNomineeData);
+      setIsAgreementViewerOpen(true);
+      showSuccess('Success', 'Second nominee agreement viewer opened');
+    } catch (error: any) {
+      console.error('[handlePrintSecondNomineeAgreement] Error:', error);
+      const errorMessage = error?.message || 'Failed to open second nominee agreement viewer';
+      showError('Error', errorMessage);
+    }
+  };
+
   // Handle print receipt (enhanced like ReceiptPage)
   const handlePrintReceipt = async () => {
     try {
@@ -1040,6 +1123,15 @@ export function InvoiceAndReceiptPage() {
                           Print Receipt
                         </>
                       )}
+                    </button>
+                    <button
+                      onClick={handlePrintSecondNomineeAgreement}
+                      disabled={!applicationNumber.trim()}
+                      className="px-6 py-2.5 bg-gradient-to-r from-[#2a5aa5] to-[#356ac9] text-white rounded-lg font-semibold hover:from-[#356ac9] hover:to-[#2a5aa5] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      title="Print Second Nominee Agreement"
+                    >
+                      <PrinterIcon className="w-4 h-4" />
+                      Print Second Nominee
                     </button>
                   </div>
                 </div>
@@ -1429,6 +1521,20 @@ export function InvoiceAndReceiptPage() {
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
         receipt={selectedReceipt}
+      />
+      
+      {/* Agreement Viewer Modal */}
+      <AgreementViewerModal
+        isOpen={isAgreementViewerOpen}
+        onClose={() => {
+          setIsAgreementViewerOpen(false);
+          setAgreementData(null);
+          setSecondNomineeAgreementData(null);
+        }}
+        agreementData={agreementData}
+        secoundNomineeAgreement={secondNomineeAgreementData}
+        applicationNumber={applicationNumber}
+        loading={false}
       />
     </Layout>
   );
