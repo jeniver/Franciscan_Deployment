@@ -1,80 +1,49 @@
-# PowerShell script to add RelationshipToNominee columns to NicheApplicationBeneficiary table
-# This script runs the SQL migration to fix beneficiary null values
+# Run Beneficiary Nominee Relationships Schema Update
+# This script adds the missing RelationshipToNominee1 and RelationshipToNominee2 columns
 
-Write-Host "================================" -ForegroundColor Cyan
-Write-Host "Beneficiary Schema Update" -ForegroundColor Cyan
-Write-Host "================================" -ForegroundColor Cyan
-Write-Host ""
+Write-Host "Starting database schema update for beneficiary nominee relationships..." -ForegroundColor Green
 
-# Get SQL Server connection details from .env or use defaults
-$envFile = Join-Path $PSScriptRoot "..\\.env"
-if (Test-Path $envFile) {
-    Write-Host "📄 Reading database configuration from .env..." -ForegroundColor Yellow
-    Get-Content $envFile | ForEach-Object {
-        if ($_ -match '^DB_SERVER=(.*)$') { $dbServer = $matches[1] }
-        if ($_ -match '^DB_DATABASE=(.*)$') { $dbName = $matches[1] }
-        if ($_ -match '^DB_USER=(.*)$') { $dbUser = $matches[1] }
-        if ($_ -match '^DB_PASSWORD=(.*)$') { $dbPassword = $matches[1] }
-    }
-}
+# Database connection parameters
+$server = "localhost"
+$database = "fms_db_new"
+$username = "sa"
+$password = "Admin@123"
 
-# Set defaults if not found in .env
-if (-not $dbServer) { $dbServer = "localhost" }
-if (-not $dbName) { $dbName = "fms_db_new" }
-if (-not $dbUser) { $dbUser = "fms_user" }
+# SQL script path
+$sqlScriptPath = "scripts\add-beneficiary-nominee-relationships.sql"
 
-Write-Host "📊 Database Server: $dbServer" -ForegroundColor Gray
-Write-Host "📊 Database Name: $dbName" -ForegroundColor Gray
-Write-Host "📊 Database User: $dbUser" -ForegroundColor Gray
-Write-Host ""
-
-$sqlScript = Join-Path $PSScriptRoot "add-beneficiary-nominee-relationships.sql"
-
-if (-not (Test-Path $sqlScript)) {
-    Write-Host "❌ Error: SQL script not found at: $sqlScript" -ForegroundColor Red
+# Check if SQL script exists
+if (-not (Test-Path $sqlScriptPath)) {
+    Write-Host "Error: SQL script not found at $sqlScriptPath" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "🚀 Running database migration..." -ForegroundColor Green
-Write-Host ""
+Write-Host "Running SQL script: $sqlScriptPath" -ForegroundColor Yellow
 
+# Execute the SQL script using sqlcmd
 try {
-    if ($dbPassword) {
-        # SQL Authentication
-        sqlcmd -S $dbServer -d $dbName -U $dbUser -P $dbPassword -i $sqlScript -b
-    } else {
-        # Windows Authentication
-        sqlcmd -S $dbServer -d $dbName -E -i $sqlScript -b
-    }
+    $result = sqlcmd -S $server -d $database -U $username -P $password -i $sqlScriptPath -o "migration-output.log"
     
     if ($LASTEXITCODE -eq 0) {
-        Write-Host ""
-        Write-Host "✅ Migration completed successfully!" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "Next steps:" -ForegroundColor Cyan
-        Write-Host "  1. Restart the backend server" -ForegroundColor White
-        Write-Host "  2. Test creating a beneficiary via the API" -ForegroundColor White
-        Write-Host "  3. Verify that relationshipToNominee1 and relationshipToNominee2 are no longer null" -ForegroundColor White
+        Write-Host "Schema update completed successfully!" -ForegroundColor Green
+        Write-Host "Check migration-output.log for details" -ForegroundColor Yellow
+        
+        # Display the output
+        if (Test-Path "migration-output.log") {
+            Get-Content "migration-output.log"
+        }
     } else {
-        Write-Host ""
-        Write-Host "❌ Migration failed with exit code: $LASTEXITCODE" -ForegroundColor Red
-        Write-Host ""
-        Write-Host "Troubleshooting:" -ForegroundColor Yellow
-        Write-Host "  - Check if SQL Server is running" -ForegroundColor White
-        Write-Host "  - Verify database name: $dbName" -ForegroundColor White
-        Write-Host "  - Verify connection settings in .env file" -ForegroundColor White
-        Write-Host "  - Check SQL Server authentication (Windows vs SQL Auth)" -ForegroundColor White
+        Write-Host "Schema update failed with exit code: $LASTEXITCODE" -ForegroundColor Red
+        if (Test-Path "migration-output.log") {
+            Write-Host "Error details:" -ForegroundColor Red
+            Get-Content "migration-output.log"
+        }
         exit 1
     }
 } catch {
-    Write-Host ""
-    Write-Host "❌ Error running migration: $_" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Make sure sqlcmd is installed:" -ForegroundColor Yellow
-    Write-Host "  - Download from: https://docs.microsoft.com/en-us/sql/tools/sqlcmd-utility" -ForegroundColor White
+    Write-Host "Error executing SQL script: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Make sure sqlcmd is installed and accessible in your PATH" -ForegroundColor Yellow
     exit 1
 }
 
-Write-Host ""
-Write-Host "================================" -ForegroundColor Cyan
-
+Write-Host "Database migration completed!" -ForegroundColor Green
