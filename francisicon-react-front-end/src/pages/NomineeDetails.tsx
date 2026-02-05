@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { FormSelect } from '../components/FormSelect';
 import { AddressInput } from '../components/AddressInput';
+import { PrintSecondNomineeButton } from '../components/PrintSecondNomineeButton';
 interface NomineeDetailsProps {
   formData: any;
   setFormData: (data: any) => void;
@@ -1000,7 +1001,6 @@ export function NomineeDetails({
                 { value: 'Active', label: 'Active' },
                 { value: 'Non-Active', label: 'Non-Active' }
               ]}
-              placeholder="Select status"
               disabled={isReadOnly}
             />
 
@@ -1009,10 +1009,7 @@ export function NomineeDetails({
           {/* Second Nominee Agreement Button for second nominee */}
           {index === 1 && (
             <div className="mt-4 flex justify-end">
-              <button className="flex items-center gap-2 px-4 py-2 bg-[#8b5a2b] text-white rounded-md hover:bg-[#6d4420] transition-colors">
-                <InfoIcon className="w-4 h-4" />
-                Print 2nd Nominee Agreement
-              </button>
+              <PrintSecondNomineeButton applicationNumber={formData.applicationCode || formData.code || ""} />
             </div>
           )}
         </div>

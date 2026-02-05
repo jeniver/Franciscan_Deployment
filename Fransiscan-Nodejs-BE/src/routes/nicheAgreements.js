@@ -51,6 +51,15 @@ router.get('/:applicationNumber/pdf', nicheAgreementController.getAgreementPdf);
 router.get('/:applicationNumber/invoice-pdf', nicheAgreementController.getInvoicePdf);
 router.head('/:applicationNumber/invoice-pdf', nicheAgreementController.getInvoicePdf);
 
+/**
+ * @route GET /api/niche-agreements/:applicationNumber/second-nominee-agreement-pdf
+ * @desc Get structured data for 2nd Nominee Agreement PDF generation (frontend will generate PDF)
+ * @access Public
+ * @param {string} applicationNumber - Application number (e.g., "3795-1", "NAPP-41")
+ * @returns {Object} JSON data formatted for PDF generation
+ */
+router.get('/:applicationNumber/second-nominee-agreement-pdf', nicheAgreementController.getSecondNomineeAgreementPdf);
+
 // All other routes require authentication
 router.use(authenticateToken);
 

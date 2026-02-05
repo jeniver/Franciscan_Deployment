@@ -661,46 +661,77 @@ export function mapFormDataToNicheApplicationRequest(formData: Record<string, an
  */
 export function generateOptimizedPayload(formData: Record<string, any>): any {
   // Generate clean optimized payload that removes all duplicate fields
+  console.log('[generateOptimizedPayload] Input formData:', JSON.stringify(formData, null, 2));
+  console.log('[generateOptimizedPayload] FormData keys:', Object.keys(formData));
+  console.log('[generateOptimizedPayload] Applicant data in formData:', {
+    applicantName: formData.applicantName,
+    applicantEmail: formData.applicantEmail,
+    applicantPhone: formData.applicantPhone,
+    applicantIDNo: formData.applicantIDNo,
+    applicantHomeTel: formData.applicantHomeTel,
+    applicantOfficeTel: formData.applicantOfficeTel,
+    applicantIsCatholic: formData.applicantIsCatholic,
+    applicantReligion: formData.applicantReligion,
+    // Check if applicant is a nested object
+    hasApplicantObject: !!formData.applicant,
+    applicantObject: formData.applicant
+  });
   
-  // Build chapel information
+  // Build chapel information - handle both flat and nested structures
   const chapel = {
     id: formData.chapelId,
-    name: formData.chapelName || formData.chapel,
-    code: formData.chapelCode || formData.chapel
+    name: formData.chapelName || formData.chapel?.name || formData.chapel,
+    code: formData.chapelCode || formData.chapel?.code || formData.chapel
   };
   
-  // Build niche information
-  const nicheId = formData.nicheId || (formData.nicheCode ? parseInt(formData.nicheCode, 10) : undefined);
+  // Build niche information - handle both flat and nested structures
+  const nicheId = formData.nicheId || 
+                  (formData.nicheCode ? parseInt(formData.nicheCode, 10) : undefined) ||
+                  formData.niche?.id;
+  
   const niche = {
     id: nicheId,
-    code: formData.nicheCode || formData.nicheNumber,
-    number: formData.nicheNumber || formData.nicheCode
+    code: formData.nicheCode || formData.nicheNumber || formData.niche?.code || formData.niche?.number,
+    number: formData.nicheNumber || formData.nicheCode || formData.niche?.number || formData.niche?.code
   };
   
-  // Build applicant information (clean structure)
+  // Build applicant information - handle both flat and nested structures
   const applicant = {
-    name: formData.applicantName || '',
-    email: formData.applicantEmail || '',
-    phone: formData.applicantPhone || '',
-    homeTel: formData.applicantHomeTel || '',
-    officeTel: formData.applicantOfficeTel || '',
-    idNo: formData.applicantIDNo || '',
-    isCatholic: formData.applicantIsCatholic ?? (formData.applicantReligion === 'Catholic'),
-    religion: formData.applicantReligion || (formData.applicantIsCatholic ? 'Catholic' : 'Non Catholic'),
+    name: formData.applicantName || formData.applicant?.name || formData.contactName || '',
+    email: formData.applicantEmail || formData.applicant?.email || formData.contactEmail || '',
+    phone: formData.applicantPhone || formData.applicant?.phone || formData.contactPhone || '',
+    homeTel: formData.applicantHomeTel || formData.applicant?.homeTel || '',
+    officeTel: formData.applicantOfficeTel || formData.applicant?.officeTel || '',
+    idNo: formData.applicantIDNo || formData.applicant?.idNo || formData.contactNric || '',
+    isCatholic: formData.applicantIsCatholic ?? 
+                formData.applicant?.isCatholic ?? 
+                ((formData.applicantReligion === 'Catholic') ||
+                (formData.applicant?.religion === 'Catholic') ||
+                (formData.contactReligion === 'Catholic')),
+    religion: formData.applicantReligion || 
+              formData.applicant?.religion || 
+              formData.contactReligion || 
+              (formData.applicantIsCatholic ? 'Catholic' : 'Non Catholic') ||
+              (formData.applicant?.isCatholic ? 'Catholic' : 'Non Catholic'),
     address: {
-      no: formData.applicantAddressNo || '',
-      line1: formData.applicantAddressLine1 || '',
-      line2: formData.applicantAddressLine2 || '',
-      city: formData.applicantAddressCity || '',
-      state: formData.applicantAddressState || '',
-      country: formData.applicantAddressCountry || formData.applicantCountry || 'Singapore'
+      no: formData.applicantAddressNo || formData.applicant?.address?.no || '',
+      line1: formData.applicantAddressLine1 || formData.applicant?.address?.line1 || '',
+      line2: formData.applicantAddressLine2 || formData.applicant?.address?.line2 || '',
+      city: formData.applicantAddressCity || formData.applicant?.address?.city || '',
+      state: formData.applicantAddressState || formData.applicant?.address?.state || '',
+      country: formData.applicantAddressCountry || 
+               formData.applicant?.address?.country || 
+               formData.applicantCountry || 
+               formData.applicant?.country || 
+               formData.contactCountry || 
+               'Singapore'
     }
   };
   
-  // Build nominees array (organized)
+  // Build nominees array (organized) - handle both flat and nested structures
   const nominees = buildCleanNominees(formData);
   
-  // Build beneficiaries array (organized)
+  // Build beneficiaries array (organized) - handle both flat and nested structures
   const beneficiaries = buildCleanBeneficiaries(formData);
   
   // Create the clean optimized payload
@@ -727,6 +758,8 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
     }
   };
   
+  console.log('[generateOptimizedPayload] Generated optimized payload:', JSON.stringify(optimizedPayload, null, 2));
+  
   return optimizedPayload;
 }
 
@@ -736,48 +769,58 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
 function buildCleanNominees(formData: Record<string, any>): Array<Record<string, any>> {
   const nominees: Array<Record<string, any>> = [];
   
-  // Add first nominee if present
-  if (formData.nomineeName || formData.nominee?.name) {
+  // Add first nominee if present - handle both flat and nested structures
+  const nomineeName = formData.nomineeName || formData.nominee?.name;
+  if (nomineeName) {
     nominees.push({
       id: Date.now(), // Generate unique ID
-      name: formData.nomineeName || formData.nominee?.name || '',
+      name: nomineeName,
       email: formData.nomineeEmail || formData.nominee?.email || '',
-      phone: formData.nomineePhone || formData.nominee?.mobileNo || '',
-      homeTel: formData.nomineeHomeTel || formData.nominee?.homeTelNo || '',
-      officeTel: formData.nomineeOfficeTel || formData.nominee?.officeTelNo || '',
+      phone: formData.nomineePhone || formData.nominee?.mobileNo || formData.nominee?.phone || '',
+      homeTel: formData.nomineeHomeTel || formData.nominee?.homeTelNo || formData.nominee?.homeTel || '',
+      officeTel: formData.nomineeOfficeTel || formData.nominee?.officeTelNo || formData.nominee?.officeTel || '',
       idNo: formData.nomineeIDNo || formData.nominee?.idNo || '',
       relationship: formData.nomineeRelationship || formData.nominee?.relationship || '',
       status: formData.nomineeStatus || 'Active',
       address: {
-        no: formData.nomineeAddressNo || '',
-        line1: formData.nomineeAddressLine1 || '',
-        line2: formData.nomineeAddressLine2 || '',
-        city: formData.nomineeAddressCity || '',
-        state: formData.nomineeAddressState || '',
-        country: formData.nomineeAddressCountry || formData.nomineeCountry || 'Singapore'
+        no: formData.nomineeAddressNo || formData.nominee?.address?.no || '',
+        line1: formData.nomineeAddressLine1 || formData.nominee?.address?.line1 || '',
+        line2: formData.nomineeAddressLine2 || formData.nominee?.address?.line2 || '',
+        city: formData.nomineeAddressCity || formData.nominee?.address?.city || '',
+        state: formData.nomineeAddressState || formData.nominee?.address?.state || '',
+        country: formData.nomineeAddressCountry || 
+                 formData.nominee?.address?.country || 
+                 formData.nomineeCountry || 
+                 formData.nominee?.country || 
+                 'Singapore'
       }
     });
   }
   
-  // Add second nominee if present
-  if (formData.nomineeName2 || formData.nominee2?.name) {
+  // Add second nominee if present - handle both flat and nested structures
+  const nomineeName2 = formData.nomineeName2 || formData.nominee2?.name;
+  if (nomineeName2) {
     nominees.push({
       id: Date.now() + 1, // Generate unique ID
-      name: formData.nomineeName2 || formData.nominee2?.name || '',
+      name: nomineeName2,
       email: formData.nomineeEmail2 || formData.nominee2?.email || '',
-      phone: formData.nomineePhone2 || formData.nominee2?.mobileNo || '',
-      homeTel: formData.nomineeHomeTel2 || formData.nominee2?.homeTelNo || '',
-      officeTel: formData.nomineeOfficeTel2 || formData.nominee2?.officeTelNo || '',
+      phone: formData.nomineePhone2 || formData.nominee2?.mobileNo || formData.nominee2?.phone || '',
+      homeTel: formData.nomineeHomeTel2 || formData.nominee2?.homeTelNo || formData.nominee2?.homeTel || '',
+      officeTel: formData.nomineeOfficeTel2 || formData.nominee2?.officeTelNo || formData.nominee2?.officeTel || '',
       idNo: formData.nomineeIDNo2 || formData.nominee2?.idNo || '',
       relationship: formData.nomineeRelationship2 || formData.nominee2?.relationship || '',
       status: formData.nomineeStatus2 || 'Active',
       address: {
-        no: formData.nomineeAddressNo2 || '',
-        line1: formData.nomineeAddressLine12 || '',
-        line2: formData.nomineeAddressLine22 || '',
-        city: formData.nomineeAddressCity2 || '',
-        state: formData.nomineeAddressState2 || '',
-        country: formData.nomineeAddressCountry2 || formData.nomineeCountry2 || 'Singapore'
+        no: formData.nomineeAddressNo2 || formData.nominee2?.address?.no || '',
+        line1: formData.nomineeAddressLine12 || formData.nominee2?.address?.line1 || '',
+        line2: formData.nomineeAddressLine22 || formData.nominee2?.address?.line2 || '',
+        city: formData.nomineeAddressCity2 || formData.nominee2?.address?.city || '',
+        state: formData.nomineeAddressState2 || formData.nominee2?.address?.state || '',
+        country: formData.nomineeAddressCountry2 || 
+                 formData.nominee2?.address?.country || 
+                 formData.nomineeCountry2 || 
+                 formData.nominee2?.country || 
+                 'Singapore'
       }
     });
   }
@@ -791,31 +834,71 @@ function buildCleanNominees(formData: Record<string, any>): Array<Record<string,
 function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<string, any>> {
   const beneficiaries: Array<Record<string, any>> = [];
   
+  // Handle nested beneficiaries array first
+  if (Array.isArray(formData.beneficiaries) && formData.beneficiaries.length > 0) {
+    formData.beneficiaries.forEach((beneficiary: any, index: number) => {
+      beneficiaries.push({
+        id: beneficiary.id || Date.now() + index + 2,
+        name: beneficiary.name || beneficiary.fullName || '',
+        idNo: beneficiary.idNo || beneficiary.nric || '',
+        isCatholic: beneficiary.isCatholic ?? false,
+        isMale: beneficiary.isMale ?? false,
+        gender: beneficiary.gender || (beneficiary.isMale ? 'Male' : 'Female'),
+        relationship: beneficiary.relationship || beneficiary.relationshipToApplicant || '',
+        dateOfBirth: beneficiary.dateOfBirth || '',
+        birthYear: beneficiary.birthYear || '',
+        status: beneficiary.status || 'Not Occupied',
+        relationshipToNominee1: beneficiary.relationshipToNominee1 || '',
+        relationshipToNominee2: beneficiary.relationshipToNominee2 || '',
+        religion: beneficiary.religion || ''
+      });
+    });
+    return beneficiaries;
+  }
+  
   // Process individual beneficiary fields (beneficiary1, beneficiary2, etc.)
   const beneficiaryFields = [
     'beneficiary1', 'beneficiary2', 'beneficiary3', 'beneficiary4', 'beneficiary5'
   ];
   
   beneficiaryFields.forEach((fieldPrefix, index) => {
-    const name = formData[`${fieldPrefix}Name`] || formData[fieldPrefix]?.name;
+    // Handle both flat and nested field structures
+    const name = formData[`${fieldPrefix}Name`] || 
+                 formData[fieldPrefix]?.name || 
+                 formData[`${fieldPrefix}?.fullName`];
+                 
     if (name) {
       beneficiaries.push({
         id: Date.now() + index + 2, // Generate unique ID
         name: name,
-        idNo: formData[`${fieldPrefix}IDNo`] || formData[fieldPrefix]?.idNo || '',
-        isCatholic: formData[`${fieldPrefix}IsCatholic`] || formData[fieldPrefix]?.isCatholic || false,
-        isMale: formData[`${fieldPrefix}IsMale`] || formData[fieldPrefix]?.isMale || false,
-        gender: formData[`${fieldPrefix}Gender`] || formData[fieldPrefix]?.gender || 
+        idNo: formData[`${fieldPrefix}IDNo`] || 
+              formData[fieldPrefix]?.idNo || 
+              formData[fieldPrefix]?.nric || '',
+        isCatholic: formData[`${fieldPrefix}IsCatholic`] || 
+                    formData[fieldPrefix]?.isCatholic || 
+                    false,
+        isMale: formData[`${fieldPrefix}IsMale`] || 
+                formData[fieldPrefix]?.isMale || 
+                false,
+        gender: formData[`${fieldPrefix}Gender`] || 
+                formData[fieldPrefix]?.gender || 
                 (formData[`${fieldPrefix}IsMale`] ? 'Male' : 'Female'),
-        relationship: formData[`${fieldPrefix}Relationship`] || formData[fieldPrefix]?.relationship || '',
-        dateOfBirth: formData[`${fieldPrefix}DateOfBirth`] || formData[fieldPrefix]?.dateOfBirth || '',
-        birthYear: formData[`${fieldPrefix}BirthYear`] || formData[fieldPrefix]?.birthYear || '',
-        status: formData[`${fieldPrefix}Status`] || formData[fieldPrefix]?.status || 'Not Occupied',
+        relationship: formData[`${fieldPrefix}Relationship`] || 
+                     formData[fieldPrefix]?.relationship || 
+                     formData[fieldPrefix]?.relationshipToApplicant || '',
+        dateOfBirth: formData[`${fieldPrefix}DateOfBirth`] || 
+                     formData[fieldPrefix]?.dateOfBirth || '',
+        birthYear: formData[`${fieldPrefix}BirthYear`] || 
+                   formData[fieldPrefix]?.birthYear || '',
+        status: formData[`${fieldPrefix}Status`] || 
+                formData[fieldPrefix]?.status || 
+                'Not Occupied',
         relationshipToNominee1: formData[`${fieldPrefix}RelationshipToNominee1`] || 
                               formData[fieldPrefix]?.relationshipToNominee1 || '',
         relationshipToNominee2: formData[`${fieldPrefix}RelationshipToNominee2`] || 
                               formData[fieldPrefix]?.relationshipToNominee2 || '',
-        religion: formData[`${fieldPrefix}Religion`] || formData[fieldPrefix]?.religion || ''
+        religion: formData[`${fieldPrefix}Religion`] || 
+                 formData[fieldPrefix]?.religion || ''
       });
     }
   });

@@ -393,9 +393,37 @@ export const useApplication = () => {
     }
     
     try {
-      // Map form data to API request format using optimized payload
-      const { generateOptimizedPayload } = await import('../utils/nicheApplicationMapper');
-      const optimizedPayload = generateOptimizedPayload(applicationData);
+      console.log('[useApplication] handleUpdateApplication called with:', {
+        applicationCode,
+        applicationDataKeys: Object.keys(applicationData),
+        hasApplicant: !!applicationData.applicant,
+        hasNominees: !!applicationData.nominees,
+        hasBeneficiaries: !!applicationData.beneficiaries,
+        applicantData: applicationData.applicant ? {
+          name: applicationData.applicant.name,
+          email: applicationData.applicant.email,
+          phone: applicationData.applicant.phone
+        } : null,
+        // Log the actual formData structure
+        fullApplicationData: applicationData
+      });
+      
+      // For PUT requests, we need to ensure the payload is in the correct optimized format
+      // Check if we already have the optimized structure or need to transform it
+      let optimizedPayload;
+      
+      if (applicationData.applicant && applicationData.nominees && applicationData.beneficiaries) {
+        // Already in optimized format, use as-is
+        optimizedPayload = applicationData;
+        console.log('[useApplication] PUT payload already in optimized format');
+      } else {
+        // Transform flat structure to optimized format
+        console.log('[useApplication] Transforming flat PUT payload to optimized format');
+        const { generateOptimizedPayload } = await import('../utils/nicheApplicationMapper');
+        optimizedPayload = generateOptimizedPayload(applicationData);
+      }
+      
+      console.log('[useApplication] PUT request payload:', JSON.stringify(optimizedPayload, null, 2));
       
       const result = await dispatch(updateNicheApplication({
         applicationCode: applicationCode.trim(),

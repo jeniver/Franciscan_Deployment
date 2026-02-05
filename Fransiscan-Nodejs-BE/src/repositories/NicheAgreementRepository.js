@@ -231,11 +231,12 @@ class NicheAgreementRepository extends BaseRepository {
 
       // CRITICAL OPTIMIZATION: Execute all independent queries in parallel
       // This reduces total time from sum of all queries to max of all queries
-      const [beneficiariesResult, nomineeResult, deceasedResult, invoiceResult] = await Promise.allSettled([
+      const [beneficiariesResult, nomineeResult, deceasedResult, invoiceResult, inscriptionResult] = await Promise.allSettled([
         this.addBeneficiaries(mergedData.NicheApplicationId, nicheAgreement),
         this.addNomineeInfo(mergedData.NicheApplicationId, nicheAgreement),
         this.addDeceasedAndStorageInfo(mergedData.NicheApplicationId, nicheAgreement),
-        this.addInvoiceInfo(applicationCode, nicheAgreement)
+        this.addInvoiceInfo(applicationCode, nicheAgreement),
+        this.addInscriptionInfo(applicationCode, mergedData.NicheApplicationId, nicheAgreement)
       ]);
 
       // Log any failures (non-critical, as these are optional data)
@@ -250,6 +251,9 @@ class NicheAgreementRepository extends BaseRepository {
       }
       if (invoiceResult.status === 'rejected') {
         logger.warn('Failed to fetch invoice info:', invoiceResult.reason?.message);
+      }
+      if (inscriptionResult.status === 'rejected') {
+        logger.warn('Failed to fetch inscription info:', inscriptionResult.reason?.message);
       }
 
       logger.info(`Successfully retrieved agreement for: ${applicationCode}`);
@@ -977,6 +981,91 @@ class NicheAgreementRepository extends BaseRepository {
   _oldAddInvoiceInfo_backup(applicationCode, nicheAgreement) {
     // This is the old version - kept for reference
     return Promise.resolve();
+  }
+
+  /**
+   * Add inscription information to the niche agreement
+   * This fetches inscription data linked to the application
+   */
+  async addInscriptionInfo(applicationCode, nicheApplicationId, nicheAgreement) {
+    try {
+      logger.info(`[addInscriptionInfo] Starting for applicationCode: ${applicationCode}, nicheApplicationId: ${nicheApplicationId}`);
+      
+      // Query for inscription linked to this application via NicheBooking
+      const inscriptionQuery = `
+        SELECT TOP 1
+          nir.Code AS InscriptionCode,
+          nir.NicheBookingId,
+          nir.NicheApplicationCode,
+          nir.BibleInscriptionChoiceId,
+          nir.BibleInscriptionChoiceNo,
+          nir.AdditionalInscriptionPhrase,
+          nir.CreatedDate
+        FROM NicheInscriptionRequest nir WITH(NOLOCK)
+        INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+        WHERE nb.NicheApplicationId = @nicheApplicationId
+        ORDER BY nir.NicheInscriptionRequestId DESC
+      `;
+      
+      const inscriptionResult = await executeQuery(inscriptionQuery, { nicheApplicationId }, { timeout: 10000 });
+      
+      if (inscriptionResult.recordset.length > 0) {
+        const inscription = inscriptionResult.recordset[0];
+        
+        // Store inscription information in the niche agreement object
+        nicheAgreement.inscription = {
+          code: inscription.InscriptionCode,
+          status: 1, // Default status since Status column doesn't exist in NicheInscriptionRequest table
+          bibleInscriptionChoiceId: inscription.BibleInscriptionChoiceId,
+          bibleInscriptionChoiceNo: inscription.BibleInscriptionChoiceNo,
+          additionalInscriptionPhrase: inscription.AdditionalInscriptionPhrase,
+          createdDate: inscription.CreatedDate
+        };
+        
+        logger.info(`[addInscriptionInfo] Found inscription for application: ${applicationCode}, code: ${inscription.InscriptionCode}`);
+        
+        // Now fetch inscription items using InscriptionInvoiceService
+        try {
+          const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+          const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscription.InscriptionCode, null); // churchId may not be available here
+          
+          if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
+            // Map inscription items to a format compatible with the response
+            const inscriptionItems = inscriptionData.items.map(inscriptionItem => ({
+              itemId: inscriptionItem.ItemId || null,
+              itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
+              itemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
+              itemPrice: inscriptionItem.Price || 0,
+              itemDocType: inscriptionItem.DocType || 'INCR',
+              quantity: 1,
+              unitAmount: inscriptionItem.Price || 0,
+              payingAmount: inscriptionItem.Price || 0,
+              totalPayingAmount: inscriptionItem.Price || 0,
+              refDocNumber: inscription.InscriptionCode, // Use inscription code as reference
+              refDocName: 'INCR',
+              refType: 'INCR',
+              outstandingAmount: 0,
+              lineTotalAmount: inscriptionItem.Price || 0,
+              lineTaxPercent: 9, // Default 9% GST for inscription items
+              lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
+            }));
+            
+            // Store inscription items in the niche agreement object
+            nicheAgreement.inscriptionItems = inscriptionItems;
+            
+            logger.info(`[addInscriptionInfo] Added ${inscriptionItems.length} inscription items to agreement for application: ${applicationCode}`);
+          }
+        } catch (inscriptionServiceError) {
+          logger.warn(`[addInscriptionInfo] Failed to fetch inscription items (non-critical):`, inscriptionServiceError.message);
+          // Continue without inscription items - non-critical
+        }
+      } else {
+        logger.info(`[addInscriptionInfo] No inscription found for application: ${applicationCode}`);
+      }
+    } catch (error) {
+      logger.warn('Could not fetch inscription info:', error.message);
+      // Don't throw - inscription info is optional
+    }
   }
 }
 

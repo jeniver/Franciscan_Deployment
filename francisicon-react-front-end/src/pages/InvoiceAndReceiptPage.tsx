@@ -309,15 +309,115 @@ export function InvoiceAndReceiptPage() {
       dispatch(resetCreateStatus());
       // Refresh view with newly created invoice code
       dispatch(fetchInvoiceOrApplication(lastCreatedInvoiceCode));
+      
+      // Automatically open the invoice viewer after successful creation
+      setInvoiceNumber(lastCreatedInvoiceCode);
+      
+      // Small delay to ensure data is loaded before opening viewer
+      setTimeout(() => {
+        const customerAddress = buildCustomerAddress();
+        
+        // Format transaction date
+        let formattedDate = transactionDate;
+        try {
+          if (transactionDate && transactionDate.includes('-')) {
+            const parts = transactionDate.split('-');
+            if (parts.length === 3) {
+              const [day, month, year] = parts;
+              const dateObj = new Date(`${year}-${month}-${day}`);
+              if (!isNaN(dateObj.getTime())) {
+                formattedDate = dateObj.toLocaleDateString('en-SG', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                });
+              }
+            }
+          } else if (transactionDate) {
+            const dateObj = new Date(transactionDate);
+            if (!isNaN(dateObj.getTime())) {
+              formattedDate = dateObj.toLocaleDateString('en-SG', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              });
+            }
+          }
+        } catch (error) {
+          console.warn('Error formatting date:', error);
+        }
+
+        // Map items to template items
+        const templateItems = items.map(item => ({
+          description: item.selectItem || 'Item',
+          quantity: item.quantity || 1,
+          unitPrice: item.amountPaying || 0,
+          amount: item.totalAmount || 0,
+        }));
+
+        const templateData: InvoiceTemplateData = {
+          invoiceCode: lastCreatedInvoiceCode,
+          invoiceDate: formattedDate,
+          customerName: payeeName || 'N/A',
+          customerAddress: customerAddress || undefined,
+          paymentMode: paymentMode || undefined,
+          totalAmount: totals.totalPayable || 0,
+          taxAmount: totals.taxAmount || 0,
+          items: templateItems.length > 0 ? templateItems : undefined,
+        };
+
+        setViewerInvoiceData(templateData);
+        setIsInvoiceViewerOpen(true);
+      }, 500); // Delay to allow state updates
     }
-  }, [createInvoiceSuccess, lastCreatedInvoiceCode, dispatch, showSuccess]);
+  }, [createInvoiceSuccess, lastCreatedInvoiceCode, dispatch, showSuccess, payeeName, paymentMode, items, totals, transactionDate, buildCustomerAddress]);
 
   useEffect(() => {
     if (createReceiptSuccess && lastCreatedReceiptCode) {
       showSuccess('Success', `Receipt created: ${lastCreatedReceiptCode}`);
       dispatch(resetCreateStatus());
+      
+      // Automatically open the receipt viewer after successful creation
+      setTimeout(() => {
+        // Build receipt data for the viewer
+        const parseTransactionDateToIso = (d: string): string | undefined => {
+          if (!d) return undefined;
+          // common UI format is DD-MM-YYYY
+          const m = d.match(/^\d{2}-\d{2}-\d{4}$/);
+          if (m) {
+            const [dd, mm, yyyy] = d.split('-');
+            return `${yyyy}-${mm}-${dd}`;
+          }
+          // last resort: let Date parse it
+          const dateObj = new Date(d);
+          if (!isNaN(dateObj.getTime())) return dateObj.toISOString();
+          return d;
+        };
+
+        const invoiceDetails: InvoiceDetail[] = items.map((item) => ({
+          description: item.selectItem || 'Item',
+          quantity: item.quantity || 1,
+          unitPrice: item.amountPaying || 0,
+          amount: item.totalAmount || 0,
+        }));
+
+        const receipt: ReceiptType = {
+          receiptCode: lastCreatedReceiptCode,
+          invoiceCode: lastCreatedInvoiceCode || undefined,
+          applicationCode: applicationNumber || applicationNumberFromRoute || undefined,
+          customerName: payeeName || currentData?.customerName || 'N/A',
+          totalAmount: totals.totalPayable || 0,
+          payingAmount: totals.totalPayable || 0,
+          paymentMode: paymentMode || 'Cash',
+          receiptDate: parseTransactionDateToIso(transactionDate),
+          invoiceDetails,
+        };
+
+        setSelectedReceipt(receipt);
+        setIsDetailModalOpen(true);
+      }, 500); // Delay to allow state updates
     }
-  }, [createReceiptSuccess, lastCreatedReceiptCode, dispatch, showSuccess]);
+  }, [createReceiptSuccess, lastCreatedReceiptCode, lastCreatedInvoiceCode, dispatch, showSuccess, payeeName, paymentMode, items, totals, transactionDate, applicationNumber, applicationNumberFromRoute, currentData]);
 
   useEffect(() => {
     if (invoiceError) {
@@ -394,6 +494,27 @@ export function InvoiceAndReceiptPage() {
     // Fallback: convert to string
     return String(lastReceiptNumber);
   };
+
+  // Build customer address string from address fields
+  const buildCustomerAddress = useCallback(() => {
+    const parts: string[] = [];
+    if (addressBlock && addressNumber) {
+      parts.push(`${addressBlock} ${addressNumber}`);
+    }
+    if (addressStreet) {
+      parts.push(addressStreet);
+    }
+    if (addressUnit) {
+      parts.push(addressUnit);
+    }
+    if (addressPostalCode) {
+      parts.push(addressPostalCode);
+    }
+    if (addressCountry) {
+      parts.push(addressCountry);
+    }
+    return parts.join(', ') || '';
+  }, [addressBlock, addressNumber, addressStreet, addressUnit, addressPostalCode, addressCountry]);
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -517,15 +638,34 @@ export function InvoiceAndReceiptPage() {
       return;
     }
 
+    // Map the current UI items to invoice details
+    const mappedInvoiceDetails = items.map(item => {
+      // Find the corresponding receipt item to get the itemId
+      const receiptItem = receiptItems.find(ri => ri.itemName === item.selectItem || ri.description === item.selectItem);
+      
+      return {
+        itemId: receiptItem?.itemId || 0, // Use 0 as fallback if not found
+        quantity: item.quantity,
+        unitAmount: item.amountPaying,
+        payingAmount: item.amountPaying,
+        totalPayingAmount: item.totalAmount,
+        refDocNumber: item.reference || '',
+        refDocName: currentData.refDocName || 'NAPP',
+        lineTotalAmount: item.totalNoTax,
+        lineTaxPercent: item.taxPercent,
+        lineTaxAmount: item.taxAmount,
+      };
+    });
+
     const invoicePayload = {
       invoice: {
         transactionDate: currentData.transactionDate || new Date().toISOString(),
         refDocNumber: currentData.applicationCode || currentData.refDocNumber || applicationNumber.trim(),
         refDocName: currentData.refDocName || 'NAPP',
         customerName: payeeName || currentData.customerName,
-        totalAmount: currentData.totalAmount || currentData.summary?.grandTotal || 0,
-        payingAmount: currentData.payingAmount || currentData.summary?.grandTotal || 0,
-        taxAmount: currentData.taxAmount || currentData.summary?.totalTax || 0,
+        totalAmount: totals.totalPayable || currentData.totalAmount || currentData.summary?.grandTotal || 0,
+        payingAmount: totals.totalPayable || currentData.payingAmount || currentData.summary?.grandTotal || 0,
+        taxAmount: totals.taxAmount || currentData.taxAmount || currentData.summary?.totalTax || 0,
         taxPercentage: currentData.taxPercentage || 9,
         taxCode: currentData.taxCode || null,
         nicheApplicationId: currentData.nicheApplicationId,
@@ -537,18 +677,7 @@ export function InvoiceAndReceiptPage() {
         country: addressCountry || currentData.country,
         paymentMode: normalizePaymentModeForBackend(paymentMode),
       },
-      invoiceDetails: (currentData.details || []).map((d) => ({
-        itemId: d.itemId,
-        quantity: d.quantity,
-        unitAmount: d.unitAmount,
-        payingAmount: d.payingAmount,
-        totalPayingAmount: d.totalPayingAmount,
-        refDocNumber: d.refDocNumber,
-        refDocName: d.refDocName,
-        lineTotalAmount: d.lineTotalAmount,
-        lineTaxPercent: d.lineTaxPercent,
-        lineTaxAmount: d.lineTaxAmount,
-      })),
+      invoiceDetails: mappedInvoiceDetails,
       createReceipt: withReceipt,
     };
 
@@ -564,28 +693,6 @@ export function InvoiceAndReceiptPage() {
   const handleGenerateReceipt = async () => {
     await handleGenerateInvoice(true);
   };
-
-
-  // Build customer address string from address fields
-  const buildCustomerAddress = useCallback(() => {
-    const parts: string[] = [];
-    if (addressBlock && addressNumber) {
-      parts.push(`${addressBlock} ${addressNumber}`);
-    }
-    if (addressStreet) {
-      parts.push(addressStreet);
-    }
-    if (addressUnit) {
-      parts.push(addressUnit);
-    }
-    if (addressPostalCode) {
-      parts.push(addressPostalCode);
-    }
-    if (addressCountry) {
-      parts.push(addressCountry);
-    }
-    return parts.join(', ') || '';
-  }, [addressBlock, addressNumber, addressStreet, addressUnit, addressPostalCode, addressCountry]);
 
   // Handle print invoice - open InvoiceViewerModal popup
   const handlePrintInvoice = async () => {
@@ -752,12 +859,15 @@ export function InvoiceAndReceiptPage() {
                     <input
                       type="text"
                       value={applicationNumber}
-                      onChange={(e) => handleApplicationNumberChange(e.target.value)}
+                      onChange={(e) => setApplicationNumber(e.target.value)}
                       className="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-[#4b3621] focus:outline-none focus:ring-2 focus:ring-[#4b3621]/20 transition-all"
                       placeholder="Enter niche number (e.g., 7980-0) or application number"
                     />
                     <button
-                      onClick={handleViewInvoice}
+                      onClick={() => {
+                        handleApplicationNumberChange(applicationNumber);
+                        handleViewInvoice();
+                      }}
                       disabled={loading || invoiceLoading || !applicationNumber.trim()}
                       className="px-5 py-2 bg-gradient-to-r from-[#4b3621] to-[#5a4730] text-white rounded-lg font-semibold hover:from-[#5a4730] hover:to-[#4b3621] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >

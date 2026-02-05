@@ -768,6 +768,15 @@ class InscriptionInvoiceService {
               parameters,
               churchId
             );
+
+            // Remove the Urn (Marble) item with ItemId: 10
+            const filteredItems = items.filter(item => item.ItemId !== 10);
+            
+            logger.info('DIAGNOSTIC: Items after filtering out Urn (Marble) in fallback case:', {
+              originalCount: items?.length || 0,
+              filteredCount: filteredItems?.length || 0,
+              removedItem: items?.find(item => item.ItemId === 10) || null
+            });
             
             // Get beneficiaries from the niche application
             let beneficiaries = [];
@@ -806,8 +815,11 @@ class InscriptionInvoiceService {
               // No inscriptionRequestNo - indicates inscription doesn't exist yet
               inscriptionRequestNo: null,
               
-              // Items (available for when inscription is created)
-              items: items,
+              // Application Code - use the niche application code (input parameter)
+              applicationCode: applicationCode,
+              
+              // Items (filtered - Urn Marble removed)
+              items: filteredItems,
               
               // Edit Contact (Applicant) Details from niche application
               applicant: {
@@ -838,6 +850,7 @@ class InscriptionInvoiceService {
             
             logger.info('DIAGNOSTIC: Final response being returned:', {
               inscriptionRequestNo: response.inscriptionRequestNo,
+              applicationCode: response.applicationCode,
               itemsCount: response.items?.length || 0,
               hasApplicant: !!response.applicant,
               applicantName: response.applicant?.name || null,
@@ -922,6 +935,15 @@ class InscriptionInvoiceService {
       churchId
     );
 
+    // Remove the Urn (Marble) item with ItemId: 10
+    const filteredItems = items.filter(item => item.ItemId !== 10);
+    
+    logger.info('DIAGNOSTIC: Items after filtering out Urn (Marble):', {
+      originalCount: items?.length || 0,
+      filteredCount: filteredItems?.length || 0,
+      removedItem: items?.find(item => item.ItemId === 10) || null
+    });
+
     logger.info('DIAGNOSTIC: Inscription items retrieved:', {
       applicationCode,
       taskId: this.INSCRIPTION_TASK_ID,
@@ -1003,8 +1025,11 @@ class InscriptionInvoiceService {
       // Inscription Request No. (Auto-generated)
       inscriptionRequestNo: application.code,
       
-      // Items (existing response)
-      items: items,
+      // Application Code - use niche application code instead of inscription code
+      applicationCode: application.nicheApplicationCode || application.code,
+      
+      // Items (filtered response - Urn Marble removed)
+      items: filteredItems,
       
       // Edit Contact (Applicant) Details
       applicant: {

@@ -1,5 +1,5 @@
 const { executeQuery } = require('../config/database');
-const { executeStoredProcedure } = require('../config/knex');
+const { executeStoredProcedure, executeRawQuery } = require('../config/knex');
 const { EngraveApplication, EngraveApplicationDetail } = require('../models/EngraveApplication');
 const logger = require('../utils/logger');
 
@@ -90,7 +90,7 @@ class EngraveApplicationRepository {
           FROM NicheInscriptionRequest 
           WHERE Code = @code AND ChurchId = @churchId
         `;
-        const existingResult = await executeQuery(existingQuery, { 
+        const existingResult = await executeRawQuery(existingQuery, { 
           code, 
           churchId: application.churchId 
         });
@@ -103,7 +103,7 @@ class EngraveApplicationRepository {
             WHERE Code LIKE @codePattern AND ChurchId = @churchId
             ORDER BY NicheInscriptionRequestId DESC
           `;
-          const lastCodeResult = await executeQuery(lastCodeQuery, { 
+          const lastCodeResult = await executeRawQuery(lastCodeQuery, { 
             codePattern: `${code}-%`,
             churchId: application.churchId 
           });
@@ -131,7 +131,7 @@ class EngraveApplicationRepository {
             NicheInscriptionRequestId DESC
         `;
 
-        const lastCodeResult = await executeQuery(lastCodeQuery, { churchId: application.churchId });
+        const lastCodeResult = await executeRawQuery(lastCodeQuery, { churchId: application.churchId });
         let nextNumber = 1;
 
         if (lastCodeResult.recordset && lastCodeResult.recordset.length > 0) {
@@ -162,7 +162,7 @@ class EngraveApplicationRepository {
             WHERE na.Code = @code AND nir.ChurchId = @churchId
             ORDER BY nir.NicheInscriptionRequestId DESC
           `;
-          const existingInscriptionResult = await executeQuery(existingInscriptionQuery, {
+          const existingInscriptionResult = await executeRawQuery(existingInscriptionQuery, {
             code: application.nicheApplicationCode,
             churchId: application.churchId
           });
@@ -178,7 +178,7 @@ class EngraveApplicationRepository {
               FROM NicheApplication WITH (NOLOCK)
               WHERE Code = @code AND ChurchId = @churchId
             `;
-            const nicheAppResult = await executeQuery(nicheAppQuery, {
+            const nicheAppResult = await executeRawQuery(nicheAppQuery, {
               code: application.nicheApplicationCode,
               churchId: application.churchId
             });
@@ -195,7 +195,7 @@ class EngraveApplicationRepository {
                   AND BookingStatus = 1
                 ORDER BY NicheBookingId DESC
               `;
-              const bookingResult = await executeQuery(bookingQuery, { nicheApplicationId });
+              const bookingResult = await executeRawQuery(bookingQuery, { nicheApplicationId });
               
               if (bookingResult.recordset && bookingResult.recordset.length > 0) {
                 nicheBookingId = bookingResult.recordset[0].NicheBookingId;
@@ -701,7 +701,6 @@ class EngraveApplicationRepository {
           nir.Code,
           nir.ApplicantName,
           '' as NicheApplicationCode,
-          1 as Status,
           nir.TranscationDate as CreatedOn,
           nir.ChurchId
         FROM NicheInscriptionRequest nir WITH (NOLOCK)
@@ -755,7 +754,7 @@ class EngraveApplicationRepository {
           code: row.Code,
           applicantName: row.ApplicantName,
           nicheApplicationCode: row.NicheApplicationCode,
-          status: row.Status,
+          status: 1, // Default status since table doesn't have Status column
           createdOn: row.CreatedOn,
           churchId: row.ChurchId
         });

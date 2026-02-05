@@ -456,6 +456,127 @@ class NicheAgreementController extends BaseController {
       this.sendError(res, 'Failed to retrieve invoice PDF data', 500);
     }
   });
+
+  /**
+   * Get 2nd Nominee Agreement Data for PDF generation (Frontend will generate PDF)
+   * GET /api/niche-agreements/:applicationNumber/second-nominee-agreement-pdf
+   * Supports formats: "3795-1", "3795", or "3795-"
+   */
+  getSecondNomineeAgreementPdf = this.asyncHandler(async(req, res) => {
+    this.logRequest(req, 'Get 2nd Nominee Agreement PDF Data');
+
+    const { applicationNumber } = req.params;
+
+    try {
+      // Basic validation
+      if (!applicationNumber || applicationNumber.trim() === '') {
+        return this.sendError(res, 'Application number is required', 400);
+      }
+
+      // Get niche agreement details (service will handle flexible format matching)
+      logger.info(`Fetching 2nd nominee agreement data for PDF: ${applicationNumber}`);
+      const agreementDetails = await this.nicheAgreementService.getNicheAgreementDetails(applicationNumber);
+
+      // Check if 2nd nominee exists
+      if (!agreementDetails.nominee2 || !agreementDetails.nominee2.name) {
+        return this.sendError(res, 'No 2nd nominee found for this application', 404);
+      }
+
+      // Structure data specifically for 2nd Nominee Agreement PDF generation
+      const pdfData = {
+        type: 'secondNomineeAgreement',
+        documentTitle: '2nd Nominee Agreement',
+        applicationNumber: agreementDetails.applicationCode,
+        generatedAt: new Date().toISOString(),
+
+        // Application Information
+        application: {
+          applicationNumber: agreementDetails.applicationCode,
+          appliedDate: agreementDetails.appliedDate,
+          agreementDate: agreementDetails.agreementDate
+        },
+
+        // Applicant Information
+        applicant: {
+          name: agreementDetails.applicant.name,
+          idNo: agreementDetails.applicant.idNo,
+          address: agreementDetails.applicant.address,
+          mobileNo: agreementDetails.applicant.mobileNo,
+          email: agreementDetails.applicant.email
+        },
+
+        // 1st Nominee Information
+        nominee1: agreementDetails.nominee ? {
+          name: agreementDetails.nominee.name,
+          idNo: agreementDetails.nominee.idNo,
+          address: agreementDetails.nominee.address,
+          mobileNo: agreementDetails.nominee.mobileNo,
+          email: agreementDetails.nominee.email,
+          relationship: agreementDetails.nominee.relationship
+        } : null,
+
+        // 2nd Nominee Information
+        nominee2: {
+          name: agreementDetails.nominee2.name,
+          idNo: agreementDetails.nominee2.idNo,
+          address: agreementDetails.nominee2.address,
+          mobileNo: agreementDetails.nominee2.mobileNo,
+          email: agreementDetails.nominee2.email,
+          relationship: agreementDetails.nominee2.relationship
+        },
+
+        // Niche Information
+        niche: {
+          number: agreementDetails.niche.number,
+          rowNumber: agreementDetails.niche.rowNumber,
+          wallName: agreementDetails.niche.wallName,
+          chapelName: agreementDetails.niche.chapelName
+        },
+
+        // Beneficiaries Information
+        beneficiaries: agreementDetails.beneficiaries || [],
+
+        // Report Information for Crystal Reports
+        crystalReport: {
+          reportPath: 'Reports/ChangeNominee.rpt',
+          reportName: 'ChangeNominee',
+          description: '2nd Nominee Agreement Report',
+          parameters: {
+            applicationCode: agreementDetails.applicationCode,
+            applicantName: agreementDetails.applicant.name,
+            nominee2Name: agreementDetails.nominee2.name,
+            nicheNumber: agreementDetails.niche.number
+          }
+        },
+
+        // Print Ready Status
+        printReady: agreementDetails.printReady || {},
+
+        // Metadata
+        metadata: agreementDetails.metadata || {}
+      };
+
+      this.sendSuccess(res, pdfData, '2nd Nominee Agreement PDF data retrieved successfully');
+    } catch (error) {
+      logger.error('Error in getSecondNomineeAgreementPdf:', error);
+
+      if (error.message.includes('No niche agreement found') || 
+          error.message.includes('No niche agreement found for application number')) {
+        return this.sendError(res, error.message || 'No niche agreement found for this application number', 404);
+      }
+
+      if (error.message.includes('Application number is required') || 
+          error.message.includes('Invalid')) {
+        return this.sendError(res, error.message, 400);
+      }
+
+      if (error.message.includes('No 2nd nominee found')) {
+        return this.sendError(res, error.message, 404);
+      }
+
+      this.sendError(res, 'Failed to retrieve 2nd nominee agreement PDF data', 500);
+    }
+  });
 }
 
 module.exports = NicheAgreementController;

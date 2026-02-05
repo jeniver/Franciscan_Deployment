@@ -231,7 +231,7 @@ const inscriptionService = {
   ): Promise<{ invoiceId: number; invoiceCode: string }> {
     try {
       const response = await api.post<CreateInvoiceResponse>(
-        `/inscriptions/${encodeURIComponent(code)}/invoice`,
+        `/api/invoices/${encodeURIComponent(code)}`,
         body
       );
 

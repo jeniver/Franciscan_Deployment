@@ -41,20 +41,69 @@ export const useBatchedUpdates = ({
   }, [dispatch, isEnabled]);
 
   // Save all pending changes
-  const saveChanges = useCallback(async () => {
-    if (!isEnabled || !isDirty || !applicationCode) {
-      return { success: false, error: 'No changes to save or missing application code' };
+  const saveChanges = useCallback(async (fullFormData?: Record<string, any>) => {
+    if (!isEnabled || (!isDirty && !fullFormData) || !applicationCode) {
+      if (fullFormData && applicationCode) {
+        // If we have full form data, proceed with the update anyway
+      } else if (!applicationCode) {
+        return { success: false, error: 'No application code provided' };
+      } else {
+        // If no changes and no full form data, return early
+        return { success: true, data: null }; // Nothing to save but not an error
+      }
     }
 
     try {
+      console.log('[useBatchedUpdates] saveChanges called with:', {
+        applicationCode,
+        pendingChangesKeys: Object.keys(pendingChanges),
+        hasFullFormData: !!fullFormData,
+        fullFormDataKeys: fullFormData ? Object.keys(fullFormData) : [],
+        pendingChanges: pendingChanges,
+        // Check if there are flat fields
+        applicantName: pendingChanges.applicantName,
+        applicantEmail: pendingChanges.applicantEmail,
+        applicantPhone: pendingChanges.applicantPhone,
+        applicantIDNo: pendingChanges.applicantIDNo,
+        applicantHomeTel: pendingChanges.applicantHomeTel,
+        applicantOfficeTel: pendingChanges.applicantOfficeTel
+      });
+
+      // Merge pending changes with full form data if provided
+      // This ensures we send complete data instead of just changes
+      let combinedData = { ...pendingChanges };
+      
+      if (fullFormData) {
+        // Override pending changes with full form data to ensure completeness
+        combinedData = { ...fullFormData, ...pendingChanges };
+      }
+
+      // Ensure the payload is in the correct optimized format for PUT requests
+      let updateData;
+      
+      if (combinedData.applicant && combinedData.nominees && combinedData.beneficiaries) {
+        // Already in optimized format
+        updateData = combinedData;
+        console.log('[useBatchedUpdates] PUT payload already in optimized format');
+      } else {
+        // Transform flat structure to optimized format
+        console.log('[useBatchedUpdates] Transforming flat PUT payload to optimized format');
+        const { generateOptimizedPayload } = await import('../utils/nicheApplicationMapper');
+        updateData = generateOptimizedPayload(combinedData);
+      }
+      
+      console.log('[useBatchedUpdates] PUT request payload:', JSON.stringify(updateData, null, 2));
+
       const result: any = await dispatch(updateNicheApplication({
         applicationCode,
-        applicationData: pendingChanges
+        applicationData: updateData
       }) as any);
 
       if (result.type.endsWith('/fulfilled')) {
-        // Clear pending changes after successful save
-        dispatch(clearChanges());
+        // Clear pending changes after successful save only if we had pending changes
+        if (Object.keys(pendingChanges).length > 0) {
+          dispatch(clearChanges());
+        }
         showSuccess('Success', 'Changes saved successfully');
         return { success: true, data: result.payload };
       } else {

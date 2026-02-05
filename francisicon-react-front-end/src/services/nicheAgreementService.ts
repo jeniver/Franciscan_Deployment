@@ -160,6 +160,61 @@ export interface PrintReady {
   consentFormReady: boolean;
 }
 
+// Define interface for 2nd Nominee Agreement response
+export interface SecondNomineeAgreementResponse {
+  success: boolean;
+  message: string;
+  data: {
+    type: string;
+    documentTitle: string;
+    applicationNumber: string;
+    generatedAt: string;
+    application: {
+      applicationNumber: string;
+      appliedDate: string;
+      agreementDate: string;
+    };
+    applicant: {
+      name: string;
+      idNo: string;
+      address: string;
+      mobileNo: string;
+      email: string;
+    };
+    nominee1: {
+      name: string;
+      idNo: string;
+      address: string;
+      mobileNo: string;
+      email: string;
+      relationship: string;
+    } | null;
+    nominee2: {
+      name: string;
+      idNo: string;
+      address: string;
+      mobileNo: string;
+      email: string;
+      relationship: string;
+    };
+    niche: {
+      number: string;
+      rowNumber: string;
+      wallName: string;
+      chapelName: string;
+    };
+    beneficiaries: Beneficiary[];
+    crystalReport?: {
+      reportPath: string;
+      reportName: string;
+      description: string;
+      parameters: Record<string, any>;
+    };
+    printReady: PrintReady;
+    metadata: Metadata;
+  };
+}
+
 export interface NicheAgreementResponse {
   success: boolean;
   message: string;
@@ -304,6 +359,74 @@ export const nicheAgreementService = {
     
     // Fallback to direct endpoint
     return `${API_BASE}/api/niche-agreements/${applicationNumber.trim()}/invoice-only`;
+  },
+
+  /**
+   * Get 2nd Nominee Agreement Data for PDF generation
+   */
+  getSecondNomineeAgreementPdf: async (applicationNumber: string): Promise<SecondNomineeAgreementResponse> => {
+    try {
+      if (!applicationNumber || !applicationNumber.trim()) {
+        throw new NicheAgreementError('Application number is required for 2nd nominee agreement PDF generation');
+      }
+
+      console.log(`[getSecondNomineeAgreementPdf] Making API call for application: ${applicationNumber}`);
+      
+      // Make API call with increased timeout (60 seconds) for 2nd nominee agreement
+      const response = await api.get<SecondNomineeAgreementResponse>(`/api/niche-agreements/${applicationNumber.trim()}/second-nominee-agreement-pdf`, {
+        timeout: 60000 // 60 second timeout (increased from 30s)
+      });
+      
+      console.log(`[getSecondNomineeAgreementPdf] Received response for application: ${applicationNumber}`, {
+        success: response.data.success,
+        hasData: !!response.data.data
+      });
+      
+      if (!response.data.success) {
+        throw new NicheAgreementError('API returned unsuccessful response for 2nd nominee agreement', 400);
+      }
+
+      return response.data;
+    } catch (error: any) {
+      console.error(`[getSecondNomineeAgreementPdf] Error for application ${applicationNumber}:`, {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        responseData: error.response?.data
+      });
+      
+      if (error instanceof NicheAgreementError) {
+        throw error;
+      }
+
+      if (error.message === 'Request timeout') {
+        throw new NicheAgreementError('Request timed out. Please try again.', 408, false, true);
+      } else if (error.response) {
+        // Server responded with error status
+        const status = error.response.status;
+        const message = error.response.data?.message || error.response.data?.error || 'Server error';
+        
+        if (status === 401) {
+          throw new NicheAgreementError('Session expired. Please login again.', status, true);
+        } else if (status === 403) {
+          throw new NicheAgreementError('Access denied. You do not have permission to view this application.', status, true);
+        } else if (status === 404) {
+          throw new NicheAgreementError(`Application ${applicationNumber} does not have a 2nd nominee agreement or does not exist.`, status);
+        } else if (status === 429) {
+          throw new NicheAgreementError('Too many requests. Please try again later.', status);
+        } else if (status >= 500) {
+          throw new NicheAgreementError('Server error. Please try again later.', status);
+        } else {
+          throw new NicheAgreementError(message, status);
+        }
+      } else if (error.request) {
+        // Network error
+        throw new NicheAgreementError('Network error. Please check your internet connection and try again.', 0, false, true);
+      } else {
+        // Other error
+        throw new NicheAgreementError('An unexpected error occurred. Please try again.', 500);
+      }
+    }
   },
 
   // Open PDF in new tab with the new API response structure

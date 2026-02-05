@@ -445,7 +445,6 @@ class InvoiceRepository extends BaseRepository {
           FROM NicheInscriptionRequest nir WITH(NOLOCK)
           INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
           WHERE nb.NicheApplicationId = @nicheApplicationId
-            AND nir.Status > 0
           ORDER BY nir.NicheInscriptionRequestId DESC
         `;
         const inscriptionResult = await executeQuery(inscriptionQuery, { 
@@ -524,7 +523,79 @@ class InvoiceRepository extends BaseRepository {
         allDetails.push(...inscriptionItems);
       }
 
-      // Calculate totals including inscription items
+      // Check for additional inscription items that might exist for this application
+      try {
+        // Query for any inscription requests directly linked to this application (without booking)
+        const additionalInscriptionQuery = `
+          SELECT 
+            nir.Code AS InscriptionCode
+          FROM NicheInscriptionRequest nir WITH(NOLOCK)
+          WHERE nir.NicheApplicationCode = @appCode
+          UNION
+          SELECT 
+            nir.Code AS InscriptionCode
+          FROM NicheInscriptionRequest nir WITH(NOLOCK)
+          INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+          WHERE nb.NicheApplicationId = @nicheApplicationId
+        `;
+        
+        const additionalInscriptionResult = await executeQuery(additionalInscriptionQuery, { 
+          appCode: application.ApplicationCode,
+          nicheApplicationId: application.NicheApplicationId
+        }, { timeout: 5000 });
+
+        if (additionalInscriptionResult.recordset && additionalInscriptionResult.recordset.length > 0) {
+          for (const inscrRecord of additionalInscriptionResult.recordset) {
+            const inscrCode = inscrRecord.InscriptionCode;
+            
+            // Skip if already added above
+            if (inscriptionItems.some(item => item.refDocNumber === inscrCode)) {
+              continue;
+            }
+            
+            logger.info(`[getApplicationDetailsByCode] Found additional inscription for application ${application.ApplicationCode}: ${inscrCode}`);
+            
+            try {
+              const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+              const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscrCode, application.ChurchId);
+              
+              if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
+                // Map additional inscription items to invoice detail format
+                const additionalInscriptionItems = inscriptionData.items.map(inscriptionItem => ({
+                  invoiceDetailId: null,
+                  invoiceId: null,
+                  itemId: inscriptionItem.ItemId || null,
+                  itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
+                  itemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
+                  itemPrice: inscriptionItem.Price || 0,
+                  itemDocType: inscriptionItem.DocType || 'INCR',
+                  itemIsRefType: inscriptionItem.IsRefType || false,
+                  quantity: 1,
+                  unitAmount: inscriptionItem.Price || 0,
+                  payingAmount: inscriptionItem.Price || 0,
+                  totalPayingAmount: inscriptionItem.Price || 0,
+                  refDocNumber: inscrCode, // Use inscription code as reference
+                  refDocName: 'INCR',
+                  refType: 'INCR',
+                  outstandingAmount: 0,
+                  lineTotalAmount: inscriptionItem.Price || 0,
+                  lineTaxPercent: 9, // Default 9% GST for inscription items
+                  lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
+                }));
+                
+                allDetails.push(...additionalInscriptionItems);
+                logger.info(`[getApplicationDetailsByCode] Added ${additionalInscriptionItems.length} additional inscription items from ${inscrCode}`);
+              }
+            } catch (additionalInscriptionError) {
+              logger.warn(`[getApplicationDetailsByCode] Failed to fetch additional inscription items from ${inscrCode} (non-critical):`, additionalInscriptionError.message);
+            }
+          }
+        }
+      } catch (additionalInscriptionQueryError) {
+        logger.warn(`[getApplicationDetailsByCode] Failed to query additional inscriptions (non-critical):`, additionalInscriptionQueryError.message);
+      }
+
+      // Calculate totals including all items
       const subtotal = allDetails.reduce((sum, d) => sum + (d.lineTotalAmount || 0), 0);
       const totalTax = allDetails.reduce((sum, d) => sum + (d.lineTaxAmount || 0), 0);
       const grandTotal = subtotal + totalTax;
@@ -965,6 +1036,206 @@ class InvoiceRepository extends BaseRepository {
           logger.warn('Failed to fetch application details:', appError);
           }
           
+        // FEATURE: Check if there's an existing invoice for this application code with additional items
+        logger.info(`Attempting to find invoice by application code with expanded search: ${searchCode}`);
+        
+        try {
+          // Look for invoices that might exist for this application code
+          const invoiceQuery = `
+            SELECT TOP 1
+              i.*
+            FROM Invoice i WITH(NOLOCK)
+            WHERE (
+              i.RefDocNumber = @code
+              OR i.Code = @code
+            )
+            AND i.Status > 0
+          `;
+          
+          const invoiceParams = {
+            code: searchCode
+          };
+          
+          if (churchId) {
+            invoiceQuery += ' AND i.ChurchId = @churchId';
+            invoiceParams.churchId = churchId;
+          }
+          
+          const invoiceResult = await executeQuery(invoiceQuery, invoiceParams, { timeout: 10000 });
+          
+          if (invoiceResult.recordset && invoiceResult.recordset.length > 0) {
+            invoice = invoiceResult.recordset[0];
+            
+            // Get invoice details
+            const detailsQuery = `
+              SELECT *
+              FROM InvoiceDetail id WITH(NOLOCK)
+              WHERE id.InvoiceId = @invoiceId
+              ORDER BY id.InvoiceDetailId
+            `;
+            
+            const detailsResult = await executeQuery(detailsQuery, { invoiceId: invoice.InvoiceId }, { timeout: 10000 });
+            
+            // Add details to invoice
+            invoice.Details = detailsResult.recordset || [];
+            
+            // Check for inscription items that might be related to this application
+            try {
+              const inscriptionQuery = `
+                SELECT TOP 1
+                  nir.Code AS InscriptionCode,
+                  nir.NicheBookingId
+                FROM NicheInscriptionRequest nir WITH(NOLOCK)
+                INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+                INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+                WHERE na.Code = @appCode
+                ORDER BY nir.NicheInscriptionRequestId DESC
+              `;
+              
+              const inscriptionResult = await executeQuery(inscriptionQuery, { appCode: searchCode }, { timeout: 10000 });
+              
+              if (inscriptionResult.recordset && inscriptionResult.recordset.length > 0) {
+                const inscriptionCode = inscriptionResult.recordset[0].InscriptionCode;
+                logger.info(`Found inscription for application ${searchCode}: ${inscriptionCode}`);
+                
+                // Fetch inscription items to potentially add to invoice
+                try {
+                  const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+                  const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscriptionCode, churchId);
+                  
+                  if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
+                    // Add inscription items to the invoice details if they're not already present
+                    const existingDetailRefNumbers = new Set(invoice.Details.map(d => d.RefDocNumber));
+                    
+                    for (const inscriptionItem of inscriptionData.items) {
+                      if (!existingDetailRefNumbers.has(inscriptionCode)) {
+                        // Add inscription item to details
+                        invoice.Details.push({
+                          InvoiceDetailId: null,
+                          InvoiceId: invoice.InvoiceId,
+                          ItemId: inscriptionItem.ItemId || null,
+                          ItemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
+                          ItemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
+                          Quantity: 1,
+                          UnitAmount: inscriptionItem.Price || 0,
+                          PayingAmount: inscriptionItem.Price || 0,
+                          TotalPayingAmount: inscriptionItem.Price || 0,
+                          RefDocNumber: inscriptionCode,
+                          RefDocName: 'INCR',
+                          RefType: 'INCR',
+                          OutstandingAmount: 0,
+                          LineTotalAmount: inscriptionItem.Price || 0,
+                          LineTaxPercent: 9,
+                          LineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
+                        });
+                      }
+                    }
+                    
+                    // Also check for any other inscriptions linked to this application
+                    try {
+                      const additionalInscriptionQuery = `
+                        SELECT 
+                          nir.Code AS InscriptionCode
+                        FROM NicheInscriptionRequest nir WITH(NOLOCK)
+                        WHERE nir.NicheApplicationCode = @appCode
+                        UNION
+                        SELECT 
+                          nir.Code AS InscriptionCode
+                        FROM NicheInscriptionRequest nir WITH(NOLOCK)
+                        INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+                        INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+                        WHERE na.Code = @appCode
+                      `;
+                      
+                      const additionalInscriptionResult = await executeQuery(additionalInscriptionQuery, { appCode: searchCode }, { timeout: 10000 });
+                      
+                      if (additionalInscriptionResult.recordset && additionalInscriptionResult.recordset.length > 0) {
+                        for (const inscrRecord of additionalInscriptionResult.recordset) {
+                          const additionalInscrCode = inscrRecord.InscriptionCode;
+                          
+                          // Skip if already added
+                          if (existingDetailRefNumbers.has(additionalInscrCode)) {
+                            continue;
+                          }
+                          
+                          logger.info(`Found additional inscription for application ${searchCode}: ${additionalInscrCode}`);
+                          
+                          try {
+                            const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+                            const additionalInscriptionData = await InscriptionInvoiceService.getInscriptionItems(additionalInscrCode, churchId);
+                            
+                            if (additionalInscriptionData && additionalInscriptionData.items && Array.isArray(additionalInscriptionData.items) && additionalInscriptionData.items.length > 0) {
+                              for (const additionalItem of additionalInscriptionData.items) {
+                                invoice.Details.push({
+                                  InvoiceDetailId: null,
+                                  InvoiceId: invoice.InvoiceId,
+                                  ItemId: additionalItem.ItemId || null,
+                                  ItemName: additionalItem.Name || additionalItem.ItemName || 'Inscription Item',
+                                  ItemCode: additionalItem.Code || additionalItem.ItemCode || null,
+                                  Quantity: 1,
+                                  UnitAmount: additionalItem.Price || 0,
+                                  PayingAmount: additionalItem.Price || 0,
+                                  TotalPayingAmount: additionalItem.Price || 0,
+                                  RefDocNumber: additionalInscrCode,
+                                  RefDocName: 'INCR',
+                                  RefType: 'INCR',
+                                  OutstandingAmount: 0,
+                                  LineTotalAmount: additionalItem.Price || 0,
+                                  LineTaxPercent: 9,
+                                  LineTaxAmount: ((additionalItem.Price || 0) * 9) / 100
+                                });
+                              }
+                              logger.info(`Added ${additionalInscriptionData.items.length} items from additional inscription ${additionalInscrCode}`);
+                            }
+                          } catch (additionalInscriptionError) {
+                            logger.warn(`Failed to fetch additional inscription items for ${additionalInscrCode}:`, additionalInscriptionError.message);
+                          }
+                        }
+                      }
+                    } catch (additionalInscriptionLookupError) {
+                      logger.warn('Failed to look up additional inscriptions for application:', additionalInscriptionLookupError.message);
+                    }
+                  }
+                } catch (inscriptionError) {
+                  logger.warn(`Failed to fetch inscription items for ${inscriptionCode}:`, inscriptionError.message);
+                }
+              }
+            } catch (inscriptionLookupError) {
+              logger.warn('Failed to look up inscription for application:', inscriptionLookupError.message);
+            }
+            
+            logger.info(`Returning existing invoice for application code: ${searchCode}, InvoiceId: ${invoice.InvoiceId}`);
+            
+            // Format the invoice to match expected response structure
+            return {
+              isApplicationData: false,
+              isInvoice: true,
+              hasInvoice: true,
+              canCreateInvoice: false,
+              invoiceId: invoice.InvoiceId,
+              code: invoice.Code,
+              applicationCode: searchCode,
+              customerName: invoice.CustomerName,
+              totalAmount: invoice.TotalAmount,
+              payingAmount: invoice.PayingAmount,
+              transactionDate: invoice.TransactionDate,
+              refDocNumber: invoice.RefDocNumber,
+              refDocName: invoice.RefDocName,
+              status: invoice.Status,
+              details: invoice.Details,
+              churchId: invoice.ChurchId,
+              userId: invoice.UserId,
+              paymentMode: invoice.PaymentMode,
+              paymentModeDocNo: invoice.PaymentModeDocNo,
+              taxCode: invoice.TaxCode,
+              taxPercentage: invoice.TaxPercentage,
+              taxAmount: invoice.TaxAmount
+            };
+          }
+        } catch (invoiceSearchError) {
+          logger.warn('Failed to search for existing invoice by application code:', invoiceSearchError.message);
+        }
+        
         // Comprehensive diagnostic: Check multiple scenarios
         try {
           // Diagnostic 1: Check if invoice exists with this RefDocNumber (any status, any church)
@@ -1190,7 +1461,8 @@ class InvoiceRepository extends BaseRepository {
       const normalizedInvoiceRefDocNumber = invoice.RefDocNumber ? String(invoice.RefDocNumber).trim() : null;
       const normalizedInvoiceRefDocName = invoice.RefDocName ? String(invoice.RefDocName).trim().toUpperCase() : null;
       
-      const invoiceResponse = {
+      // Create initial response object
+      let invoiceResponse = {
         // CRITICAL FLAGS for Frontend
         isApplicationData: false,       // This is an actual invoice, NOT application data
         isInvoice: true,                // Explicitly mark as invoice
@@ -1300,13 +1572,238 @@ class InvoiceRepository extends BaseRepository {
         invoiceResponse.country = receipt.ReceiptCountry;
       }
 
-      // Calculate summary totals from details for verification and frontend convenience
+      // ENHANCEMENT: If address fields are still null and this is a NAPP invoice, try to populate from application
+      if (invoiceResponse.refDocName === 'NAPP' && invoiceResponse.refDocNumber) {
+        if (!invoiceResponse.addressNo || !invoiceResponse.address || !invoiceResponse.address2 || 
+            !invoiceResponse.addressCity || !invoiceResponse.districtCode || !invoiceResponse.country) {
+          
+          logger.info(`[getInvoiceByCode] Populating address fields from NAPP: ${invoiceResponse.refDocNumber}`);
+          
+          try {
+            // Get the niche application details to populate address
+            const appQuery = `
+              SELECT 
+                ApplicantAddressNo,
+                ApplicantAddressLine1,
+                ApplicantAddressLine2,
+                ApplicantAddressCity,
+                ApplicantAddressState,
+                ApplicantAddressCountry
+              FROM NicheApplication WITH(NOLOCK)
+              WHERE Code = @code
+            `;
+            
+            const appResult = await executeQuery(appQuery, { code: invoiceResponse.refDocNumber }, { timeout: 5000 });
+            
+            if (appResult.recordset && appResult.recordset.length > 0) {
+              const app = appResult.recordset[0];
+              
+              // Populate address fields only if they're still null
+              if (!invoiceResponse.addressNo && app.ApplicantAddressNo) {
+                invoiceResponse.addressNo = app.ApplicantAddressNo;
+              }
+              if (!invoiceResponse.address && app.ApplicantAddressLine1) {
+                invoiceResponse.address = app.ApplicantAddressLine1;
+              }
+              if (!invoiceResponse.address2 && app.ApplicantAddressLine2) {
+                invoiceResponse.address2 = app.ApplicantAddressLine2;
+              }
+              if (!invoiceResponse.addressCity && app.ApplicantAddressCity) {
+                invoiceResponse.addressCity = app.ApplicantAddressCity;
+              }
+              if (!invoiceResponse.districtCode && app.ApplicantAddressState) {
+                invoiceResponse.districtCode = app.ApplicantAddressState;
+              }
+              if (!invoiceResponse.country && app.ApplicantAddressCountry) {
+                invoiceResponse.country = app.ApplicantAddressCountry;
+              }
+              
+              logger.info(`[getInvoiceByCode] Updated address fields from NAPP application: ${invoiceResponse.refDocNumber}`);
+            }
+          } catch (addressError) {
+            logger.warn(`[getInvoiceByCode] Failed to populate address fields from NAPP:`, addressError.message);
+          }
+        }
+      }
+
+      // ENHANCEMENT: Check for inscription items if this is a niche application invoice
+      if (invoiceResponse.refDocName === 'NAPP' && invoiceResponse.refDocNumber) {
+        try {
+          logger.info(`[getInvoiceByCode] Checking for inscription items for NAPP: ${invoiceResponse.refDocNumber}`);
+          
+          // Get niche application ID if not already available
+          let nicheApplicationId = invoiceResponse.nicheApplicationId;
+          if (!nicheApplicationId) {
+            // Try to get it from the database
+            const appQuery = `SELECT NicheApplicationId FROM NicheApplication WITH(NOLOCK) WHERE Code = @code`;
+            const appResult = await executeQuery(appQuery, { code: invoiceResponse.refDocNumber }, { timeout: 5000 });
+            if (appResult.recordset && appResult.recordset.length > 0) {
+              nicheApplicationId = appResult.recordset[0].NicheApplicationId;
+            }
+          }
+          
+          if (nicheApplicationId) {
+            // Check for ALL inscription items associated with this niche application (not just the first one)
+            const inscriptionQuery = `
+              SELECT 
+                nir.Code AS InscriptionCode,
+                nir.NicheBookingId
+              FROM NicheInscriptionRequest nir WITH(NOLOCK)
+              INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+              WHERE nb.NicheApplicationId = @nicheApplicationId
+              ORDER BY nir.NicheInscriptionRequestId
+            `;
+            const inscriptionResult = await executeQuery(inscriptionQuery, { 
+              nicheApplicationId: nicheApplicationId 
+            }, { timeout: 5000 });
+
+            if (inscriptionResult.recordset && inscriptionResult.recordset.length > 0) {
+              for (const inscrRecord of inscriptionResult.recordset) {
+                const inscriptionCode = inscrRecord.InscriptionCode;
+                logger.info(`[getInvoiceByCode] Found inscription for NAPP ${invoiceResponse.refDocNumber}: ${inscriptionCode}`);
+                
+                // Fetch inscription items using InscriptionInvoiceService
+                try {
+                  const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+                  const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscriptionCode, invoiceResponse.churchId);
+                  
+                  if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
+                    // Check if any of these inscription items already exist in the invoice details
+                    const existingDetailRefNumbers = new Set(invoiceResponse.details.map(d => d.refDocNumber));
+                    
+                    // Check if inscription items for this specific inscription code are already included
+                    const inscriptionItemsAlreadyExist = invoiceResponse.details.some(detail => 
+                      detail.refDocNumber === inscriptionCode
+                    );
+                    
+                    if (!inscriptionItemsAlreadyExist) {
+                      // Map inscription items to invoice detail format
+                      const newInscriptionItems = inscriptionData.items.map(inscriptionItem => ({
+                        invoiceDetailId: null, // Will be set when saved
+                        invoiceId: invoiceResponse.invoiceId, // Link to existing invoice
+                        itemId: inscriptionItem.ItemId || null,
+                        itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
+                        itemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
+                        itemPrice: inscriptionItem.Price || 0,
+                        itemDocType: inscriptionItem.DocType || 'INCR',
+                        itemIsRefType: inscriptionItem.IsRefType || false,
+                        quantity: 1,
+                        unitAmount: inscriptionItem.Price || 0,
+                        payingAmount: inscriptionItem.Price || 0,
+                        totalPayingAmount: inscriptionItem.Price || 0,
+                        refDocNumber: inscriptionCode, // Use inscription code as reference
+                        refDocName: 'INCR',
+                        refType: 'INCR',
+                        outstandingAmount: 0,
+                        lineTotalAmount: inscriptionItem.Price || 0,
+                        lineTaxPercent: 9, // Default 9% GST for inscription items
+                        lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
+                      }));
+                      
+                      // Add to response details
+                      invoiceResponse.details = [...invoiceResponse.details, ...newInscriptionItems];
+                      logger.info(`[getInvoiceByCode] Added ${newInscriptionItems.length} inscription items from ${inscriptionCode}`);
+                    } else {
+                      logger.info(`[getInvoiceByCode] Inscription items for ${inscriptionCode} already exist in invoice details`);
+                    }
+                  }
+                } catch (inscriptionError) {
+                  logger.warn(`[getInvoiceByCode] Failed to fetch inscription items:`, inscriptionError.message);
+                  // Continue without inscription items - non-critical
+                }
+              }
+            }
+          }
+          
+          // Also check for additional inscription requests directly linked to this application code
+          try {
+            const additionalInscriptionQuery = `
+              SELECT 
+                nir.Code AS InscriptionCode
+              FROM NicheInscriptionRequest nir WITH(NOLOCK)
+              WHERE nir.NicheApplicationCode = @appCode
+              UNION
+              SELECT 
+                nir.Code AS InscriptionCode
+              FROM NicheInscriptionRequest nir WITH(NOLOCK)
+              INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+              INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+              WHERE na.Code = @appCode
+            `;
+            
+            const additionalInscriptionResult = await executeQuery(additionalInscriptionQuery, { 
+              appCode: invoiceResponse.refDocNumber
+            }, { timeout: 5000 });
+
+            if (additionalInscriptionResult.recordset && additionalInscriptionResult.recordset.length > 0) {
+              for (const inscrRecord of additionalInscriptionResult.recordset) {
+                const inscrCode = inscrRecord.InscriptionCode;
+                
+                // Check if inscription items for this code already exist in the details
+                const inscriptionItemsAlreadyExist = invoiceResponse.details.some(item => item.refDocNumber === inscrCode);
+                if (inscriptionItemsAlreadyExist) {
+                  logger.info(`[getInvoiceByCode] Skipping inscription ${inscrCode} - already exists in details`);
+                  continue;
+                }
+                
+                logger.info(`[getInvoiceByCode] Found additional inscription for NAPP ${invoiceResponse.refDocNumber}: ${inscrCode}`);
+                
+                try {
+                  const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+                  const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscrCode, invoiceResponse.churchId);
+                  
+                  if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
+                    const additionalInscriptionItems = inscriptionData.items.map(inscriptionItem => ({
+                      invoiceDetailId: null, // Will be set when saved
+                      invoiceId: invoiceResponse.invoiceId, // Link to existing invoice
+                      itemId: inscriptionItem.ItemId || null,
+                      itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
+                      itemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
+                      itemPrice: inscriptionItem.Price || 0,
+                      itemDocType: inscriptionItem.DocType || 'INCR',
+                      itemIsRefType: inscriptionItem.IsRefType || false,
+                      quantity: 1,
+                      unitAmount: inscriptionItem.Price || 0,
+                      payingAmount: inscriptionItem.Price || 0,
+                      totalPayingAmount: inscriptionItem.Price || 0,
+                      refDocNumber: inscrCode, // Use inscription code as reference
+                      refDocName: 'INCR',
+                      refType: 'INCR',
+                      outstandingAmount: 0,
+                      lineTotalAmount: inscriptionItem.Price || 0,
+                      lineTaxPercent: 9, // Default 9% GST for inscription items
+                      lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
+                    }));
+                    
+                    // Add to response details
+                    invoiceResponse.details = [...invoiceResponse.details, ...additionalInscriptionItems];
+                    logger.info(`[getInvoiceByCode] Added ${additionalInscriptionItems.length} additional inscription items from ${inscrCode}`);
+                  }
+                } catch (additionalInscriptionError) {
+                  logger.warn(`[getInvoiceByCode] Failed to fetch additional inscription items from ${inscrCode}:`, additionalInscriptionError.message);
+                }
+              }
+            }
+          } catch (additionalInscriptionQueryError) {
+            logger.warn(`[getInvoiceByCode] Failed to query additional inscriptions:`, additionalInscriptionQueryError.message);
+          }
+        } catch (inscriptionCheckError) {
+          logger.warn(`[getInvoiceByCode] Failed to check for inscription items:`, inscriptionCheckError.message);
+          // Continue without inscription items - non-critical
+        }
+      }
+
+      // Recalculate summary totals after adding any inscription items
       const detailsSummary = {
         totalItems: invoiceResponse.details.length,
         subtotal: invoiceResponse.details.reduce((sum, d) => sum + (d.lineTotalAmount || 0), 0),
         totalTax: invoiceResponse.details.reduce((sum, d) => sum + (d.lineTaxAmount || 0), 0),
         grandTotal: invoiceResponse.details.reduce((sum, d) => sum + (d.totalPayingAmount || 0), 0)
       };
+      
+      // Update the invoice response with recalculated totals
+      invoiceResponse.totalAmount = detailsSummary.grandTotal;
+      invoiceResponse.payingAmount = detailsSummary.grandTotal;
       
       // Add summary to response (for frontend convenience)
       invoiceResponse.summary = detailsSummary;

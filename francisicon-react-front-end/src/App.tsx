@@ -26,6 +26,7 @@ import { store } from './store';
 import type { ApplicationListFilters } from './store/applicationSlice';
 import { useBatchedUpdates } from './hooks/useBatchedUpdates';
 import { InscriptionRequest } from './components/InscriptionRequest';
+import { NichiWalle } from './pages/NichiWalle';
 
 const DEFAULT_LIST_FILTERS: ApplicationListFilters = {
   applicationCode: '',
@@ -752,6 +753,8 @@ The application list will be refreshed to show your new application.`);
           </div>
         </div>
 
+        <NichiWalle />
+        
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           {applicationListError && (
             <div className="p-4 border-b border-red-200 bg-red-50 text-sm text-red-700">
@@ -1271,27 +1274,33 @@ The application list will be refreshed to show your new application.`);
                         if (currentStep === 5) {
                           // For step 5, save all changes and update the application
                           try {
-                            // First, save any pending batched changes
-                            if (isDirty) {
-                              const saveResult = await saveChanges();
-                              if (!saveResult.success) {
-                                showErrorMessage(saveResult.error || 'Failed to save pending changes');
-                                return;
-                              }
+                            // Log the formData that will be used for update
+                            console.log('[App.tsx] formData being used for update:', {
+                              formDataKeys: Object.keys(formData),
+                              applicantName: formData.applicantName,
+                              applicantEmail: formData.applicantEmail,
+                              applicantPhone: formData.applicantPhone,
+                              applicantIDNo: formData.applicantIDNo,
+                              applicantHomeTel: formData.applicantHomeTel,
+                              applicantOfficeTel: formData.applicantOfficeTel,
+                              hasApplicant: !!formData.applicant,
+                              hasNominees: !!formData.nominees,
+                              hasBeneficiaries: !!formData.beneficiaries
+                            });
+                            
+                            // Save changes with the full form data to ensure all fields are included
+                            const saveResult = await saveChanges(formData);
+                            if (!saveResult.success && saveResult.error && saveResult.error !== 'No application code provided') {
+                              showErrorMessage(saveResult.error || 'Failed to save changes');
+                              return;
                             }
                             
-                            // Then update the application with all current form data
-                            const result = await handleUpdateApplication(applicationNumber, formData);
-                            if (result.success) {
-                              showSuccessMessage('Application updated successfully!');
-                              // Switch to view mode after successful update
-                              dispatch(setViewModeAction(true));
-                              dispatch(setEditMode(false));
-                              // Reload the application to show updated data and navigate to view
-                              await handleViewApplicationFromTable(applicationNumber, navigate);
-                            } else {
-                              showErrorMessage(result.error || 'Failed to update application');
-                            }
+                            showSuccessMessage('Application updated successfully!');
+                            // Switch to view mode after successful update
+                            dispatch(setViewModeAction(true));
+                            dispatch(setEditMode(false));
+                            // Reload the application to show updated data and navigate to view
+                            await handleViewApplicationFromTable(applicationNumber, navigate);
                           } catch (error) {
                             console.error('Error updating application:', error);
                             showErrorMessage('Failed to update application');

@@ -1,4 +1,5 @@
 const NicheAgreementRepository = require('../repositories/NicheAgreementRepository');
+const InscriptionAgreementRepository = require('../repositories/InscriptionAgreementRepository');
 const { cache } = require('../utils/cache');
 const logger = require('../utils/logger');
 
@@ -14,6 +15,7 @@ const enableCache = process.env.NICHE_AGREEMENT_CACHE !== 'false';
 class NicheAgreementService {
   constructor() {
     this.nicheAgreementRepository = new NicheAgreementRepository();
+    this.inscriptionAgreementRepository = InscriptionAgreementRepository;
   }
 
   /**
@@ -147,184 +149,8 @@ class NicheAgreementService {
         nomineeCount: (nicheAgreement.nomineeName ? 1 : 0) + (nicheAgreement.nominee2Name ? 1 : 0)
       };
 
-      // Add Crystal Reports paths (as used in ASP.NET application)
-      agreementData.crystalReports = {
-        // Main Agreement Report
-        agreement: {
-          reportPath: 'Reports/NicheAgreement1.rpt',
-          reportName: 'NicheAgreement1',
-          description: 'Main Niche Agreement Report',
-          parameters: {
-            applicationCode: nicheAgreement.applicationCode,
-            applicantName: nicheAgreement.applicantName,
-            nicheNumber: nicheAgreement.nicheNumber
-          }
-        },
-
-        // Invoice Reports
-        invoice: nicheAgreement.invoiceNo
-          ? {
-            reportPath: 'Reports/Invoice_v4.rpt',
-            reportName: 'Invoice_v4',
-            description: 'Invoice Report',
-            parameters: {
-              invoiceNo: nicheAgreement.invoiceNo,
-              applicationCode: nicheAgreement.applicationCode
-            }
-          }
-          : null,
-
-        // Invoice with Receipt
-        invoiceReceipt: nicheAgreement.receiptAmount > 0
-          ? {
-            reportPath: 'Reports/Invoice_Receipt.rpt',
-            reportName: 'Invoice_Receipt',
-            description: 'Invoice with Receipt Report',
-            parameters: {
-              invoiceNo: nicheAgreement.invoiceNo,
-              receiptAmount: nicheAgreement.receiptAmount
-            }
-          }
-          : null,
-
-        // Beneficiary Reports
-        beneficiaryReports: {
-          // First Beneficiary Reports
-          firstBeneficiaryLiving: nicheAgreement.beneName_1
-            ? {
-              reportPath: 'Reports/ConcentForm1stLivingBeneficery.rpt',
-              reportName: 'ConcentForm1stLivingBeneficery',
-              description: '1st Beneficiary Living Consent Form'
-            }
-            : null,
-
-          firstBeneficiaryDeceased: nicheAgreement.beneName_1
-            ? {
-              reportPath: 'Reports/ConcentForm1stDecessedBeneficery.rpt',
-              reportName: 'ConcentForm1stDecessedBeneficery',
-              description: '1st Beneficiary Deceased Consent Form'
-            }
-            : null,
-
-          firstBeneficiaryLostCapacity: nicheAgreement.beneName_1
-            ? {
-              reportPath: 'Reports/ConcentForm1stLostCapacity.rpt',
-              reportName: 'ConcentForm1stLostCapacity',
-              description: '1st Beneficiary Lost Capacity Consent Form'
-            }
-            : null,
-
-          // Second Beneficiary Reports
-          secondBeneficiaryLiving: nicheAgreement.beneName_2
-            ? {
-              reportPath: 'Reports/ConcentForm2ndLivingBeneficery.rpt',
-              reportName: 'ConcentForm2ndLivingBeneficery',
-              description: '2nd Beneficiary Living Consent Form'
-            }
-            : null,
-
-          secondBeneficiaryDeceased: nicheAgreement.beneName_2
-            ? {
-              reportPath: 'Reports/ConcentForm2ndDecessedBeneficery.rpt',
-              reportName: 'ConcentForm2ndDecessedBeneficery',
-              description: '2nd Beneficiary Deceased Consent Form'
-            }
-            : null,
-
-          secondBeneficiaryLostCapacity: nicheAgreement.beneName_2
-            ? {
-              reportPath: 'Reports/ConcentForm2ndLostCapacity.rpt',
-              reportName: 'ConcentForm2ndLostCapacity',
-              description: '2nd Beneficiary Lost Capacity Consent Form'
-            }
-            : null,
-
-          // Both Beneficiaries Report
-          bothBeneficiariesLiving: (nicheAgreement.beneName_1 && nicheAgreement.beneName_2)
-            ? {
-              reportPath: 'Reports/ConcentFormLivingBeneficeries.rpt',
-              reportName: 'ConcentFormLivingBeneficeries',
-              description: 'Both Beneficiaries Living Consent Form'
-            }
-            : null,
-
-          bothBeneficiariesDeceased: (nicheAgreement.beneName_1 && nicheAgreement.beneName_2)
-            ? {
-              reportPath: 'Reports/ConcentFormDecessedBeneficeries.rpt',
-              reportName: 'ConcentFormDecessedBeneficeries',
-              description: 'Both Beneficiaries Deceased Consent Form'
-            }
-            : null,
-
-          bothBeneficiariesLostCapacity: (nicheAgreement.beneName_1 && nicheAgreement.beneName_2)
-            ? {
-              reportPath: 'Reports/ConcentFormLostCapacity.rpt',
-              reportName: 'ConcentFormLostCapacity',
-              description: 'Both Beneficiaries Lost Capacity Consent Form'
-            }
-            : null
-        },
-
-        // Nominee Agreement Reports
-        nomineeReports: {
-          // Second Nominee Agreement (as seen in the UI)
-          secondNomineeAgreement: nicheAgreement.nominee2Name
-            ? {
-              reportPath: 'Reports/ChangeNominee.rpt',
-              reportName: 'ChangeNominee',
-              description: '2nd Nominee Agreement Report'
-            }
-            : null
-        },
-
-        // Inscription Reports
-        inscriptionReports: {
-          inscription: {
-            reportPath: 'Reports/Inscription.rpt',
-            reportName: 'Inscription',
-            description: 'Inscription Report'
-          },
-
-          inscriptionLive: {
-            reportPath: 'Reports/Inscriptionlive.rpt',
-            reportName: 'Inscriptionlive',
-            description: 'Live Inscription Report'
-          },
-
-          inscriptionNew: {
-            reportPath: 'Reports/Inscriptionnew.rpt',
-            reportName: 'Inscriptionnew',
-            description: 'New Inscription Report'
-          },
-
-          secondInscription: {
-            reportPath: 'Reports/2ndInscription.rpt',
-            reportName: '2ndInscription',
-            description: 'Second Inscription Report'
-          }
-        },
-
-        // Additional Reports
-        additionalReports: {
-          beneficiaryList: {
-            reportPath: 'Reports/BeneficiryList.rpt',
-            reportName: 'BeneficiryList',
-            description: 'Beneficiary List Report'
-          },
-
-          monthlyInscription: {
-            reportPath: 'Reports/MonthlyInscription.rpt',
-            reportName: 'MonthlyInscription',
-            description: 'Monthly Inscription Report'
-          },
-
-          receiptMonthly: {
-            reportPath: 'Reports/ReceiptMonthlyReport.rpt',
-            reportName: 'ReceiptMonthlyReport',
-            description: 'Monthly Receipt Report'
-          }
-        }
-      };
+      // Add deceased details from inscription if available
+      agreementData.deceased = await this.getDeceasedDetails(nicheAgreement.applicationCode);
 
       // Helper function to format dates like ASP.NET (dd-MMM-yyyy)
       // ENHANCED: Handles ISO strings, Date objects, and various date formats
@@ -504,6 +330,50 @@ class NicheAgreementService {
         agreementData.storage.storageFrom = formatDate(agreementData.storage.storageFrom);
         agreementData.storage.storageTo = formatDate(agreementData.storage.storageTo);
       }
+      
+      // Add inscription data if available
+      if (nicheAgreement.inscription) {
+        agreementData.inscription = {
+          code: nicheAgreement.inscription.code,
+          status: nicheAgreement.inscription.status,
+          bibleInscriptionChoiceId: nicheAgreement.inscription.bibleInscriptionChoiceId,
+          bibleInscriptionChoiceNo: nicheAgreement.inscription.bibleInscriptionChoiceNo,
+          additionalInscriptionPhrase: nicheAgreement.inscription.additionalInscriptionPhrase,
+          createdDate: formatDate(nicheAgreement.inscription.createdDate)
+        };
+        
+        // Add inscription items if available
+        if (nicheAgreement.inscriptionItems && Array.isArray(nicheAgreement.inscriptionItems)) {
+          agreementData.inscriptionItems = nicheAgreement.inscriptionItems.map(item => ({
+            itemId: item.itemId,
+            itemName: item.itemName,
+            itemCode: item.itemCode,
+            itemPrice: item.itemPrice,
+            quantity: item.quantity,
+            unitAmount: item.unitAmount,
+            payingAmount: item.payingAmount,
+            totalPayingAmount: item.totalPayingAmount,
+            refDocNumber: item.refDocNumber,
+            refDocName: item.refDocName,
+            refType: item.refType,
+            outstandingAmount: item.outstandingAmount,
+            lineTotalAmount: item.lineTotalAmount,
+            lineTaxPercent: item.lineTaxPercent,
+            lineTaxAmount: item.lineTaxAmount
+          }));
+        }
+      }
+
+      // Add inscription data to invoice details if available
+      if (agreementData.invoice && agreementData.inscriptionItems && Array.isArray(agreementData.inscriptionItems)) {
+        // Initialize invoiceDetails array if it doesn't exist
+        if (!agreementData.invoice.invoiceDetails) {
+          agreementData.invoice.invoiceDetails = [];
+        }
+        
+        // Add inscription items to invoice details
+        agreementData.invoice.invoiceDetails.push(...agreementData.inscriptionItems);
+      }
 
       // Add print-ready flags
       agreementData.printReady = {
@@ -512,6 +382,17 @@ class NicheAgreementService {
         receiptReady: !!nicheAgreement.receiptAmount,
         consentFormReady: agreementData.consentForm.status === 'completed'
       };
+      
+      // Update invoice data to include inscription items if available
+      if (agreementData.invoice && agreementData.inscriptionItems && Array.isArray(agreementData.inscriptionItems)) {
+        // Combine niche items with inscription items in the invoice details
+        if (!agreementData.invoice.invoiceDetails) {
+          agreementData.invoice.invoiceDetails = [];
+        }
+        
+        // Add inscription items to invoice details
+        agreementData.invoice.invoiceDetails.push(...agreementData.inscriptionItems);
+      }
 
       // CRITICAL FIX: Ensure nominee address data is properly formatted in the response
       // If nominee address fields are null in the response, make sure they are properly mapped
@@ -629,6 +510,103 @@ class NicheAgreementService {
     // Expected format: "3795-1" (number-number)
     const pattern = /^\d+-\d+$/;
     return pattern.test(applicationNumber.trim());
+  }
+
+  /**
+   * Get deceased details from inscription for the given application code
+   * @param {string} applicationCode - Application code
+   * @returns {Promise<Object>} Deceased details object
+   */
+  async getDeceasedDetails(applicationCode) {
+    try {
+      logger.info(`[NicheAgreementService.getDeceasedDetails] Getting deceased details for application: ${applicationCode}`);
+      
+      // First, we need to find the inscription associated with this application
+      // This would typically involve querying the database to find inscription requests
+      // for the given application code
+      
+      // For now, let's check if there's an inscription with a code that matches the pattern
+      // We'll look for inscriptions that might be related to this application
+      const inscriptionCode = `I-${applicationCode}`;
+      
+      try {
+        const inscriptionDetails = await this.inscriptionAgreementRepository.getAgreementDetailsByCode(inscriptionCode);
+        
+        if (inscriptionDetails && inscriptionDetails.deceasedDetails) {
+          // Format the deceased details as requested
+          const deceasedData = {
+            deceased1: {
+              name: null,
+              dateDied: null,
+              internmentDate: null,
+              deathCertificateNo: null
+            },
+            deceased2: {
+              name: null,
+              dateDied: null,
+              internmentDate: null,
+              deathCertificateNo: null
+            }
+          };
+          
+          // Populate with actual data if available
+          if (inscriptionDetails.deceasedDetails.length > 0) {
+            const firstDeceased = inscriptionDetails.deceasedDetails[0];
+            deceasedData.deceased1.name = firstDeceased.name || null;
+            deceasedData.deceased1.dateDied = firstDeceased.dateOfDeath || null;
+            deceasedData.deceased1.internmentDate = firstDeceased.internmentDate || null;
+            deceasedData.deceased1.deathCertificateNo = firstDeceased.deathCertificateNo || null;
+          }
+          
+          if (inscriptionDetails.deceasedDetails.length > 1) {
+            const secondDeceased = inscriptionDetails.deceasedDetails[1];
+            deceasedData.deceased2.name = secondDeceased.name || null;
+            deceasedData.deceased2.dateDied = secondDeceased.dateOfDeath || null;
+            deceasedData.deceased2.internmentDate = secondDeceased.internmentDate || null;
+            deceasedData.deceased2.deathCertificateNo = secondDeceased.deathCertificateNo || null;
+          }
+          
+          logger.info(`[NicheAgreementService.getDeceasedDetails] Found deceased details for application: ${applicationCode}`);
+          return deceasedData;
+        }
+      } catch (error) {
+        // If no inscription found, that's okay - just return empty structure
+        logger.debug(`[NicheAgreementService.getDeceasedDetails] No inscription found for application: ${applicationCode}`);
+      }
+      
+      // Return default structure with null values
+      return {
+        deceased1: {
+          name: null,
+          dateDied: null,
+          internmentDate: null,
+          deathCertificateNo: null
+        },
+        deceased2: {
+          name: null,
+          dateDied: null,
+          internmentDate: null,
+          deathCertificateNo: null
+        }
+      };
+    } catch (error) {
+      logger.error(`[NicheAgreementService.getDeceasedDetails] Error getting deceased details for ${applicationCode}:`, error);
+      // Return default structure on error
+      return {
+        deceased1: {
+          name: null,
+          dateDied: null,
+          internmentDate: null,
+          deathCertificateNo: null
+        },
+        deceased2: {
+          name: null,
+          dateDied: null,
+          internmentDate: null,
+          deathCertificateNo: null
+        }
+      };
+    }
   }
 
   /**

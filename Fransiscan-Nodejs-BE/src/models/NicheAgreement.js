@@ -492,6 +492,46 @@ class NicheAgreement {
         timestamp: this.agreementTimestamp
       }
     };
+
+    // Add inscription data if available
+    if (this.inscription) {
+      result.inscription = {
+        code: this.inscription.code,
+        status: this.inscription.status,
+        bibleInscriptionChoiceId: this.inscription.bibleInscriptionChoiceId,
+        bibleInscriptionChoiceNo: this.inscription.bibleInscriptionChoiceNo,
+        additionalInscriptionPhrase: this.inscription.additionalInscriptionPhrase,
+        createdDate: this.inscription.createdDate
+      };
+      
+      // Add inscription items if available
+      if (this.inscriptionItems && Array.isArray(this.inscriptionItems)) {
+        result.inscriptionItems = this.inscriptionItems;
+      }
+    }
+    
+    return result;
+  }
+
+  // Add inscription data to JSON output
+  addInscriptionData(jsonOutput, inscriptionData, inscriptionItems) {
+    if (inscriptionData) {
+      jsonOutput.inscription = {
+        code: inscriptionData.code,
+        status: inscriptionData.status,
+        bibleInscriptionChoiceId: inscriptionData.bibleInscriptionChoiceId,
+        bibleInscriptionChoiceNo: inscriptionData.bibleInscriptionChoiceNo,
+        additionalInscriptionPhrase: inscriptionData.additionalInscriptionPhrase,
+        createdDate: inscriptionData.createdDate
+      };
+      
+      // Add inscription items if available
+      if (inscriptionItems && Array.isArray(inscriptionItems)) {
+        jsonOutput.inscriptionItems = inscriptionItems;
+      }
+    }
+    
+    return jsonOutput;
   }
 }
 

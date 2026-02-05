@@ -29,7 +29,7 @@ interface Beneficiary {
   isCatholic: boolean
   isMale: boolean
   relationshipToApplicant: string
-  dateOfBirth: string
+  dateOfBirth: string | null
   birthYear?: string | null
   relationshipToNominee1?: string | null
   relationshipToNominee2?: string | null
@@ -60,11 +60,12 @@ export function BeneficiaryDetails({
     [key: string]: any
   }>({})
   const currentBeneficiariesRef = useRef<Beneficiary[]>([])
-  // Process beneficiary date fields
+  // Process beneficiary date fields and other properties
   const processBeneficiaryDates = (beneficiary: Beneficiary): Beneficiary => {
     let processed = {
       ...beneficiary,
     }
+    // Handle date of birth and birth year mapping
     if (
       (!processed.dateOfBirth || processed.dateOfBirth === '') &&
       processed.birthYear &&
@@ -83,6 +84,25 @@ export function BeneficiaryDetails({
         }
       }
     }
+    
+    // Synchronize religious affiliation and isCatholic
+    if (processed.religion === 'Catholic') {
+      processed.isCatholic = true;
+    } else if (processed.religion === 'Non Catholic') {
+      processed.isCatholic = false;
+    } else if (typeof processed.isCatholic === 'boolean') {
+      processed.religion = processed.isCatholic ? 'Catholic' : 'Non Catholic';
+    }
+    
+    // Synchronize gender and isMale
+    if (processed.sex === 'Male' || processed.gender === 'Male') {
+      processed.isMale = true;
+    } else if (processed.sex === 'Female' || processed.gender === 'Female') {
+      processed.isMale = false;
+    } else if (typeof processed.isMale === 'boolean') {
+      processed.sex = processed.isMale ? 'Male' : 'Female';
+    }
+    
     return processed
   }
   // Initialize previous values
@@ -207,7 +227,7 @@ export function BeneficiaryDetails({
         if (field === 'dateOfBirth') {
           normalizedValue =
             value === '' || value === null || value === undefined
-              ? ('' as Beneficiary[K])
+              ? (null as Beneficiary[K])
               : value
         }
         const prevValue = prevValuesRef.current[key]
@@ -216,10 +236,25 @@ export function BeneficiaryDetails({
         prevValuesRef.current[key] = normalizedValue
         const updated = prev.map((b) => {
           if (b.id === id) {
-            const updatedBeneficiary = {
+            let updatedBeneficiary = {
               ...b,
               [field]: normalizedValue,
             }
+            
+            // Handle religious affiliation and isCatholic synchronization
+            if (field === 'religion' && typeof value === 'string') {
+              updatedBeneficiary.isCatholic = value === 'Catholic';
+            } else if (field === 'isCatholic' && typeof value === 'boolean') {
+              updatedBeneficiary.religion = value ? 'Catholic' : 'Non Catholic';
+            }
+            
+            // Handle gender and isMale synchronization
+            if (field === 'sex' && typeof value === 'string') {
+              updatedBeneficiary.isMale = value === 'Male';
+            } else if (field === 'isMale' && typeof value === 'boolean') {
+              updatedBeneficiary.sex = value ? 'Male' : 'Female';
+            }
+            
             if (
               field === 'birthYear' &&
               value &&
@@ -247,7 +282,7 @@ export function BeneficiaryDetails({
       isCatholic: true,
       isMale: true,
       relationshipToApplicant: '',
-      dateOfBirth: '',
+      dateOfBirth: null,
       status: 'Not Occupied',
       birthYear: null,
       relationshipToNominee1: null,
@@ -304,10 +339,9 @@ export function BeneficiaryDetails({
             monthAbbrMap[value.month] || value.month.substring(0, 3)
           const fullDate = `${value.day.padStart(2, '0')}-${monthAbbr}-${value.year}`
           handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', fullDate)
-          handleUpdateBeneficiary(beneficiaryId, 'birthYear', value.year)
+          handleUpdateBeneficiary(beneficiaryId, 'birthYear', null) // Set birthYear to null for full date
         } else if (value.mode === 'year' && value.year) {
-          const fullDate = `01-Jan-${value.year}`
-          handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', fullDate)
+          handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', null) // Set dateOfBirth to null for year only
           handleUpdateBeneficiary(beneficiaryId, 'birthYear', value.year)
         }
       }
@@ -315,55 +349,68 @@ export function BeneficiaryDetails({
     [handleUpdateBeneficiary],
   )
   // Parse date for DateOfBirthPicker
-  const parseDateOfBirth = (dateOfBirth: string) => {
-    if (!dateOfBirth || !dateOfBirth.includes('-')) {
+  const parseDateOfBirth = (dateOfBirth: string | null, birthYear: string | null) => {
+    // If birthYear is set but dateOfBirth is null, return year-only format
+    if (!dateOfBirth && birthYear) {
       return {
         day: '',
         month: '',
-        year: '',
+        year: birthYear,
       }
     }
-    const parts = dateOfBirth.split('-')
-    if (parts.length !== 3)
-      return {
-        day: '',
-        month: '',
-        year: '',
+    
+    // If dateOfBirth is set, parse it normally
+    if (dateOfBirth && dateOfBirth.includes('-')) {
+      const parts = dateOfBirth.split('-')
+      if (parts.length !== 3) {
+        return {
+          day: '',
+          month: '',
+          year: birthYear || '',
+        }
       }
-    const monthAbbr = parts[1]
-    const monthNames = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ]
-    const monthAbbrs = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ]
-    const monthIndex = monthAbbrs.findIndex((m) => m === monthAbbr)
+      const monthAbbr = parts[1]
+      const monthNames = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ]
+      const monthAbbrs = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ]
+      const monthIndex = monthAbbrs.findIndex((m) => m === monthAbbr)
+      return {
+        day: parts[0],
+        month: monthIndex !== -1 ? monthNames[monthIndex] : '',
+        year: parts[2],
+      }
+    }
+    
+    // Fallback return
     return {
-      day: parts[0],
-      month: monthIndex !== -1 ? monthNames[monthIndex] : '',
-      year: parts[2],
+      day: '',
+      month: '',
+      year: birthYear || '',
     }
   }
   const inputBaseClass = `
@@ -409,7 +456,7 @@ export function BeneficiaryDetails({
       {/* Beneficiary Cards */}
       <div className="space-y-6">
         {beneficiaries.map((beneficiary, index) => {
-          const dateInfo = parseDateOfBirth(beneficiary.dateOfBirth)
+          const dateInfo = parseDateOfBirth(beneficiary.dateOfBirth, beneficiary.birthYear ?? null)
           return (
             <div
               key={beneficiary.id}
@@ -491,13 +538,13 @@ export function BeneficiaryDetails({
                 <DateOfBirthPicker
                   variant="inline"
                   initialMode={
-                    beneficiary.birthYear && beneficiary.birthYear !== ''
+                    !beneficiary.dateOfBirth && beneficiary.birthYear
                       ? 'year'
                       : 'full'
                   }
                   initialDay={dateInfo.day}
                   initialMonth={dateInfo.month}
-                  initialYear={beneficiary.birthYear || dateInfo.year}
+                  initialYear={dateInfo.year}
                   onChange={handleDateOfBirthChange(beneficiary.id)}
                   disabled={isReadOnly}
                 />
@@ -542,13 +589,19 @@ export function BeneficiaryDetails({
                           beneficiary.religion === 'Catholic' ||
                           !!beneficiary.isCatholic
                         }
-                        onChange={(e) =>
+                        onChange={(e) => {
                           handleUpdateBeneficiary(
                             beneficiary.id,
                             'religion',
                             e.target.value,
-                          )
-                        }
+                          );
+                          // Update isCatholic based on selection
+                          handleUpdateBeneficiary(
+                            beneficiary.id,
+                            'isCatholic',
+                            e.target.value === 'Catholic',
+                          );
+                        }}
                         disabled={isReadOnly}
                         className="w-4 h-4 text-[#8b5a2b] border-gray-300 focus:ring-[#8b5a2b] focus:ring-2"
                       />
@@ -563,13 +616,19 @@ export function BeneficiaryDetails({
                           beneficiary.religion === 'Non Catholic' ||
                           !beneficiary.isCatholic
                         }
-                        onChange={(e) =>
+                        onChange={(e) => {
                           handleUpdateBeneficiary(
                             beneficiary.id,
                             'religion',
                             e.target.value,
-                          )
-                        }
+                          );
+                          // Update isCatholic based on selection
+                          handleUpdateBeneficiary(
+                            beneficiary.id,
+                            'isCatholic',
+                            e.target.value === 'Catholic',
+                          );
+                        }}
                         disabled={isReadOnly}
                         className="w-4 h-4 text-[#8b5a2b] border-gray-300 focus:ring-[#8b5a2b] focus:ring-2"
                       />
@@ -638,13 +697,19 @@ export function BeneficiaryDetails({
                           beneficiary.gender === 'Male' ||
                           !!beneficiary.isMale
                         }
-                        onChange={(e) =>
+                        onChange={(e) => {
                           handleUpdateBeneficiary(
                             beneficiary.id,
                             'sex',
                             e.target.value,
-                          )
-                        }
+                          );
+                          // Update isMale based on selection
+                          handleUpdateBeneficiary(
+                            beneficiary.id,
+                            'isMale',
+                            e.target.value === 'Male',
+                          );
+                        }}
                         disabled={isReadOnly}
                         className="w-4 h-4 text-[#8b5a2b] border-gray-300 focus:ring-[#8b5a2b] focus:ring-2"
                       />
@@ -660,13 +725,19 @@ export function BeneficiaryDetails({
                           beneficiary.gender === 'Female' ||
                           !beneficiary.isMale
                         }
-                        onChange={(e) =>
+                        onChange={(e) => {
                           handleUpdateBeneficiary(
                             beneficiary.id,
                             'sex',
                             e.target.value,
-                          )
-                        }
+                          );
+                          // Update isMale based on selection
+                          handleUpdateBeneficiary(
+                            beneficiary.id,
+                            'isMale',
+                            e.target.value === 'Male',
+                          );
+                        }}
                         disabled={isReadOnly}
                         className="w-4 h-4 text-[#8b5a2b] border-gray-300 focus:ring-[#8b5a2b] focus:ring-2"
                       />

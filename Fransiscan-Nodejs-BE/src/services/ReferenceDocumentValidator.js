@@ -186,7 +186,6 @@ class ReferenceDocumentValidator {
         SELECT TOP 1 NicheInscriptionRequestId
         FROM NicheInscriptionRequest WITH(NOLOCK)
         WHERE Code = @code
-          AND Status > 0
       `;
 
       const result = await executeQuery(query, { code });

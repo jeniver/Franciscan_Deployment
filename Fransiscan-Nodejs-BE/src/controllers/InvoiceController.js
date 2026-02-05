@@ -187,14 +187,69 @@ class InvoiceController extends BaseController {
         } else {
           return this.sendError(res, `Niche application not found for code: ${code}`, 404);
         }
+      } else if (normalizedCode.startsWith('INCR-') || normalizedCode.startsWith('I-')) {
+        // Inscription Request - format: "INCR-XXXX" or "I-XXXX"
+        refDocName = 'INCR';
+        
+        // Query NicheInscriptionRequest table
+        const inscrQuery = `
+          SELECT TOP 1
+            NicheInscriptionRequestId,
+            Code,
+            ApplicantName,
+            ChurchId,
+            NicheBookingId
+          FROM NicheInscriptionRequest WITH(NOLOCK)
+          WHERE Code = @code
+        `;
+        
+        const inscrResult = await executeQuery(inscrQuery, { code });
+        if (inscrResult.recordset && inscrResult.recordset.length > 0) {
+          application = inscrResult.recordset[0];
+          customerName = application.ApplicantName || 'Unknown Applicant';
+          
+          // Check church access
+          if (application.ChurchId !== churchId) {
+            return this.sendError(res, 'Access denied - Church ID mismatch', 403);
+          }
+          
+          // Get inscription items for this inscription request
+          try {
+            const inscriptionData = await this.getInscriptionItems(code, churchId);
+            if (inscriptionData && inscriptionData.length > 0) {
+              // Use the first item's details as the main application details
+              const firstItem = inscriptionData[0];
+              application.Amount = firstItem.totalPayingAmount || firstItem.unitAmount;
+            } else if (inscriptionData && inscriptionData.items && inscriptionData.items.length > 0) {
+              // Handle the new object format from InscriptionInvoiceService
+              const firstItem = inscriptionData.items[0];
+              application.Amount = firstItem.Price || firstItem.price || 0;
+                    
+              // Set customer name from applicant details if available
+              if (inscriptionData.applicant && inscriptionData.applicant.name) {
+                customerName = inscriptionData.applicant.name;
+                // Also populate address details from applicant
+                if (inscriptionData.applicant.address) {
+                  application.ApplicantAddressNo = inscriptionData.applicant.address.block || '';
+                  application.ApplicantAddressLine1 = inscriptionData.applicant.address.street || '';
+                  application.ApplicantAddressLine2 = inscriptionData.applicant.address.unitNo || '';
+                  application.ApplicantAddressCity = inscriptionData.applicant.address.postalCode || '';
+                }
+                // Populate contact details
+                application.ApplicantMobileNo = inscriptionData.applicant.mobile || '';
+                application.ApplicantEmailID = inscriptionData.applicant.emailId || '';
+              }
+            }
+          } catch (inscriptionError) {
+            logger.warn('Failed to get inscription items for invoice creation:', inscriptionError.message);
+          }
+        } else {
+          return this.sendError(res, `Inscription request not found for code: ${code}`, 404);
+        }
       } else if (normalizedCode.startsWith('WAPP-')) {
         refDocName = 'WAPP';
         // TODO: Implement Wake Room Application resolution
         return this.sendError(res, 'Wake Room Application invoice creation not yet implemented', 501);
-      } else if (normalizedCode.startsWith('INCR-')) {
-        refDocName = 'INCR';
-        // TODO: Implement Inscription Request resolution
-        return this.sendError(res, 'Inscription Request invoice creation not yet implemented', 501);
       } else if (normalizedCode.startsWith('GOLA-')) {
         refDocName = 'GOLA';
         // TODO: Implement Gate of Life Application resolution
@@ -235,7 +290,6 @@ class InvoiceController extends BaseController {
             i.Price AS ItemPrice
           FROM Item i WITH(NOLOCK)
           WHERE i.ChurchId = @churchId
-            AND i.Status = 1
             AND i.ItemId = @itemId
         `;
         const levelItemResult = await executeQuery(levelItemQuery, { 
@@ -247,8 +301,37 @@ class InvoiceController extends BaseController {
         }
       }
 
-      // Fallback: Get item from NICHES category
-      if (!item) {
+      // For INCR (inscription) requests, get inscription-specific items instead of generic niche items
+      if (refDocName === 'INCR' && !item) {
+        // Get inscription items from InscriptionInvoiceService
+        try {
+          const inscriptionItems = await this.getInscriptionItems(code, churchId);
+          if (inscriptionItems && inscriptionItems.length > 0) {
+            // Use the first inscription item
+            const firstInscriptionItem = inscriptionItems[0];
+            item = {
+              ItemId: firstInscriptionItem.itemId,
+              ItemName: firstInscriptionItem.itemName,
+              ItemCode: firstInscriptionItem.itemCode,
+              ItemPrice: firstInscriptionItem.unitAmount
+            };
+          } else if (inscriptionItems && inscriptionItems.items && inscriptionItems.items.length > 0) {
+            // Handle object format
+            const firstInscriptionItem = inscriptionItems.items[0];
+            item = {
+              ItemId: firstInscriptionItem.ItemId || firstInscriptionItem.itemId,
+              ItemName: firstInscriptionItem.Name || firstInscriptionItem.ItemName || 'Inscription Item',
+              ItemCode: firstInscriptionItem.Code || firstInscriptionItem.ItemCode,
+              ItemPrice: firstInscriptionItem.Price || firstInscriptionItem.unitAmount || 0
+            };
+          }
+        } catch (inscriptionItemError) {
+          logger.warn('Failed to get inscription items for item selection:', inscriptionItemError.message);
+        }
+      }
+
+      // Fallback: Get item by DocType NAPP or IsRefType = 1 (only for non-INCR)
+      if (!item && refDocName !== 'INCR') {
         const itemQuery = `
           SELECT TOP 1
             i.ItemId,
@@ -257,8 +340,7 @@ class InvoiceController extends BaseController {
             i.Price AS ItemPrice
           FROM Item i WITH(NOLOCK)
           WHERE i.ChurchId = @churchId
-            AND i.Status = 1
-            AND i.Category = 'NICHES'
+            AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
           ORDER BY i.ItemId
         `;
         const itemResult = await executeQuery(itemQuery, { churchId });
@@ -267,9 +349,9 @@ class InvoiceController extends BaseController {
         }
       }
 
-      // Last resort: Get any active item for the church
+      // Last resort: Get any item for the church (different approach for INCR vs NAPP)
       if (!item) {
-        const fallbackItemQuery = `
+        let fallbackItemQuery = `
           SELECT TOP 1
             i.ItemId,
             i.Name AS ItemName,
@@ -277,9 +359,18 @@ class InvoiceController extends BaseController {
             i.Price AS ItemPrice
           FROM Item i WITH(NOLOCK)
           WHERE i.ChurchId = @churchId
-            AND i.Status = 1
-          ORDER BY i.ItemId
         `;
+        
+        // For INCR, prioritize inscription-related items
+        if (refDocName === 'INCR') {
+          fallbackItemQuery += ` AND (i.DocType = 'INCR' OR i.Code LIKE 'INSC%' OR i.Code LIKE 'PLAQ%')`;
+        } else {
+          // For NAPP, prioritize niche-related items
+          fallbackItemQuery += ` AND (i.DocType = 'NAPP' OR i.IsRefType = 1)`;
+        }
+        
+        fallbackItemQuery += ` ORDER BY i.ItemId`;
+        
         const fallbackItemResult = await executeQuery(fallbackItemQuery, { churchId });
         if (fallbackItemResult.recordset && fallbackItemResult.recordset.length > 0) {
           item = fallbackItemResult.recordset[0];
@@ -308,14 +399,43 @@ class InvoiceController extends BaseController {
         }, 0);
 
         // Prepare invoice data from request body or use defaults
+        // Try to get customer details from inscription data if available
+        let finalCustomerName = req.body.customerName || customerName || application.ApplicantName || 'Unknown Customer';
+        let customerAddress = null;
+        let customerAddress2 = null;
+        let customerAddressCity = null;
+        let customerAddressNo = null;
+        let customerDistrictCode = null;
+        let customerCountry = null;
+        let customerMobile = null;
+        let customerEmail = null;
+              
+        // Try to get address details from inscription data
+        if (application && application.ApplicantAddressLine1) {
+          customerAddressNo = application.ApplicantAddressNo || null;
+          customerAddress = application.ApplicantAddressLine1;
+          customerAddress2 = application.ApplicantAddressLine2 || null;
+          customerAddressCity = application.ApplicantAddressCity || null;
+          customerDistrictCode = application.ApplicantAddressState || null;
+          customerCountry = application.ApplicantAddressCountry || null;
+          customerMobile = application.ApplicantMobileNo || null;
+          customerEmail = application.ApplicantEmailID || null;
+        }
+              
         invoiceData = {
           transactionDate: req.body.transactionDate || application.AgreementDate || application.AppliedDate || new Date(),
           refDocNumber: code.trim(), // Use the application code
           refDocName: refDocName,
-          customerName: req.body.customerName || customerName,
+          customerName: finalCustomerName,
           totalAmount: totalAmount,
           payingAmount: req.body.payingAmount !== undefined ? req.body.payingAmount : totalAmount,
-          paymentMode: req.body.paymentMode || null,
+          paymentMode: req.body.paymentMode || 'Cash',
+          addressNo: customerAddressNo,
+          address: customerAddress,
+          address2: customerAddress2,
+          addressCity: customerAddressCity,
+          districtCode: customerDistrictCode,
+          country: customerCountry,
           paymentModeDocNo: req.body.paymentModeDocNo || null,
           nicheApplicationId: nicheApplicationId,
           taxCode: req.body.taxCode || 'GST',
@@ -371,20 +491,48 @@ class InvoiceController extends BaseController {
         const lineTaxAmount = lineTotalAmount * (lineTaxPercent / 100);
         const totalPayingAmount = lineTotalAmount + lineTaxAmount;
 
-        // Prepare invoice data
+        // Prepare invoice data with better customer information
+        let finalCustomerName = customerName || application.ApplicantName || 'Unknown Customer';
+        let customerAddress = null;
+        let customerAddress2 = null;
+        let customerAddressCity = null;
+        let customerAddressNo = null;
+        let customerDistrictCode = null;
+        let customerCountry = null;
+        let customerMobile = null;
+        let customerEmail = null;
+        
+        // Try to get address details from application
+        if (application.ApplicantAddressLine1) {
+          customerAddressNo = application.ApplicantAddressNo || null;
+          customerAddress = application.ApplicantAddressLine1;
+          customerAddress2 = application.ApplicantAddressLine2 || null;
+          customerAddressCity = application.ApplicantAddressCity || null;
+          customerDistrictCode = application.ApplicantAddressState || null;
+          customerCountry = application.ApplicantAddressCountry || null;
+          customerMobile = application.ApplicantMobileNo || null;
+          customerEmail = application.ApplicantEmailID || null;
+        }
+        
         invoiceData = {
           transactionDate: application.AgreementDate || application.AppliedDate || new Date(),
           refDocNumber: code.trim(), // Use the application code
           refDocName: refDocName,
-          customerName: customerName,
+          customerName: finalCustomerName,
           totalAmount: totalPayingAmount,
           payingAmount: totalPayingAmount,
-          paymentMode: req.body.paymentMode || null,
+          paymentMode: req.body.paymentMode || 'Cash',
           paymentModeDocNo: req.body.paymentModeDocNo || null,
           nicheApplicationId: nicheApplicationId,
           taxCode: 'GST',
           taxPercentage: lineTaxPercent,
-          taxAmount: lineTaxAmount
+          taxAmount: lineTaxAmount,
+          addressNo: customerAddressNo,
+          address: customerAddress,
+          address2: customerAddress2,
+          addressCity: customerAddressCity,
+          districtCode: customerDistrictCode,
+          country: customerCountry
         };
 
         // Prepare invoice details
@@ -477,6 +625,61 @@ class InvoiceController extends BaseController {
       const invoice = await this.invoiceRepository.getInvoiceByCode(code, churchId, applicationCode);
 
       if (!invoice) {
+        // Check if it's an inscription code
+        const normalizedCode = code.trim().toUpperCase();
+        
+        // If it looks like an inscription code (starts with 'I-' followed by digits and hyphens)
+        if (normalizedCode.startsWith('I-')) {
+          try {
+            // Get inscription items for this code using the service
+            const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+            const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(normalizedCode, churchId);
+            
+            if (inscriptionData && inscriptionData.items && inscriptionData.items.length > 0) {
+              // Format as application data since no invoice exists yet
+              const applicationResponse = {
+                isApplicationData: true,
+                isInvoice: false,
+                hasInvoice: false,
+                canCreateInvoice: true,
+                applicationCode: normalizedCode,
+                customerName: inscriptionData.applicant?.name || '',
+                totalAmount: 0,
+                payingAmount: 0,
+                taxAmount: 0,
+                details: inscriptionData.items.map(item => ({
+                  itemId: item.ItemId,
+                  itemName: item.Name,
+                  itemCode: item.Code,
+                  unitAmount: item.Price,
+                  quantity: 1,
+                  lineTotalAmount: item.Price,
+                  lineTaxAmount: item.Price * 0.09, // 9% GST
+                  totalPayingAmount: item.Price * 1.09,
+                  refDocNumber: normalizedCode,
+                  refDocName: 'INCR',
+                  refType: 'INCR'
+                })),
+                summary: {
+                  totalItems: inscriptionData.items.length,
+                  subtotal: inscriptionData.items.reduce((sum, item) => sum + (item.Price || 0), 0),
+                  totalTax: inscriptionData.items.reduce((sum, item) => sum + ((item.Price || 0) * 0.09), 0),
+                  grandTotal: inscriptionData.items.reduce((sum, item) => sum + ((item.Price || 0) * 1.09), 0)
+                },
+                // Add inscription-specific data
+                inscriptionCode: normalizedCode,
+                items: inscriptionData.items,
+                applicant: inscriptionData.applicant,
+                deceasedDetails: inscriptionData.deceasedDetails
+              };
+              
+              return this.sendSuccess(res, applicationResponse, 'Inscription items retrieved successfully - no invoice exists yet');
+            }
+          } catch (inscriptionError) {
+            logger.warn('Failed to get inscription items from service:', inscriptionError.message);
+          }
+        }
+        
         // Enhanced error message with diagnostic info
         logger.warn(`Invoice lookup failed: code=${code}, churchId=${churchId}, applicationCode=${applicationCode}`);
         
@@ -773,7 +976,6 @@ class InvoiceController extends BaseController {
           FROM Item i WITH(NOLOCK)
           WHERE i.ChurchId = @churchId
             AND i.ItemId = @itemId
-            AND i.Status = 1
         `;
         
         const levelItemResult = await executeQuery(levelItemQuery, { 
@@ -797,8 +999,7 @@ class InvoiceController extends BaseController {
             i.DocType
           FROM Item i WITH(NOLOCK)
           WHERE i.ChurchId = @churchId
-            AND (i.DocType = 'NAPP' OR i.Category = 'NICHES')
-            AND i.Status = 1
+            AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
           ORDER BY i.ItemId
         `;
         
@@ -880,11 +1081,9 @@ class InvoiceController extends BaseController {
         SELECT 
           nir.NicheInscriptionRequestId,
           nir.Code,
-          nir.NicheBookingId,
-          nir.Status
+          nir.NicheBookingId
         FROM NicheInscriptionRequest nir WITH(NOLOCK)
         WHERE nir.NicheBookingId = @nicheBookingId
-          AND nir.Status > 0
         ORDER BY nir.NicheInscriptionRequestId
       `;
       
@@ -929,7 +1128,6 @@ class InvoiceController extends BaseController {
         FROM NicheInscriptionRequest nir WITH(NOLOCK)
         INNER JOIN NicheBooking nb ON nir.NicheBookingId = nb.NicheBookingId
         WHERE nir.Code = @code
-          AND nir.Status > 0
       `;
       
       const inscrResult = await executeQuery(inscrQuery, { code: inscrCode });
@@ -946,7 +1144,29 @@ class InvoiceController extends BaseController {
         const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscrCode, churchId);
         
         if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items)) {
+          // Handle the new object format from InscriptionInvoiceService
           return inscriptionData.items.map(item => ({
+            itemId: item.ItemId,
+            itemName: item.Name || item.ItemName || 'Inscription Service',
+            itemCode: item.Code || item.ItemCode,
+            itemPrice: item.Price || 0,
+            quantity: 1,
+            unitAmount: item.Price || 0,
+            lineTotalAmount: item.Price || 0,
+            lineTaxPercent: 9, // 9% GST
+            lineTaxAmount: (item.Price || 0) * 0.09,
+            totalPayingAmount: (item.Price || 0) * 1.09,
+            refDocNumber: inscrCode,
+            refDocName: 'INCR',
+            refType: 'INCR',
+            description: item.Name || item.ItemName || 'Inscription Service Item',
+            category: 'Inscription',
+            inscriptionId: inscription.NicheInscriptionRequestId,
+            inscriptionCode: inscrCode
+          }));
+        } else if (inscriptionData && Array.isArray(inscriptionData)) {
+          // Handle legacy array format
+          return inscriptionData.map(item => ({
             itemId: item.ItemId,
             itemName: item.Name || item.ItemName || 'Inscription',
             itemCode: item.Code || item.ItemCode,
@@ -972,7 +1192,7 @@ class InvoiceController extends BaseController {
       
       // Fallback: Get inscription items from database
       const itemQuery = `
-        SELECT TOP 1
+        SELECT 
           i.ItemId,
           i.Name,
           i.Code,
@@ -980,39 +1200,80 @@ class InvoiceController extends BaseController {
           i.DocType
         FROM Item i WITH(NOLOCK)
         WHERE i.ChurchId = @churchId
-          AND (i.DocType = 'INCR' OR i.Category = 'INSCRIPTIONS')
-          AND i.Status = 1
+          AND (i.DocType = 'INCR' OR i.Code LIKE 'INSC%' OR i.Code LIKE 'PLAQ%')
         ORDER BY i.ItemId
       `;
       
       const itemResult = await executeQuery(itemQuery, { churchId });
       
       if (!itemResult.recordset || itemResult.recordset.length === 0) {
-        return [];
+        // Last resort: Get any item for inscription
+        const fallbackItemQuery = `
+          SELECT TOP 1
+            i.ItemId,
+            i.Name,
+            i.Code,
+            i.Price,
+            i.DocType
+          FROM Item i WITH(NOLOCK)
+          WHERE i.ChurchId = @churchId
+            AND i.IsRefType = 1
+          ORDER BY i.ItemId
+        `;
+        
+        const fallbackResult = await executeQuery(fallbackItemQuery, { churchId });
+        
+        if (!fallbackResult.recordset || fallbackResult.recordset.length === 0) {
+          return [];
+        }
+        
+        const item = fallbackResult.recordset[0];
+        const amount = item.Price || 0;
+        
+        return [{
+          itemId: item.ItemId,
+          itemName: item.Name || 'Inscription Service',
+          itemCode: item.Code,
+          itemPrice: item.Price,
+          quantity: 1,
+          unitAmount: amount,
+          lineTotalAmount: amount,
+          lineTaxPercent: 9, // 9% GST
+          lineTaxAmount: amount * 0.09,
+          totalPayingAmount: amount * 1.09,
+          refDocNumber: inscrCode,
+          refDocName: 'INCR',
+          refType: 'INCR',
+          description: item.Name || 'Inscription Service Item',
+          category: 'Inscription',
+          inscriptionId: inscription.NicheInscriptionRequestId,
+          inscriptionCode: inscrCode
+        }];
       }
       
-      const item = itemResult.recordset[0];
-      const amount = item.Price || 0;
-      
-      return [{
-        itemId: item.ItemId,
-        itemName: item.Name || 'Inscription',
-        itemCode: item.Code,
-        itemPrice: item.Price,
-        quantity: 1,
-        unitAmount: amount,
-        lineTotalAmount: amount,
-        lineTaxPercent: 9, // 9% GST
-        lineTaxAmount: amount * 0.09,
-        totalPayingAmount: amount * 1.09,
-        refDocNumber: inscrCode,
-        refDocName: 'INCR',
-        refType: 'INCR',
-        description: item.Name || 'Inscription Item',
-        category: 'Inscription',
-        inscriptionId: inscription.NicheInscriptionRequestId,
-        inscriptionCode: inscrCode
-      }];
+      // Return all inscription-related items
+      return itemResult.recordset.map(item => {
+        const amount = item.Price || 0;
+        return {
+          itemId: item.ItemId,
+          itemName: item.Name || 'Inscription Service',
+          itemCode: item.Code,
+          itemPrice: item.Price,
+          quantity: 1,
+          unitAmount: amount,
+          lineTotalAmount: amount,
+          lineTaxPercent: 9, // 9% GST
+          lineTaxAmount: amount * 0.09,
+          totalPayingAmount: amount * 1.09,
+          refDocNumber: inscrCode,
+          refDocName: 'INCR',
+          refType: 'INCR',
+          description: item.Name || 'Inscription Service Item',
+          category: 'Inscription',
+          inscriptionId: inscription.NicheInscriptionRequestId,
+          inscriptionCode: inscrCode
+        };
+      });
     } catch (error) {
       logger.error('Error getting inscription items:', error);
       return [];

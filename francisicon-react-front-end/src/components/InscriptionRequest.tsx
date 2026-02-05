@@ -9,8 +9,7 @@ import { Beneficiary as BeneficiaryType } from '../services/inscriptionService';
 import { DeceasedDetail } from '../store/inscriptionSlice';
 
 interface InscriptionRequestProps {
-  formData?: any;
-  setFormData?: (data: any) => void;
+  // Removed unused formData and setFormData props
 }
 
 interface AddressData {
@@ -39,7 +38,7 @@ interface Beneficiary {
   deathCertNo: string;
 }
 
-export function InscriptionRequest({ formData, setFormData }: InscriptionRequestProps = {}) {
+export function InscriptionRequest() { // Removed props parameter since they were unused
   const navigate = useNavigate();
 
   const {
@@ -54,7 +53,7 @@ export function InscriptionRequest({ formData, setFormData }: InscriptionRequest
     mobile,
     homeTel,
     emailId,
-    inscriptionItems: _inscriptionItems,
+    inscriptionItems,
     itemsLoading,
     itemsError,
     creatingInvoice,
@@ -109,6 +108,7 @@ export function InscriptionRequest({ formData, setFormData }: InscriptionRequest
       // The hook already calls fetchInscriptionItems, but we ensure form is refreshed
       // by letting the Redux state update naturally
     }
+    console.log('InscriptionRequest: inscriptionRequestNo', inscriptionRequestNo);
   }, [inscriptionRequestNo, nicheApplicationCode]);
 
   // Handle back navigation to niche application
@@ -148,7 +148,7 @@ export function InscriptionRequest({ formData, setFormData }: InscriptionRequest
   const [crossType, setCrossType] = useState('Crucifix');
 
   const handleAddBeneficiary = () => {
-    const newBeneficiary: Beneficiary = {
+    const newBeneficiary: DeceasedDetail = {
       selectBeneficiary: '',
       nameOfDeceased: '',
       dateBorn: '',
@@ -164,7 +164,7 @@ export function InscriptionRequest({ formData, setFormData }: InscriptionRequest
     removeDeceased(index);
   };
 
-  const handleUpdateBeneficiary = (index: number, field: keyof Beneficiary, value: string) => {
+  const handleUpdateBeneficiary = (index: number, field: keyof DeceasedDetail, value: string) => {
     const updatedDetail = { [field]: value };
 
     // Auto-calculate Internment Date/Time when Date Died is selected
@@ -221,7 +221,22 @@ export function InscriptionRequest({ formData, setFormData }: InscriptionRequest
       return;
     }
     try {
-      await handleCreateInvoice(nicheApplicationCode);
+      // Check if the nicheApplicationCode is an inscription code (starts with 'I-')
+      let invoiceCode;
+      if (nicheApplicationCode.startsWith('I-')) {
+        // Call the inscription invoice endpoint
+        const result = await handleCreateInvoice(nicheApplicationCode);
+        invoiceCode = result.invoiceCode;
+      } else {
+        // For regular application codes, call the inscription invoice endpoint
+        // since inscription invoices are created based on inscription request codes
+        const inscriptionCode = `I-${nicheApplicationCode}`;
+        const result = await handleCreateInvoice(inscriptionCode);
+        invoiceCode = result.invoiceCode;
+      }
+      
+      // Navigate to the invoice-receipt page after successful invoice creation
+      navigate('/1/invoice-receipt', { state: { applicationNumber: invoiceCode } });
     } catch (error) {
       // Error is handled by toast in the hook
     }
@@ -261,10 +276,14 @@ export function InscriptionRequest({ formData, setFormData }: InscriptionRequest
 
   const handleAddressChange = (addressData: any) => {
     // Update the Redux store with the new address values
-    updateBlock(addressData.blockNo || '');
-    updateStreet(addressData.streetName || '');
-    updateUnitNo(addressData.unitNo || '');
-    updatePostalCode(addressData.postalCode || '');
+    // The AddressInput component provides both component-friendly and backend-compatible fields
+    // For Redux state, we update the fields that correspond to the Redux store structure
+    // block in Redux corresponds to blockNo/block from API (the number)
+    // street in Redux corresponds to streetName/street from API (the street name)
+    updateBlock(addressData.blockNo || addressData.addressLine1 || '');
+    updateStreet(addressData.streetName || addressData.addressLine2 || '');
+    updateUnitNo(addressData.unitNo || addressData.addressCity || '');
+    updatePostalCode(addressData.postalCode || addressData.addressState || '');
     // Note: country is typically Singapore for local addresses, so we may not need to update it
   };
 
@@ -384,66 +403,22 @@ export function InscriptionRequest({ formData, setFormData }: InscriptionRequest
             </div>
           </div>
 
-          {/* Address Row */}
-          {/* <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-700">Address</label>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-600">Block</label>
-                <input
-                  type="text"
-                  value={block}
-                  onChange={(e) => updateBlock(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all"
-                  placeholder="Block No."
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-600">Street</label>
-                <input
-                  type="text"
-                  value={street}
-                  onChange={(e) => updateStreet(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all"
-                  placeholder="Street Name"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-600">Unit No.</label>
-                <input
-                  type="text"
-                  value={unitNo}
-                  onChange={(e) => updateUnitNo(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all"
-                  placeholder="#XX-XX"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-600">Postal Code</label>
-                <input
-                  type="text"
-                  value={postalCode}
-                  onChange={(e) => updatePostalCode(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all"
-                  placeholder="123456"
-                />
-              </div>
-            </div>
-          </div> */}
           <AddressInput
             fieldPrefix="applicant"
             onAddressChange={handleAddressChange}
             autoSync={false}
             initialValues={{
-              // Provide backend-style fields for proper conversion
-              addressNo: formData?.applicantAddressNo || '',
-              addressLine1: formData?.applicantAddressLine1 || '',
-              addressLine2: formData?.applicantAddressLine2 || '',
-              addressCity: formData?.applicantAddressCity || '',
-              addressState: formData?.applicantAddressState || '',
-              addressCountry: formData?.applicantAddressCountry || 'Singapore'
+              // Provide component-friendly fields from Redux state
+              // The Redux state has block=29, street=#5665, unitNo=ALMOND AVENUE, postalCode=677766
+              // From the original API, the address.block field had "No", indicating it should be "No" type
+              block: '', // Default to 'No' type since original address.block was 'No' (not 'Block')
+              blockNo: block || '', // block in Redux contains the block number ("29")
+              streetName: street || '', // street in Redux contains the street name ("#5665")
+              unitNo: unitNo || '',
+              postalCode: postalCode || '',
+              country: 'Singapore'
             }}
-            initialAddressString={formData?.applicantAddress || formData?.contactAddress || ''}
+            initialAddressString={`${block} ${street} ${unitNo} Singapore ${postalCode}`.trim()}
           />
 
           {/* Contact Information Row */}
@@ -594,39 +569,6 @@ export function InscriptionRequest({ formData, setFormData }: InscriptionRequest
           </button>
         </div>
       </details>
-
-      {/* Inscription Items Display
-      {inscriptionItems.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[#801818] font-bold text-lg flex items-center gap-2">
-              <BookOpenIcon className="w-5 h-5" />
-              Available Inscription Items
-            </h3>
-            <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-              {inscriptionItems.length} item{inscriptionItems.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {inscriptionItems.map((item, index) => (
-              <div key={index} className="flex items-center justify-between p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border border-gray-200 hover:shadow-md transition-all">
-                <div className="flex-1">
-                  <div className="font-semibold text-gray-900 text-base mb-1">{item.Name}</div>
-                  <div className="flex items-center gap-4 text-sm text-gray-600">
-                    <span>Code: <span className="font-mono font-semibold">{item.Code}</span></span>
-                    <span className="text-[#801818] font-bold">${item.Price.toFixed(2)}</span>
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <div className="w-12 h-12 bg-[#801818] rounded-lg flex items-center justify-center">
-                    <BookOpenIcon className="w-6 h-6 text-white" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )} */}
 
       {/* Additional Details of Inscription */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">

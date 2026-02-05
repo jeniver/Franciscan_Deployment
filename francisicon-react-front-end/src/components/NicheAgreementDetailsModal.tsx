@@ -4,6 +4,7 @@ import { nicheAgreementService, NicheAgreementResponse, NicheAgreementError } fr
 import { LoadingSpinner } from './common/LoadingSpinner';
 import { useToast } from '../contexts/ToastContext';
 
+
 interface NicheAgreementDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -238,8 +239,9 @@ export function NicheAgreementDetailsModal({
                           {agreementData.beneficiaries.map((beneficiary, index) => (
                             <div key={index} className="bg-pink-50 border border-pink-200 rounded-lg p-4">
                               <div className="font-bold text-[#802429] mb-2">
-                                {index === 0 ? 'Primary' : index === 1 ? 'Secondary' : `Beneficiary ${index + 1}`}
+                                {index === 0 ? 'First Beneficiary' : index === 1 ? 'Second Beneficiary' : `Beneficiary ${index + 1}`}
                               </div>
+
                               <div className="space-y-2">
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Name</span>
@@ -252,23 +254,37 @@ export function NicheAgreementDetailsModal({
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Date of Birth</span>
                                   <span className="font-semibold text-sm">
-                                    {beneficiary.dateOfBirth 
-                                      ? typeof beneficiary.dateOfBirth === 'string' 
-                                        ? new Date(beneficiary.dateOfBirth).toLocaleDateString('en-SG')
-                                        : beneficiary.dateOfBirth.toLocaleDateString('en-SG')
-                                      : 'N/A'
-                                    }
+                                    {beneficiary.dateOfBirth || 'N/A'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Birth Year</span>
                                   <span className="font-semibold text-sm">
-                                    {beneficiary.birthYear 
-                                      ? typeof beneficiary.birthYear === 'number' 
-                                        ? beneficiary.birthYear
-                                        : parseInt(beneficiary.birthYear, 10) || 'N/A'
-                                      : 'N/A'
-                                    }
+                                    {beneficiary.birthYear || 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between py-2 border-b border-pink-100">
+                                  <span className="text-gray-600 text-sm">ID Number</span>
+                                  <span className="font-semibold text-sm">
+                                    {beneficiary.idNo || 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between py-2 border-b border-pink-100">
+                                  <span className="text-gray-600 text-sm">Gender</span>
+                                  <span className="font-semibold text-sm">
+                                    {beneficiary.sex || (beneficiary.isMale ? 'Male' : 'Female') || 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between py-2 border-b border-pink-100">
+                                  <span className="text-gray-600 text-sm">Catholic</span>
+                                  <span className="font-semibold text-sm">
+                                    {beneficiary.isCatholic !== undefined ? (beneficiary.isCatholic ? 'Yes' : 'No') : 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between py-2 border-b border-pink-100">
+                                  <span className="text-gray-600 text-sm">Status</span>
+                                  <span className="font-semibold text-sm">
+                                    {beneficiary.status || 'N/A'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">
