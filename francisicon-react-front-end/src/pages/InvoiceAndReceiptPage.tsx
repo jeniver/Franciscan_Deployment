@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { Layout } from '../components/Layout';
@@ -7,10 +7,12 @@ import { useToast } from '../contexts/ToastContext';
 import { useApplicationItems } from '../hooks/useApplicationItems';
 import { addressService } from '../services/addressService';
 import { parseRawAddress } from '../components/AddressInput';
+import api from '../services/api';
 import { PrinterIcon, EyeIcon, LoaderIcon, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
 import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
 import { ReceiptDetailModal } from '../components/ReceiptDetailModal';
 import { AgreementViewerModal } from '../components/AgreementViewerModal';
+import authService from '../services/authService';
 import { InvoiceTemplateData } from '../services/invoiceTemplateService';
 import { receiptService, type Receipt as ReceiptType, type InvoiceDetail } from '../services/receiptService';
 import type { AppDispatch, RootState } from '../store';
@@ -779,13 +781,23 @@ export function InvoiceAndReceiptPage() {
         // Keep original date string if formatting fails
       }
 
-      // Map items to template items
+      // Debug: Log items state
+      console.log('[handlePrintInvoice] Current items state:', items);
+      console.log('[handlePrintInvoice] Items length:', items.length);
+      
+      // Map items to template items with proper structure for InvoiceTemplate
       const templateItems = items.map(item => ({
         description: item.selectItem || 'Item',
-        quantity: item.quantity || 1,
+        referenceNo: item.reference || 'N/A',
+        gstPercent: item.taxPercent || 9, // default to 9% GST
+        qty: item.quantity || 1,
+        quantity: item.quantity || 1, // alias for compatibility
         unitPrice: item.amountPaying || 0,
         amount: item.totalAmount || 0,
       }));
+      
+      // Debug: Log template items
+      console.log('[handlePrintInvoice] Generated templateItems:', templateItems);
 
       const templateData: InvoiceTemplateData = {
         invoiceCode: codeToUse,
@@ -810,51 +822,6 @@ export function InvoiceAndReceiptPage() {
     }
   };
 
-  // Handle print second nominee agreement
-  const handlePrintSecondNomineeAgreement = async () => {
-    try {
-      if (!applicationNumber.trim()) {
-        showError('Error', 'Application number is required to print second nominee agreement');
-        return;
-      }
-
-      // Try to fetch the second nominee agreement data
-      // This would typically involve an API call to get the second nominee agreement
-      // For now, I'll simulate the data based on current application data
-      // In a real scenario, this would be fetched from the backend
-      
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Create mock data for second nominee agreement based on current data
-      // This should be replaced with an actual API call to fetch the second nominee agreement
-      const mockSecondNomineeData = {
-        applicationNumber: applicationNumber,
-        customerName: payeeName || currentData?.customerName || 'N/A',
-        nicheInfo: currentData?.niche,
-        bookingInfo: currentData?.booking,
-        details: currentData?.details || [],
-        // Add specific second nominee fields here
-        secondNomineeName: currentData?.booking?.nomineeName || 'Second Nominee',
-        contactPerson: currentData?.booking?.contactPersonName || 'Contact Person',
-        transactionDate: currentData?.transactionDate || new Date().toISOString(),
-        // Include address information
-        addressNo: addressNumber || currentData?.addressNo,
-        address: addressStreet || currentData?.address,
-        address2: addressUnit || currentData?.address2,
-        addressCity: addressPostalCode || currentData?.addressCity,
-        country: addressCountry || currentData?.country,
-      };
-
-      setSecondNomineeAgreementData(mockSecondNomineeData);
-      setIsAgreementViewerOpen(true);
-      showSuccess('Success', 'Second nominee agreement viewer opened');
-    } catch (error: any) {
-      console.error('[handlePrintSecondNomineeAgreement] Error:', error);
-      const errorMessage = error?.message || 'Failed to open second nominee agreement viewer';
-      showError('Error', errorMessage);
-    }
-  };
 
   // Handle print receipt (enhanced like ReceiptPage)
   const handlePrintReceipt = async () => {
@@ -895,6 +862,9 @@ export function InvoiceAndReceiptPage() {
           unitPrice: item.amountPaying || 0,
           amount: item.totalAmount || 0,
         }));
+        
+        // Debug: Log receipt items
+        console.log('[handlePrintReceipt] Generated invoiceDetails:', invoiceDetails);
 
         receipt = {
           receiptCode: codeToUse,
@@ -1124,15 +1094,6 @@ export function InvoiceAndReceiptPage() {
                         </>
                       )}
                     </button>
-                    <button
-                      onClick={handlePrintSecondNomineeAgreement}
-                      disabled={!applicationNumber.trim()}
-                      className="px-6 py-2.5 bg-gradient-to-r from-[#2a5aa5] to-[#356ac9] text-white rounded-lg font-semibold hover:from-[#356ac9] hover:to-[#2a5aa5] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                      title="Print Second Nominee Agreement"
-                    >
-                      <PrinterIcon className="w-4 h-4" />
-                      Print Second Nominee
-                    </button>
                   </div>
                 </div>
 
@@ -1200,119 +1161,122 @@ export function InvoiceAndReceiptPage() {
 
               {/* Application Items Section */}
               {(applicationItems || applicationItemsLoading) && (
-                <div className="bg-white rounded-lg p-4 shadow-md">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-gray-800 text-lg">Application Items</h3>
-                    {applicationItemsLoading && (
-                      <div className="flex items-center gap-2 text-blue-600">
-                        <LoaderIcon className="w-4 h-4 animate-spin" />
-                        <span className="text-sm">Loading items...</span>
-                      </div>
-                    )}
-                  </div>
+                // <div className="bg-white rounded-lg p-4 shadow-md">
+                //   {/* <div className="flex items-center justify-between mb-4">
+                //     <h3 className="font-semibold text-gray-800 text-lg">Application Items</h3>
+                //     {applicationItemsLoading && (
+                //       <div className="flex items-center gap-2 text-blue-600">
+                //         <LoaderIcon className="w-4 h-4 animate-spin" />
+                //         <span className="text-sm">Loading items...</span>
+                //       </div>
+                //     )}
+                //   </div> */}
                   
-                  {applicationItems && (
-                    <div className="space-y-4">
-                      {/* Summary Cards */}
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                          <div className="text-blue-800 text-sm font-medium">Total Items</div>
-                          <div className="text-blue-900 text-xl font-bold">{applicationItems.totalItems}</div>
-                        </div>
-                        <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                          <div className="text-green-800 text-sm font-medium">Subtotal</div>
-                          <div className="text-green-900 text-xl font-bold">${getTotalAmount().toFixed(2)}</div>
-                        </div>
-                        <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                          <div className="text-yellow-800 text-sm font-medium">Tax Amount</div>
-                          <div className="text-yellow-900 text-xl font-bold">${getTaxAmount().toFixed(2)}</div>
-                        </div>
-                        <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
-                          <div className="text-purple-800 text-sm font-medium">Grand Total</div>
-                          <div className="text-purple-900 text-xl font-bold">${getGrandTotal().toFixed(2)}</div>
-                        </div>
-                      </div>
+                //   {applicationItems && (
+                //     <div className="space-y-4">
+                //       {/* Summary Cards */}
+                //       {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                //         <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                //           <div className="text-blue-800 text-sm font-medium">Total Items</div>
+                //           <div className="text-blue-900 text-xl font-bold">{applicationItems.totalItems}</div>
+                //         </div>
+                //         <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                //           <div className="text-green-800 text-sm font-medium">Subtotal</div>
+                //           <div className="text-green-900 text-xl font-bold">${typeof getTotalAmount() === 'number' ? getTotalAmount().toFixed(2) : '0.00'}</div>
+                //         </div>
+                //         <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                //           <div className="text-yellow-800 text-sm font-medium">Tax Amount</div>
+                //           <div className="text-yellow-900 text-xl font-bold">${typeof getTaxAmount() === 'number' ? getTaxAmount().toFixed(2) : '0.00'}</div>
+                //         </div>
+                //         <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+                //           <div className="text-purple-800 text-sm font-medium">Grand Total</div>
+                //           <div className="text-purple-900 text-xl font-bold">${typeof getGrandTotal() === 'number' ? getGrandTotal().toFixed(2) : '0.00'}</div>
+                //         </div>
+                //       </div> */}
 
-                      {/* References */}
-                      {applicationItems.references && Object.keys(applicationItems.references).length > 0 && (
-                        <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-4">
-                          <h4 className="font-medium text-gray-800 mb-2">References:</h4>
-                          <div className="flex flex-wrap gap-2">
-                            {Object.entries(applicationItems.references).map(([type, refs]) => (
-                              refs.length > 0 && (
-                                <div key={type} className="bg-white px-3 py-1 rounded-md border text-sm">
-                                  <span className="font-medium text-gray-700">{type}:</span>
-                                  <span className="text-gray-600 ml-1">{refs.join(', ')}</span>
-                                </div>
-                              )
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                //       {/* References */}
+                //       {/* {applicationItems.references && Object.keys(applicationItems.references).length > 0 && (
+                //         <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-4">
+                //           <h4 className="font-medium text-gray-800 mb-2">References:</h4>
+                //           <div className="flex flex-wrap gap-2">
+                //             {Object.entries(applicationItems.references).map(([type, refs]) => {
+                //               // Ensure refs is an array and has content
+                //               const refArray = Array.isArray(refs) ? refs : [];
+                //               return refArray.length > 0 ? (
+                //                 <div key={type} className="bg-white px-3 py-1 rounded-md border text-sm">
+                //                   <span className="font-medium text-gray-700">{type}:</span>
+                //                   <span className="text-gray-600 ml-1">{refArray.join(', ')}</span>
+                //                 </div>
+                //               ) : null;
+                //             })}
+                //           </div>
+                //         </div>
+                //       )} */}
 
-                      {/* Items Table */}
-                      <div className="overflow-x-auto">
-                        <table className="w-full border-collapse">
-                          <thead>
-                            <tr className="bg-[#e0d5c5]">
-                              <th className="border border-[#bbaaaa] px-3 py-2 text-left text-xs font-semibold text-[#4b3621]">Item Type</th>
-                              <th className="border border-[#bbaaaa] px-3 py-2 text-left text-xs font-semibold text-[#4b3621]">Description</th>
-                              <th className="border border-[#bbaaaa] px-3 py-2 text-right text-xs font-semibold text-[#4b3621]">Quantity</th>
-                              <th className="border border-[#bbaaaa] px-3 py-2 text-right text-xs font-semibold text-[#4b3621]">Unit Price</th>
-                              <th className="border border-[#bbaaaa] px-3 py-2 text-right text-xs font-semibold text-[#4b3621]">Total Amount</th>
-                              <th className="border border-[#bbaaaa] px-3 py-2 text-right text-xs font-semibold text-[#4b3621]">Tax Amount</th>
-                              <th className="border border-[#bbaaaa] px-3 py-2 text-right text-xs font-semibold text-[#4b3621]">Grand Total</th>
-                              <th className="border border-[#bbaaaa] px-3 py-2 text-left text-xs font-semibold text-[#4b3621]">Reference</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {applicationItems.items.length === 0 ? (
-                              <tr>
-                                <td colSpan={8} className="border border-[#bbaaaa] px-3 py-4 text-center text-gray-500">
-                                  No items found for this application.
-                                </td>
-                              </tr>
-                            ) : (
-                              applicationItems.items.map((item, index) => (
-                                <tr key={`${item.id}-${index}`} className="hover:bg-gray-50 transition-colors">
-                                  <td className="border border-[#bbaaaa] px-3 py-2">
-                                    <span className={`px-2 py-1 rounded text-xs font-medium ${{
-                                      niche: 'bg-blue-100 text-blue-800',
-                                      inscription: 'bg-green-100 text-green-800'
-                                    }[item.itemType] || 'bg-gray-100 text-gray-800'}`}>
-                                      {item.itemType.toUpperCase()}
-                                    </span>
-                                  </td>
-                                  <td className="border border-[#bbaaaa] px-3 py-2 text-sm text-gray-700">
-                                    {item.description}
-                                  </td>
-                                  <td className="border border-[#bbaaaa] px-3 py-2 text-right text-sm text-gray-700">
-                                    {item.quantity}
-                                  </td>
-                                  <td className="border border-[#bbaaaa] px-3 py-2 text-right text-sm font-medium text-gray-700">
-                                    ${item.unitPrice.toFixed(2)}
-                                  </td>
-                                  <td className="border border-[#bbaaaa] px-3 py-2 text-right text-sm font-medium text-gray-700">
-                                    ${item.totalAmount.toFixed(2)}
-                                  </td>
-                                  <td className="border border-[#bbaaaa] px-3 py-2 text-right text-sm font-medium text-gray-700">
-                                    ${item.taxAmount.toFixed(2)}
-                                  </td>
-                                  <td className="border border-[#bbaaaa] px-3 py-2 text-right text-sm font-semibold text-[#4b3621]">
-                                    ${item.grandTotal.toFixed(2)}
-                                  </td>
-                                  <td className="border border-[#bbaaaa] px-3 py-2 text-sm text-gray-600">
-                                    {item.reference || 'N/A'}
-                                  </td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                //       {/* Items Table */}
+                //       {/* <div className="overflow-x-auto">
+                //         <table className="w-full border-collapse">
+                //           <thead>
+                //             <tr className="bg-[#e0d5c5]">
+                //               <th className="border border-[#bbaaaa] px-3 py-2 text-left text-xs font-semibold text-[#4b3621]">Item Type</th>
+                //               <th className="border border-[#bbaaaa] px-3 py-2 text-left text-xs font-semibold text-[#4b3621]">Description</th>
+                //               <th className="border border-[#bbaaaa] px-3 py-2 text-right text-xs font-semibold text-[#4b3621]">Quantity</th>
+                //               <th className="border border-[#bbaaaa] px-3 py-2 text-right text-xs font-semibold text-[#4b3621]">Unit Price</th>
+                //               <th className="border border-[#bbaaaa] px-3 py-2 text-right text-xs font-semibold text-[#4b3621]">Total Amount</th>
+                //               <th className="border border-[#bbaaaa] px-3 py-2 text-right text-xs font-semibold text-[#4b3621]">Tax Amount</th>
+                //               <th className="border border-[#bbaaaa] px-3 py-2 text-right text-xs font-semibold text-[#4b3621]">Grand Total</th>
+                //               <th className="border border-[#bbaaaa] px-3 py-2 text-left text-xs font-semibold text-[#4b3621]">Reference</th>
+                //             </tr>
+                //           </thead>
+                //           <tbody>
+                //             {applicationItems.items.length === 0 ? (
+                //               <tr>
+                //                 <td colSpan={8} className="border border-[#bbaaaa] px-3 py-4 text-center text-gray-500">
+                //                   No items found for this application.
+                //                 </td>
+                //               </tr>
+                //             ) : (
+                //               applicationItems.items.map((item, index) => (
+                //                 <tr key={`${item.id}-${index}`} className="hover:bg-gray-50 transition-colors">
+                //                   <td className="border border-[#bbaaaa] px-3 py-2">
+                //                     <span className={`px-2 py-1 rounded text-xs font-medium ${{
+                //                       niche: 'bg-blue-100 text-blue-800',
+                //                       inscription: 'bg-green-100 text-green-800'
+                //                     }[item.itemType] || 'bg-gray-100 text-gray-800'}`}>
+                //                       {(item.itemType || '').toUpperCase()}
+                //                     </span>
+                //                   </td>
+                //                   <td className="border border-[#bbaaaa] px-3 py-2 text-sm text-gray-700">
+                //                     {item.description}
+                //                   </td>
+                //                   <td className="border border-[#bbaaaa] px-3 py-2 text-right text-sm text-gray-700">
+                //                     {item.quantity}
+                //                   </td>
+                //                   <td className="border border-[#bbaaaa] px-3 py-2 text-right text-sm font-medium text-gray-700">
+                //                     ${typeof item.unitPrice === 'number' ? item.unitPrice.toFixed(2) : '0.00'}
+                //                   </td>
+                //                   <td className="border border-[#bbaaaa] px-3 py-2 text-right text-sm font-medium text-gray-700">
+                //                     ${typeof item.totalAmount === 'number' ? item.totalAmount.toFixed(2) : '0.00'}
+                //                   </td>
+                //                   <td className="border border-[#bbaaaa] px-3 py-2 text-right text-sm font-medium text-gray-700">
+                //                     ${typeof item.taxAmount === 'number' ? item.taxAmount.toFixed(2) : '0.00'}
+                //                   </td>
+                //                   <td className="border border-[#bbaaaa] px-3 py-2 text-right text-sm font-semibold text-[#4b3621]">
+                //                     ${typeof item.grandTotal === 'number' ? item.grandTotal.toFixed(2) : '0.00'}
+                //                   </td>
+                //                   <td className="border border-[#bbaaaa] px-3 py-2 text-sm text-gray-600">
+                //                     {item.reference || 'N/A'}
+                //                   </td>
+                //                 </tr>
+                //               ))
+                //             )}
+                //           </tbody>
+                //         </table>
+                //       </div> */}
+                //     </div>
+                //   )}
+                // </div>
+                <></>
               )}
             </div>
 
@@ -1398,7 +1362,7 @@ export function InvoiceAndReceiptPage() {
                           />
                         </td>
                         <td className="border border-[#bbaaaa] px-2 py-2 text-right font-medium text-gray-700">
-                          ${item.defaultAmount.toFixed(2)}
+                          ${typeof item.defaultAmount === 'number' ? item.defaultAmount.toFixed(2) : '0.00'}
                         </td>
                         <td className="border border-[#bbaaaa] px-2 py-2">
                           <input
@@ -1419,7 +1383,7 @@ export function InvoiceAndReceiptPage() {
                           />
                         </td>
                         <td className="border border-[#bbaaaa] px-2 py-2 text-right font-medium text-gray-700">
-                          ${item.totalNoTax.toFixed(2)}
+                          ${typeof item.totalNoTax === 'number' ? item.totalNoTax.toFixed(2) : '0.00'}
                         </td>
                         <td className="border border-[#bbaaaa] px-2 py-2">
                           <select
@@ -1433,10 +1397,10 @@ export function InvoiceAndReceiptPage() {
                           </select>
                         </td>
                         <td className="border border-[#bbaaaa] px-2 py-2 text-right font-medium text-gray-700">
-                          ${item.taxAmount.toFixed(2)}
+                          ${typeof item.taxAmount === 'number' ? item.taxAmount.toFixed(2) : '0.00'}
                         </td>
                         <td className="border border-[#bbaaaa] px-2 py-2 text-right font-semibold text-[#4b3621]">
-                          ${item.totalAmount.toFixed(2)}
+                          ${typeof item.totalAmount === 'number' ? item.totalAmount.toFixed(2) : '0.00'}
                         </td>
                         <td className="border border-[#bbaaaa] px-2 py-2 text-center">
                           <button
@@ -1482,19 +1446,19 @@ export function InvoiceAndReceiptPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
                 <label className="block text-sm font-semibold text-gray-600 mb-2">Total</label>
-                <div className="text-xl font-bold text-gray-800">${totals.total.toFixed(2)}</div>
+                <div className="text-xl font-bold text-gray-800">${typeof totals.total === 'number' ? totals.total.toFixed(2) : '0.00'}</div>
               </div>
               <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
                 <label className="block text-sm font-semibold text-gray-600 mb-2">Tax Amount</label>
-                <div className="text-xl font-bold text-gray-800">${totals.taxAmount.toFixed(2)}</div>
+                <div className="text-xl font-bold text-gray-800">${typeof totals.taxAmount === 'number' ? totals.taxAmount.toFixed(2) : '0.00'}</div>
               </div>
               <div className="bg-green-50 rounded-lg p-4 border-2 border-green-200">
                 <label className="block text-sm font-semibold text-green-700 mb-2">Total Payable</label>
-                <div className="text-xl font-bold text-green-800">${totals.totalPayable.toFixed(2)}</div>
+                <div className="text-xl font-bold text-green-800">${typeof totals.totalPayable === 'number' ? totals.totalPayable.toFixed(2) : '0.00'}</div>
               </div>
               <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
                 <label className="block text-sm font-semibold text-blue-700 mb-2">Total Donation</label>
-                <div className="text-xl font-bold text-blue-800">${totals.totalDonation.toFixed(2)}</div>
+                <div className="text-xl font-bold text-blue-800">${typeof totals.totalDonation === 'number' ? totals.totalDonation.toFixed(2) : '0.00'}</div>
               </div>
             </div>
           </div>

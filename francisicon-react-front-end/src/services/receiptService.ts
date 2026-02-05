@@ -30,6 +30,15 @@ export interface Receipt {
   createdAt?: string;
   updatedAt?: string;
   invoiceDetails?: InvoiceDetail[];
+  addressNo?: string;
+  address?: string;
+  address2?: string;
+  addressCity?: string;
+  country?: string;
+  description?: string;
+  invoice?: {
+    code?: string;
+  };
 }
 
 export interface InvoiceDetail {

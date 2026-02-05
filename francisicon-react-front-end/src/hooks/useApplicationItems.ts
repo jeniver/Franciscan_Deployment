@@ -51,17 +51,17 @@ export const useApplicationItems = (): UseApplicationItemsReturn => {
 
   const getTotalAmount = useCallback((): number => {
     if (!applicationItems) return 0;
-    return applicationItems.summary.subtotal;
+    return typeof applicationItems.summary?.subtotal === 'number' ? applicationItems.summary.subtotal : 0;
   }, [applicationItems]);
 
   const getTaxAmount = useCallback((): number => {
     if (!applicationItems) return 0;
-    return applicationItems.summary.totalTax;
+    return typeof applicationItems.summary?.totalTax === 'number' ? applicationItems.summary.totalTax : 0;
   }, [applicationItems]);
 
   const getGrandTotal = useCallback((): number => {
     if (!applicationItems) return 0;
-    return applicationItems.summary.grandTotal;
+    return typeof applicationItems.summary?.grandTotal === 'number' ? applicationItems.summary.grandTotal : 0;
   }, [applicationItems]);
 
   return {

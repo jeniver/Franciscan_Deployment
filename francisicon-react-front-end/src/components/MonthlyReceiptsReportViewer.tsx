@@ -519,7 +519,7 @@ export function MonthlyReceiptsReportViewer({
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-sm font-medium text-gray-700">{mode}</span>
                             <span className="text-sm font-bold text-gray-900">
-                              {formatCurrency(amount)} ({percentage.toFixed(1)}%)
+                              {formatCurrency(amount)} ({typeof percentage === 'number' ? percentage.toFixed(1) : '0.0'}%)
                             </span>
                           </div>
                           <div className="w-full bg-gray-200/60 rounded-full h-2.5 overflow-hidden">
@@ -548,7 +548,7 @@ export function MonthlyReceiptsReportViewer({
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-sm font-medium text-gray-700">{chapel}</span>
                             <span className="text-sm font-bold text-gray-900">
-                              {formatCurrency(amount)} ({percentage.toFixed(1)}%)
+                              {formatCurrency(amount)} ({typeof percentage === 'number' ? percentage.toFixed(1) : '0.0'}%)
                             </span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-2">

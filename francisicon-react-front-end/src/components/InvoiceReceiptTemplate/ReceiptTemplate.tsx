@@ -1,6 +1,6 @@
 import React from 'react'
-import { PDF_ASSETS } from '../../components/common/FranciscanLogo'
-interface OfficialReceiptProps {
+import { PDF_ASSETS } from '../common/FranciscanLogo'
+interface ReceiptTemplateProps {
   receiptNo?: string
   date?: string
   receivedFrom?: string
@@ -11,7 +11,7 @@ interface OfficialReceiptProps {
   dollarsInWords?: string
   paymentMethod?: string
 }
-export function OfficialReceipt({
+export function ReceiptTemplate({
   receiptNo = '003762',
   date = '03-Oct-25',
   receivedFrom = 'Jacqueline Lim Poh Choo',
@@ -21,7 +21,7 @@ export function OfficialReceipt({
   totalAmount = 8305.8,
   dollarsInWords = 'Eight Thousand Three Hundred Five, And Eighty Cents Only',
   paymentMethod = 'Cash',
-}: OfficialReceiptProps) {
+}: ReceiptTemplateProps) {
   return (
     <div className="w-full max-w-[800px] bg-white p-8 md:p-12 mx-auto text-black font-serif shadow-sm border border-gray-200">
       {/* Header */}
@@ -29,7 +29,7 @@ export function OfficialReceipt({
         <div className="flex items-start gap-4">
           {/* Franciscan Logo */}
           <img
-            src={PDF_ASSETS.headerImageBase64}
+            src={PDF_ASSETS.headerImageUrl}
             alt="Franciscan Logo - St. Francis receiving the stigmata"
             className="w-24 h-20 object-contain"
           />
@@ -93,9 +93,9 @@ export function OfficialReceipt({
             <div className="whitespace-pre-line">{description}</div>
             <div className="text-right">
               ${' '}
-              {totalAmount.toLocaleString('en-US', {
+              {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
-              })}
+              }) : '0.00'}
             </div>
           </div>
 
@@ -104,9 +104,9 @@ export function OfficialReceipt({
             <span className="font-bold">Total :</span>
             <div className="border-t-2 border-b-2 border-black py-1 min-w-[150px] text-right font-bold">
               ${' '}
-              {totalAmount.toLocaleString('en-US', {
+              {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
-              })}
+              }) : '0.00'}
             </div>
           </div>
           {/* Double line effect for total */}

@@ -295,7 +295,7 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
                       </td>
                       <td className="px-4 sm:px-6 py-4 whitespace-nowrap align-top hidden md:table-cell">
                         <div className="text-sm font-semibold text-gray-900">
-                          ${booking.financial.donationAmount.toFixed(2)}
+                          ${typeof booking.financial.donationAmount === 'number' ? booking.financial.donationAmount.toFixed(2) : '0.00'}
                         </div>
                       </td>
                       <td className="px-4 sm:px-6 py-4 whitespace-nowrap align-top hidden md:table-cell">

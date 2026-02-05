@@ -566,7 +566,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                           {bookingDate}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                          ${donationAmount.toFixed(2)}
+                          ${typeof donationAmount === 'number' ? donationAmount.toFixed(2) : '0.00'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-2">

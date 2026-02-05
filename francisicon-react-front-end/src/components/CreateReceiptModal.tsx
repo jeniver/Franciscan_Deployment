@@ -480,7 +480,7 @@ export function CreateReceiptModal({
               {invoiceDetails.length > 0 && (
                 <div className="mt-3 text-right">
                   <p className="text-sm text-gray-600">
-                    Total: <span className="font-semibold text-gray-900">${formData.totalAmount.toFixed(2)}</span>
+                    Total: <span className="font-semibold text-gray-900">${typeof formData.totalAmount === 'number' ? formData.totalAmount.toFixed(2) : '0.00'}</span>
                   </p>
                 </div>
               )}
@@ -536,7 +536,7 @@ export function CreateReceiptModal({
                 )}
                 {formData.totalAmount > formData.payingAmount && (
                   <p className="mt-1 text-sm text-orange-600">
-                    Balance: ${(formData.totalAmount - formData.payingAmount).toFixed(2)}
+                    Balance: ${typeof formData.totalAmount === 'number' && typeof formData.payingAmount === 'number' ? (formData.totalAmount - formData.payingAmount).toFixed(2) : '0.00'}
                   </p>
                 )}
               </div>

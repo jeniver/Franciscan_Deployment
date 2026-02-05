@@ -1,43 +1,40 @@
--- =============================================
--- Add RelationshipToNominee1 and RelationshipToNominee2 columns
--- to NicheApplicationBeneficiary table
--- =============================================
-
 USE [fms_db_new];
 GO
 
--- Check if columns already exist before adding them
+-- Check if columns exist before adding them
 IF NOT EXISTS (
-    SELECT * FROM sys.columns 
-    WHERE object_id = OBJECT_ID('NicheApplicationBeneficiary') 
-    AND name = 'RelationshipToNominee1'
+    SELECT 1 
+    FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_NAME = 'NicheApplicationBeneficiary' 
+    AND COLUMN_NAME = 'RelationshipToNominee1'
 )
 BEGIN
     ALTER TABLE NicheApplicationBeneficiary
     ADD RelationshipToNominee1 NVARCHAR(100) NULL;
-    PRINT '✅ Added column: RelationshipToNominee1';
+    
+    PRINT 'Added RelationshipToNominee1 column to NicheApplicationBeneficiary';
 END
 ELSE
 BEGIN
-    PRINT '⏭️ Column RelationshipToNominee1 already exists';
+    PRINT 'RelationshipToNominee1 column already exists';
 END
-GO
 
 IF NOT EXISTS (
-    SELECT * FROM sys.columns 
-    WHERE object_id = OBJECT_ID('NicheApplicationBeneficiary') 
-    AND name = 'RelationshipToNominee2'
+    SELECT 1 
+    FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_NAME = 'NicheApplicationBeneficiary' 
+    AND COLUMN_NAME = 'RelationshipToNominee2'
 )
 BEGIN
     ALTER TABLE NicheApplicationBeneficiary
     ADD RelationshipToNominee2 NVARCHAR(100) NULL;
-    PRINT '✅ Added column: RelationshipToNominee2';
+    
+    PRINT 'Added RelationshipToNominee2 column to NicheApplicationBeneficiary';
 END
 ELSE
 BEGIN
-    PRINT '⏭️ Column RelationshipToNominee2 already exists';
+    PRINT 'RelationshipToNominee2 column already exists';
 END
-GO
 
 -- Verify the columns were added
 SELECT 
@@ -47,9 +44,7 @@ SELECT
     IS_NULLABLE
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = 'NicheApplicationBeneficiary'
+AND COLUMN_NAME IN ('RelationshipToNominee1', 'RelationshipToNominee2')
 ORDER BY ORDINAL_POSITION;
-GO
 
-PRINT '✅ Schema update completed successfully!';
-GO
-
+PRINT 'Schema update completed successfully!';

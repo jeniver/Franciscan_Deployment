@@ -250,11 +250,11 @@ export function WakeRoomBookingDetails({ booking, onEdit, onDelete, onPrint }: W
               <div className="space-y-3">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Default Donation Amount</label>
-                  <p className="text-gray-900">${booking.financial.defaultDonationAmount.toFixed(2)}</p>
+                  <p className="text-gray-900">${typeof booking.financial.defaultDonationAmount === 'number' ? booking.financial.defaultDonationAmount.toFixed(2) : '0.00'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Donation Amount</label>
-                  <p className="text-lg font-semibold text-[#8b5a2b]">${booking.financial.donationAmount.toFixed(2)}</p>
+                  <p className="text-lg font-semibold text-[#8b5a2b]">${typeof booking.financial.donationAmount === 'number' ? booking.financial.donationAmount.toFixed(2) : '0.00'}</p>
                 </div>
               </div>
             </div>

@@ -1941,14 +1941,16 @@ class InvoiceRepository extends BaseRepository {
           Code, TransactionDate, RefDocNumber, RefDocName,
           CustomerName, TotalAmount, PayingAmount,
           PaymentMode, PaymentModeDocNo, UserId, ChurchId, Status,
-          TaxCode, TaxPercentage, TaxAmount, NicheApplicationId
+          TaxCode, TaxPercentage, TaxAmount, NicheApplicationId,
+          AddressNo, Address, Address2, AddressCity, DistrictCode, Country
         )
         OUTPUT INSERTED.InvoiceId
         VALUES (
           @code, @transactionDate, @refDocNumber, @refDocName,
           @customerName, @totalAmount, @payingAmount,
           @paymentMode, @paymentModeDocNo, @userId, @churchId, @status,
-          @taxCode, @taxPercentage, @taxAmount, @nicheApplicationId
+          @taxCode, @taxPercentage, @taxAmount, @nicheApplicationId,
+          @addressNo, @address, @address2, @addressCity, @districtCode, @country
         )
       `;
 
@@ -1973,6 +1975,13 @@ class InvoiceRepository extends BaseRepository {
       invoiceRequest.input('taxPercentage', sql.Decimal(18, 2), invoice.taxPercentage);
       invoiceRequest.input('taxAmount', sql.Decimal(18, 2), invoice.taxAmount);
       invoiceRequest.input('nicheApplicationId', sql.Int, invoice.nicheApplicationId);
+      // Add address fields
+      invoiceRequest.input('addressNo', sql.NVarChar, invoice.addressNo);
+      invoiceRequest.input('address', sql.NVarChar, invoice.address);
+      invoiceRequest.input('address2', sql.NVarChar, invoice.address2);
+      invoiceRequest.input('addressCity', sql.NVarChar, invoice.addressCity);
+      invoiceRequest.input('districtCode', sql.NVarChar, invoice.districtCode);
+      invoiceRequest.input('country', sql.NVarChar, invoice.country);
 
       const invoiceResult = await invoiceRequest.query(insertInvoiceQuery);
       const invoiceId = invoiceResult.recordset[0].InvoiceId;
@@ -2045,6 +2054,146 @@ class InvoiceRepository extends BaseRepository {
     } catch (error) {
       await transaction.rollback();
       logger.error('Error saving invoice and details, transaction rolled back:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get invoice by ID
+   * @param {number} invoiceId - Invoice ID
+   * @param {number} churchId - Church ID for access control (optional)
+   * @returns {Promise<Object|null>} Invoice with details or null
+   */
+  async getInvoiceById(invoiceId, churchId = null) {
+    try {
+      logger.info(`Getting invoice by ID: ${invoiceId}, churchId: ${churchId}`);
+      
+      // Main invoice query - include address fields
+      let invoiceQuery = `
+        SELECT 
+          i.InvoiceId, i.Code, i.TransactionDate, i.RefDocNumber, i.RefDocName,
+          i.CustomerName, i.TotalAmount, i.PayingAmount, i.PaymentMode, i.PaymentModeDocNo,
+          i.UserId, i.ChurchId, i.Status, i.TaxCode, i.TaxPercentage, i.TaxAmount,
+          i.NicheApplicationId, i.InvType,
+          -- Address fields
+          i.AddressNo, i.Address, i.Address2, i.AddressCity, i.DistrictCode, i.Country
+        FROM Invoice i WITH(NOLOCK)
+        WHERE i.InvoiceId = @invoiceId
+          AND i.Status > 0
+      `;
+      
+      const invoiceParams = { invoiceId };
+      
+      if (churchId) {
+        invoiceQuery += ' AND i.ChurchId = @churchId';
+        invoiceParams.churchId = churchId;
+      }
+      
+      const invoiceResult = await executeQuery(invoiceQuery, invoiceParams);
+      
+      if (!invoiceResult.recordset || invoiceResult.recordset.length === 0) {
+        logger.info(`Invoice not found by ID: ${invoiceId}`);
+        return null;
+      }
+      
+      const invoice = invoiceResult.recordset[0];
+      
+      // Get invoice details
+      const detailsQuery = `
+        SELECT 
+          id.InvoiceDetailId, id.InvoiceId, id.ItemId, id.Quantity, id.UnitAmount,
+          id.PayingAmount, id.TotalPayingAmount, id.RefDocNumber, id.RefDocName,
+          id.LineTotalAmount, id.LineTaxPercent, id.LineTaxAmount,
+          itm.Name AS ItemName, itm.Code AS ItemCode, itm.Price AS ItemPrice
+        FROM InvoiceDetail id WITH(NOLOCK)
+        LEFT JOIN Item itm WITH(NOLOCK) ON id.ItemId = itm.ItemId
+        WHERE id.InvoiceId = @invoiceId
+        ORDER BY id.InvoiceDetailId
+      `;
+      
+      const detailsResult = await executeQuery(detailsQuery, { invoiceId });
+      
+      // Get related receipt if exists
+      const receiptQuery = `
+        SELECT TOP 1
+          ReceiptId, Code AS ReceiptCode, TransactionDate AS ReceiptDate,
+          PayeeName, AddressNo AS ReceiptAddressNo, Address AS ReceiptAddress,
+          Address2 AS ReceiptAddress2, AddressCity AS ReceiptAddressCity,
+          DistrictCode AS ReceiptDistrictCode, Country AS ReceiptCountry,
+          TotalAmount AS ReceiptTotalAmount, PayingAmount AS ReceiptPayingAmount,
+          PaymentMode AS ReceiptPaymentMode, PaymentModeDocNo AS ReceiptPaymentModeDocNo
+        FROM Receipt WITH(NOLOCK)
+        WHERE InvoiceId = @invoiceId
+        ORDER BY ReceiptId DESC
+      `;
+      
+      const receiptResult = await executeQuery(receiptQuery, { invoiceId });
+      
+      // Build response
+      const response = {
+        // Critical flags for frontend
+        isApplicationData: false,
+        isInvoice: true,
+        hasInvoice: true,
+        canCreateInvoice: false,
+        
+        // Invoice header fields
+        invoiceId: invoice.InvoiceId,
+        code: invoice.Code,
+        transactionDate: invoice.TransactionDate,
+        refDocNumber: invoice.RefDocNumber,
+        refDocName: invoice.RefDocName,
+        customerName: invoice.CustomerName,
+        totalAmount: invoice.TotalAmount,
+        payingAmount: invoice.PayingAmount,
+        paymentMode: invoice.PaymentMode,
+        paymentModeDocNo: invoice.PaymentModeDocNo,
+        userId: invoice.UserId,
+        churchId: invoice.ChurchId,
+        status: invoice.Status,
+        nicheApplicationId: invoice.NicheApplicationId,
+        taxCode: invoice.TaxCode,
+        taxPercentage: invoice.TaxPercentage,
+        taxAmount: invoice.TaxAmount,
+        invType: invoice.InvType,
+        
+        // Address fields
+        addressNo: invoice.AddressNo,
+        address: invoice.Address,
+        address2: invoice.Address2,
+        addressCity: invoice.AddressCity,
+        districtCode: invoice.DistrictCode,
+        country: invoice.Country,
+        
+        // Related receipt
+        receipt: receiptResult.recordset.length > 0 ? receiptResult.recordset[0] : null,
+        
+        // Invoice details
+        details: (detailsResult.recordset || []).map(detail => ({
+          invoiceDetailId: detail.InvoiceDetailId,
+          invoiceId: detail.InvoiceId,
+          itemId: detail.ItemId,
+          itemName: detail.ItemName,
+          itemCode: detail.ItemCode,
+          itemPrice: detail.ItemPrice,
+          quantity: detail.Quantity,
+          unitAmount: detail.UnitAmount,
+          payingAmount: detail.PayingAmount,
+          totalPayingAmount: detail.TotalPayingAmount,
+          refDocNumber: detail.RefDocNumber,
+          refDocName: detail.RefDocName,
+          refType: detail.RefDocName, // Derived from RefDocName
+          outstandingAmount: 0, // Not stored in InvoiceDetail table
+          lineTotalAmount: detail.LineTotalAmount,
+          lineTaxPercent: detail.LineTaxPercent,
+          lineTaxAmount: detail.LineTaxAmount
+        }))
+      };
+      
+      logger.info(`Invoice retrieved successfully by ID: ${invoiceId}`);
+      return response;
+    } catch (error) {
+      logger.error('Error getting invoice by ID:', error);
       throw error;
     }
   }

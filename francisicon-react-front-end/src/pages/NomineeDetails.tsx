@@ -1005,11 +1005,11 @@ export function NomineeDetails({
             />
 
           </div>
-
+        <>{console.log("hjhjjhjjhjhjhj" , formData )}</>
           {/* Second Nominee Agreement Button for second nominee */}
           {index === 1 && (
             <div className="mt-4 flex justify-end">
-              <PrintSecondNomineeButton applicationNumber={formData.applicationCode || formData.code || ""} />
+              <PrintSecondNomineeButton applicationNumber={formData.applicationNumber} />
             </div>
           )}
         </div>

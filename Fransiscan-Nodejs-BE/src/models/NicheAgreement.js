@@ -495,7 +495,7 @@ class NicheAgreement {
 
     // Add inscription data if available
     if (this.inscription) {
-      result.inscription = {
+      jsonOutput.inscription = {
         code: this.inscription.code,
         status: this.inscription.status,
         bibleInscriptionChoiceId: this.inscription.bibleInscriptionChoiceId,
@@ -506,11 +506,11 @@ class NicheAgreement {
       
       // Add inscription items if available
       if (this.inscriptionItems && Array.isArray(this.inscriptionItems)) {
-        result.inscriptionItems = this.inscriptionItems;
+        jsonOutput.inscriptionItems = this.inscriptionItems;
       }
     }
     
-    return result;
+    return jsonOutput;
   }
 
   // Add inscription data to JSON output

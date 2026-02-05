@@ -1,10 +1,11 @@
 import React from 'react'
-import { PDF_ASSETS } from '../common/FranciscanLogo'
+import { PDF_ASSETS, AGREEMENT_DEFAULTS } from '../common/FranciscanLogo'
 interface InvoiceTemplate {
   description: string
   referenceNo: string
   gstPercent: number
   qty: number
+  quantity?: number
   unitPrice: number
   amount: number
 }
@@ -69,7 +70,7 @@ export function TaxInvoice({
       <div className="flex justify-between items-start mb-8">
         {/* Franciscan Logo */}
         <img
-          src={PDF_ASSETS.headerImageBase64}
+          src={PDF_ASSETS.headerImageUrl}
           alt="Franciscan Logo - St. Francis receiving the stigmata"
           className="w-24 h-20 object-contain"
         />
@@ -144,25 +145,25 @@ export function TaxInvoice({
                   {item.description}
                 </td>
                 <td className="border border-black px-2 py-3">
-                  {item.referenceNo}
+                  {item.referenceNo || 'N/A'}
                 </td>
                 <td className="border border-black px-2 py-3 text-center">
-                  {item.gstPercent.toFixed(2)}
+                  {(typeof item.gstPercent !== 'undefined' && item.gstPercent !== null) ? item.gstPercent.toFixed(2) : '0.00'}
                 </td>
                 <td className="border border-black px-2 py-3 text-center">
-                  {item.qty.toFixed(2)}
+                  {typeof item.qty === 'number' ? item.qty.toFixed(2) : '0.00'}
                 </td>
                 <td className="border border-black px-2 py-3 text-right">
                   ${' '}
-                  {item.unitPrice.toLocaleString('en-US', {
+                  {typeof item.unitPrice === 'number' ? item.unitPrice.toLocaleString('en-US', {
                     minimumFractionDigits: 2,
-                  })}
+                  }) : '0.00'}
                 </td>
                 <td className="border border-black px-2 py-3 text-right">
                   ${' '}
-                  {item.amount.toLocaleString('en-US', {
+                  {typeof item.amount === 'number' ? item.amount.toLocaleString('en-US', {
                     minimumFractionDigits: 2,
-                  })}
+                  }) : '0.00'}
                 </td>
               </tr>
             ))}
@@ -177,27 +178,27 @@ export function TaxInvoice({
             <span>Sub Total :</span>
             <span className="font-bold">
               ${' '}
-              {subTotal.toLocaleString('en-US', {
+              {typeof subTotal === 'number' ? subTotal.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
-              })}
+              }) : '0.00'}
             </span>
           </div>
           <div className="flex justify-between mb-4">
             <span>GST Total :</span>
             <span>
               ${' '}
-              {gstTotal.toLocaleString('en-US', {
+              {typeof gstTotal === 'number' ? gstTotal.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
-              })}
+              }) : '0.00'}
             </span>
           </div>
           <div className="flex justify-between text-lg font-bold">
             <span>Total :</span>
             <span>
               ${' '}
-              {total.toLocaleString('en-US', {
+              {typeof total === 'number' ? total.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
-              })}
+              }) : '0.00'}
             </span>
           </div>
         </div>

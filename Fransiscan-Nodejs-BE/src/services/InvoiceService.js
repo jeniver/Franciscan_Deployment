@@ -333,7 +333,14 @@ class InvoiceService extends BaseService {
         nicheApplicationId: invoiceData.nicheApplicationId || null,
         taxCode: invoiceData.taxCode || null,
         taxPercentage: invoiceData.taxPercentage || null,
-        taxAmount: invoiceData.taxAmount || null
+        taxAmount: invoiceData.taxAmount || null,
+        // Add address fields
+        addressNo: invoiceData.addressNo || null,
+        address: invoiceData.address || null,
+        address2: invoiceData.address2 || null,
+        addressCity: invoiceData.addressCity || null,
+        districtCode: invoiceData.districtCode || null,
+        country: invoiceData.country || null
       });
 
       // Validate invoice

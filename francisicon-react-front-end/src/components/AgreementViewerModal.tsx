@@ -7,6 +7,7 @@ import {
   Minimize2Icon,
 } from 'lucide-react'
 import { AgreementPdfTemplate } from './AgreementPdfTemplate'
+import {NomineeAgreement} from './NomineeAgreementPdfView'
 interface AgreementViewerModalProps {
   isOpen: boolean
   onClose: () => void
@@ -219,8 +220,7 @@ export function AgreementViewerModal({
                   <Maximize2Icon className="w-5 h-5" />
                 )}
               </button>
-              {agreementData && (
-                <>
+             
                   <button
                     onClick={handlePrint}
                     disabled={isGeneratingPdf}
@@ -237,8 +237,7 @@ export function AgreementViewerModal({
                   >
                     <DownloadIcon className="w-5 h-5" />
                   </button>
-                </>
-              )}
+              
               <button
                 onClick={onClose}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
@@ -266,7 +265,13 @@ export function AgreementViewerModal({
               </div>
             ) : secoundNomineeAgreement ? (
               <div ref={contentRef}>
-                <AgreementPdfTemplate data={secoundNomineeAgreement} />
+                <NomineeAgreement 
+                  nicheNo={secoundNomineeAgreement.nicheNo}
+                  chapelName={secoundNomineeAgreement.chapelName}
+                  applicant={secoundNomineeAgreement.applicant}
+                  nominee={secoundNomineeAgreement.nominee}
+                  agreementDate={secoundNomineeAgreement.agreementDate}
+                />
               </div>
             ) : agreementData ? (
               <div ref={contentRef}>

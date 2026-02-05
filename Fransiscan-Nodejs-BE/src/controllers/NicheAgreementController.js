@@ -501,8 +501,17 @@ class NicheAgreementController extends BaseController {
           name: agreementDetails.applicant.name,
           idNo: agreementDetails.applicant.idNo,
           address: agreementDetails.applicant.address,
+          addressNo: agreementDetails.applicant.addressNo,
+          addressLine1: agreementDetails.applicant.addressLine1,
+          addressLine2: agreementDetails.applicant.addressLine2,
+          addressCity: agreementDetails.applicant.addressCity,
+          addressState: agreementDetails.applicant.addressState,
+          addressCountry: agreementDetails.applicant.addressCountry,
           mobileNo: agreementDetails.applicant.mobileNo,
-          email: agreementDetails.applicant.email
+          email: agreementDetails.applicant.email,
+          homeTelNo: agreementDetails.applicant.homeTelNo || '',
+          officeTelNo: agreementDetails.applicant.officeTelNo || '',
+          isCatholic: agreementDetails.applicant.isCatholic
         },
 
         // 1st Nominee Information
@@ -510,9 +519,17 @@ class NicheAgreementController extends BaseController {
           name: agreementDetails.nominee.name,
           idNo: agreementDetails.nominee.idNo,
           address: agreementDetails.nominee.address,
+          addressNo: agreementDetails.nominee.addressNo,
+          addressLine1: agreementDetails.nominee.addressLine1,
+          addressLine2: agreementDetails.nominee.addressLine2,
+          addressCity: agreementDetails.nominee.addressCity,
+          addressState: agreementDetails.nominee.addressState,
+          addressCountry: agreementDetails.nominee.addressCountry,
           mobileNo: agreementDetails.nominee.mobileNo,
           email: agreementDetails.nominee.email,
-          relationship: agreementDetails.nominee.relationship
+          relationship: agreementDetails.nominee.relationship,
+          homeTelNo: agreementDetails.nominee.homeTelNo || '',
+          officeTelNo: agreementDetails.nominee.officeTelNo || ''
         } : null,
 
         // 2nd Nominee Information
@@ -520,9 +537,17 @@ class NicheAgreementController extends BaseController {
           name: agreementDetails.nominee2.name,
           idNo: agreementDetails.nominee2.idNo,
           address: agreementDetails.nominee2.address,
+          addressNo: agreementDetails.nominee2.addressNo,
+          addressLine1: agreementDetails.nominee2.addressLine1,
+          addressLine2: agreementDetails.nominee2.addressLine2,
+          addressCity: agreementDetails.nominee2.addressCity,
+          addressState: agreementDetails.nominee2.addressState,
+          addressCountry: agreementDetails.nominee2.addressCountry,
           mobileNo: agreementDetails.nominee2.mobileNo,
           email: agreementDetails.nominee2.email,
-          relationship: agreementDetails.nominee2.relationship
+          relationship: agreementDetails.nominee2.relationship,
+          homeTelNo: agreementDetails.nominee2.homeTelNo || '',
+          officeTelNo: agreementDetails.nominee2.officeTelNo || ''
         },
 
         // Niche Information

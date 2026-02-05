@@ -32,6 +32,14 @@ class Invoice {
     this.taxCode = data.taxCode || null;
     this.taxPercentage = data.taxPercentage || null;
     this.taxAmount = data.taxAmount || null;
+    
+    // Address fields
+    this.addressNo = data.addressNo || null;
+    this.address = data.address || null;
+    this.address2 = data.address2 || null;
+    this.addressCity = data.addressCity || null;
+    this.districtCode = data.districtCode || null;
+    this.country = data.country || null;
 
     // Status: 0=Deleted, 1=Active, 2=Paid (ASP.NET format)
     // Also support legacy string format: 'pending', 'paid', 'cancelled', 'overdue'
@@ -94,6 +102,26 @@ class Invoice {
       if (!validModes.includes(this.paymentMode)) {
         errors.push(`Invalid payment mode. Must be one of: ${validModes.join(', ')}`);
       }
+    }
+
+    // Address field validation (if provided)
+    if (this.addressNo && typeof this.addressNo !== 'string') {
+      errors.push('Address number must be a string');
+    }
+    if (this.address && typeof this.address !== 'string') {
+      errors.push('Address must be a string');
+    }
+    if (this.address2 && typeof this.address2 !== 'string') {
+      errors.push('Address line 2 must be a string');
+    }
+    if (this.addressCity && typeof this.addressCity !== 'string') {
+      errors.push('Address city must be a string');
+    }
+    if (this.districtCode && typeof this.districtCode !== 'string') {
+      errors.push('District code must be a string');
+    }
+    if (this.country && typeof this.country !== 'string') {
+      errors.push('Country must be a string');
     }
 
     return errors;
