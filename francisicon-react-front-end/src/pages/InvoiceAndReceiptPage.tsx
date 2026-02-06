@@ -660,12 +660,98 @@ export function InvoiceAndReceiptPage() {
   };
 
   const handleGenerateInvoice = async (withReceipt: boolean) => {
+    // Handle case where user entered application number but hasn't loaded data yet
+    if (!currentData && applicationNumber.trim()) {
+      try {
+        // Load the application data first
+        await handleViewInvoiceByApplication(applicationNumber.trim());
+        
+        // Wait a bit for Redux state to update, then try again
+        setTimeout(async () => {
+          // Get the updated state
+          const updatedState = (await import('../store')).store.getState();
+          const updatedCurrentData = updatedState.invoice.currentData;
+          
+          if (!updatedCurrentData) {
+            showError('Error', 'Failed to load application data. Please try again.');
+            return;
+          }
+          
+          if (!updatedCurrentData.canCreateInvoice) {
+            showError('Error', 'Invoice cannot be created for this record');
+            return;
+          }
+          
+          // Now proceed with the original logic using the loaded data
+          if (!paymentMode.trim()) {
+            showError('Error', 'Please select payment mode');
+            return;
+          }
+
+          // Map the current UI items to invoice details
+          const mappedInvoiceDetails = items.map(item => {
+            // Find the corresponding receipt item to get the itemId
+            const receiptItem = receiptItems.find(ri => ri.itemName === item.selectItem || ri.description === item.selectItem);
+            
+            return {
+              itemId: receiptItem?.itemId || 0, // Use 0 as fallback if not found
+              quantity: item.quantity,
+              unitAmount: item.amountPaying,
+              payingAmount: item.amountPaying,
+              totalPayingAmount: item.totalAmount,
+              refDocNumber: item.reference || '',
+              refDocName: updatedCurrentData.refDocName || 'NAPP',
+              lineTotalAmount: item.totalNoTax,
+              lineTaxPercent: item.taxPercent,
+              lineTaxAmount: item.taxAmount,
+            };
+          });
+
+          const invoicePayload = {
+            invoice: {
+              transactionDate: updatedCurrentData.transactionDate || new Date().toISOString(),
+              refDocNumber: updatedCurrentData.applicationCode || updatedCurrentData.refDocNumber || applicationNumber.trim(),
+              refDocName: updatedCurrentData.refDocName || 'NAPP',
+              customerName: payeeName || updatedCurrentData.customerName,
+              totalAmount: totals.totalPayable || updatedCurrentData.totalAmount || updatedCurrentData.summary?.grandTotal || 0,
+              payingAmount: totals.totalPayable || updatedCurrentData.payingAmount || updatedCurrentData.summary?.grandTotal || 0,
+              taxAmount: totals.taxAmount || updatedCurrentData.taxAmount || updatedCurrentData.summary?.totalTax || 0,
+              taxPercentage: updatedCurrentData.taxPercentage || 9,
+              taxCode: updatedCurrentData.taxCode || null,
+              nicheApplicationId: updatedCurrentData.nicheApplicationId,
+              addressNo: addressNumber || updatedCurrentData.addressNo,
+              address: addressStreet || updatedCurrentData.address,
+              address2: addressUnit || updatedCurrentData.address2,
+              addressCity: addressPostalCode || updatedCurrentData.addressCity,
+              districtCode: updatedCurrentData.districtCode,
+              country: addressCountry || updatedCurrentData.country,
+              paymentMode: normalizePaymentModeForBackend(paymentMode),
+            },
+            invoiceDetails: mappedInvoiceDetails,
+            createReceipt: withReceipt,
+          };
+
+          try {
+            await dispatch(createInvoice(invoicePayload)).unwrap();
+          } catch (e: any) {
+            showError('Error', e?.message || String(e) || 'Failed to create invoice');
+          }
+        }, 500);
+        
+        return;
+      } catch (error: any) {
+        showError('Error', error?.message || 'Failed to load application data');
+        return;
+      }
+    }
+    
+    // Original logic for when data is already loaded
     if (!applicationNumber.trim()) {
       showError('Error', 'Application number is required');
       return;
     }
     if (!currentData) {
-      showError('Error', 'Please load application data first');
+      showError('Error', 'Please load application data first by clicking "View Data"');
       return;
     }
     if (!currentData.canCreateInvoice) {
@@ -1097,13 +1183,13 @@ export function InvoiceAndReceiptPage() {
                   </div>
                 </div>
 
-                {/* Generate buttons (match design; show only when backend says allowed) */}
-                {currentData?.canCreateInvoice && !currentData?.isInvoice && (
+                {/* Generate buttons (match design; show when creating new invoice or when backend allows) */}
+                {(!invoiceNumber.trim() && !receiptCode.trim() || viewingReceiptCode !== null) && (
                   <div className="mt-4 pt-4 border-t border-gray-200">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <button
                         onClick={() => handleGenerateInvoice(false)}
-                        disabled={creatingInvoice || !paymentMode.trim()}
+                        disabled={creatingInvoice || !paymentMode.trim() || (!currentData && !applicationNumber.trim())}
                         className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {creatingInvoice ? (
@@ -1121,7 +1207,7 @@ export function InvoiceAndReceiptPage() {
 
                       <button
                         onClick={handleGenerateReceipt}
-                        disabled={creatingInvoice || !paymentMode.trim()}
+                        disabled={creatingInvoice || !paymentMode.trim() || (!currentData && !applicationNumber.trim())}
                         className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {creatingInvoice ? (
@@ -1139,7 +1225,7 @@ export function InvoiceAndReceiptPage() {
 
                       <button
                         onClick={() => handleGenerateInvoice(true)}
-                        disabled={creatingInvoice || !paymentMode.trim()}
+                        disabled={creatingInvoice || !paymentMode.trim() || (!currentData && !applicationNumber.trim())}
                         className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-purple-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {creatingInvoice ? (
@@ -1155,6 +1241,14 @@ export function InvoiceAndReceiptPage() {
                         )}
                       </button>
                     </div>
+                    
+                    {/* Helper message when no data loaded but user wants to create */}
+                    {!currentData && applicationNumber.trim() && (
+                      <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
+                        <AlertTriangle className="w-4 h-4 inline mr-2" />
+                        Enter application data above and click "View Data" to load details, then you can generate invoice/receipt.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -39,15 +39,15 @@ export function WakeRoomPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-gradient-to-br from-[#8b5a2b] to-[#6d4420] rounded-xl flex items-center justify-center shadow-md">
-                  {activeTab === 'booking' ? (
-                    <PlusIcon className="w-6 h-6 text-white" />
-                  ) : (
+                  {activeTab === 'search' ? (
                     <SearchIcon className="w-6 h-6 text-white" />
+                  ) : (
+                    <PlusIcon className="w-6 h-6 text-white" />
                   )}
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">
-                    {activeTab === 'booking' ? 'New wake room booking' : 'Wake room booking search'}
+                    {activeTab === 'search' ? 'Wake room booking search' : 'New wake room booking'}
                   </h2>
                   <p className="text-sm text-gray-600">
                     {activeTab === 'booking'
@@ -61,18 +61,6 @@ export function WakeRoomPage() {
               <div className="inline-flex items-center rounded-xl bg-gray-50 p-1 border border-gray-200">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('booking')}
-                  className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                    activeTab === 'booking'
-                      ? 'bg-white text-[#8b2828] shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <PlusIcon className="w-4 h-4" />
-                  <span>New booking</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => setActiveTab('search')}
                   className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
                     activeTab === 'search'
@@ -83,6 +71,19 @@ export function WakeRoomPage() {
                   <SearchIcon className="w-4 h-4" />
                   <span>Search bookings</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('booking')}
+                  className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                    activeTab === 'booking'
+                      ? 'bg-white text-[#8b2828] shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <PlusIcon className="w-4 h-4" />
+                  <span>New booking</span>
+                </button>
+                
               </div>
             </div>
           </div>
@@ -90,14 +91,14 @@ export function WakeRoomPage() {
           {/* Tab Content */}
           <div className="flex-1">
             {activeTab === 'search' ? (
-              <WakeRoomBookingForm 
-                onBookingCreated={handleBookingCreated}
-                onBookingUpdated={handleBookingUpdated}
-              />
-            ) : (
-              <WakeRoomSearch 
+               <WakeRoomSearch 
                 onBookingSelected={handleBookingSelected}
                 onBookingEdit={handleBookingEdit}
+              />
+            ) : (
+                <WakeRoomBookingForm 
+                onBookingCreated={handleBookingCreated}
+                onBookingUpdated={handleBookingUpdated}
               />
             )}
           </div>

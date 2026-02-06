@@ -341,13 +341,6 @@ export function InscriptionManagementPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
                           <button
-                            onClick={() => handleView(inscription.id)}
-                            className="text-blue-600 hover:text-blue-900"
-                            title="View"
-                          >
-                            <EyeIcon className="h-4 w-4" />
-                          </button>
-                          <button
                             onClick={() => handleEdit(inscription.id, inscription.inscriptionCode)}
                             className="text-indigo-600 hover:text-indigo-900"
                             title="Edit"

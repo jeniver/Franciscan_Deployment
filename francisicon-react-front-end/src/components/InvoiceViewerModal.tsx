@@ -31,15 +31,63 @@ export function InvoiceViewerModal({
   }, [invoiceData, isOpen]);
 
   const handlePrint = () => {
-    if (htmlContent) {
+    if (!htmlContent) return;
+    setIsGeneratingPdf(true);
+    try {
+      // Create a new window with print-specific styles
       const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-      if (printWindow) {
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
-        printWindow.onload = () => {
-          printWindow.print();
-        };
+      if (!printWindow) {
+        alert('Please allow popups to print the document');
+        return;
       }
+      
+      // Add print-specific styles
+      const printStyles = `
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        body {
+          font-family: Arial, sans-serif;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color-adjust: exact !important;
+        }
+        @media print {
+          body {
+            margin: 0;
+            padding: 0;
+          }
+          @page {
+            size: A4;
+            margin: 5mm;
+          }
+        }
+      `;
+      
+      printWindow.document.write(
+        '<!DOCTYPE html><html><head>' +
+        '<title>' + (invoiceData?.receipt ? 'Receipt' : 'Invoice') + ' - ' + (invoiceData?.code || invoiceData?.invoiceCode || 'document') + '</title>' +
+        '<style>' + printStyles + '</style>' +
+        '</head><body>' +
+        htmlContent +
+        '</body></html>',
+      );
+      printWindow.document.close();
+      
+      // Wait for images to load, then print
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.focus();
+          printWindow.print();
+          setIsGeneratingPdf(false);
+        }, 500);
+      };
+    } catch (error) {
+      console.error('Error printing document:', error);
+      setIsGeneratingPdf(false);
+      alert('Printing failed. Please try again.');
     }
   };
 
@@ -53,7 +101,8 @@ export function InvoiceViewerModal({
         // Dynamically load html2pdf from CDN
         await new Promise<void>((resolve, reject) => {
           const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+          script.src =
+            'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
           script.onload = () => resolve();
           script.onerror = () => reject(new Error('Failed to load PDF library'));
           document.head.appendChild(script);
@@ -61,26 +110,27 @@ export function InvoiceViewerModal({
         html2pdf = (window as any).html2pdf;
       }
 
-      // Create a temporary container with the HTML content
-      const tempContainer = document.createElement('div');
-      tempContainer.innerHTML = htmlContent;
-      tempContainer.style.position = 'absolute';
-      tempContainer.style.left = '-9999px';
-      tempContainer.style.top = '0';
-      tempContainer.style.width = '210mm';
-      tempContainer.style.backgroundColor = 'white';
-      tempContainer.style.padding = '20px';
-      tempContainer.style.boxSizing = 'border-box';
-      document.body.appendChild(tempContainer);
-
+      // Create a container with proper dimensions
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.left = '-9999px';
+      container.style.top = '0';
+      container.style.width = '210mm';
+      container.style.backgroundColor = 'white';
+      container.innerHTML = htmlContent;
+      document.body.appendChild(container);
+      
       // Wait a bit for styles to apply
       await new Promise((resolve) => setTimeout(resolve, 100));
-
+      
       // PDF options
       const opt = {
         margin: [5, 5, 5, 5],
         filename: `${invoiceData?.receipt ? 'Receipt' : 'Invoice'}-${invoiceData?.code || invoiceData?.invoiceCode || 'document'}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
+        image: {
+          type: 'jpeg',
+          quality: 0.98,
+        },
         html2canvas: {
           scale: 2,
           useCORS: true,
@@ -97,19 +147,21 @@ export function InvoiceViewerModal({
           mode: ['avoid-all', 'css', 'legacy'],
         },
       };
-
+      
       // Generate and save PDF
-      await html2pdf().set(opt).from(tempContainer).save();
-
+      await html2pdf().set(opt).from(container).save();
+      
       // Cleanup
       setTimeout(() => {
-        if (document.body.contains(tempContainer)) {
-          document.body.removeChild(tempContainer);
+        if (document.body.contains(container)) {
+          document.body.removeChild(container);
         }
       }, 1000);
     } catch (error: any) {
       console.error('Error generating PDF:', error);
-      alert('PDF generation failed. Please try the Print option and save as PDF.');
+      alert(
+        'PDF generation failed. Please try the Print option and save as PDF.',
+      );
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -333,25 +385,22 @@ export function InvoiceViewerModal({
                   <Maximize2Icon className="w-5 h-5" />
                 )}
               </button>
-              {htmlContent && (
-                <>
-                  <button
-                    onClick={handlePrint}
-                    className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
-                    title="Print Document"
-                  >
-                    <PrinterIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={handleDownloadPdf}
-                    disabled={isGeneratingPdf}
-                    className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Download PDF"
-                  >
-                    <DownloadIcon className="w-5 h-5" />
-                  </button>
-                </>
-              )}
+              <button
+                onClick={handlePrint}
+                disabled={isGeneratingPdf || loading || !htmlContent}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Print Document"
+              >
+                <PrinterIcon className={`w-5 h-5 ${isGeneratingPdf || loading ? 'animate-pulse' : ''}`} />
+              </button>
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isGeneratingPdf || loading || !htmlContent}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Download PDF"
+              >
+                <DownloadIcon className={`w-5 h-5 ${isGeneratingPdf || loading ? 'animate-pulse' : ''}`} />
+              </button>
               <button
                 onClick={onClose}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"

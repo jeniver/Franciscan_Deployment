@@ -594,8 +594,8 @@ export function NichiBookingPage() {
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all"
                 >
                   <option value="Crucifix">Crucifix</option>
-                  <option value="Plain Cross">Plain Cross</option>
-                  <option value="Celtic Cross">Celtic Cross</option>
+                  <option value="WoodenCross">Wooden Cross</option>
+                  <option value="NoCrucifix/Cross">No Crucifix/Cross</option>
                 </select>
               </div>
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
