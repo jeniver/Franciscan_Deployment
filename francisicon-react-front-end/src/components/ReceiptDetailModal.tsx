@@ -325,6 +325,12 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
                   totalAmount={receipt.totalAmount}
                   dollarsInWords={convertToDollarsInWords(receipt.totalAmount)}
                   paymentMethod={receipt.paymentMode}
+                  items={(receipt.invoiceDetails || []).map((d) => ({
+                    description: d.description,
+                    quantity: d.quantity,
+                    unitPrice: d.unitPrice,
+                    amount: d.amount,
+                  }))}
                 />
               )}
             </div>

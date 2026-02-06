@@ -776,7 +776,7 @@ ${selected.bibleInscriptionChoiceNoValue}`);
                 'Invoice / Receipt'
               )}
             </button>
-            <button
+            {/* <button
               className="px-6 py-3 bg-[#1a2a40] text-white rounded-lg font-semibold hover:opacity-90 hover:shadow-md transition-all"
               title="Navigate to receipt page"
             >
@@ -788,7 +788,7 @@ ${selected.bibleInscriptionChoiceNoValue}`);
             >
               <MailIcon className="w-4 h-4" />
               Send Email
-            </button>
+            </button> */}
           </div>
         </div>
       </div>

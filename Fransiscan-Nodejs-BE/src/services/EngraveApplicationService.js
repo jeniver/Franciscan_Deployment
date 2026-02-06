@@ -354,6 +354,73 @@ class EngraveApplicationService {
       throw error;
     }
   }
+
+  /**
+   * Delete engrave application by code
+   * @param {string} code - Application code
+   * @param {number} churchId - Church ID for ACL
+   * @returns {Promise<Object>} Delete result
+   */
+  async deleteApplication(code, churchId) {
+    try {
+      // Check existing application and church access
+      const existing = await EngraveApplicationRepository.getByCode(code);
+
+      if (!existing) {
+        return {
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Application not found'
+          }
+        };
+      }
+
+      if (existing.churchId !== churchId) {
+        return {
+          success: false,
+          error: {
+            code: 'ACCESS_DENIED',
+            message: 'Access denied - Church ID mismatch'
+          }
+        };
+      }
+
+      // Check if application can be deleted (only Draft/Pending status)
+      if (!existing.canModify()) {
+        return {
+          success: false,
+          error: {
+            code: 'CANNOT_DELETE',
+            message: 'Application cannot be deleted (status is not Draft or Pending)'
+          }
+        };
+      }
+
+      // Delete in repository
+      const success = await EngraveApplicationRepository.deleteByCode(code, churchId);
+
+      if (!success) {
+        return {
+          success: false,
+          error: {
+            code: 'DELETE_FAILED',
+            message: 'Failed to delete application'
+          }
+        };
+      }
+
+      logger.info(`Engrave application deleted: ${code}`);
+
+      return {
+        success: true,
+        message: 'Application deleted successfully'
+      };
+    } catch (error) {
+      logger.error('Service: Failed to delete engrave application:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new EngraveApplicationService();

@@ -10,6 +10,12 @@ interface ReceiptTemplateProps {
   totalAmount?: number
   dollarsInWords?: string
   paymentMethod?: string
+  items?: Array<{
+    description: string
+    quantity: number
+    unitPrice: number
+    amount: number
+  }>
 }
 export function ReceiptTemplate({
   receiptNo = '003762',
@@ -21,6 +27,7 @@ export function ReceiptTemplate({
   totalAmount = 8305.8,
   dollarsInWords = 'Eight Thousand Three Hundred Five, And Eighty Cents Only',
   paymentMethod = 'Cash',
+  items = [],
 }: ReceiptTemplateProps) {
   return (
     <div className="w-full max-w-[800px] bg-white p-8 md:p-12 mx-auto text-black font-serif shadow-sm border border-gray-200">
@@ -88,27 +95,60 @@ export function ReceiptTemplate({
             </div>
           </div>
 
-          <div className="grid grid-cols-[1fr_2fr_1fr] gap-4 mb-8">
-            <div>{invoiceNo}</div>
-            <div className="whitespace-pre-line">{description}</div>
-            <div className="text-right">
-              ${' '}
-              {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-              }) : '0.00'}
-            </div>
-          </div>
+          {/* Show individual items if available */}
+          {items && items.length > 0 ? (
+            <>
+              {items.map((item, index) => (
+                <div key={index} className="grid grid-cols-[1fr_2fr_1fr] gap-4 mb-2">
+                  <div>{invoiceNo}</div>
+                  <div className="whitespace-pre-line">{item.description}</div>
+                  <div className="text-right">
+                    ${' '}
+                    {typeof item.amount === 'number' ? item.amount.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                    }) : '0.00'}
+                  </div>
+                </div>
+              ))}
+              
+              {/* Total Line */}
+              <div className="flex justify-end items-center gap-8 mb-2 mt-4 pt-2 border-t border-gray-300">
+                <span className="font-bold">Total :</span>
+                <div className="border-t-2 border-b-2 border-black py-1 min-w-[150px] text-right font-bold">
+                  ${' '}
+                  {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                  }) : '0.00'}
+                </div>
+              </div>
+            </>
+          ) : (
+            // Fallback to single description if no items
+            <>
+              <div className="grid grid-cols-[1fr_2fr_1fr] gap-4 mb-8">
+                <div>{invoiceNo}</div>
+                <div className="whitespace-pre-line">{description}</div>
+                <div className="text-right">
+                  ${' '}
+                  {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                  }) : '0.00'}
+                </div>
+              </div>
 
-          {/* Total Line */}
-          <div className="flex justify-end items-center gap-8 mb-2">
-            <span className="font-bold">Total :</span>
-            <div className="border-t-2 border-b-2 border-black py-1 min-w-[150px] text-right font-bold">
-              ${' '}
-              {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-              }) : '0.00'}
-            </div>
-          </div>
+              {/* Total Line */}
+              <div className="flex justify-end items-center gap-8 mb-2">
+                <span className="font-bold">Total :</span>
+                <div className="border-t-2 border-b-2 border-black py-1 min-w-[150px] text-right font-bold">
+                  ${' '}
+                  {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                  }) : '0.00'}
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Double line effect for total */}
           <div className="flex justify-end">
             <div className="h-px bg-black w-[150px] -mt-1"></div>

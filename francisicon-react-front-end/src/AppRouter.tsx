@@ -63,6 +63,11 @@ export function AppRouter() {
             <InvoiceAndReceiptPage />
           </ProtectedRoute>
         } />
+        <Route path="/invoice-receipt/:invoiceCode" element={
+          <ProtectedRoute>
+            <InvoiceAndReceiptPage />
+          </ProtectedRoute>
+        } />
         <Route path="/1/invoice-receipt" element={
           <ProtectedRoute>
             <InvoiceAndReceiptPage />

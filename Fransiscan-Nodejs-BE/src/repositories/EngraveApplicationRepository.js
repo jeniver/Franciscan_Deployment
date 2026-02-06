@@ -807,6 +807,72 @@ class EngraveApplicationRepository {
       throw error;
     }
   }
+
+  /**
+   * Delete engrave application by code
+   * @param {string} code - Application code
+   * @param {number} churchId - Church ID for ACL
+   * @returns {Promise<boolean>} Success status
+   */
+  async deleteByCode(code, churchId) {
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+
+    try {
+      await transaction.begin();
+
+      // First, get the application ID and verify church access
+      const selectRequest = new sql.Request(transaction);
+      selectRequest.input('Code', sql.VarChar(50), code);
+      selectRequest.input('ChurchId', sql.Int, churchId);
+
+      const selectResult = await selectRequest.query(`
+        SELECT NicheInscriptionRequestId, ChurchId
+        FROM NicheInscriptionRequest
+        WHERE Code = @Code
+          AND ChurchId = @ChurchId
+      `);
+
+      const applicationId = selectResult.recordset?.[0]?.NicheInscriptionRequestId;
+      if (!applicationId) {
+        await transaction.rollback();
+        return false;
+      }
+
+      // Delete deceased details first
+      const deleteDetailsRequest = new sql.Request(transaction);
+      deleteDetailsRequest.input('ApplicationId', sql.Int, applicationId);
+      await deleteDetailsRequest.query(`
+        DELETE FROM NicheInscriptionRequestDecesed
+        WHERE NicheInscriptionRequestId = @ApplicationId
+      `);
+
+      // Delete the main application
+      const deleteApplicationRequest = new sql.Request(transaction);
+      deleteApplicationRequest.input('ApplicationId', sql.Int, applicationId);
+      deleteApplicationRequest.input('ChurchId', sql.Int, churchId);
+      const deleteResult = await deleteApplicationRequest.query(`
+        DELETE FROM NicheInscriptionRequest
+        WHERE NicheInscriptionRequestId = @ApplicationId
+          AND ChurchId = @ChurchId
+      `);
+
+      if (deleteResult.rowsAffected[0] === 0) {
+        await transaction.rollback();
+        return false;
+      }
+
+      await transaction.commit();
+      logger.info(`Successfully deleted inscription application: ${code}`);
+      return true;
+    } catch (error) {
+      await transaction.rollback().catch(rollbackError => {
+        logger.error('Rollback failed after delete inscription error:', rollbackError);
+      });
+      logger.error('Failed to delete inscription application:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new EngraveApplicationRepository();

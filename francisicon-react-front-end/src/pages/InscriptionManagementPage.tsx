@@ -31,7 +31,7 @@ const DEFAULT_SORT_ORDER: 'asc' | 'desc' = 'desc';
 
 export function InscriptionManagementPage() {
   const navigate = useNavigate();
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
 
   // State
   const [loading, setLoading] = useState(false);
@@ -124,10 +124,28 @@ export function InscriptionManagementPage() {
     navigate(`/inscriptions/${id}`);
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
+    // Find the inscription to get its code
+    const inscription = inscriptions.find(insc => insc.id === id);
+    if (!inscription) {
+      showError('Error', 'Inscription not found');
+      return;
+    }
+
     if (window.confirm('Are you sure you want to delete this inscription?')) {
-      // TODO: Implement delete functionality
-      console.log('Delete inscription:', id);
+      try {
+        setLoading(true);
+        const result = await inscriptionService.deleteInscription(inscription.inscriptionCode);
+        if (result.success) {
+          showSuccess('Success', result.message);
+          // Refresh the list
+          handleSearch();
+        }
+      } catch (error: any) {
+        showError('Error', error.message || 'Failed to delete inscription');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 

@@ -47,6 +47,19 @@ export interface InvoiceDetail {
   quantity?: number;
   unitPrice?: number;
   amount: number;
+  // Additional fields from API response for proper mapping
+  RefDocNumber?: string;
+  TotalPayingAmount?: number;
+  itemName?: string;
+  itemCode?: string;
+  itemId?: number;
+  payingAmount?: number;
+  lineTaxPercent?: number;
+  lineTaxAmount?: number;
+  lineTotalAmount?: number;
+  refDocName?: string;
+  refType?: string;
+  outstandingAmount?: number;
 }
 
 export interface CreateReceiptRequest {
@@ -81,6 +94,15 @@ export interface Invoice {
   paymentMode: string;
   invoiceDate?: string;
   invoiceDetails?: InvoiceDetail[];
+  // Additional fields from API response
+  addressNo?: string;
+  address?: string;
+  address2?: string;
+  addressCity?: string;
+  country?: string;
+  taxAmount?: number;
+  taxCode?: string;
+  taxPercentage?: number;
 }
 
 export interface ReceiptItem {
@@ -973,7 +995,10 @@ export const receiptService = {
       }
 
       const trimmedCode = code.trim();
+      console.log('[ReceiptService] Fetching invoice data for code:', trimmedCode);
+      
       const response = await api.get(`/api/invoices/${trimmedCode}`);
+      console.log('[ReceiptService] API response:', response.data);
       
       // Handle response structure: {success: true, data: {...}}
       let invoiceData;
@@ -986,38 +1011,55 @@ export const receiptService = {
         invoiceData = response.data;
       }
       
-      // Map API response fields to Invoice interface
+      console.log('[ReceiptService] Processed invoice data:', invoiceData);
+      
+      // Enhanced mapping to handle all API response fields properly
       const invoice: Invoice = {
-        invoiceId: invoiceData.InvoiceId || invoiceData.invoiceId || 0,
+        invoiceId: invoiceData.InvoiceId || invoiceData.invoiceId || invoiceData.invoiceId || 0,
         invoiceCode: invoiceData.Code || invoiceData.code || invoiceData.invoiceCode || trimmedCode,
-        customerName: invoiceData.CustomerName || invoiceData.customerName || '',
-        totalAmount: invoiceData.TotalAmount || invoiceData.totalAmount || 0,
-        payingAmount: invoiceData.PayingAmount || invoiceData.payingAmount || 0,
+        customerName: invoiceData.CustomerName || invoiceData.customerName || invoiceData.payeeName || '',
+        totalAmount: invoiceData.TotalAmount || invoiceData.totalAmount || invoiceData.totalAmount || 0,
+        payingAmount: invoiceData.PayingAmount || invoiceData.payingAmount || invoiceData.payingAmount || 0,
         paymentMode: invoiceData.PaymentMode || invoiceData.paymentMode || 'Cash',
         invoiceDate: invoiceData.TransactionDate || invoiceData.transactionDate || invoiceData.invoiceDate || new Date().toISOString(),
         invoiceDetails: (invoiceData.details || invoiceData.invoiceDetails || []).map((detail: any) => ({
-          invoiceDetailId: detail.InvoiceDetailId || detail.invoiceDetailId,
-          description: detail.Item || detail.description || detail.ItemName || detail.itemName || '',
-          quantity: detail.Quantity || detail.quantity || 1,
-          unitPrice: detail.UnitAmount || detail.unitPrice || detail.UnitPrice || detail.unitAmount || 0,
-          amount: detail.TotalPayingAmount || detail.amount || detail.Amount || detail.totalPayingAmount || 0,
+          invoiceDetailId: detail.InvoiceDetailId || detail.invoiceDetailId || detail.invoiceDetailId,
+          description: detail.Item || detail.description || detail.ItemName || detail.itemName || detail.itemName || '',
+          quantity: detail.Quantity || detail.quantity || detail.quantity || 1,
+          unitPrice: detail.UnitAmount || detail.unitPrice || detail.UnitPrice || detail.unitAmount || detail.itemPrice || 0,
+          amount: detail.TotalPayingAmount || detail.totalPayingAmount || detail.amount || detail.TotalPayingAmount || 0,
           // Preserve additional fields for component mapping
-          RefDocNumber: detail.RefDocNumber || detail.refDocNumber || '',
-          TotalPayingAmount: detail.TotalPayingAmount || detail.totalPayingAmount || detail.amount || 0,
+          RefDocNumber: detail.RefDocNumber || detail.refDocNumber || detail.refDocNumber || '',
+          TotalPayingAmount: detail.TotalPayingAmount || detail.totalPayingAmount || detail.totalPayingAmount || detail.amount || 0,
           // New fields from API
-          itemName: detail.ItemName || detail.itemName || detail.Item || detail.description || '',
-          itemCode: detail.ItemCode || detail.itemCode || detail.Code || '',
-          itemId: detail.ItemId || detail.itemId || 0,
-          payingAmount: detail.PayingAmount || detail.payingAmount || detail.unitPrice || detail.UnitAmount || 0,
-          lineTaxPercent: detail.LineTaxPercent || detail.lineTaxPercent || detail.TaxPercent || detail.taxPercent || 9,
-          lineTaxAmount: detail.LineTaxAmount || detail.lineTaxAmount || detail.TaxAmount || detail.taxAmount || 0,
-          lineTotalAmount: detail.LineTotalAmount || detail.lineTotalAmount || detail.unitPrice || detail.UnitAmount || 0,
-          refDocName: detail.RefDocName || detail.refDocName || ''
+          itemName: detail.ItemName || detail.itemName || detail.Item || detail.description || detail.itemName || '',
+          itemCode: detail.ItemCode || detail.itemCode || detail.Code || detail.itemCode || '',
+          itemId: detail.ItemId || detail.itemId || detail.itemId || 0,
+          payingAmount: detail.PayingAmount || detail.payingAmount || detail.payingAmount || detail.unitPrice || detail.UnitAmount || 0,
+          lineTaxPercent: detail.LineTaxPercent || detail.lineTaxPercent || detail.TaxPercent || detail.taxPercent || detail.lineTaxPercent || 9,
+          lineTaxAmount: detail.LineTaxAmount || detail.lineTaxAmount || detail.TaxAmount || detail.taxAmount || detail.lineTaxAmount || 0,
+          lineTotalAmount: detail.LineTotalAmount || detail.lineTotalAmount || detail.lineTotalAmount || detail.unitPrice || detail.UnitAmount || 0,
+          refDocName: detail.RefDocName || detail.refDocName || detail.refDocName || '',
+          refType: detail.RefType || detail.refType || detail.refType || '',
+          outstandingAmount: detail.OutstandingAmount || detail.outstandingAmount || detail.outstandingAmount || 0
         }))
       };
       
+      // Add additional fields that might be useful
+      (invoice as any).addressNo = invoiceData.addressNo || invoiceData.addressNo;
+      (invoice as any).address = invoiceData.address || invoiceData.address;
+      (invoice as any).address2 = invoiceData.address2 || invoiceData.address2;
+      (invoice as any).addressCity = invoiceData.addressCity || invoiceData.addressCity;
+      (invoice as any).country = invoiceData.country || invoiceData.country;
+      (invoice as any).taxAmount = invoiceData.taxAmount || invoiceData.taxAmount;
+      (invoice as any).taxCode = invoiceData.taxCode || invoiceData.taxCode;
+      (invoice as any).taxPercentage = invoiceData.taxPercentage || invoiceData.taxPercentage;
+      
+      console.log('[ReceiptService] Final mapped invoice:', invoice);
+      
       return invoice;
     } catch (error: any) {
+      console.error('[ReceiptService] Error fetching invoice:', error);
       if (error.response) {
         const status = error.response.status;
         if (status === 401 || status === 403) {

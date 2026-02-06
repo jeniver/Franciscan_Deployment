@@ -228,6 +228,81 @@ export const invoiceService = {
   },
 
   /**
+   * Get invoice or application by code
+   * GET /api/invoices/:code
+   * 
+   * @param code - The invoice or application code (e.g., "1405-0", "I-5339-0", "INV-00123")
+   * @returns Invoice or application data
+   */
+  getInvoiceByCode: async (code: string): Promise<any> => {
+    try {
+      if (!code) {
+        throw new InvoiceError('Code is required', 'validation');
+      }
+
+      const response = await api.get(`/api/invoices/${encodeURIComponent(code)}`);
+
+      // Handle different response formats
+      if (response.data && typeof response.data === 'object') {
+        if ('success' in response.data && response.data.success === false) {
+          throw new InvoiceError(
+            (response.data as any).message || 'Failed to fetch invoice/application',
+            'server',
+            response.status
+          );
+        }
+        
+        // Return the data directly or from nested structure
+        return (response.data as any).data || response.data;
+      }
+
+      throw new InvoiceError('Invalid response format', 'server', response.status);
+    } catch (error: any) {
+      if (error instanceof InvoiceError) {
+        throw error;
+      }
+
+      // Handle axios errors
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        if (status === 401 || status === 403) {
+          throw new InvoiceError(
+            errorData?.message || 'Unauthorized access',
+            'auth',
+            status
+          );
+        } else if (status === 400) {
+          throw new InvoiceError(
+            errorData?.message || 'Invalid code',
+            'validation',
+            status
+          );
+        } else if (status === 404) {
+          throw new InvoiceError(
+            errorData?.message || `Invoice/application not found: ${code}`,
+            'validation',
+            status
+          );
+        } else if (status >= 500) {
+          throw new InvoiceError('Server error occurred', 'server', status);
+        } else {
+          throw new InvoiceError(
+            errorData?.message || 'Failed to fetch invoice/application',
+            'server',
+            status
+          );
+        }
+      } else if (error.request) {
+        throw new InvoiceError('Network error: Unable to connect to server', 'network');
+      } else {
+        throw new InvoiceError(error.message || 'An unexpected error occurred', 'server');
+      }
+    }
+  },
+
+  /**
    * Get all items linked to an application code
    * GET /api/invoices/application/:code
    * 

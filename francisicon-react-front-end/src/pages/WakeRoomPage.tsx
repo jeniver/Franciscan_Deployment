@@ -89,7 +89,7 @@ export function WakeRoomPage() {
 
           {/* Tab Content */}
           <div className="flex-1">
-            {activeTab === 'booking' ? (
+            {activeTab === 'search' ? (
               <WakeRoomBookingForm 
                 onBookingCreated={handleBookingCreated}
                 onBookingUpdated={handleBookingUpdated}

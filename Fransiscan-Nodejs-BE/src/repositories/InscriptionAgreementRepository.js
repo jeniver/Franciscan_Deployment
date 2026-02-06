@@ -20,95 +20,233 @@ class InscriptionAgreementRepository {
 
       const searchCode = inscriptionCode.trim();
       logger.info(`Fetching inscription agreement details for code: ${searchCode}, churchId: ${churchId}`);
+      
+      // Log detailed search information
+      logger.info(`[DEBUG] Searching for inscription code: ${searchCode}`);
+      if (churchId) {
+        logger.info(`[DEBUG] Filtering by churchId: ${churchId}`);
+      }
 
-      // Query to get inscription agreement details with all related information
-      let query = `
-        SELECT 
-          nir.NicheInscriptionRequestId,
-          nir.Code AS InscriptionCode,
-          nir.TranscationDate AS InscriptionCreatedOn,
-          
-          -- Applicant information from NicheInscriptionRequest (primary source)
-          nir.ApplicantName,
-          nir.ApplicantIDNo,
-          nir.ApplicantEmailID,
-          nir.ApplicantMobileNo,
-          nir.ApplicantHomeTelNo,
-          nir.ApplicantAddressNo,
-          nir.ApplicantAddressLine1,
-          nir.ApplicantAddressLine2,
-          nir.ApplicantAddressCity,
-          nir.ApplicantAddressState,
-          nir.ApplicantAddressCountry,
-          
-          -- Niche information
-          n.Code AS NicheCode,
-          n.AppearanceDescription,
-          r.Code AS RowCode,
-          r.Name AS RowName,
-          w.Code AS WallCode,
-          w.Name AS WallName,
-          c.Code AS ChapelCode,
-          c.Name AS ChapelName,
-          
-          -- Booking information
-          nb.BookedDate,
-          nb.BookingStatus,
-          
-          -- Contact person information
-          cp.Name AS ContactPersonName,
-          cp.IDNo AS ContactPersonIDNo,
-          cp.MobileNo AS ContactPersonMobile,
-          cp.EmailID AS ContactPersonEmail,
-          
-          -- Nominee information
-          nom1.Name AS NomineeName,
-          nom1.IDNo AS NomineeIDNo,
-          nom2.Name AS Nominee2Name,
-          nom2.IDNo AS Nominee2IDNo,
-          
-          -- Deceased details
-          nid.NameOfDeceased AS DeceasedName,
-          nid.DateOfBirth AS DeceasedDateOfBirth,
-          nid.DateDied AS DeceasedDateOfDeath,
-          nid.InternmentDate AS DeceasedInternmentDate,
-          nid.DeathCertificateNo AS DeceasedDeathCertificateNo,
-          
-          -- Inscription details
-          nir.BibleInscriptionChoiceId,
-          nir.BibleInscriptionChoiceNo,
-          nir.AdditionalInscriptionPhrase,
-          
-          -- Bible choice information
-          bic.BibleInscriptionChoiceNoValue
-          
-        FROM NicheInscriptionRequest nir WITH(NOLOCK)
-        INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
-        INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
-        INNER JOIN Niche n WITH(NOLOCK) ON na.NicheId = n.NicheId
-        INNER JOIN NicheRow r WITH(NOLOCK) ON n.NicheRowlId = r.NicheRowlId
-        INNER JOIN NicheWall w WITH(NOLOCK) ON r.NicheWallId = w.NicheWallId
-        INNER JOIN Chapel c WITH(NOLOCK) ON w.ChapelId = c.ChapelId
-        LEFT JOIN Person cp WITH(NOLOCK) ON nb.ContactPersonId = cp.PersonId
-        LEFT JOIN Person nom1 WITH(NOLOCK) ON nb.NomineeId = nom1.PersonId
-        LEFT JOIN Person nom2 WITH(NOLOCK) ON nb.NomineeId2 = nom2.PersonId
-        LEFT JOIN NicheInscriptionRequestDecesed nid WITH(NOLOCK) ON nir.NicheInscriptionRequestId = nid.NicheInscriptionRequestId
-        LEFT JOIN BibleInscriptionChoice bic WITH(NOLOCK) ON nir.BibleInscriptionChoiceId = bic.BibleInscriptionChoiceId
-        WHERE nir.Code = @inscriptionCode
-          AND nir.RefDocType = 'INCR'
-      `;
+      // Handle ID-based lookup for INCR-ID format
+      let query;
+      let params;
+      
+      if (searchCode.match(/^INCR-\d+$/)) {
+        // ID-based lookup: INCR-20623 format
+        const inscriptionId = parseInt(searchCode.replace('INCR-', ''));
+        logger.info(`Using ID-based lookup for inscription ID: ${inscriptionId}`);
+        
+        query = `
+          SELECT 
+            nir.NicheInscriptionRequestId,
+            nir.Code AS InscriptionCode,
+            nir.TranscationDate AS InscriptionCreatedOn,
+            
+            -- Applicant information from NicheInscriptionRequest (primary source)
+            nir.ApplicantName,
+            nir.ApplicantIDNo,
+            nir.ApplicantEmailID,
+            nir.ApplicantMobileNo,
+            nir.ApplicantHomeTelNo,
+            nir.ApplicantAddressNo,
+            nir.ApplicantAddressLine1,
+            nir.ApplicantAddressLine2,
+            nir.ApplicantAddressCity,
+            nir.ApplicantAddressState,
+            nir.ApplicantAddressCountry,
+            
+            -- Niche information
+            n.Code AS NicheCode,
+            n.AppearanceDescription,
+            r.Code AS RowCode,
+            r.Name AS RowName,
+            w.Code AS WallCode,
+            w.Name AS WallName,
+            c.Code AS ChapelCode,
+            c.Name AS ChapelName,
+            
+            -- Booking information
+            nb.BookedDate,
+            nb.BookingStatus,
+            
+            -- Contact person information
+            cp.Name AS ContactPersonName,
+            cp.IDNo AS ContactPersonIDNo,
+            cp.MobileNo AS ContactPersonMobile,
+            cp.EmailID AS ContactPersonEmail,
+            
+            -- Nominee information
+            nom1.Name AS NomineeName,
+            nom1.IDNo AS NomineeIDNo,
+            nom2.Name AS Nominee2Name,
+            nom2.IDNo AS Nominee2IDNo,
+            
+            -- Deceased details
+            nid.NameOfDeceased AS DeceasedName,
+            nid.DateOfBirth AS DeceasedDateOfBirth,
+            nid.DateDied AS DeceasedDateOfDeath,
+            nid.InternmentDate AS DeceasedInternmentDate,
+            nid.DeathCertificateNo AS DeceasedDeathCertificateNo,
+            
+            -- Inscription details
+            nir.BibleInscriptionChoiceId,
+            nir.BibleInscriptionChoiceNo,
+            nir.AdditionalInscriptionPhrase,
+            
+            -- Bible choice information
+            bic.BibleInscriptionChoiceNoValue
+            
+          FROM NicheInscriptionRequest nir WITH(NOLOCK)
+          INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+          INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+          INNER JOIN Niche n WITH(NOLOCK) ON na.NicheId = n.NicheId
+          INNER JOIN NicheRow r WITH(NOLOCK) ON n.NicheRowlId = r.NicheRowlId
+          INNER JOIN NicheWall w WITH(NOLOCK) ON r.NicheWallId = w.NicheWallId
+          INNER JOIN Chapel c WITH(NOLOCK) ON w.ChapelId = c.ChapelId
+          LEFT JOIN Person cp WITH(NOLOCK) ON nb.ContactPersonId = cp.PersonId
+          LEFT JOIN Person nom1 WITH(NOLOCK) ON nb.NomineeId = nom1.PersonId
+          LEFT JOIN Person nom2 WITH(NOLOCK) ON nb.NomineeId2 = nom2.PersonId
+          LEFT JOIN NicheInscriptionRequestDecesed nid WITH(NOLOCK) ON nir.NicheInscriptionRequestId = nid.NicheInscriptionRequestId
+          LEFT JOIN BibleInscriptionChoice bic WITH(NOLOCK) ON nir.BibleInscriptionChoiceId = bic.BibleInscriptionChoiceId
+          WHERE nir.NicheInscriptionRequestId = @inscriptionId
+            AND (
+              nir.RefDocType = 'INCR' 
+              OR (nir.Code LIKE 'I-%' AND nir.RefDocType IS NULL)
+              OR nir.Code LIKE 'INCR-%'
+            )
+        `;
 
-      const params = { inscriptionCode: searchCode };
+        params = { inscriptionId: inscriptionId };
+      } else {
+        // Code-based lookup (original logic)
+        query = `
+          SELECT 
+            nir.NicheInscriptionRequestId,
+            nir.Code AS InscriptionCode,
+            nir.TranscationDate AS InscriptionCreatedOn,
+            
+            -- Applicant information from NicheInscriptionRequest (primary source)
+            nir.ApplicantName,
+            nir.ApplicantIDNo,
+            nir.ApplicantEmailID,
+            nir.ApplicantMobileNo,
+            nir.ApplicantHomeTelNo,
+            nir.ApplicantAddressNo,
+            nir.ApplicantAddressLine1,
+            nir.ApplicantAddressLine2,
+            nir.ApplicantAddressCity,
+            nir.ApplicantAddressState,
+            nir.ApplicantAddressCountry,
+            
+            -- Niche information
+            n.Code AS NicheCode,
+            n.AppearanceDescription,
+            r.Code AS RowCode,
+            r.Name AS RowName,
+            w.Code AS WallCode,
+            w.Name AS WallName,
+            c.Code AS ChapelCode,
+            c.Name AS ChapelName,
+            
+            -- Booking information
+            nb.BookedDate,
+            nb.BookingStatus,
+            
+            -- Contact person information
+            cp.Name AS ContactPersonName,
+            cp.IDNo AS ContactPersonIDNo,
+            cp.MobileNo AS ContactPersonMobile,
+            cp.EmailID AS ContactPersonEmail,
+            
+            -- Nominee information
+            nom1.Name AS NomineeName,
+            nom1.IDNo AS NomineeIDNo,
+            nom2.Name AS Nominee2Name,
+            nom2.IDNo AS Nominee2IDNo,
+            
+            -- Deceased details
+            nid.NameOfDeceased AS DeceasedName,
+            nid.DateOfBirth AS DeceasedDateOfBirth,
+            nid.DateDied AS DeceasedDateOfDeath,
+            nid.InternmentDate AS DeceasedInternmentDate,
+            nid.DeathCertificateNo AS DeceasedDeathCertificateNo,
+            
+            -- Inscription details
+            nir.BibleInscriptionChoiceId,
+            nir.BibleInscriptionChoiceNo,
+            nir.AdditionalInscriptionPhrase,
+            
+            -- Bible choice information
+            bic.BibleInscriptionChoiceNoValue
+            
+          FROM NicheInscriptionRequest nir WITH(NOLOCK)
+          INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+          INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+          INNER JOIN Niche n WITH(NOLOCK) ON na.NicheId = n.NicheId
+          INNER JOIN NicheRow r WITH(NOLOCK) ON n.NicheRowlId = r.NicheRowlId
+          INNER JOIN NicheWall w WITH(NOLOCK) ON r.NicheWallId = w.NicheWallId
+          INNER JOIN Chapel c WITH(NOLOCK) ON w.ChapelId = c.ChapelId
+          LEFT JOIN Person cp WITH(NOLOCK) ON nb.ContactPersonId = cp.PersonId
+          LEFT JOIN Person nom1 WITH(NOLOCK) ON nb.NomineeId = nom1.PersonId
+          LEFT JOIN Person nom2 WITH(NOLOCK) ON nb.NomineeId2 = nom2.PersonId
+          LEFT JOIN NicheInscriptionRequestDecesed nid WITH(NOLOCK) ON nir.NicheInscriptionRequestId = nid.NicheInscriptionRequestId
+          LEFT JOIN BibleInscriptionChoice bic WITH(NOLOCK) ON nir.BibleInscriptionChoiceId = bic.BibleInscriptionChoiceId
+          WHERE nir.Code = @inscriptionCode
+            AND (
+              nir.RefDocType = 'INCR' 
+              OR (nir.Code LIKE 'I-%' AND nir.RefDocType IS NULL)
+              OR nir.Code LIKE 'INCR-%'
+            )
+        `;
+
+        params = { inscriptionCode: searchCode };
+      }
 
       if (churchId) {
         query += ' AND na.ChurchId = @churchId';
         params.churchId = churchId;
       }
 
+      logger.info(`[DEBUG] Executing query with params:`, params);
+      logger.info(`[DEBUG] Query: ${query}`);
+      
       const result = await executeQuery(query, params, { timeout: 15000 });
 
       if (!result.recordset || result.recordset.length === 0) {
         logger.info(`No inscription agreement found for code: ${searchCode}`);
+        
+        // Debug: Log what we actually found in the database
+        try {
+          const debugQuery = `
+            SELECT TOP 10 
+              nir.Code, 
+              nir.RefDocType, 
+              nir.NicheInscriptionRequestId,
+              na.ChurchId
+            FROM NicheInscriptionRequest nir WITH(NOLOCK)
+            LEFT JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+            LEFT JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+            WHERE nir.Code LIKE '%${searchCode}%'
+            ORDER BY nir.NicheInscriptionRequestId DESC
+          `;
+          
+          const debugResult = await executeQuery(debugQuery, {}, { timeout: 10000 });
+          if (debugResult.recordset && debugResult.recordset.length > 0) {
+            logger.info(`[DEBUG] Found similar records for code ${searchCode}:`, 
+              debugResult.recordset.map(r => ({
+                code: r.Code,
+                refDocType: r.RefDocType,
+                id: r.NicheInscriptionRequestId,
+                churchId: r.ChurchId
+              }))
+            );
+          } else {
+            logger.info(`[DEBUG] No similar records found for code ${searchCode}`);
+          }
+        } catch (debugError) {
+          logger.warn(`[DEBUG] Failed to run debug query:`, debugError.message);
+        }
+        
         return null;
       }
 
@@ -139,7 +277,14 @@ class InscriptionAgreementRepository {
       // Return the first (and typically only) inscription request
       const agreementDetails = Object.values(groupedResults)[0];
       
-      logger.info(`Found inscription agreement details for code: ${searchCode}`);
+      logger.info(`Found inscription agreement details for code: ${searchCode}`, {
+        inscriptionId: agreementDetails.NicheInscriptionRequestId,
+        code: agreementDetails.InscriptionCode,
+        refDocType: agreementDetails.RefDocType,
+        churchId: agreementDetails.ChurchId,
+        deceasedCount: agreementDetails.deceasedDetails?.length || 0
+      });
+      
       return agreementDetails;
     } catch (error) {
       logger.error('Failed to get inscription agreement details:', error);

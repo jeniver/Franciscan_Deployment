@@ -228,6 +228,53 @@ class InscriptionInvoiceController extends BaseController {
   });
 
   /**
+   * DELETE /api/inscriptions/:code
+   * Delete an inscription application
+   */
+  deleteInscription = this.asyncHandler(async (req, res) => {
+    this.logRequest(req, 'Delete Inscription');
+
+    try {
+      const { code } = req.params;
+      const churchId = req.user?.churchId;
+
+      if (!code) {
+        return this.sendError(res, 'Application code is required', 400);
+      }
+
+      if (!churchId) {
+        return this.sendError(res, 'Authentication with churchId is required', 401);
+      }
+
+      const result = await EngraveApplicationService.deleteApplication(code, churchId);
+
+      if (!result.success) {
+        const errorCode = result.error?.code || 'INTERNAL_ERROR';
+
+        if (errorCode === 'NOT_FOUND') {
+          return this.sendError(res, result.error.message || 'Inscription application not found', 404);
+        }
+
+        if (errorCode === 'ACCESS_DENIED') {
+          return this.sendError(res, result.error.message || 'Access denied', 403);
+        }
+
+        if (errorCode === 'CANNOT_DELETE') {
+          return this.sendError(res, result.error.message || 'Cannot delete application', 400);
+        }
+
+        // Generic failure
+        return this.sendError(res, result.error.message || 'Failed to delete inscription', 500);
+      }
+
+      return this.sendSuccess(res, null, 'Inscription deleted successfully');
+    } catch (error) {
+      logger.error('Controller: Failed to delete inscription:', error);
+      return this.sendError(res, 'Failed to delete inscription', 500);
+    }
+  });
+
+  /**
    * GET /api/inscriptions
    * Search inscription applications with filters
    */

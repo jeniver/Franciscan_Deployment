@@ -783,6 +783,96 @@ const inscriptionService = {
         'server'
       );
     }
+  },
+
+  /**
+   * Delete an inscription application
+   * DELETE /api/inscriptions/:code
+   */
+  async deleteInscription(code: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await api.delete<{
+        success: boolean;
+        message: string;
+      }>(`/api/inscriptions/${encodeURIComponent(code)}`);
+
+      if (!response.data.success) {
+        throw new InscriptionError(
+          response.data.message || 'Failed to delete inscription',
+          'server',
+          response.status
+        );
+      }
+
+      return {
+        success: response.data.success,
+        message: response.data.message || 'Inscription deleted successfully'
+      };
+    } catch (error: any) {
+      if (error instanceof InscriptionError) {
+        throw error;
+      }
+
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        if (status === 401) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Unauthorized',
+            'auth',
+            status,
+            errorData?.error?.code
+          );
+        }
+
+        if (status === 403) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Access denied',
+            'auth',
+            status,
+            errorData?.error?.code || 'FORBIDDEN'
+          );
+        }
+
+        if (status === 404) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Inscription not found',
+            'server',
+            status,
+            errorData?.error?.code || 'NOT_FOUND'
+          );
+        }
+
+        if (status === 400) {
+          throw new InscriptionError(
+            errorData?.error?.message || 'Cannot delete inscription',
+            'validation',
+            status,
+            errorData?.error?.code || 'CANNOT_DELETE'
+          );
+        }
+
+        throw new InscriptionError(
+          errorData?.error?.message || errorData?.message || 'Failed to delete inscription',
+          'server',
+          status,
+          errorData?.error?.code
+        );
+      }
+
+      if (error.request) {
+        throw new InscriptionError(
+          'Network error: Unable to connect to server',
+          'network'
+        );
+      }
+
+      throw new InscriptionError(
+        error.message || 'An unexpected error occurred',
+        'server'
+      );
+    }
   }
 };
 

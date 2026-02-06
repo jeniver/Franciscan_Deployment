@@ -61,6 +61,18 @@ class ReceiptService extends BaseService {
         };
       }
 
+      // Log receipt data structure for debugging
+      logger.info(`Receipt data structure:`, {
+        receiptId: receipt.receiptId,
+        code: receipt.code,
+        invoiceId: receipt.invoiceId,
+        customerName: receipt.customerName,
+        totalAmount: receipt.totalAmount,
+        hasInvoice: !!receipt.invoice,
+        invoiceDetailsCount: receipt.invoice?.details?.length || 0,
+        receiptDetailsCount: receipt.details?.length || 0
+      });
+
       logger.info(`Receipt found: code=${code}, receiptId=${receipt.receiptId}, churchId=${receipt.churchId}`);
       return {
         success: true,

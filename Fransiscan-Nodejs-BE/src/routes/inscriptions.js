@@ -50,6 +50,17 @@ router.put(
 );
 
 /**
+ * @route   DELETE /api/inscriptions/:code
+ * @desc    Delete an inscription application
+ * @access  Private (JWT required)
+ */
+router.delete(
+  '/:code',
+  authenticateToken,
+  (req, res) => controller.deleteInscription(req, res)
+);
+
+/**
  * @route   GET /api/inscriptions
  * @desc    Search inscription applications with filters
  * @access  Private (JWT required)

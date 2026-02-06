@@ -746,7 +746,8 @@ class InvoiceRepository extends BaseRepository {
         || normalizedSearchCodeUpper.startsWith('WAPP-')
         || normalizedSearchCodeUpper.startsWith('INCR-')
         || normalizedSearchCodeUpper.startsWith('GOLA-')
-        || normalizedSearchCodeUpper.startsWith('I-');
+        || (normalizedSearchCodeUpper.startsWith('I-') && 
+            (normalizedSearchCodeUpper.match(/^I-\d+$/) || normalizedSearchCodeUpper.startsWith('I-NAPP-')));
       logger.info(`Looking up invoice: code=${searchCode}, churchId=${churchId}, applicationCode=${applicationCode}`);
 
       // Build a set of candidate code values to handle different user inputs
@@ -903,7 +904,8 @@ class InvoiceRepository extends BaseRepository {
             const fallbackParams = {
               code: normalizedSearchCode,
               codeUpper: normalizedSearchCodeUpper,
-              codePrefix: normalizedSearchCodeUpper.startsWith('I-')
+              codePrefix: (normalizedSearchCodeUpper.startsWith('I-') && 
+                  (normalizedSearchCodeUpper.match(/^I-\d+$/) || normalizedSearchCodeUpper.startsWith('I-NAPP-')))
                 ? normalizedSearchCodeUpper
                 : `I-${normalizedSearchCodeUpper}`
             };

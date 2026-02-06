@@ -450,23 +450,58 @@ export function ReceiptPage() {
 
     try {
       const invoiceCode = receipt.invoiceCode.trim();
+      console.log('[ReceiptPage] Fetching invoice data for code:', invoiceCode);
 
       // Fetch full invoice data so we can render a correct invoice template
       const invoice = await receiptService.getInvoiceByCode(invoiceCode);
+      console.log('[ReceiptPage] Received invoice data:', invoice);
 
-      const items =
-        (invoice.invoiceDetails || []).map((d) => ({
-          description: d.description,
-          quantity: d.quantity || 1,
-          unitPrice: d.unitPrice || 0,
-          amount: d.amount || 0,
-        })) || [];
+      // Map invoice details properly - handle the API response structure
+      const items = (invoice.invoiceDetails || []).map((d) => ({
+        description: d.itemName || d.description || 'Item',
+        referenceNo: d.RefDocNumber || d.refDocNumber || '',
+        gstPercent: d.lineTaxPercent || d.taxPercent || 9,
+        qty: d.quantity || 1,
+        quantity: d.quantity || 1,
+        unitPrice: d.unitPrice || d.payingAmount || d.amount || 0,
+        amount: d.TotalPayingAmount || d.totalPayingAmount || d.amount || 0,
+      })) || [];
+
+      // Extract customer address from invoice data if available
+      let customerAddress = '';
+      if (invoice.address || invoice.addressNo || invoice.address2 || invoice.addressCity) {
+        const addressParts: string[] = [];
+        if (invoice.addressNo) addressParts.push(invoice.addressNo);
+        if (invoice.address) addressParts.push(invoice.address);
+        if (invoice.address2) addressParts.push(invoice.address2);
+        if (invoice.addressCity) addressParts.push(invoice.addressCity);
+        if (invoice.country) addressParts.push(invoice.country);
+        customerAddress = addressParts.join(', ');
+      }
+
+      // Format invoice date properly
+      let formattedInvoiceDate = '';
+      if (invoice.invoiceDate) {
+        try {
+          const dateObj = new Date(invoice.invoiceDate);
+          if (!isNaN(dateObj.getTime())) {
+            formattedInvoiceDate = dateObj.toLocaleDateString('en-SG', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            });
+          }
+        } catch (dateError) {
+          console.warn('[ReceiptPage] Error formatting invoice date:', dateError);
+          formattedInvoiceDate = invoice.invoiceDate;
+        }
+      }
 
       const tmpl: InvoiceTemplateData = {
         invoiceCode: invoice.invoiceCode || invoiceCode,
-        invoiceDate: invoice.invoiceDate || receipt.receiptDate || '',
+        invoiceDate: formattedInvoiceDate || receipt.receiptDate || '',
         customerName: invoice.customerName || receipt.customerName || '',
-        customerAddress: (receipt as any).customerAddress || undefined,
+        customerAddress: customerAddress || (receipt as any).customerAddress || undefined,
         paymentMode: invoice.paymentMode || receipt.paymentMode || '',
         totalAmount:
           invoice.totalAmount ||
@@ -474,12 +509,16 @@ export function ReceiptPage() {
           receipt.totalAmount ||
           receipt.payingAmount ||
           0,
-        taxAmount: undefined,
+        taxAmount: (invoice as any).taxAmount || undefined,
         items: items.length > 0 ? items : undefined,
       };
+      
+      console.log('[ReceiptPage] Generated template data:', tmpl);
       setViewerInvoiceData(tmpl);
       setIsInvoiceViewerOpen(true);
+      showSuccess('Success', 'Invoice viewer opened');
     } catch (error: any) {
+      console.error('[ReceiptPage] Error viewing invoice:', error);
       const errorMessage = error?.message || error?.response?.data?.message || 'Failed to open invoice view';
       showError('Error', errorMessage);
     }

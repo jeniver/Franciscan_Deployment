@@ -532,39 +532,73 @@ export function InvoiceAndReceiptManagementPage() {
 
                         try {
                           const invoiceCode = invoice.invoiceCode.trim();
+                          
+                          // Fetch full invoice data from the invoices API using the new API endpoint
+                          const fullInvoice = await receiptService.getInvoiceByCode(invoiceCode);
+                          
+                          // Map the invoice details to template items
+                          const items = (fullInvoice.invoiceDetails || []).map((detail) => ({
+                            description: detail.itemName || detail.description || 'Item',
+                            referenceNo: detail.RefDocNumber || detail.refDocNumber || '',
+                            gstPercent: detail.lineTaxPercent || detail.taxPercent || 9,
+                            qty: detail.quantity || 1,
+                            quantity: detail.quantity || 1,
+                            unitPrice: detail.unitPrice || detail.payingAmount || detail.amount || 0,
+                            amount: detail.TotalPayingAmount || detail.totalPayingAmount || detail.amount || 0,
+                          })) || [];
+                          
+                          // Extract customer address from invoice data if available
+                          let customerAddress = '';
+                          if (fullInvoice.address || fullInvoice.addressNo || fullInvoice.address2 || fullInvoice.addressCity) {
+                            const addressParts: string[] = [];
+                            if (fullInvoice.addressNo) addressParts.push(fullInvoice.addressNo);
+                            if (fullInvoice.address) addressParts.push(fullInvoice.address);
+                            if (fullInvoice.address2) addressParts.push(fullInvoice.address2);
+                            if (fullInvoice.addressCity) addressParts.push(fullInvoice.addressCity);
+                            if (fullInvoice.country) addressParts.push(fullInvoice.country);
+                            customerAddress = addressParts.join(', ');
+                          }
 
-                          // Try to fetch matching receipt for richer context (date, maybe address)
-                          let relatedReceipt: Receipt | null = null;
-                          try {
-                            relatedReceipt = await receiptService.getReceiptByCode(invoiceCode);
-                          } catch {
-                            relatedReceipt = null;
+                          // Format invoice date properly
+                          let formattedInvoiceDate = '';
+                          if (fullInvoice.invoiceDate) {
+                            try {
+                              const dateObj = new Date(fullInvoice.invoiceDate);
+                              if (!isNaN(dateObj.getTime())) {
+                                formattedInvoiceDate = dateObj.toLocaleDateString('en-SG', {
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric'
+                                });
+                              }
+                            } catch (dateError) {
+                              console.warn('[InvoiceAndReceiptManagementPage] Error formatting invoice date:', dateError);
+                              formattedInvoiceDate = fullInvoice.invoiceDate;
+                            }
                           }
 
                           const templateData: InvoiceTemplateData = {
-                            invoiceCode,
-                            invoiceDate:
-                              invoice.invoiceDate ||
-                              invoice.transactionDate ||
-                              relatedReceipt?.receiptDate ||
-                              '',
-                            customerName: invoice.customerName || relatedReceipt?.customerName || 'N/A',
-                            customerAddress: (relatedReceipt as any)?.customerAddress || undefined,
-                            paymentMode: invoice.paymentMode || relatedReceipt?.paymentMode || '',
+                            invoiceCode: fullInvoice.invoiceCode || invoiceCode,
+                            invoiceDate: formattedInvoiceDate || invoice.invoiceDate || invoice.transactionDate || '',
+                            customerName: fullInvoice.customerName || invoice.customerName || 'N/A',
+                            customerAddress: customerAddress || undefined,
+                            paymentMode: fullInvoice.paymentMode || invoice.paymentMode || '',
                             totalAmount:
+                              fullInvoice.totalAmount ||
+                              fullInvoice.payingAmount ||
                               invoice.totalAmount ||
                               invoice.payingAmount ||
-                              relatedReceipt?.totalAmount ||
-                              relatedReceipt?.payingAmount ||
                               0,
-                            taxAmount: undefined,
-                            items: undefined,
+                            taxAmount: (fullInvoice as any).taxAmount || undefined,
+                            items: items.length > 0 ? items : undefined,
                           };
 
                           setViewerInvoiceData(templateData);
                           setIsInvoiceViewerOpen(true);
                         } catch (error: any) {
-                          showError('Error', error?.message || 'Failed to open invoice viewer');
+                          console.error('[InvoiceAndReceiptManagementPage] Error viewing invoice:', error);
+                          const errorMessage = error?.message || error?.response?.data?.message || 'Failed to open invoice viewer';
+                          showError('Error', errorMessage);
                         }
                       }}
                       className="text-blue-600 hover:text-blue-900"

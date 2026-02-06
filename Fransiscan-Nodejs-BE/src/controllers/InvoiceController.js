@@ -187,7 +187,9 @@ class InvoiceController extends BaseController {
         } else {
           return this.sendError(res, `Niche application not found for code: ${code}`, 404);
         }
-      } else if (normalizedCode.startsWith('INCR-') || normalizedCode.startsWith('I-')) {
+      } else if (normalizedCode.startsWith('INCR-') || 
+                 (normalizedCode.startsWith('I-') && 
+                  (normalizedCode.match(/^I-\d+$/) || normalizedCode.startsWith('I-NAPP-')))) {
         // Inscription Request - format: "INCR-XXXX" or "I-XXXX"
         refDocName = 'INCR';
         
@@ -246,10 +248,61 @@ class InvoiceController extends BaseController {
         } else {
           return this.sendError(res, `Inscription request not found for code: ${code}`, 404);
         }
-      } else if (normalizedCode.startsWith('WAPP-')) {
+      } else if (normalizedCode.startsWith('WAPP-') || /^I-\d+-\d+$/.test(normalizedCode)) {
+        // Wake Room Application - format: "WAPP-XXXX" or "I-XXXX-X" (wake room booking codes)
         refDocName = 'WAPP';
-        // TODO: Implement Wake Room Application resolution
-        return this.sendError(res, 'Wake Room Application invoice creation not yet implemented', 501);
+        
+        // Query WakeRoomBooking table
+        const wakeRoomQuery = `
+          SELECT TOP 1
+            WakeRoomBookingId,
+            Code,
+            ApplicantName,
+            ApplicantAddressNo,
+            ApplicantAddressLine1,
+            ApplicantAddressLine2,
+            ApplicantAddressCity,
+            ApplicantAddressState,
+            ApplicantAddressCountry,
+            ApplicantMobileNo,
+            ApplicantEmailID,
+            NameOfDeceased,
+            UsingDate,
+            UsingTimeFrom,
+            UsingTimeTo,
+            DonationAmount,
+            DefaultDonationAmount,
+            NoOfDays,
+            ChurchId,
+            Status
+          FROM WakeRoomBooking WITH(NOLOCK)
+          WHERE Code = @code
+        `;
+        
+        const wakeRoomResult = await executeQuery(wakeRoomQuery, { code });
+        if (wakeRoomResult.recordset && wakeRoomResult.recordset.length > 0) {
+          application = wakeRoomResult.recordset[0];
+          customerName = application.ApplicantName || 'Unknown Applicant';
+          
+          // Check church access
+          if (application.ChurchId !== churchId) {
+            return this.sendError(res, 'Access denied - Church ID mismatch', 403);
+          }
+          
+          // Set application amount from donation amount
+          application.Amount = application.DonationAmount || application.DefaultDonationAmount || 0;
+          
+          // Populate address details
+          if (application.ApplicantAddressLine1) {
+            application.ApplicantAddressNo = application.ApplicantAddressNo || '';
+            application.ApplicantAddressLine2 = application.ApplicantAddressLine2 || '';
+            application.ApplicantAddressCity = application.ApplicantAddressCity || '';
+            application.ApplicantAddressState = application.ApplicantAddressState || '';
+            application.ApplicantAddressCountry = application.ApplicantAddressCountry || '';
+          }
+        } else {
+          return this.sendError(res, `Wake room booking not found for code: ${code}`, 404);
+        }
       } else if (normalizedCode.startsWith('GOLA-')) {
         refDocName = 'GOLA';
         // TODO: Implement Gate of Life Application resolution
@@ -330,8 +383,33 @@ class InvoiceController extends BaseController {
         }
       }
 
-      // Fallback: Get item by DocType NAPP or IsRefType = 1 (only for non-INCR)
-      if (!item && refDocName !== 'INCR') {
+      // For WAPP (wake room) requests, get wake room-specific items
+      if (refDocName === 'WAPP' && !item) {
+        // Try to get wake room items
+        try {
+          const wakeRoomItemQuery = `
+            SELECT TOP 1
+              i.ItemId,
+              i.Name AS ItemName,
+              i.Code AS ItemCode,
+              i.Price AS ItemPrice
+            FROM Item i WITH(NOLOCK)
+            WHERE i.ChurchId = @churchId
+              AND (i.DocType = 'WAPP' OR i.Code LIKE 'WR%' OR i.Code LIKE 'WAKE%')
+            ORDER BY i.ItemId
+          `;
+          
+          const wakeRoomItemResult = await executeQuery(wakeRoomItemQuery, { churchId });
+          if (wakeRoomItemResult.recordset && wakeRoomItemResult.recordset.length > 0) {
+            item = wakeRoomItemResult.recordset[0];
+          }
+        } catch (wakeRoomItemError) {
+          logger.warn('Failed to get wake room items for item selection:', wakeRoomItemError.message);
+        }
+      }
+
+      // Fallback: Get item by DocType NAPP or IsRefType = 1 (only for non-INCR and non-WAPP)
+      if (!item && refDocName !== 'INCR' && refDocName !== 'WAPP') {
         const itemQuery = `
           SELECT TOP 1
             i.ItemId,
@@ -364,6 +442,9 @@ class InvoiceController extends BaseController {
         // For INCR, prioritize inscription-related items
         if (refDocName === 'INCR') {
           fallbackItemQuery += ` AND (i.DocType = 'INCR' OR i.Code LIKE 'INSC%' OR i.Code LIKE 'PLAQ%')`;
+        } else if (refDocName === 'WAPP') {
+          // For WAPP, prioritize wake room-related items
+          fallbackItemQuery += ` AND (i.DocType = 'WAPP' OR i.Code LIKE 'WR%' OR i.Code LIKE 'WAKE%')`;
         } else {
           // For NAPP, prioritize niche-related items
           fallbackItemQuery += ` AND (i.DocType = 'NAPP' OR i.IsRefType = 1)`;
@@ -628,8 +709,10 @@ class InvoiceController extends BaseController {
         // Check if it's an inscription code
         const normalizedCode = code.trim().toUpperCase();
         
-        // If it looks like an inscription code (starts with 'I-' followed by digits and hyphens)
-        if (normalizedCode.startsWith('I-')) {
+        // If it looks like an inscription code (starts with 'I-' followed by digits only, or I-NAPP- format)
+        // Exclude wake room booking codes which follow I-XXXX-X pattern (second hyphen)
+        if (normalizedCode.startsWith('I-') && 
+            (normalizedCode.match(/^I-\d+$/) || normalizedCode.startsWith('I-NAPP-'))) {
           try {
             // Get inscription items for this code using the service
             const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
@@ -824,20 +907,18 @@ class InvoiceController extends BaseController {
   });
 
   /**
-   * Get all items linked to an application code
+   * Get application items by application code
    * @param {string} applicationCode - Application code
    * @param {number} churchId - Church ID
-   * @returns {Promise<Array>} Array of items with details
+   * @returns {Promise<Array>} Array of items
    */
   async getApplicationItemsByCode(applicationCode, churchId) {
     try {
-      const { executeQuery } = require('../config/database');
-      const normalizedCode = applicationCode.trim().toUpperCase();
+      logger.info(`Getting application items for code: ${applicationCode}, churchId: ${churchId}`);
       
-      logger.info(`Fetching all items for application code: ${applicationCode}, churchId: ${churchId}`);
-      
-      // Determine application type from code
-      let appType = null;
+      // Handle different application code formats
+      let appType = '';
+      let normalizedCode = applicationCode.toUpperCase().trim();
       let baseCode = normalizedCode;
       
       if (normalizedCode.startsWith('NAPP-')) {
@@ -851,6 +932,10 @@ class InvoiceController extends BaseController {
         baseCode = normalizedCode.substring(7);
       } else if (/^\d+-\d+$/.test(normalizedCode)) {
         appType = 'NAPP';
+      } else if (/^I-\d+-\d+$/.test(normalizedCode)) {
+        // Handle inscription format: I-XXXX-X
+        appType = 'INCR';
+        baseCode = normalizedCode; // Keep full code for inscription lookup
       } else {
         throw new Error(`Unsupported application code format: ${applicationCode}`);
       }

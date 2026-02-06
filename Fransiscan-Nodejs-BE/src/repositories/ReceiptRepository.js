@@ -1926,9 +1926,25 @@ class ReceiptRepository extends BaseRepository {
 
   async getInvoiceById(invoiceId) {
     try {
-      const query = `
+      // First get the invoice header
+      const invoiceQuery = `
         SELECT 
-          i.*,
+          i.*
+        FROM Invoice i
+        WHERE i.InvoiceId = @invoiceId
+      `;
+
+      const invoiceResult = await executeQuery(invoiceQuery, { invoiceId });
+      
+      if (!invoiceResult.recordset || invoiceResult.recordset.length === 0) {
+        return null;
+      }
+
+      const invoice = invoiceResult.recordset[0];
+
+      // Then get invoice details
+      const detailsQuery = `
+        SELECT 
           id.InvoiceDetailId,
           id.ItemId,
           id.Quantity,
@@ -1940,13 +1956,31 @@ class ReceiptRepository extends BaseRepository {
           id.LineTotalAmount,
           id.LineTaxPercent,
           id.LineTaxAmount
-        FROM Invoice i
-        LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
-        WHERE i.InvoiceId = @invoiceId
+        FROM InvoiceDetail id
+        WHERE id.InvoiceId = @invoiceId
+        ORDER BY id.InvoiceDetailId
       `;
 
-      const result = await executeQuery(query, { invoiceId });
-      return this.mapInvoiceRecordset(result.recordset);
+      const detailsResult = await executeQuery(detailsQuery, { invoiceId });
+      
+      // Map the invoice with details
+      invoice.details = (detailsResult.recordset || []).map(row => ({
+        invoiceDetailId: row.InvoiceDetailId,
+        itemId: row.ItemId,
+        quantity: row.Quantity,
+        unitAmount: row.UnitAmount,
+        payingAmount: row.PayingAmount,
+        totalPayingAmount: row.TotalPayingAmount,
+        refDocNumber: row.RefDocNumber,
+        refDocName: row.RefDocName,
+        lineTotalAmount: row.LineTotalAmount,
+        lineTaxPercent: row.LineTaxPercent,
+        lineTaxAmount: row.LineTaxAmount,
+        // Create a meaningful description combining available info
+        description: this.buildItemDescriptionFromDetail(row)
+      }));
+
+      return invoice;
     } catch (error) {
       logger.error('Error getting invoice by ID:', error);
       throw error;
@@ -1972,10 +2006,34 @@ class ReceiptRepository extends BaseRepository {
           refDocName: row.RefDocName,
           lineTotalAmount: row.LineTotalAmount,
           lineTaxPercent: row.LineTaxPercent,
-          lineTaxAmount: row.LineTaxAmount
+          lineTaxAmount: row.LineTaxAmount,
+          itemName: row.ItemName,
+          itemDescription: row.ItemDescription,
+          description: this.buildItemDescription(row)
         }));
 
       return invoice;
+  }
+
+  buildItemDescriptionFromDetail(detailRow) {
+    // Create a meaningful description for the item from invoice detail
+    const parts = [];
+    
+    // Add reference document info if available
+    if (detailRow.RefDocNumber) {
+      parts.push(`Item (${detailRow.RefDocNumber})`);
+    } else if (detailRow.RefDocName) {
+      parts.push(`Item (${detailRow.RefDocName})`);
+    } else {
+      parts.push('Item');
+    }
+    
+    // Add quantity if greater than 1
+    if (detailRow.Quantity && detailRow.Quantity > 1) {
+      parts.push(`x${detailRow.Quantity}`);
+    }
+    
+    return parts.join(' ');
   }
 }
 
