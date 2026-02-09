@@ -515,7 +515,7 @@ export const useApplication = () => {
     }
     
     // Navigate to Invoice & Receipt page
-    navigate('/invoice-receipt', { 
+    navigate(`/invoice-receipt/${appCode}`, { 
       state: { applicationNumber: appCode } 
     });
   }, [applicationNumber, navigate, showError]);

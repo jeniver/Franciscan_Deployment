@@ -1,6 +1,9 @@
 const sql = require('mssql');
 const logger = require('../utils/logger');
 
+// Load environment variables
+require('dotenv').config({ path: __dirname + '/../../.env' });
+
 // SQL Server configuration
 // Determine if we're using Windows Authentication or SQL Server Authentication
 const useWindowsAuth = !process.env.DB_PASSWORD || process.env.DB_PASSWORD === '';

@@ -1,0 +1,49 @@
+.search-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-page header {
+  background-color: #1f2937;
+  color: white;
+  padding: 1rem;
+}
+
+.search-page h1 {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.search-page main {
+  flex: 1;
+  padding: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.search-page footer {
+  background-color: #1f2937;
+  color: white;
+  padding: 1rem;
+  margin-top: auto;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.mx-auto {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.p-4 {
+  padding: 1rem;
+}
+
+.mt-8 {
+  margin-top: 2rem;
+}

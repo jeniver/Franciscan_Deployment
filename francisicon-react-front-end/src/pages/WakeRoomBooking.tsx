@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { EyeIcon, RefreshCwIcon, CheckIcon, HashIcon, AlertCircleIcon, ChevronLeftIcon, ChevronRightIcon, UserIcon, CalendarIcon } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
@@ -6,8 +7,7 @@ import { useWakeRoom } from '../hooks/useWakeRoom';
 import { WakeRoomBookingDetails } from './WakeRoomBookingDetails';
 
 interface WakeRoomBookingProps {
-  formData: any;
-  setFormData: (data: any) => void;
+  // No props required for this component
 }
 
 const steps = [
@@ -23,7 +23,8 @@ const steps = [
   }
 ];
 
-export function WakeRoomBooking({ formData, setFormData }: WakeRoomBookingProps) {
+export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
+  const navigate = useNavigate();
   const [bookingNumber, setBookingNumber] = useState('');
   const [currentStep, setCurrentStep] = useState(1);
   
@@ -32,14 +33,9 @@ export function WakeRoomBooking({ formData, setFormData }: WakeRoomBookingProps)
     loading,
     error,
     lastErrorType,
-    clearError,
-    handleViewBooking,
-    handleSaveBooking,
-    handlePrintBooking,
-    handleInvoiceReceipt,
-    handleInvoiceOnly,
-    handleGoToReceipt,
-    handleGeneratePDFFromData
+    handleGetBookingByCode,
+    handleClearError,
+    handleLoadAllWakeRooms
   } = useWakeRoom();
   
   // Contact Details State
@@ -73,20 +69,19 @@ export function WakeRoomBooking({ formData, setFormData }: WakeRoomBookingProps)
   });
 
   const handleView = async () => {
-    await handleViewBooking(bookingNumber);
+    // Use user's default churchId (hardcoded as 1 for now)
+    const churchId = 1;
+    await handleGetBookingByCode(bookingNumber, churchId);
   };
 
   const handlePrint = async () => {
-    await handlePrintBooking(bookingNumber);
+    // Print functionality would go here
+    alert('Print functionality would be implemented here');
   };
 
   const handleSave = async () => {
-    const bookingData = {
-      bookingNumber,
-      contactDetails: contactData,
-      bookingDetails: bookingData
-    };
-    await handleSaveBooking(bookingData);
+    // Save functionality would go here
+    alert('Save functionality would be implemented here');
   };
 
   const handleClear = () => {
@@ -117,17 +112,13 @@ export function WakeRoomBooking({ formData, setFormData }: WakeRoomBookingProps)
       casketCompany: '',
       burial: ''
     });
-    clearError();
+    handleClearError();
   };
 
   // Generate PDF from current form data
   const handleGeneratePDFFromForm = async (type: 'booking' | 'invoice' | 'receipt' = 'booking') => {
-    const formData = {
-      bookingNumber,
-      contactDetails: contactData,
-      bookingDetails: bookingData
-    };
-    await handleGeneratePDFFromData(formData, type);
+    // PDF generation from form would go here
+    alert(`PDF generation for ${type} would be implemented here`);
   };
 
   // Wizard navigation
@@ -352,7 +343,7 @@ export function WakeRoomBooking({ formData, setFormData }: WakeRoomBookingProps)
                 <Button 
                   variant="primary" 
                   icon={<HashIcon className="w-4 h-4" />}
-                  onClick={() => handleInvoiceReceipt(bookingNumber)}
+                  onClick={() => navigate(`/invoice-receipt/${bookingNumber}`)}
                   disabled={!bookingNumber.trim() && !contactData.name.trim()}
                 >
                   Go to Invoice & Receipt
@@ -366,7 +357,7 @@ export function WakeRoomBooking({ formData, setFormData }: WakeRoomBookingProps)
                 {getErrorIcon()}
                 <div className="flex-1 text-sm">{error}</div>
                 <button 
-                  onClick={clearError}
+                  onClick={handleClearError}
                   className="text-sm font-medium hover:opacity-75"
                 >
                   Dismiss
@@ -461,18 +452,18 @@ export function WakeRoomBooking({ formData, setFormData }: WakeRoomBookingProps)
               <Button
                 variant="primary"
                 icon={<HashIcon className="w-4 h-4" />}
-                onClick={() => handleInvoiceOnly(bookingNumber)}
+                onClick={() => navigate(`/invoice-receipt/${bookingNumber}`)}
                 disabled={!bookingNumber.trim() && !contactData.name.trim()}
               >
-                Invoice Only
+                Go to Invoice
               </Button>
               <Button
                 variant="primary"
                 icon={<HashIcon className="w-4 h-4" />}
-                onClick={() => handleGoToReceipt(bookingNumber)}
+                onClick={() => navigate(`/invoice-receipt/${bookingNumber}`)}
                 disabled={!bookingNumber.trim() && !contactData.name.trim()}
               >
-                Go to Receipt for invoice
+                Go to Receipt
               </Button>
             </div>
           </div>

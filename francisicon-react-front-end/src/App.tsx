@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Search } from 'lucide-react';
+import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { WizardStepper } from './components/WizardStepper';
@@ -11,8 +13,9 @@ import { InvoiceReceipt } from './pages/InvoiceReceipt';
 import { NicheAgreementDetailsModal } from './components/NicheAgreementDetailsModal';
 import { AgreementViewerModal } from './components/AgreementViewerModal';
 import { NicheApplicationDetailsModal } from './components/NicheApplicationDetailsModal';
+import { NomineeConsentFormButton } from './components/NomineeConsentFormButton';
 import { applicationEmailService } from './services/applicationEmailService';
-import { EyeIcon, PrinterIcon, PlusIcon, FileTextIcon, HomeIcon, UserIcon, UsersIcon, UserCheckIcon, AlertCircleIcon, PenToolIcon } from 'lucide-react';
+import { EyeIcon, PrinterIcon, PlusIcon, FileTextIcon, HomeIcon, UserIcon, UsersIcon, UserCheckIcon, AlertCircleIcon, PenToolIcon, TestTubeIcon } from 'lucide-react';
 import { useApplication } from './hooks/useApplication';
 import { useFormValidation } from './hooks/useFormValidation';
 import { Button } from './components/common/Button';
@@ -125,10 +128,10 @@ export function App() {
   // Helper function to normalize application data for the modal
   const normalizeApplicationForModal = useCallback((applicationData: any) => {
     if (!applicationData) return null;
-    
+
     // Handle API response structure where data is wrapped in 'data' property
     const actualData = applicationData.data || applicationData;
-    
+
     // Determine status based on the application data structure
     let status = 1; // Default to Draft
     if (applicationData.status !== undefined) {
@@ -146,7 +149,7 @@ export function App() {
     } else if (actualData.agreement?.status === 'pending' || actualData.consentForm?.status === 'pending') {
       status = 1; // Draft
     }
-    
+
     return {
       // Spread the actual data
       ...actualData,
@@ -177,6 +180,7 @@ export function App() {
   const [lastCreatedCode, setLastCreatedCode] = useState<string | null>(null);
   const [isAgreementDetailsModalOpen, setIsAgreementDetailsModalOpen] = useState(false);
   const [isApplicationDetailsModalOpen, setIsApplicationDetailsModalOpen] = useState(false);
+  const [isGlobalSearchModalOpen, setIsGlobalSearchModalOpen] = useState(false);
   const [selectedApplicationForModal, setSelectedApplicationForModal] = useState<any>(null);
   const [isConfirmingBooking, setIsConfirmingBooking] = useState(false);
   // Track if we're intentionally creating a new application to prevent auto-switching to table view
@@ -189,7 +193,7 @@ export function App() {
   const routeProcessingRef = useRef(false);
   // Track current state in refs to avoid dependency issues
   const stateRef = useRef({ viewMode, applicationNumber, isViewMode, isEditMode, currentStep });
-  
+
   // Update refs when state changes
   useEffect(() => {
     stateRef.current = { viewMode, applicationNumber, isViewMode, isEditMode, currentStep };
@@ -208,18 +212,18 @@ export function App() {
     }
 
     setIsConfirmingBooking(true);
-    
+
     try {
       const { confirmBookingService } = await import('./services/confirmBookingService');
       const result = await confirmBookingService.confirmBooking(selectedApplicationForModal.code);
-      
+
       if (result.success) {
         showSuccessMessage(result.message || 'Application booking confirmed successfully!');
-        
+
         // Close the modal
         setIsApplicationDetailsModalOpen(false);
         setSelectedApplicationForModal(null);
-        
+
         // Refresh the application list to show updated status
         await searchApplicationList({ pagination: { page: 1 } });
       }
@@ -254,20 +258,20 @@ export function App() {
       clearTimeout(searchDebounceRef.current);
       searchDebounceRef.current = null;
     }
-    
+
     // Preserve current filters before resetting state
     const currentFilters = { ...applicationListFilters };
-    
+
     // Clear cache before new search to ensure fresh data
     dispatch(resetApplicationListState());
-    
+
     // Apply current filters after reset
     updateListFilters(currentFilters);
-    
+
     // Perform search with current filters
-    await searchApplicationList({ 
+    await searchApplicationList({
       filters: currentFilters,
-      pagination: { page: 1 } 
+      pagination: { page: 1 }
     });
   }, [searchApplicationList, dispatch, applicationListFilters, updateListFilters]);
 
@@ -347,27 +351,27 @@ export function App() {
   useEffect(() => {
     const path = location.pathname;
     const routeKey = `${path}:${params.applicationCode || ''}`;
-    
+
     // Prevent infinite loops - only process if route actually changed
     if (routeProcessingRef.current) {
       return;
     }
-    
+
     // Check if route actually changed
     if (lastProcessedRouteRef.current === routeKey) {
       return;
     }
-    
+
     routeProcessingRef.current = true;
     lastProcessedRouteRef.current = routeKey;
-    
+
     // Use setTimeout to allow state updates to complete before resetting the flag
     const resetProcessing = () => {
       setTimeout(() => {
         routeProcessingRef.current = false;
       }, 100);
     };
-    
+
     // Handle /niche/new route - create new application
     if (path === '/niche/new') {
       isCreatingNewRef.current = true;
@@ -383,7 +387,7 @@ export function App() {
       resetProcessing();
       return;
     }
-    
+
     // Handle /niche/view/:applicationCode route - view application
     if (path.startsWith('/niche/view/') && params.applicationCode) {
       const codeFromRoute = params.applicationCode;
@@ -402,7 +406,7 @@ export function App() {
       }
       return;
     }
-    
+
     // Handle /niche/edit/:applicationCode route - edit application
     if (path.startsWith('/niche/edit/') && params.applicationCode) {
       const codeFromRoute = params.applicationCode;
@@ -421,7 +425,7 @@ export function App() {
       }
       return;
     }
-    
+
     // Handle /niche route (base) - show table view
     if (path === '/niche') {
       const currentState = stateRef.current;
@@ -436,7 +440,7 @@ export function App() {
       resetProcessing();
       return;
     }
-    
+
     resetProcessing();
   }, [location.pathname, params.applicationCode]);
 
@@ -555,20 +559,20 @@ The application list will be refreshed to show your new application.`);
 
         // Set the last created code to highlight the new application in the table
         setLastCreatedCode(applicationCode);
-        
+
         // Refresh the application list to show the newly created application
         // Clear cache and force fresh data with bypass cache flag
         dispatch(resetApplicationListState());
-        await searchApplicationList({ 
+        await searchApplicationList({
           pagination: { page: 1 },
           // Force bypass cache to get fresh data
           filters: { bypassCache: true } as any
         });
-        
+
         // Navigate to niche list to show the created application
         navigate('/niche');
         setViewMode('table');
-        
+
         // Optional: Still navigate to Invoice & Receipt for this application
         // await handleGoToInvoice(applicationCode);
       }
@@ -587,7 +591,7 @@ The application list will be refreshed to show your new application.`);
   // This prevents the auto-table-view effect from interfering with /niche/new
   useEffect(() => {
     const path = location.pathname;
-    
+
     // Reset the flag after a delay to allow the form view to be established for /niche/new
     if (isCreatingNewRef.current && path === '/niche/new') {
       const timer = setTimeout(() => {
@@ -754,7 +758,7 @@ The application list will be refreshed to show your new application.`);
         </div>
 
         <NichiWalle />
-        
+
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           {applicationListError && (
             <div className="p-4 border-b border-red-200 bg-red-50 text-sm text-red-700">
@@ -871,25 +875,26 @@ The application list will be refreshed to show your new application.`);
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-2">
+                            <span className="text-gray-300">|</span>
                             <button
                               onClick={async () => {
                                 try {
                                   // Load the application data first
                                   const result = await loadApplication(applicationCode);
-                                  
+
                                   // Wait for the Redux state to update completely
                                   await new Promise(resolve => setTimeout(resolve, 150));
-                                  
+
                                   if (result.type.endsWith('/fulfilled')) {
                                     // Get the application data from Redux state
                                     const updatedState = store.getState();
                                     let applicationData = updatedState.application.loadedApplicationRaw;
-                                    
+
                                     // Ensure application data has the correct structure for the modal
                                     if (applicationData) {
                                       // Normalize the application data structure for the modal
                                       const normalizedApplication = normalizeApplicationForModal(applicationData);
-                                      
+
                                       setSelectedApplicationForModal(normalizedApplication);
                                       setIsApplicationDetailsModalOpen(true);
                                     } else {
@@ -1059,6 +1064,8 @@ The application list will be refreshed to show your new application.`);
                       View Inscription
                     </Button>
                   )}
+                                    {applicationNumber && (
+                    <NomineeConsentFormButton applicationNumber={applicationNumber} />)}
                   <Button
                     variant="secondary"
                     icon={<FileTextIcon className="w-4 h-4" />}
@@ -1066,6 +1073,8 @@ The application list will be refreshed to show your new application.`);
                   >
                     View Applications
                   </Button>
+
+
                 </div>
               </div>
             ) : (
@@ -1244,8 +1253,8 @@ The application list will be refreshed to show your new application.`);
                   >
                     {loading ? 'Saving...' :
                       isCreatingApplication ? 'Creating Niche Application...' :
-                        currentStep === 4 ? 'Create Application' : 
-                        currentStep === 5 ? 'Next Step →' : 'Next Step →'}
+                        currentStep === 4 ? 'Create Application' :
+                          currentStep === 5 ? 'Next Step →' : 'Next Step →'}
                   </Button>
                 </div>
               )}
@@ -1287,14 +1296,14 @@ The application list will be refreshed to show your new application.`);
                               hasNominees: !!formData.nominees,
                               hasBeneficiaries: !!formData.beneficiaries
                             });
-                            
+
                             // Save changes with the full form data to ensure all fields are included
                             const saveResult = await saveChanges(formData);
                             if (!saveResult.success && saveResult.error && saveResult.error !== 'No application code provided') {
                               showErrorMessage(saveResult.error || 'Failed to save changes');
                               return;
                             }
-                            
+
                             showSuccessMessage('Application updated successfully!');
                             // Switch to view mode after successful update
                             dispatch(setViewModeAction(true));
@@ -1378,6 +1387,7 @@ The application list will be refreshed to show your new application.`);
       isOpen={isAgreementModalOpen}
       onClose={closeAgreementModal}
       agreementData={agreementModalData}
+      secoundNomineeAgreement={null}
       applicationNumber={applicationNumber}
       loading={loading}
     />
@@ -1392,6 +1402,12 @@ The application list will be refreshed to show your new application.`);
       application={selectedApplicationForModal}
       onConfirmBooking={handleConfirmBooking}
       isConfirming={isConfirmingBooking}
+    />
+
+    {/* Global Search Modal */}
+    <GlobalSearchModal
+      isOpen={isGlobalSearchModalOpen}
+      onClose={() => setIsGlobalSearchModalOpen(false)}
     />
   </Layout>;
 }

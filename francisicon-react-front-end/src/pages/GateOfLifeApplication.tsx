@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { EyeIcon, CheckIcon, AlertCircleIcon, ChevronLeftIcon, ChevronRightIcon, UserIcon, FileTextIcon, TableIcon, FileEditIcon, ReceiptIcon } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
@@ -28,11 +29,13 @@ const steps = [
 ];
 
 export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
+  const navigate = useNavigate();
+  const { applicationCode } = useParams<{ applicationCode?: string }>();
   const [applicationNumber, setApplicationNumber] = useState('');
   const [currentStep, setCurrentStep] = useState(1);
   const [lastBookingNumber] = useState('GOL-2024-001');
   const [bookingDate, setBookingDate] = useState(getTodayDate());
-  const [viewMode, setViewMode] = useState<'form' | 'table'>('form');
+  const [viewMode, setViewMode] = useState<'form' | 'table'>('table');
   
   // Toast notifications
   const { showError, showSuccess } = useToast();
@@ -101,6 +104,18 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
       }
     }
   }, [isDataLoaded, reduxFormData]);
+
+  // Handle route parameters for edit mode
+  useEffect(() => {
+    if (applicationCode) {
+      // Set application number from route parameter
+      setApplicationNumber(applicationCode);
+      // Set view mode to form for editing
+      setViewMode('form');
+      // Load the application data for editing
+      handleEditApplicationFromTable(applicationCode);
+    }
+  }, [applicationCode, handleEditApplicationFromTable]);
 
   // Sync application code from Redux
   useEffect(() => {
@@ -281,9 +296,9 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
       return;
     }
     
-    // Open invoice/receipt PDF
-    await handleInvoiceReceipt(codeToUse);
-  }, [applicationNumber, reduxApplicationCode, handleInvoiceReceipt]);
+    // Navigate to the invoice-receipt page
+    navigate(`/invoice-receipt/${codeToUse}`);
+  }, [applicationNumber, reduxApplicationCode, navigate]);
 
 
 
@@ -582,10 +597,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                             </button>
                             <span className="text-gray-300">|</span>
                             <button
-                              onClick={() => {
-                                setViewMode('form');
-                                handleEditApplicationFromTable(appCode);
-                              }}
+                              onClick={() => navigate(`/gate-of-life/edit/${appCode}`)}
                               className="text-green-600 hover:text-green-800 hover:underline"
                               title="Edit Application"
                             >

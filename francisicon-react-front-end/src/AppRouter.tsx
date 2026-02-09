@@ -20,6 +20,8 @@ import { InscriptionPage } from './pages/InscriptionPage';
 import { InscriptionManagementPage } from './pages/InscriptionManagementPage';
 import { InscriptionAgreementPage } from './pages/InscriptionAgreementPage';
 import { NichiBookingPage } from './pages/NichiBookingPage';
+import { GlobalSearchTestPage } from './components/GlobalSearchTestPage';
+import { InfiniteLoopTest } from './components/InfiniteLoopTest';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 
 export function AppRouter() {
@@ -73,7 +75,17 @@ export function AppRouter() {
             <InvoiceAndReceiptPage />
           </ProtectedRoute>
         } />
+        <Route path="/1/invoice-receipt/:invoiceCode" element={
+          <ProtectedRoute>
+            <InvoiceAndReceiptPage />
+          </ProtectedRoute>
+        } />
         <Route path="/gates-of-life" element={
+          <ProtectedRoute>
+            <GatesOfLifePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/gate-of-life/edit/:applicationCode" element={
           <ProtectedRoute>
             <GatesOfLifePage />
           </ProtectedRoute>
@@ -104,6 +116,11 @@ export function AppRouter() {
           </ProtectedRoute>
         } />
         <Route path="/wake-room" element={
+          <ProtectedRoute>
+            <WakeRoomPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/wake-room/edit/:bookingCode" element={
           <ProtectedRoute>
             <WakeRoomPage />
           </ProtectedRoute>
@@ -156,6 +173,16 @@ export function AppRouter() {
         <Route path="/nichi-booking" element={
           <ProtectedRoute>
             <NichiBookingPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/global-search-test" element={
+          <ProtectedRoute>
+            <GlobalSearchTestPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/infinite-loop-test" element={
+          <ProtectedRoute>
+            <InfiniteLoopTest />
           </ProtectedRoute>
         } />
       </Routes>

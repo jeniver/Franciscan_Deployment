@@ -37,6 +37,7 @@ const itemRoutes = require('./routes/items');
 const utilRoutes = require('./routes/utils');
 const reportRoutes = require('./routes/reports');
 const bibleChoicesRoutes = require('./routes/bibleChoices');
+const globalSearchRoutes = require('./routes/globalSearch');
 
 const app = express();
 app.set('etag', false);
@@ -262,13 +263,20 @@ app.use('/api/inscriptions', inscriptionRoutes);
 app.use('/inscriptions', inscriptionRoutes);
 // Inscription Agreement APIs
 app.use('/api/inscription-agreements', inscriptionAgreementRoutes);
+app.use('/inscription-agreements', inscriptionAgreementRoutes); // Backward compatibility
 app.use('/api/persons', cacheMiddleware, personRoutes);
 app.use('/api/niche-agreements', cacheMiddleware, nicheAgreementRoutes);
+// Niche Agreements - mounted under both /api/niche-agreements and /niche-agreements for backward compatibility
+app.use('/niche-agreements', cacheMiddleware, nicheAgreementRoutes);
 app.use('/api/wake-rooms', cacheMiddleware, wakeRoomRoutes);
 app.use('/api/wake-room-bookings', wakeRoomBookingRoutes); // POST/PUT operations
 app.use('/api/engrave-applications', engraveApplicationRoutes); // POST/PUT operations
 app.use('/api/niche-bookings', nicheBookingRoutes); // POST/PUT operations
 app.use('/api/niche-applications', cacheMiddleware, nicheApplicationRoutes);
+// Niche Applications - mounted under both /api/niche-applications and /niche-applications for backward compatibility
+app.use('/niche-applications', cacheMiddleware, nicheApplicationRoutes);
+// Also add singular form to handle common typo
+app.use('/niche-application', cacheMiddleware, nicheApplicationRoutes);
 app.use('/api/receipts', receiptRoutes); // POST/PUT operations
 app.use('/api', receiptItemRoutes); // POST/PUT operations
 app.use('/api/items', cacheMiddleware, itemRoutes);
@@ -277,6 +285,8 @@ app.use('/api/reports', cacheMiddleware, reportRoutes);
 // Bible Choices APIs - mounted under both /api/bible-choices and /bible-choices for backward compatibility
 app.use('/api/bible-choices', cacheMiddleware, bibleChoicesRoutes);
 app.use('/bible-choices', cacheMiddleware, bibleChoicesRoutes);
+// Global Search APIs
+app.use('/api/search', globalSearchRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -302,7 +312,10 @@ app.get('/', (req, res) => {
       inscriptionAgreements: '/api/inscription-agreements',
       receipts: '/api/receipts',
       utils: '/api/utils',
-      reports: '/api/reports'
+      reports: '/api/reports',
+      globalSearch: '/api/search/global',
+      autocomplete: '/api/search/autocomplete',
+      availableNiches: '/api/search/niches/available'
     }
   });
 });

@@ -1057,9 +1057,8 @@ class NicheApplicationRepository {
         throw new Error('Application not found');
       }
 
-      if (!existing.canModify()) {
-        throw new Error('Application cannot be modified (status is Booked or Completed)');
-      }
+      // Allow modification of all statuses including Booked (3) and Completed (4)
+      // Validation removed to enable updates for all application statuses
 
       // Update main application
       const updateQuery = `

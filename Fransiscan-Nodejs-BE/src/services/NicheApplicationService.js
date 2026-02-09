@@ -6,6 +6,31 @@ const MailService = require('./MailService');
 const PdfService = require('./PdfService');
 const NicheConcentForm = require('../models/NicheConcentForm');
 const NicheConcentFormRepository = require('../repositories/NicheConcentFormRepository');
+// Date parsing utility for beneficiary dates
+const parseDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+
+  // Handle DD-MMM-YYYY format (e.g., "16-Feb-2012")
+  if (typeof value === 'string' && /^[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}$/.test(value)) {
+    const [day, month, year] = value.split('-');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthIndex = monthNames.indexOf(month);
+    if (monthIndex !== -1) {
+      const date = new Date(parseInt(year), monthIndex, parseInt(day));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+  }
+
+  // Handle standard date parsing
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
 
 const pdfService = new PdfService();
 const { cache, deleteByPrefix } = require('../utils/cache');
@@ -1702,13 +1727,33 @@ class NicheApplicationService {
       const nominee2Input = nomineesArray[1] || null;
       const beneficiariesArray = Array.isArray(data.beneficiaries) ? data.beneficiaries : [];
       
+      // Create beneficiary objects
+      const beneficiaries = [];
+      if (Array.isArray(data.beneficiaries)) {
+        data.beneficiaries.forEach(beneficiary => {
+          if (beneficiary && beneficiary.name) {
+            beneficiaries.push(new NicheApplicationBeneficiary({
+              name: beneficiary.name,
+              relationshipToApplicant: beneficiary.relationship,
+              dateOfBirth: beneficiary.dateOfBirth ? parseDate(beneficiary.dateOfBirth) : null,
+              birthYear: beneficiary.birthYear,
+              idNo: beneficiary.idNo,
+              isCatholic: beneficiary.isCatholic,
+              isMale: beneficiary.isMale,
+              relationshipToNominee1: beneficiary.relationshipToNominee1,
+              relationshipToNominee2: beneficiary.relationshipToNominee2
+            }));
+          }
+        });
+      }
+      
       // Log key data for debugging
       logger.info('[Service] Processing update with:');
       logger.info('[Service] - Applicant name:', applicantInput.name);
       logger.info('[Service] - Nominees count:', nomineesArray.length);
-      logger.info('[Service] - Beneficiaries count:', beneficiariesArray.length);
-      if (beneficiariesArray.length > 0) {
-        logger.info('[Service] - First beneficiary name:', beneficiariesArray[0].name);
+      logger.info('[Service] - Beneficiaries count:', beneficiaries.length);
+      if (beneficiaries.length > 0) {
+        logger.info('[Service] - First beneficiary name:', beneficiaries[0].name);
       }
 
       // Build application entity
@@ -1787,60 +1832,19 @@ class NicheApplicationService {
         };
       }
 
-      // Check if can modify
-      if (!existing.canModify()) {
-        return {
-          success: false,
-          error: {
-            code: 'CONFLICT',
-            message: 'Application cannot be modified (status is Booked or Completed)'
-          }
-        };
-      }
+      // Allow modification of all statuses including Booked (3) and Completed (4)
+      // Validation removed to enable updates for all application statuses
 
       const requestedConsentForms = data.consentForms ? normalizeConsentForms(data.consentForms) : null;
       const shouldPersistConsent = requestedConsentForms ? hasConsentSelections(requestedConsentForms) : false;
 
-      // Update application (without beneficiaries for now - they're handled separately)
-      logger.info('[Service] Calling repository update...');
+      // Update application with beneficiaries
+      logger.info('[Service] Calling repository update with beneficiaries...');
       await NicheApplicationRepository.update(
         code,
         application,
-        [] // Pass empty array for beneficiaries since we handle them separately
+        beneficiaries // Pass the beneficiaries array to be handled by repository
       );
-      
-      // Now handle beneficiaries separately for better performance
-      if (beneficiariesArray.length > 0) {
-        logger.info('[Service] Updating beneficiaries...');
-        try {
-          // First, get the application ID for proper linking
-          const updatedApplication = await NicheApplicationRepository.getByCode(code);
-          if (updatedApplication && updatedApplication.nicheApplicationId) {
-            // Update or create beneficiaries
-            for (const beneficiaryData of beneficiariesArray) {
-              try {
-                // Create or update beneficiary record
-                const beneficiaryEntity = buildBeneficiaryEntity({
-                  ...beneficiaryData,
-                  applicationId: updatedApplication.nicheApplicationId
-                });
-                
-                if (beneficiaryEntity) {
-                  // For updates, we should link existing beneficiaries or create new ones
-                  // This is simplified - in production, you'd want proper upsert logic
-                  logger.info(`[Service] Processing beneficiary: ${beneficiaryData.name}`);
-                }
-              } catch (beneficiaryError) {
-                logger.warn('[Service] Failed to process beneficiary:', beneficiaryData.name, beneficiaryError.message);
-                // Continue with other beneficiaries
-              }
-            }
-          }
-        } catch (beneficiaryError) {
-          logger.warn('[Service] Beneficiary update warning:', beneficiaryError.message);
-          // Don't fail the entire operation if beneficiary update fails
-        }
-      }
 
       // Handle consent forms if present
       if (shouldPersistConsent) {
@@ -2190,48 +2194,111 @@ class NicheApplicationService {
         };
       }
 
-      // Check if can modify
-      if (!existing.canModify()) {
-        return {
-          success: false,
-          error: {
-            code: 'CONFLICT',
-            message: 'Application cannot be modified (status is Booked or Completed)'
-          }
-        };
-      }
+      // Allow modification of all statuses including Booked (3) and Completed (4)
+      // Validation removed to enable updates for all application statuses
 
       const requestedConsentForms = data.consentForms ? normalizeConsentForms(data.consentForms) : null;
       const shouldPersistConsent = requestedConsentForms ? hasConsentSelections(requestedConsentForms) : false;
 
       // Create updated application object
-      const application = new NicheApplication({
+      // First, extract nested data from payload and map to flat entity fields
+      const applicantData = data.applicant || {};
+      const nomineeData = Array.isArray(data.nominees) ? data.nominees[0] : data.nominee || {};
+      const nominee2Data = Array.isArray(data.nominees) && data.nominees.length > 1 ? data.nominees[1] : data.nominee2 || {};
+      
+      const applicationData = {
         ...existing,
+        // Applicant data mapping
+        applicantName: applicantData.name || existing.applicantName,
+        applicantEmailID: applicantData.email || existing.applicantEmailID,
+        applicantMobileNo: applicantData.phone || existing.applicantMobileNo,
+        applicantHomeTelNo: applicantData.homeTel || existing.applicantHomeTelNo,
+        applicantOfficeTelNo: applicantData.officeTel || existing.applicantOfficeTelNo,
+        applicantIDNo: applicantData.idNo || existing.applicantIDNo,
+        applicantIsCatholic: applicantData.isCatholic !== undefined ? applicantData.isCatholic : existing.applicantIsCatholic,
+        
+        // Applicant address mapping
+        applicantAddressNo: applicantData.address?.no || existing.applicantAddressNo,
+        applicantAddressLine1: applicantData.address?.line1 || existing.applicantAddressLine1,
+        applicantAddressLine2: applicantData.address?.line2 || existing.applicantAddressLine2,
+        applicantAddressCity: applicantData.address?.city || existing.applicantAddressCity,
+        applicantAddressState: applicantData.address?.state || existing.applicantAddressState,
+        applicantAddressCountry: applicantData.address?.country || existing.applicantAddressCountry,
+        
+        // Primary nominee mapping
+        nomineeName: nomineeData.name || existing.nomineeName,
+        nomineeEmailID: nomineeData.email || existing.nomineeEmailID,
+        nomineeMobileNo: nomineeData.phone || existing.nomineeMobileNo,
+        nomineeHomeTelNo: nomineeData.homeTel || existing.nomineeHomeTelNo,
+        nomineeOfficeTelNo: nomineeData.officeTel || existing.nomineeOfficeTelNo,
+        nomineeIDNo: nomineeData.idNo || existing.nomineeIDNo,
+        nomineeRelationship: nomineeData.relationship || existing.nomineeRelationship,
+        nomineeIsCatholic: nomineeData.isCatholic !== undefined ? nomineeData.isCatholic : existing.nomineeIsCatholic,
+        
+        // Primary nominee address mapping
+        nomineeAddressNo: nomineeData.address?.no || existing.nomineeAddressNo,
+        nomineeAddressLine1: nomineeData.address?.line1 || existing.nomineeAddressLine1,
+        nomineeAddressLine2: nomineeData.address?.line2 || existing.nomineeAddressLine2,
+        nomineeAddressCity: nomineeData.address?.city || existing.nomineeAddressCity,
+        nomineeAddressState: nomineeData.address?.state || existing.nomineeAddressState,
+        nomineeAddressCountry: nomineeData.address?.country || existing.nomineeAddressCountry,
+        
+        // Secondary nominee mapping
+        nomineeName2: nominee2Data.name || existing.nomineeName2,
+        nomineeEmailID2: nominee2Data.email || existing.nomineeEmailID2,
+        nomineeMobileNo2: nominee2Data.phone || existing.nomineeMobileNo2,
+        nomineeHomeTelNo2: nominee2Data.homeTel || existing.nomineeHomeTelNo2,
+        nomineeOfficeTelNo2: nominee2Data.officeTel || existing.nomineeOfficeTelNo2,
+        nomineeIDNo2: nominee2Data.idNo || existing.nomineeIDNo2,
+        nomineeRelationship2: nominee2Data.relationship || existing.nomineeRelationship2,
+        nomineeIsCatholic2: nominee2Data.isCatholic !== undefined ? nominee2Data.isCatholic : existing.nomineeIsCatholic2,
+        
+        // Secondary nominee address mapping
+        nomineeAddressNo2: nominee2Data.address?.no || existing.nomineeAddressNo2,
+        nomineeAddressLine12: nominee2Data.address?.line1 || existing.nomineeAddressLine12,
+        nomineeAddressLine22: nominee2Data.address?.line2 || existing.nomineeAddressLine22,
+        nomineeAddressCity2: nominee2Data.address?.city || existing.nomineeAddressCity2,
+        nomineeAddressState2: nominee2Data.address?.state || existing.nomineeAddressState2,
+        nomineeAddressCountry2: nominee2Data.address?.country || existing.nomineeAddressCountry2,
+        
+        // Keep other fields from payload or existing
         ...data,
         nicheApplicationId: existing.nicheApplicationId,
         code: existing.code
-      });
+      };
+      
+      const application = new NicheApplication(applicationData);
 
-      const normalizedNicheId = parseIntegerLike(
-        pickFirst(
-          data.nicheId,
-          data.niche?.nicheId,
-          data.niche?.id,
-          data.nicheDetails?.nicheId,
-          application.niche?.nicheId,
-          application.nicheId,
-          existing.nicheId
-        )
-      );
-
-      if (!normalizedNicheId) {
-        return {
-          success: false,
-          error: {
-            code: 'VALIDATION_FAILED',
-            message: 'Niche ID is required'
-          }
-        };
+      // For booked applications (status 3), preserve the existing niche ID to avoid changing allocations
+      // Only allow niche ID changes for draft (1) and pending (2) applications
+      let normalizedNicheId;
+      
+      if (existing.status === 3) { // Booked application
+        // Preserve the existing niche ID, ignore any changes in the payload
+        normalizedNicheId = existing.nicheId;
+      } else {
+        // For draft/pending applications, allow niche ID changes
+        normalizedNicheId = parseIntegerLike(
+          pickFirst(
+            data.nicheId,
+            data.niche?.nicheId,
+            data.niche?.id,
+            data.nicheDetails?.nicheId,
+            application.niche?.nicheId,
+            application.nicheId,
+            existing.nicheId
+          )
+        );
+        
+        if (!normalizedNicheId) {
+          return {
+            success: false,
+            error: {
+              code: 'VALIDATION_FAILED',
+              message: 'Niche ID is required'
+            }
+          };
+        }
       }
 
       application.nicheId = normalizedNicheId;
@@ -2264,7 +2331,7 @@ class NicheApplicationService {
             beneficiaries.push(new NicheApplicationBeneficiary({
               name: beneficiary.name,
               relationshipToApplicant: beneficiary.relationship,
-              dateOfBirth: beneficiary.dateOfBirth ? new Date(beneficiary.dateOfBirth) : null,
+              dateOfBirth: beneficiary.dateOfBirth ? parseDate(beneficiary.dateOfBirth) : null,
               birthYear: beneficiary.birthYear,
               idNo: beneficiary.idNo,
               isCatholic: beneficiary.isCatholic,

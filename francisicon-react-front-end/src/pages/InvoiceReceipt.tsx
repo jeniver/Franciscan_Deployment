@@ -6,6 +6,7 @@ import { invoicePdfService } from '../services/invoicePdfService';
 import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
 import { InvoiceTemplateData } from '../services/invoiceTemplateService';
 import { nicheAgreementService } from '../services/nicheAgreementService';
+import { invoiceService } from '../services/invoiceService';
 
 interface InvoiceReceiptProps {
   formData: any;
@@ -63,74 +64,184 @@ export function InvoiceReceipt({
 
     const loadAgreementInvoice = async () => {
       try {
-        const response = await nicheAgreementService.getNicheAgreement(appNumber);
-        const data = response?.data;
-        if (!data || isCancelled) return;
+        // Check if it's an inscription code (starts with 'I-')
+        const isInspectionCode = appNumber.startsWith('I-') || 
+                                /^I-\d+-\d+$/.test(appNumber) || 
+                                appNumber.startsWith('INCR-');
+        
+        let response;
+        if (isInspectionCode) {
+          // For inscription codes, use the invoice service which handles both niche and inscription data
+          response = await invoiceService.getInvoiceByCode(appNumber);
+        } else {
+          // For niche application codes, use the niche agreement service
+          response = await nicheAgreementService.getNicheAgreement(appNumber);
+        }
 
-        const agreementInvoice = data.invoice || {};
-        const applicant = data.applicant || {};
-        const niche = data.niche || {};
-        const metadata = data.metadata || {};
+        // Handle response based on whether it's from inscription or niche service
+        let agreementInvoice, applicant, niche, metadata, backendInvoice;
+        
+        if (isInspectionCode) {
+          // Handle inscription response format
+          const data = response;
+          
+          if (data.isApplicationData && data.items) {
+            // This is application data (no invoice exists yet)
+            backendInvoice = {
+              invoiceNo: invoiceNoRef.current || `INV-${appNumber}`,
+              invoiceDate: invoiceDateRef.current || new Date().toLocaleDateString(),
+              dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
+              totalAmount: Number(data.summary?.grandTotal ?? 0) || 0,
+              nicheAmount: 0, // No niche amount for inscriptions
+              serviceAmount: 0, // No service fee for inscriptions
+              taxAmount: Number(data.summary?.totalTax ?? 0) || 0,
+              status: 'Pending',
+              // Applicant details (from backend)
+              applicantName: data.customerName || normalizedData.applicantName,
+              applicantIDNo: normalizedData.applicantIDNo, // Not available in inscription data
+              applicantEmail: normalizedData.applicantEmail, // Not available in inscription data
+              applicantPhone: normalizedData.applicantPhone, // Not available in inscription data
+              applicantAddress: normalizedData.applicantAddress, // Not available in inscription data
+              // Niche details (not applicable for inscriptions)
+              nicheDetails: {
+                nicheId: null,
+                nicheCode: normalizedData.nicheCode, // Use from form data
+                nicheNumber: normalizedData.nicheNumber, // Use from form data
+                chapel: normalizedData.chapel, // Use from form data
+                chapelCode: normalizedData.chapelCode, // Use from form data
+                wallName: normalizedData.wallName, // Use from form data
+                wallCode: normalizedData.wallCode, // Use from form data
+                rowNumber: normalizedData.rowNumber, // Use from form data
+                rowLevel: normalizedData.rowLevel, // Use from form data
+                nichePrice: 0, // No niche price for inscriptions
+              },
+              beneficiaries: (data.beneficiaries || []).map((b: any) => ({
+                name: b.name || '',
+                relationshipToApplicant: b.relationshipToApplicant || '',
+                nric: b.idNo || '',
+              })),
+              nominees: [data.nominee, data.nominee2]
+                .filter(Boolean)
+                .map((n: any) => ({
+                  name: n.name || '',
+                  relationship: n.relationship || '',
+                  nric: n.idNo || '',
+                })),
+              metadata: {
+                applicationNumber: data.applicationCode || appNumber,
+              },
+            };
+          } else {
+            // This is actual invoice data
+            backendInvoice = {
+              invoiceNo: data.code || data.invoiceCode || invoiceNoRef.current || `INV-${appNumber}`,
+              invoiceDate: data.transactionDate ? new Date(data.transactionDate).toLocaleDateString() : invoiceDateRef.current || new Date().toLocaleDateString(),
+              dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
+              totalAmount: Number(data.totalAmount ?? data.payingAmount ?? 0) || 0,
+              nicheAmount: 0, // No niche amount for inscriptions
+              serviceAmount: 0, // No service fee for inscriptions
+              taxAmount: Number(data.taxAmount ?? 0) || 0,
+              status: data.status ? (data.status === 1 ? 'Active' : 'Inactive') : 'Pending',
+              // Applicant details
+              applicantName: data.customerName || normalizedData.applicantName,
+              applicantIDNo: normalizedData.applicantIDNo,
+              applicantEmail: normalizedData.applicantEmail,
+              applicantPhone: normalizedData.applicantPhone,
+              applicantAddress: normalizedData.applicantAddress,
+              // Niche details (not applicable for inscriptions)
+              nicheDetails: {
+                nicheId: null,
+                nicheCode: normalizedData.nicheCode,
+                nicheNumber: normalizedData.nicheNumber,
+                chapel: normalizedData.chapel,
+                chapelCode: normalizedData.chapelCode,
+                wallName: normalizedData.wallName,
+                wallCode: normalizedData.wallCode,
+                rowNumber: normalizedData.rowNumber,
+                rowLevel: normalizedData.rowLevel,
+                nichePrice: 0,
+              },
+              beneficiaries: [],
+              nominees: [],
+              metadata: {
+                applicationNumber: data.refDocNumber || appNumber,
+              },
+              // Store inscription-specific details
+              details: data.details || [],
+              summary: data.summary || {}
+            };
+          }
+        } else {
+          // Handle niche agreement response format (existing logic)
+          const data = response?.data;
+          if (!data || isCancelled) return;
 
-        const backendInvoice = {
-          invoiceNo: agreementInvoice.invoiceNo || invoiceNoRef.current || `INV-${appNumber}`,
-          invoiceDate: agreementInvoice.invoiceDate || invoiceDateRef.current || new Date().toLocaleDateString(),
-          dueDate:
-            agreementInvoice.invoiceDate ||
-            new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
-          totalAmount: Number(agreementInvoice.invoicePayingAmount ?? niche.totalAmount ?? 0) || 0,
-          nicheAmount: Number(niche.totalAmount ?? 0) || 0,
-          serviceAmount: 300, // Updated service fee (Setting of tables + Sealing of niche: 20 + 20 = 40, but using 300 as per standard practice)
-          taxAmount: Number(agreementInvoice.taxAmount ?? 0) || 0,
-          status: (data.agreement?.status || 'Pending') as string,
-          // Applicant details (from backend)
-          applicantName: applicant.name || normalizedData.applicantName,
-          applicantIDNo: applicant.idNo || normalizedData.applicantIDNo,
-          applicantEmail: applicant.email || normalizedData.applicantEmail,
-          applicantPhone: applicant.mobileNo || normalizedData.applicantPhone,
-          applicantAddress: applicant.address || normalizedData.applicantAddress,
-          // Niche details (from backend)
-          nicheDetails: {
-            nicheId: null,
-            nicheCode: niche.code || normalizedData.nicheCode,
-            nicheNumber: niche.number || normalizedData.nicheNumber,
-            chapel:
-              niche.location?.chapel?.chapelName ||
-              niche.chapelName ||
-              normalizedData.chapel,
-            chapelCode: niche.location?.chapel?.chapelCode || normalizedData.chapelCode,
-            wallName:
-              niche.location?.wall?.wallName ||
-              niche.wallName ||
-              normalizedData.wallName,
-            wallCode: niche.location?.wall?.wallCode || normalizedData.wallCode,
-            rowNumber:
-              niche.rowNumber ||
-              niche.location?.row?.rowCode ||
-              normalizedData.rowNumber,
-            rowLevel: niche.location?.row?.level ?? normalizedData.rowLevel,
-            nichePrice: Number(niche.totalAmount ?? 0) || 0,
-          },
-          beneficiaries: (data.beneficiaries || []).map((b: any) => ({
-            name: b.name || '',
-            relationshipToApplicant: b.relationshipToApplicant || '',
-            nric: b.idNo || '',
-          })),
-          nominees: [data.nominee, data.nominee2]
-            .filter(Boolean)
-            .map((n: any) => ({
-              name: n.name || '',
-              relationship: n.relationship || '',
-              nric: n.idNo || '',
+          agreementInvoice = data.invoice || {};
+          applicant = data.applicant || {};
+          niche = data.niche || {};
+          metadata = data.metadata || {};
+
+          backendInvoice = {
+            invoiceNo: agreementInvoice.invoiceNo || invoiceNoRef.current || `INV-${appNumber}`,
+            invoiceDate: agreementInvoice.invoiceDate || invoiceDateRef.current || new Date().toLocaleDateString(),
+            dueDate:
+              agreementInvoice.invoiceDate ||
+              new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
+            totalAmount: Number(agreementInvoice.invoicePayingAmount ?? niche.totalAmount ?? 0) || 0,
+            nicheAmount: Number(niche.totalAmount ?? 0) || 0,
+            serviceAmount: 300, // Updated service fee (Setting of tables + Sealing of niche: 20 + 20 = 40, but using 300 as per standard practice)
+            taxAmount: Number(agreementInvoice.taxAmount ?? 0) || 0,
+            status: (data.agreement?.status || 'Pending') as string,
+            // Applicant details (from backend)
+            applicantName: applicant.name || normalizedData.applicantName,
+            applicantIDNo: applicant.idNo || normalizedData.applicantIDNo,
+            applicantEmail: applicant.email || normalizedData.applicantEmail,
+            applicantPhone: applicant.mobileNo || normalizedData.applicantPhone,
+            applicantAddress: applicant.address || normalizedData.applicantAddress,
+            // Niche details (from backend)
+            nicheDetails: {
+              nicheId: null,
+              nicheCode: niche.code || normalizedData.nicheCode,
+              nicheNumber: niche.number || normalizedData.nicheNumber,
+              chapel:
+                niche.location?.chapel?.chapelName ||
+                niche.chapelName ||
+                normalizedData.chapel,
+              chapelCode: niche.location?.chapel?.chapelCode || normalizedData.chapelCode,
+              wallName:
+                niche.location?.wall?.wallName ||
+                niche.wallName ||
+                normalizedData.wallName,
+              wallCode: niche.location?.wall?.wallCode || normalizedData.wallCode,
+              rowNumber:
+                niche.rowNumber ||
+                niche.location?.row?.rowCode ||
+                normalizedData.rowNumber,
+              rowLevel: niche.location?.row?.level ?? normalizedData.rowLevel,
+              nichePrice: Number(niche.totalAmount ?? 0) || 0,
+            },
+            beneficiaries: (data.beneficiaries || []).map((b: any) => ({
+              name: b.name || '',
+              relationshipToApplicant: b.relationshipToApplicant || '',
+              nric: b.idNo || '',
             })),
-          metadata: {
-            applicationNumber: metadata.applicationNumber || appNumber,
-          },
-        };
+            nominees: [data.nominee, data.nominee2]
+              .filter(Boolean)
+              .map((n: any) => ({
+                name: n.name || '',
+                relationship: n.relationship || '',
+                nric: n.idNo || '',
+              })),
+            metadata: {
+              applicationNumber: metadata.applicationNumber || appNumber,
+            },
+          };
+        }
 
         setInvoiceData(backendInvoice);
         setHasBackendInvoice(true);
-      } catch {
+      } catch (error) {
+        console.error('Error loading agreement invoice:', error);
         // If backend agreement is not available, fall back to local calculation
         setHasBackendInvoice(false);
       }
@@ -446,7 +557,7 @@ export function InvoiceReceipt({
               <span className="text-sm font-medium text-yellow-800">${invoiceData.serviceAmount?.toLocaleString() || '0'}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-yellow-300">
-              <span className="text-sm font-medium text-yellow-800">GST (7%):</span>
+              <span className="text-sm font-medium text-yellow-800">GST (9%):</span>
               <span className="text-sm font-medium text-yellow-800">${invoiceData.taxAmount?.toLocaleString() || '0'}</span>
             </div>
             <div className="flex justify-between py-3 border-t-2 border-yellow-400 pt-3">

@@ -1,7 +1,8 @@
-import React from 'react';
-import { MenuIcon, LogOutIcon } from 'lucide-react';
+import React, { useState } from 'react';
+import { MenuIcon, LogOutIcon, Search } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { GlobalSearchModal } from './EnhancedGlobalSearchModal';
 
 interface MainHeaderProps {
   onMenuClick?: () => void;
@@ -12,6 +13,7 @@ export function MainHeader({
 }: MainHeaderProps) {
   const { logoutUser, user, loading } = useAuth();
   const navigate = useNavigate();
+  const [isGlobalSearchModalOpen, setIsGlobalSearchModalOpen] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -71,6 +73,16 @@ export function MainHeader({
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* Global Search Button */}
+            <button 
+              onClick={() => setIsGlobalSearchModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title="Global Search"
+            >
+              <Search className="w-4 h-4" />
+              <span className="hidden md:inline">Search</span>
+            </button>
+            
             <div className="text-right">
               <p className="text-sm font-medium text-gray-900">{getUserDisplayName()}</p>
               <p className="text-xs text-gray-500">{getUserRole()}</p>
@@ -90,6 +102,12 @@ export function MainHeader({
           </div>
         </div>
       </div>
+      
+      {/* Global Search Modal */}
+      <GlobalSearchModal
+        isOpen={isGlobalSearchModalOpen}
+        onClose={() => setIsGlobalSearchModalOpen(false)}
+      />
     </header>
   );
 }

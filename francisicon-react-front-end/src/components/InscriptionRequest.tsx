@@ -223,20 +223,23 @@ export function InscriptionRequest() { // Removed props parameter since they wer
     try {
       // Check if the nicheApplicationCode is an inscription code (starts with 'I-')
       let invoiceCode;
+      let codeToNavigate;
       if (nicheApplicationCode.startsWith('I-')) {
         // Call the inscription invoice endpoint
         const result = await handleCreateInvoice(nicheApplicationCode);
         invoiceCode = result.invoiceCode;
+        codeToNavigate = nicheApplicationCode;
       } else {
         // For regular application codes, call the inscription invoice endpoint
         // since inscription invoices are created based on inscription request codes
         const inscriptionCode = `I-${nicheApplicationCode}`;
         const result = await handleCreateInvoice(inscriptionCode);
         invoiceCode = result.invoiceCode;
+        codeToNavigate = inscriptionCode;
       }
       
       // Navigate to the invoice-receipt page after successful invoice creation
-      navigate('/1/invoice-receipt', { state: { applicationNumber: invoiceCode } });
+      navigate(`/invoice-receipt/${codeToNavigate}`);
     } catch (error) {
       // Error is handled by toast in the hook
     }

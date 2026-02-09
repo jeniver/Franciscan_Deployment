@@ -815,7 +815,7 @@ class InscriptionInvoiceService {
               // No inscriptionRequestNo - indicates inscription doesn't exist yet
               inscriptionRequestNo: null,
               
-              // Application Code - use the niche application code (input parameter)
+              // Application Code - use the input parameter (niche application code) for fallback case
               applicationCode: applicationCode,
               
               // Items (filtered - Urn Marble removed)
@@ -1025,8 +1025,8 @@ class InscriptionInvoiceService {
       // Inscription Request No. (Auto-generated)
       inscriptionRequestNo: application.code,
       
-      // Application Code - use niche application code instead of inscription code
-      applicationCode: application.nicheApplicationCode || application.code,
+      // Application Code - use the actual inscription code when inscription exists
+      applicationCode: application.code,
       
       // Items (filtered response - Urn Marble removed)
       items: filteredItems,
@@ -1061,7 +1061,25 @@ class InscriptionInvoiceService {
         bibleInscriptionText: inscriptionPhrase,
         additionalInscriptionPhrase: inscriptionPhrase,
         remarks: application.remarks || '',
-        nicheApplicationCode: application.nicheApplicationCode || '',
+        // Use the original niche application code extracted from the inscription code if the retrieved niche application code doesn't match the pattern
+        // This handles cases where the database relationship might be inconsistent
+        nicheApplicationCode: (() => {
+          // If the inscription code follows the pattern I-{nicheCode}, extract the original niche code
+          const inscriptionMatch = application.code.match(/^I-(.+)$/);
+          const extractedCode = inscriptionMatch ? inscriptionMatch[1] : null;
+          
+          // If the extracted code matches the pattern \d+-\d+ and differs from the linked one, use the extracted one
+          if (extractedCode && /^\d+-\d+$/.test(extractedCode)) {
+            // If the requested code is a niche application code format, use it
+            if (/^\d+-\d+$/.test(applicationCode) && !applicationCode.startsWith('I-')) {
+              return applicationCode;
+            }
+            // Otherwise, prefer the extracted code from the inscription code
+            return extractedCode;
+          }
+          // Fallback to the linked niche application code or requested code
+          return application.nicheApplicationCode || applicationCode;
+        })(),
         nicheBookingId: application.nicheBookingId || null
       }
     };

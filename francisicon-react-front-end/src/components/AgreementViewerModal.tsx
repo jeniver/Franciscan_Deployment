@@ -7,7 +7,7 @@ import {
   Minimize2Icon,
 } from 'lucide-react'
 import { AgreementPdfTemplate } from './AgreementPdfTemplate'
-import {NomineeAgreement} from './NomineeAgreementPdfView'
+import { NomineeAgreement } from './NomineeAgreementPdfView'
 interface AgreementViewerModalProps {
   isOpen: boolean
   onClose: () => void
@@ -61,34 +61,13 @@ export function AgreementViewerModal({
     // Clone with all computed styles
     const styledClone = cloneWithStyles(contentRef.current)
     // Create print window
-    const printWindow = window.open('', '_blank', 'width=900,height=700')
+    const printWindow = window.open('', '_blank', 'width=20000,height=10000')
     if (!printWindow) {
       alert('Please allow popups to print the document')
       return
     }
     // Write the document with the styled clone
-    const printStyles = `
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body {
-        font-family: Arial, sans-serif;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-        color-adjust: exact !important;
-      }
-      @media print {
-        body {
-          margin: 0;
-          padding: 0;
-        }
-        @page {
-          size: A4;
-          margin: 5mm;
-        }
-      }
+    const printStyles = ` * { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; } @page { size: A4; margin: 10mm; } @media print { body { margin: 0; padding: 0; } .print-container { width: 100%; max-width: 100%; zoom: 1.2; /* scale up to fill A4 */ } }
     `
     printWindow.document.write(
       '<!DOCTYPE html><html><head>' +
@@ -220,24 +199,24 @@ export function AgreementViewerModal({
                   <Maximize2Icon className="w-5 h-5" />
                 )}
               </button>
-             
-                  <button
-                    onClick={handlePrint}
-                    disabled={isGeneratingPdf}
-                    className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Print Agreement"
-                  >
-                    <PrinterIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={handleDownloadPdf}
-                    disabled={isGeneratingPdf}
-                    className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Download PDF"
-                  >
-                    <DownloadIcon className="w-5 h-5" />
-                  </button>
-              
+
+              <button
+                onClick={handlePrint}
+                disabled={isGeneratingPdf}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Print Agreement"
+              >
+                <PrinterIcon className="w-5 h-5" />
+              </button>
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isGeneratingPdf}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Download PDF"
+              >
+                <DownloadIcon className="w-5 h-5" />
+              </button>
+
               <button
                 onClick={onClose}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
@@ -265,7 +244,7 @@ export function AgreementViewerModal({
               </div>
             ) : secoundNomineeAgreement ? (
               <div ref={contentRef}>
-                <NomineeAgreement 
+                <NomineeAgreement
                   nicheNo={secoundNomineeAgreement.nicheNo}
                   chapelName={secoundNomineeAgreement.chapelName}
                   applicant={secoundNomineeAgreement.applicant}

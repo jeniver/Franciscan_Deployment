@@ -213,7 +213,7 @@ class NicheApplication {
   }
 
   canModify() {
-    return this.status === 1 || this.status === 2; // Draft or Pending
+    return this.status === 1 || this.status === 2 || this.status === 3; // Draft, Pending, or Booked
   }
 }
 

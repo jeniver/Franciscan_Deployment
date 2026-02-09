@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { SearchIcon, EyeIcon, EditIcon, TrashIcon, CalendarIcon, UserIcon, ClockIcon } from 'lucide-react';
 import { Button } from './common/Button';
 import { Input } from './common/Input';
@@ -22,6 +23,7 @@ interface WakeRoomSearchProps {
 }
 
 export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSearchProps) {
+  const navigate = useNavigate();
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({
     applicantName: '',
     nameOfDeceased: '',
@@ -319,11 +321,7 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
                             variant="secondary"
                             size="sm"
                             icon={<EditIcon className="w-4 h-4" />}
-                            onClick={async () => {
-                              const churchId = booking.churchId || defaultChurchId;
-                              await handleGetBookingByCode(booking.code, churchId);
-                              onBookingEdit?.(booking);
-                            }}
+                            onClick={() => navigate(`/wake-room/edit/${booking.code}`)}
                           >
                             Edit
                           </Button>

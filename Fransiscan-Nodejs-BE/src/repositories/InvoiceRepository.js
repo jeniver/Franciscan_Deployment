@@ -747,7 +747,9 @@ class InvoiceRepository extends BaseRepository {
         || normalizedSearchCodeUpper.startsWith('INCR-')
         || normalizedSearchCodeUpper.startsWith('GOLA-')
         || (normalizedSearchCodeUpper.startsWith('I-') && 
-            (normalizedSearchCodeUpper.match(/^I-\d+$/) || normalizedSearchCodeUpper.startsWith('I-NAPP-')));
+            (normalizedSearchCodeUpper.match(/^I-\d+$/) || 
+             normalizedSearchCodeUpper.startsWith('I-NAPP-') ||
+             /^I-\d+-\d+$/.test(normalizedSearchCodeUpper)));
       logger.info(`Looking up invoice: code=${searchCode}, churchId=${churchId}, applicationCode=${applicationCode}`);
 
       // Build a set of candidate code values to handle different user inputs
@@ -905,7 +907,9 @@ class InvoiceRepository extends BaseRepository {
               code: normalizedSearchCode,
               codeUpper: normalizedSearchCodeUpper,
               codePrefix: (normalizedSearchCodeUpper.startsWith('I-') && 
-                  (normalizedSearchCodeUpper.match(/^I-\d+$/) || normalizedSearchCodeUpper.startsWith('I-NAPP-')))
+                  (normalizedSearchCodeUpper.match(/^I-\d+$/) || 
+                   normalizedSearchCodeUpper.startsWith('I-NAPP-') ||
+                   /^I-\d+-\d+$/.test(normalizedSearchCodeUpper)))
                 ? normalizedSearchCodeUpper
                 : `I-${normalizedSearchCodeUpper}`
             };
@@ -1235,7 +1239,13 @@ class InvoiceRepository extends BaseRepository {
             };
           }
         } catch (invoiceSearchError) {
-          logger.warn('Failed to search for existing invoice by application code:', invoiceSearchError.message);
+          // For WAPP codes (wake room bookings), this is expected behavior as they typically don't have existing invoices
+          const isWAPPCode = /^I-\d+-\d+$/.test(searchCode) || searchCode.startsWith('WAPP-');
+          if (isWAPPCode) {
+            logger.info(`No existing invoice found for WAPP code ${searchCode} (expected for new wake room bookings)`);
+          } else {
+            logger.warn('Failed to search for existing invoice by application code:', invoiceSearchError.message);
+          }
         }
         
         // Comprehensive diagnostic: Check multiple scenarios

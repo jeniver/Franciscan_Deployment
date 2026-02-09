@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { XIcon, PrinterIcon, DownloadIcon, Maximize2Icon, Minimize2Icon } from 'lucide-react';
 import { invoiceTemplateService, InvoiceTemplateData } from '../services/invoiceTemplateService';
 import { TaxInvoice } from '../components/InvoiceReceiptTemplate/InvoiceTemplate';
@@ -30,140 +30,209 @@ export function InvoiceViewerModal({
     }
   }, [invoiceData, isOpen]);
 
-  const handlePrint = () => {
-    if (!htmlContent) return;
-    setIsGeneratingPdf(true);
-    try {
-      // Create a new window with print-specific styles
-      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-      if (!printWindow) {
-        alert('Please allow popups to print the document');
-        return;
-      }
-      
-      // Add print-specific styles
-      const printStyles = `
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        body {
-          font-family: Arial, sans-serif;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-          color-adjust: exact !important;
-        }
-        @media print {
-          body {
-            margin: 0;
-            padding: 0;
-          }
-          @page {
-            size: A4;
-            margin: 5mm;
-          }
-        }
-      `;
-      
-      printWindow.document.write(
-        '<!DOCTYPE html><html><head>' +
-        '<title>' + (invoiceData?.receipt ? 'Receipt' : 'Invoice') + ' - ' + (invoiceData?.code || invoiceData?.invoiceCode || 'document') + '</title>' +
-        '<style>' + printStyles + '</style>' +
-        '</head><body>' +
-        htmlContent +
-        '</body></html>',
-      );
-      printWindow.document.close();
-      
-      // Wait for images to load, then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.focus();
-          printWindow.print();
-          setIsGeneratingPdf(false);
-        }, 500);
-      };
-    } catch (error) {
-      console.error('Error printing document:', error);
-      setIsGeneratingPdf(false);
-      alert('Printing failed. Please try again.');
-    }
+  // Helper function to generate receipt HTML manually since there's no generateReceiptTemplate method
+  const generateReceiptHtml = (receiptData: any): string => {
+    // Creating a simplified HTML structure similar to the ReceiptTemplate component
+    return `
+      <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif;">
+        <thead>
+          <tr>
+            <th colspan="2" style="text-align: center; padding: 10px; border-bottom: 2px solid black;">
+              <h2>RECEIPT</h2>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 8px; vertical-align: top; width: 30%;">
+              <strong>Receipt No:</strong><br>
+              <span>${receiptData.receiptNo || 'N/A'}</span>
+            </td>
+            <td style="padding: 8px; vertical-align: top; width: 70%;">
+              <strong>Date:</strong><br>
+              <span>${receiptData.date || 'N/A'}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; vertical-align: top;" colspan="2">
+              <strong>Received From:</strong><br>
+              <span>${receiptData.receivedFrom || 'N/A'}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; vertical-align: top;" colspan="2">
+              <strong>Address:</strong><br>
+              <span>${receiptData.address || 'N/A'}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; vertical-align: top;">
+              <strong>Invoice No:</strong><br>
+              <span>${receiptData.invoiceNo || 'N/A'}</span>
+            </td>
+            <td style="padding: 8px; vertical-align: top;">
+              <strong>Payment Method:</strong><br>
+              <span>${receiptData.paymentMethod || 'N/A'}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; vertical-align: top;" colspan="2">
+              <strong>Description:</strong><br>
+              <span>${receiptData.description || 'N/A'}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; vertical-align: top;">
+              <strong>Total Amount:</strong><br>
+              <span>$${receiptData.totalAmount ? receiptData.totalAmount.toFixed(2) : '0.00'}</span>
+            </td>
+            <td style="padding: 8px; vertical-align: top;">
+              <strong>In Words:</strong><br>
+              <span>${receiptData.dollarsInWords || 'N/A'}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    `;
   };
 
   const handleDownloadPdf = async () => {
-    if (!htmlContent) return;
-    setIsGeneratingPdf(true);
     try {
-      // Check if html2pdf is already loaded
-      let html2pdf = (window as any).html2pdf;
-      if (!html2pdf) {
-        // Dynamically load html2pdf from CDN
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src =
-            'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error('Failed to load PDF library'));
-          document.head.appendChild(script);
-        });
-        html2pdf = (window as any).html2pdf;
+      setIsGeneratingPdf(true);
+      
+      // Create a temporary container to render the template for PDF generation
+      const tempContainer = document.createElement('div');
+      tempContainer.style.position = 'absolute';
+      tempContainer.style.left = '-9999px';
+      tempContainer.style.top = '0';
+      tempContainer.style.width = '210mm'; // A4 width
+      tempContainer.style.minHeight = '297mm'; // A4 height
+      tempContainer.style.padding = '15mm';
+      tempContainer.style.boxSizing = 'border-box';
+      tempContainer.style.fontFamily = 'Inter, Arial, sans-serif';
+      tempContainer.style.fontSize = '12px';
+      tempContainer.style.lineHeight = '1.4';
+      
+      // Get the template HTML based on whether it's a receipt or invoice
+      let templateHTML = '';
+      if (invoiceData?.receipt) {
+        // For receipts, we'll use the receipt template component directly
+        const receiptData = mapToReceiptTemplateData(invoiceData);
+        // Since there's no generateReceiptTemplate method, we'll render the ReceiptTemplate component
+        // and get its HTML using a temporary div
+        const tempDiv = document.createElement('div');
+        // Render the receipt template to HTML manually
+        templateHTML = generateReceiptHtml(receiptData);
+      } else {
+        const invoiceTemplateData = mapToInvoiceTemplateData(invoiceData);
+        const invoiceTemplate = invoiceTemplateService.generateInvoiceTemplate(invoiceTemplateData);
+        templateHTML = `<div class="invoice-container" style="width: 100%; height: 100%;">${invoiceTemplate}</div>`;
       }
-
-      // Create a container with proper dimensions
-      const container = document.createElement('div');
-      container.style.position = 'absolute';
-      container.style.left = '-9999px';
-      container.style.top = '0';
-      container.style.width = '210mm';
-      container.style.backgroundColor = 'white';
-      container.innerHTML = htmlContent;
-      document.body.appendChild(container);
       
-      // Wait a bit for styles to apply
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      tempContainer.innerHTML = templateHTML;
+      document.body.appendChild(tempContainer);
       
-      // PDF options
-      const opt = {
-        margin: [5, 5, 5, 5],
-        filename: `${invoiceData?.receipt ? 'Receipt' : 'Invoice'}-${invoiceData?.code || invoiceData?.invoiceCode || 'document'}.pdf`,
-        image: {
-          type: 'jpeg',
-          quality: 0.98,
-        },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          letterRendering: true,
-          allowTaint: true,
-        },
-        jsPDF: {
-          unit: 'mm',
-          format: 'a4',
-          orientation: 'portrait',
-        },
-        pagebreak: {
-          mode: ['avoid-all', 'css', 'legacy'],
-        },
-      };
+      // Wait for content to render
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Generate and save PDF
-      await html2pdf().set(opt).from(container).save();
+      // Dynamically import html2canvas and jsPDF
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
       
-      // Cleanup
-      setTimeout(() => {
-        if (document.body.contains(container)) {
-          document.body.removeChild(container);
-        }
-      }, 1000);
-    } catch (error: any) {
-      console.error('Error generating PDF:', error);
-      alert(
-        'PDF generation failed. Please try the Print option and save as PDF.',
-      );
-    } finally {
+      const canvas = await html2canvas(tempContainer, {
+        scale: 2, // Higher quality
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+      
+      const imgData = canvas.toDataURL('image/jpeg', 0.8);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+      const imgY = 10; // Small margin from top
+      
+      pdf.addImage(imgData, 'JPEG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+      
+      // Determine filename based on type
+      const fileName = invoiceData?.receipt 
+        ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'unknown'}.pdf`
+        : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'unknown'}.pdf`;
+      
+      pdf.save(fileName);
+      
+      // Clean up
+      document.body.removeChild(tempContainer);
       setIsGeneratingPdf(false);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      setIsGeneratingPdf(false);
+      alert('Failed to generate PDF. Please try again.');
+    }
+  };
+
+  const handlePrint = async () => {
+    try {
+      // Create a print window
+      const printWindow = window.open('', '_blank', 'height=800,width=1000');
+      if (!printWindow) {
+        alert('Please allow popups for printing');
+        return;
+      }
+      
+      // Get the template HTML based on whether it's a receipt or invoice
+      let templateHTML = '';
+      if (invoiceData?.receipt) {
+        // For receipts, we'll use the receipt template component directly
+        const receiptData = mapToReceiptTemplateData(invoiceData);
+        // Since there's no generateReceiptTemplate method, we'll render the ReceiptTemplate component
+        // and get its HTML using a temporary div
+        const tempDiv = document.createElement('div');
+        // Render the receipt template to HTML manually
+        templateHTML = generateReceiptHtml(receiptData);
+      } else {
+        const invoiceTemplateData = mapToInvoiceTemplateData(invoiceData);
+        const invoiceTemplate = invoiceTemplateService.generateInvoiceTemplate(invoiceTemplateData);
+        templateHTML = `<div class="invoice-container" style="width: 100%; height: 100%;">${invoiceTemplate}</div>`;
+      }
+      
+      // Write the template to the print window
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Print Document</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { margin: 0; padding: 15mm; background: white; font-family: Inter, Arial, sans-serif; font-size: 12px; line-height: 1.4; }
+              @media print { @page { margin: 15mm; size: A4; } body { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; } }
+              /* Include any specific styles for the template */
+              .invoice-container, .receipt-container { width: 100%; min-height: 100%; }
+            </style>
+          </head>
+          <body>${templateHTML}</body>
+        </html>
+      `);
+      
+      printWindow.document.close();
+      printWindow.focus();
+      
+      // Wait for content to render before printing
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    } catch (error) {
+      console.error('Error printing:', error);
+      alert('Failed to print. Please try again.');
     }
   };
 
@@ -262,8 +331,8 @@ export function InvoiceViewerModal({
     };
   };
 
-  // Function to map API data to InvoiceTemplate props
-  const mapToInvoiceTemplateProps = (apiData: any) => {
+  // Function to map API data to InvoiceTemplate interface for TaxInvoice component
+  const mapToTaxInvoiceProps = (apiData: any) => {
     // Calculate address string from available address fields
     const addressParts = [
       apiData.addressNo || '',
@@ -273,14 +342,14 @@ export function InvoiceViewerModal({
       apiData.country || ''
     ].filter(part => part && part.trim() !== '');
     
-    const customerAddress = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+    const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
 
     // Debug: Log incoming apiData
-    console.log('[mapToInvoiceTemplateProps] apiData received:', apiData);
-    console.log('[mapToInvoiceTemplateProps] apiData.details:', apiData.details);
-    console.log('[mapToInvoiceTemplateProps] apiData.items:', apiData.items);
-    console.log('[mapToInvoiceTemplateProps] Has direct items:', Array.isArray(apiData.items) && apiData.items.length > 0);
-    console.log('[mapToInvoiceTemplateProps] Has details to map:', Array.isArray(apiData.details) && apiData.details.length > 0);
+    console.log('[mapToTaxInvoiceProps] apiData received:', apiData);
+    console.log('[mapToTaxInvoiceProps] apiData.details:', apiData.details);
+    console.log('[mapToTaxInvoiceProps] apiData.items:', apiData.items);
+    console.log('[mapToTaxInvoiceProps] Has direct items:', Array.isArray(apiData.items) && apiData.items.length > 0);
+    console.log('[mapToTaxInvoiceProps] Has details to map:', Array.isArray(apiData.details) && apiData.details.length > 0);
     
     // Handle both direct items array and details mapping
     let items: any[] = [];
@@ -307,21 +376,6 @@ export function InvoiceViewerModal({
       }));
     }
     
-    // Ensure all required fields are present for InvoiceTemplate
-    items = items.map(item => ({
-      description: item.description || 'Item',
-      referenceNo: item.referenceNo || 'N/A',
-      gstPercent: typeof item.gstPercent === 'number' ? item.gstPercent : 0,
-      qty: typeof item.qty === 'number' ? item.qty : 1,
-      quantity: typeof item.qty === 'number' ? item.qty : 1, // alias for compatibility
-      unitPrice: typeof item.unitPrice === 'number' ? item.unitPrice : 0,
-      amount: typeof item.amount === 'number' ? item.amount : 0
-    }));
-    
-    // Debug: Log mapped items
-    console.log('[mapToInvoiceTemplateProps] Final mapped items:', items);
-    console.log('[mapToInvoiceTemplateProps] Final items length:', items.length);
-
     // Calculate subTotal
     const subTotal = apiData.summary?.subtotal || apiData.subtotal || (apiData.totalAmount || 0) - (apiData.taxAmount || 0);
     
@@ -333,11 +387,15 @@ export function InvoiceViewerModal({
       return `${typeof num === 'number' ? num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '0.00'} Only`;
     };
 
+    // Debug: Log mapped items
+    console.log('[mapToTaxInvoiceProps] Final mapped items:', items);
+    console.log('[mapToTaxInvoiceProps] Final items length:', items.length);
+
     return {
       invoiceNo: apiData.code || apiData.invoiceCode || apiData.Code || 'N/A',
       date: formatDate(apiData.transactionDate || apiData.TransactionDate || apiData.invoiceDate || apiData.InvoiceDate || new Date()),
       name: apiData.customerName || apiData.CustomerName || 'N/A',
-      address: customerAddress,
+      address: address,
       items: items,
       subTotal: subTotal,
       gstTotal: apiData.taxAmount || apiData.TaxAmount || 0,
@@ -387,7 +445,7 @@ export function InvoiceViewerModal({
               </button>
               <button
                 onClick={handlePrint}
-                disabled={isGeneratingPdf || loading || !htmlContent}
+                disabled={isGeneratingPdf || loading || !invoiceData}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Print Document"
               >
@@ -395,7 +453,7 @@ export function InvoiceViewerModal({
               </button>
               <button
                 onClick={handleDownloadPdf}
-                disabled={isGeneratingPdf || loading || !htmlContent}
+                disabled={isGeneratingPdf || loading || !invoiceData}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Download PDF"
               >
@@ -431,7 +489,7 @@ export function InvoiceViewerModal({
                 {invoiceData?.receipt ? (
                   <ReceiptTemplate {...mapToReceiptTemplateData(invoiceData)} />
                 ) : (
-                  <TaxInvoice {...mapToInvoiceTemplateProps(invoiceData)} />
+                  <TaxInvoice {...mapToTaxInvoiceProps(invoiceData)} />
                 )}
               </div>
             ) : (
