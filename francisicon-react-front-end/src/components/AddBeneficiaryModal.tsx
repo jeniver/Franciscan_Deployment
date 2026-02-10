@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { XIcon } from 'lucide-react';
 import { formatDateForInput } from '../utils/dateUtils';
-import { BeneficiaryDatePicker } from './BeneficiaryDatePicker';
+import { EnhancedBeneficiaryDatePicker } from './EnhancedBeneficiaryDatePicker';
 
 interface AddBeneficiaryModalProps {
   isOpen: boolean;
@@ -136,13 +136,13 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
 
           {/* Date Of Birth */}
           <div>
-            <BeneficiaryDatePicker
+            <EnhancedBeneficiaryDatePicker
               label="Date Of Birth"
               value={formData.dateOfBirth}
               onChange={handleDateChange}
-              mode="full"
               minYear={1900}
               maxYear={new Date().getFullYear()}
+              placeholder="Enter date (DD-MM-YYYY) or year only (YYYY)"
             />
           </div>
 

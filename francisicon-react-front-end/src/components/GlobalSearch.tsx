@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, X, Loader2, User, Home, MapPin, Calendar, Church, Hash, BookOpen, Bed } from 'lucide-react';
 import api from '../services/api';
 import { debounce } from '../utils/debounce';
@@ -50,6 +51,7 @@ export function GlobalSearch({
   showResultsInline = true,
   entityTypes = ['application', 'inscription', 'wake-room', 'person', 'church', 'niche', 'date']
 }: GlobalSearchProps) {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState<GlobalSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -178,8 +180,9 @@ export function GlobalSearch({
     }
   };
 
-  // Handle result selection
+  // Handle result selection with proper routing
   const handleResultSelect = (result: GlobalSearchResult) => {
+  
     setSearchTerm(result.code || result.name || '');
     setShowResults(false);
     
@@ -187,12 +190,60 @@ export function GlobalSearch({
       onResultSelect(result);
     }
     
-    // Optional: Navigate to the appropriate page based on entity type
-    if (result.entityType === 'application' && result.code) {
-      window.location.href = `/niche/view/${result.code}`;
-    } else if (result.entityType === 'niche' && result.code) {
-      // Handle niche navigation
-      console.log('Navigate to niche:', result.code);
+    // Navigate to the appropriate page based on entity type
+    switch (result.entityType) {
+      case 'application':
+        // Navigate to view application page
+        if (result.code) {
+          navigate(`/niche/view/${result.code}`);
+        }
+        break;
+        
+      case 'inscription':
+        // Navigate to edit inscription page
+        if (result.code) {
+          navigate(`/inscriptions/${result.code}/edit`);
+        } else if (result.id) {
+          navigate(`/inscriptions/${result.id}/edit`);
+        }
+        break;
+        
+      case 'wake-room':
+        // Navigate to edit wake room booking
+        if (result.code) {
+          navigate(`/wake-room/edit/${result.code}`);
+        } else if (result.id) {
+          navigate(`/wake-room/edit/${result.id}`);
+        }
+        break;
+        
+      case 'person':
+        // For person entities, navigate to search results or person management
+        // Since there's no dedicated person route, we'll go to the main search page
+        console.log('Person selected:', result);
+        // Could navigate to a person details page if one exists
+        break;
+        
+      case 'church':
+        // Navigate to create new niche application (as per your specification)
+        navigate('/niche/new');
+        break;
+        
+      case 'niche':
+        // Navigate to create new niche application
+        navigate('/niche/new');
+        break;
+        
+      case 'date':
+        // For date entities, navigate to relevant section
+        // Could be reports or date-specific search
+        console.log('Date selected:', result);
+        // Could navigate to reports or date search functionality
+        break;
+        
+      default:
+        console.log('Unknown entity type:', result.entityType);
+        break;
     }
   };
 
@@ -211,19 +262,19 @@ export function GlobalSearch({
   // Get icon for entity type
   const getEntityIcon = (entityType: string) => {
     switch (entityType) {
-      case 'application':
+      case 'application': // /niche/view/:id
         return <Hash className="w-4 h-4" />;
-      case 'inscription':
+      case 'inscription': // /inscriptions/:id/edit
         return <BookOpen className="w-4 h-4" />;
-      case 'wake-room':
+      case 'wake-room': // /wake-room/edit/:id
         return <Bed className="w-4 h-4" />;
-      case 'person':
+      case 'person': // No specific route - could go to person management
         return <User className="w-4 h-4" />;
-      case 'church':
+      case 'church': // /niche/new
         return <Church className="w-4 h-4" />;
-      case 'niche':
+      case 'niche': // /niche/new
         return <Home className="w-4 h-4" />;
-      case 'date':
+      case 'date': // No specific route - could go to reports or date search
         return <Calendar className="w-4 h-4" />;
       default:
         return <Search className="w-4 h-4" />;
@@ -305,7 +356,7 @@ export function GlobalSearch({
                             {result.statusText || result.status || (result.isAvailable ? 'Available' : 'Unavailable')}
                           </span>
                           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                            {result.entityType}
+                            {result.entityType}hjhjghgjg
                           </span>
                         </div>
                         

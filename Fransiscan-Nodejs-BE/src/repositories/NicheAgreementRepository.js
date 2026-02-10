@@ -79,6 +79,7 @@ class NicheAgreementRepository extends BaseRepository {
               n.NicheRowlId,
               r.Code AS RowCode,
               r.NicheLevel,
+              r.DefaultAmount AS RowPrice,
               r.NicheWallId,
               w.Code AS WallCode,
               w.Name AS WallName,
@@ -221,7 +222,8 @@ class NicheAgreementRepository extends BaseRepository {
           row: {
             rowId: mergedData.NicheRowlId || null,
             rowCode: mergedData.RowCode || null,
-            level: mergedData.NicheLevel || null
+            level: mergedData.NicheLevel || null,
+            rowPrice: mergedData.RowPrice || 0
           }
         },
 

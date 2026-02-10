@@ -21,7 +21,7 @@ export function Sidebar({
   const menuItems: MenuItem[] = [
     {
       label: 'Niche',
-      path: '/niche',
+      path: '/niche/new',
       icon: <HomeIcon className="w-5 h-5" />
     },
       {

@@ -56,40 +56,109 @@ export function AgreementViewerModal({
     applyStyles(element, clone)
     return clone
   }
+  // const handlePrint = () => {
+  //   if (!contentRef.current) return
+  //   // Clone with all computed styles
+  //   const styledClone = cloneWithStyles(contentRef.current)
+  //   // Create print window
+  //   const printWindow = window.open('', '_blank', 'width=700,height=900')
+  //   if (!printWindow) {
+  //     alert('Please allow popups to print the document')
+  //     return
+  //   }
+  //   // Write the document with the styled clone
+  //   const printStyles = ` * { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; } @page { size: A4; margin: 10mm; } @media print { body { margin: 0; padding: 0; } .print-container { width: 100%; max-width: 100%; zoom: 1.2; /* scale up to fill A4 */ } }
+  //   `
+  //   printWindow.document.write(
+  //     '<!DOCTYPE html><html><head>' +
+  //     '<title>Agreement - ' +
+  //     applicationNumber +
+  //     '</title>' +
+  //     '<style>{`' +
+  //     printStyles +
+  //     '`}</style>' +
+  //     '</head><body>' +
+  //     styledClone.outerHTML +
+  //     '</body></html>',
+  //   )
+  //   printWindow.document.close()
+  //   // Wait for images to load, then print
+  //   printWindow.onload = () => {
+  //     setTimeout(() => {
+  //       printWindow.focus()
+  //       printWindow.print()
+  //     }, 500)
+  //   }
+  // }
+
   const handlePrint = () => {
-    if (!contentRef.current) return
-    // Clone with all computed styles
-    const styledClone = cloneWithStyles(contentRef.current)
-    // Create print window
-    const printWindow = window.open('', '_blank', 'width=20000,height=10000')
-    if (!printWindow) {
-      alert('Please allow popups to print the document')
-      return
-    }
-    // Write the document with the styled clone
-    const printStyles = ` * { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; } @page { size: A4; margin: 10mm; } @media print { body { margin: 0; padding: 0; } .print-container { width: 100%; max-width: 100%; zoom: 1.2; /* scale up to fill A4 */ } }
-    `
-    printWindow.document.write(
-      '<!DOCTYPE html><html><head>' +
-      '<title>Agreement - ' +
-      applicationNumber +
-      '</title>' +
-      '<style>{`' +
-      printStyles +
-      '`}</style>' +
-      '</head><body>' +
-      styledClone.outerHTML +
-      '</body></html>',
-    )
-    printWindow.document.close()
-    // Wait for images to load, then print
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.focus()
-        printWindow.print()
-      }, 500)
-    }
+  if (!contentRef.current) return
+
+  const styledClone = cloneWithStyles(contentRef.current)
+
+  const printWindow = window.open('', '_blank', 'width=900,height=1200')
+  if (!printWindow) {
+    alert('Please allow popups to print the document')
+    return
   }
+
+  const printStyles = `
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* REAL A4 SIZE */
+    .print-container {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 15mm;
+    }
+
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    @media print {
+      body {
+        margin: 0;
+      }
+    }
+  `
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Agreement - ${applicationNumber}</title>
+        <style>${printStyles}</style>
+      </head>
+      <body>
+        ${styledClone.outerHTML}
+      </body>
+    </html>
+  `)
+
+  printWindow.document.close()
+
+  printWindow.onload = () => {
+    setTimeout(() => {
+      printWindow.focus()
+      printWindow.print()
+    }, 300)
+}
+  }
+
+  
   const handleDownloadPdf = async () => {
     if (!contentRef.current) return
     setIsGeneratingPdf(true)

@@ -20,6 +20,8 @@ export interface DeceasedDetail {
   internmentDate: string;
   internmentTime: string;
   deathCertNo: string;
+  storagePeriodFrom?: string;
+  storagePeriodTo?: string;
 }
 
 export interface NichiBookingState {

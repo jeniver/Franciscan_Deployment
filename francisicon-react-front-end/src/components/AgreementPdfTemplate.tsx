@@ -61,6 +61,8 @@ interface AgreementPdfTemplateProps {
       chapelName?: string
       totalAmount?: number
       lineAmount?: number
+      wallPrice?: number
+      rowPrice?: number
       location?: {
         chapel?: {
           chapelId?: number
@@ -77,6 +79,7 @@ interface AgreementPdfTemplateProps {
           rowId?: number
           rowCode?: string
           level?: number
+          rowPrice?: number
         }
       }
     }
@@ -203,6 +206,8 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   const chapelName =
     niche?.chapelName || niche?.location?.chapel?.chapelName || ''
   const nicheNumber = niche?.number || ''
+  const wallName = niche?.wallName || niche?.location?.wall?.wallName || ''
+  const wallPrice = niche?.location?.row?.rowPrice || niche?.rowPrice || niche?.wallPrice || niche?.totalAmount || 0
   const footerAgreementDate = formatDate(agreementDate || appliedDate)
   const statusText = data.statusText || ''
   const applicantName = applicant?.name || ''
@@ -423,7 +428,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
         <div className="my-3 text-xs text-justify leading-relaxed">
           In consideration of the sum of{' '}
           <span className="inline-block w-24 border-b border-black text-center">
-            $ {formatCurrency(considerationSum)}
+            $ {formatCurrency(wallPrice)}
           </span>{' '}
           from the Applicant as the fee ("fee"), for which the Order
           acknowledges receipt, the Order agrees to the interment and storage at
@@ -444,6 +449,8 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
           <span>of an urn(s) containing the ashes of</span>
         </div>
 
+     
+
         {/* Beneficiary 1 */}
         <div className="flex border border-black mb-1 text-xs">
           <div className="w-6 border-r border-black flex items-center justify-center font-bold bg-gray-50">
@@ -462,7 +469,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </TableRow>
             <TableRow>
               <LabelCell width="w-36">Date of Birth</LabelCell>
-              <ValueCell>{beneficiary1?.dateOfBirth || ''}</ValueCell>
+              <ValueCell>{beneficiary1?.dateOfBirth ||beneficiary1?.birthYear || ''}</ValueCell>
               <LabelCell width="w-28" className="border-l border-black">
                 Sex
               </LabelCell>
@@ -616,7 +623,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 The Order of Friars Minor (Singapore) Limited
               </p>
               <div className="border-b border-black mb-2"></div>
-              <div className="mb-1">Fr Gerard Victor</div>
+              <div className="mb-1">FrGerard Victor</div>
               <div>Friar - Manager</div>
             </div>
           </div>
