@@ -7,6 +7,7 @@ export interface InvoiceFlags {
   isInvoice: boolean;
   hasInvoice: boolean;
   canCreateInvoice: boolean;
+  canCreateReceipt: boolean;
 }
 
 export interface InvoiceDetail {
@@ -24,7 +25,7 @@ export interface InvoiceDetail {
   totalPayingAmount: number;
   refDocNumber: string;
   refDocName: string;
-  refType: string;
+
   lineTotalAmount: number;
   lineTaxPercent: number;
   lineTaxAmount: number;
@@ -210,6 +211,37 @@ export const fetchInvoiceOrApplication = createAsyncThunk<
   }
 );
 
+// Fetch combined invoice and receipt data by code
+export const fetchCombinedInvoiceReceiptData = createAsyncThunk<
+  any, // Combined response type
+  string,
+  { rejectValue: string }
+>(
+  'invoice/fetchCombinedInvoiceReceiptData',
+  async (code: string, { rejectWithValue }) => {
+    try {
+      const response = await api.get(`/api/invoices/${code.trim()}/combined`);
+
+      // Backend returns combined data with invoice, receipt, and flags
+      const body = response.data;
+      if (body && typeof body === 'object' && 'success' in body && 'data' in body) {
+        const wrapped: any = body;
+        if (wrapped.success === true && wrapped.data) {
+          return wrapped.data;
+        }
+        return rejectWithValue(wrapped.message || 'Failed to fetch combined data');
+      }
+
+      return body;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return rejectWithValue('No invoice or receipt data found for code');
+      }
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch combined data');
+    }
+  }
+);
+
 // Create invoice from application
 export const createInvoice = createAsyncThunk<
   { invoiceId: number; invoiceCode: string; receiptCode?: string; receiptCreated?: boolean },
@@ -275,10 +307,132 @@ const invoiceSlice = createSlice({
       state.loading = false;
       state.currentData = action.payload;
       state.error = null;
+      
+      // Set proper flags based on the loaded data
+      if (state.currentData) {
+        // Determine if this is an invoice or application data
+        state.currentData.isApplicationData = !state.currentData.isInvoice || action.payload?.applicationCode !== undefined;
+        state.currentData.isInvoice = !!state.currentData.isInvoice;
+        
+        // Determine if invoice can be created (for new applications)
+        // Check if it's a new application without existing invoice
+        state.currentData.canCreateInvoice = 
+          Boolean((state.currentData.isApplicationData && !state.currentData.isInvoice) || 
+          (!state.currentData.isInvoice && state.currentData.applicationCode));
+      }
     });
     builder.addCase(fetchInvoiceOrApplication.rejected, (state, action) => {
       state.loading = false;
       state.error = action.payload || 'Failed to fetch data';
+      state.currentData = null;
+    });
+    
+    // Fetch combined invoice and receipt data
+    builder.addCase(fetchCombinedInvoiceReceiptData.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+      state.currentData = null; // Clear previous data
+    });
+    builder.addCase(fetchCombinedInvoiceReceiptData.fulfilled, (state, action) => {
+      state.loading = false;
+      // Map the combined response to the expected format for currentData
+      // The combined response includes invoice, receipt, and flags
+      const combinedData = action.payload;
+      
+      // Use invoice data if available, otherwise create a basic structure
+      if (combinedData.invoice) {
+        state.currentData = {
+          ...combinedData.invoice,
+          isApplicationData: !combinedData.invoice.isInvoice || combinedData.flags.isApplicationData,
+          isInvoice: !!combinedData.invoice.isInvoice,
+          hasInvoice: combinedData.invoiceExists,
+          canCreateInvoice: combinedData.flags.canCreateInvoice,
+          canCreateReceipt: combinedData.flags.canCreateReceipt,
+        };
+      } else if (combinedData.inscriptionData) {
+        // If we have inscription data but no invoice, create a structure based on that
+        state.currentData = {
+          invoiceId: null,
+          code: combinedData.code,
+          customerName: combinedData.inscriptionData.applicant?.name || '',
+          applicantIDNo: '',
+          applicantEmail: '',
+          applicantMobile: '',
+          totalAmount: combinedData.inscriptionData.summary?.grandTotal || 0,
+          payingAmount: combinedData.inscriptionData.summary?.grandTotal || 0,
+          taxAmount: combinedData.inscriptionData.summary?.totalTax || 0,
+          taxPercentage: 9, // Default GST
+          taxCode: 'GST',
+          transactionDate: new Date().toISOString(),
+          details: combinedData.inscriptionData.details || [],
+          summary: combinedData.inscriptionData.summary || { totalItems: 0, subtotal: 0, totalTax: 0, grandTotal: 0 },
+          isApplicationData: true,
+          isInvoice: false,
+          hasInvoice: false,
+          canCreateInvoice: combinedData.flags.canCreateInvoice,
+          canCreateReceipt: combinedData.flags.canCreateReceipt,
+          userId: 0,
+          churchId: combinedData.churchId,
+          status: 1,
+          paymentMode: 'Cash',
+          applicationCode: combinedData.code,
+          refDocNumber: combinedData.code,
+          refDocName: 'INCR',
+          addressNo: '',
+          address: '',
+          address2: '',
+          addressCity: '',
+          districtCode: '',
+          country: '',
+          niche: null,
+          booking: null,
+          nicheApplicationId: undefined,
+        };
+      } else {
+        // Fallback to basic structure
+        state.currentData = {
+          invoiceId: null,
+          code: combinedData.code,
+          customerName: combinedData.receipt?.customerName || '',
+          applicantIDNo: '',
+          applicantEmail: '',
+          applicantMobile: '',
+          totalAmount: combinedData.receipt?.totalAmount || 0,
+          payingAmount: combinedData.receipt?.payingAmount || 0,
+          taxAmount: 0,
+          taxPercentage: 0,
+          taxCode: null,
+          transactionDate: combinedData.receipt?.transactionDate || new Date().toISOString(),
+          details: [],
+          summary: { totalItems: 0, subtotal: 0, totalTax: 0, grandTotal: 0 },
+          isApplicationData: combinedData.flags.isApplicationData,
+          isInvoice: combinedData.flags.hasInvoice,
+          hasInvoice: combinedData.invoiceExists,
+          canCreateInvoice: combinedData.flags.canCreateInvoice,
+          canCreateReceipt: combinedData.flags.canCreateReceipt,
+          userId: 0,
+          churchId: combinedData.churchId,
+          status: 1,
+          paymentMode: combinedData.receipt?.paymentMode || 'Cash',
+          applicationCode: combinedData.code,
+          refDocNumber: combinedData.code,
+          refDocName: combinedData.receipt?.refDocName || 'NAPP',
+          addressNo: '',
+          address: '',
+          address2: '',
+          addressCity: '',
+          districtCode: '',
+          country: '',
+          niche: null,
+          booking: null,
+          nicheApplicationId: undefined,
+        };
+      }
+      state.error = null;
+    });
+    builder.addCase(fetchCombinedInvoiceReceiptData.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload || 'Failed to fetch combined data';
       state.currentData = null;
     });
     

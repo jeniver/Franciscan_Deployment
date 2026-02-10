@@ -195,9 +195,10 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   } = data
   const applicantAddressLines = buildAddressLinesFromEntity(applicant || {})
   const considerationSum =
+    niche?.lineAmount || 
+    niche?.totalAmount || 
     invoice?.totalAmount ||
     invoice?.invoicePayingAmount ||
-    niche?.totalAmount ||
     7000
   const chapelName =
     niche?.chapelName || niche?.location?.chapel?.chapelName || ''
@@ -615,7 +616,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 The Order of Friars Minor (Singapore) Limited
               </p>
               <div className="border-b border-black mb-2"></div>
-              <div className="mb-1">Fr Justin Lim</div>
+              <div className="mb-1">Fr Gerard Victor</div>
               <div>Friar - Manager</div>
             </div>
           </div>

@@ -44,7 +44,7 @@ export function NomineeAgreement({
     relationshipToApplicant: 'Son',
   },
   agreementDate = '02-Feb-2026',
-  friarName = 'Fr Justin Lim',
+  friarName = 'Fr Gerard Victor',
   friarTitle = 'Friar - Manager',
 }: NomineeAgreementProps) {
   return (

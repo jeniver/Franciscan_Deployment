@@ -16,6 +16,237 @@ class ReceiptController {
    * GET /api/receipts/:code
    * Based on: Payment/Receipt.aspx.cs ViewReceipt WebMethod
    */
+  /**
+   * Create receipt directly from application code
+   * POST /api/receipts/from-application/:code
+   * Creates a receipt from application data without requiring an invoice first
+   */
+  async createReceiptFromApplication(req, res) {
+    try {
+      const { code } = req.params;
+      const { receiptData, receiptDetails } = req.body;
+      const { user } = req;
+
+      if (!user || !user.churchId || !user.userId) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required with church ID and user ID'
+          }
+        });
+      }
+
+      if (!code) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Application code is required'
+          }
+        });
+      }
+
+      // First, check if there's an existing invoice for this application
+      const { executeQuery } = require('../config/database');
+      let invoiceId = null;
+      let existingInvoice = null;
+
+      // Try to find an existing invoice for this application code
+      const invoiceQuery = `
+        SELECT InvoiceId, Code, CustomerName, TotalAmount, PayingAmount, PaymentMode
+        FROM Invoice WITH(NOLOCK)
+        WHERE RefDocNumber = @code AND ChurchId = @churchId
+      `;
+      
+      const invoiceResult = await executeQuery(invoiceQuery, {
+        code: code,
+        churchId: user.churchId
+      });
+
+      if (invoiceResult.recordset && invoiceResult.recordset.length > 0) {
+        existingInvoice = invoiceResult.recordset[0];
+        invoiceId = existingInvoice.InvoiceId;
+      }
+
+      // If no existing invoice, we need to create one first
+      // since Receipt table requires InvoiceId (NOT NULL)
+      if (!invoiceId) {
+        // Fetch application data to create a minimal invoice
+        let applicationData = null;
+        const normalizedCode = code.toUpperCase();
+
+        if (normalizedCode.startsWith('NAPP-') || /^\d+-\d+$/.test(normalizedCode)) {
+          // Niche Application
+          const appQuery = `
+            SELECT TOP 1
+              NicheApplicationId,
+              Code,
+              ApplicantName as CustomerName,
+              Status,
+              ChurchId,
+              Amount as TotalAmount,
+              AppliedDate,
+              AgreementDate
+            FROM NicheApplication WITH(NOLOCK)
+            WHERE Code = @code
+          `;
+          
+          const appResult = await executeQuery(appQuery, { code });
+          if (appResult.recordset && appResult.recordset.length > 0) {
+            applicationData = appResult.recordset[0];
+          }
+        } else if (normalizedCode.startsWith('INCR-') || normalizedCode.startsWith('I-')) {
+          // Inscription Request
+          const appQuery = `
+            SELECT TOP 1
+              ir.InscriptionRequestId,
+              ir.Code,
+              ir.CustomerName,
+              ir.Status,
+              ir.ChurchId,
+              ir.TotalAmount,
+              ir.RequestDate,
+              ir.CompletedDate,
+              ir.NicheApplicationId
+            FROM InscriptionRequest ir WITH(NOLOCK)
+            WHERE ir.Code = @code
+          `;
+          
+          const appResult = await executeQuery(appQuery, { code });
+          if (appResult.recordset && appResult.recordset.length > 0) {
+            applicationData = appResult.recordset[0];
+          }
+        }
+
+        if (!applicationData) {
+          return res.status(404).json({
+            success: false,
+            error: {
+              code: 'APPLICATION_NOT_FOUND',
+              message: `Application not found for code: ${code}`
+            }
+          });
+        }
+
+        // Create invoice details from the receipt details if provided, or create minimal details
+        let invoiceDetails = receiptDetails || [];
+        
+        // If no receipt details provided, create minimal details based on receipt data
+        if (!receiptDetails || receiptDetails.length === 0) {
+          invoiceDetails = [{
+            itemId: 0, // Default to 0 if no specific item
+            quantity: 1,
+            unitAmount: receiptData?.payingAmount || applicationData.TotalAmount || applicationData.Amount || 0,
+            payingAmount: receiptData?.payingAmount || applicationData.TotalAmount || applicationData.Amount || 0,
+            totalPayingAmount: receiptData?.payingAmount || applicationData.TotalAmount || applicationData.Amount || 0,
+            refDocNumber: code,
+            refDocName: normalizedCode.startsWith('INCR-') || normalizedCode.startsWith('I-') ? 'INCR' : 'NAPP',
+
+            outstandingAmount: 0,
+            lineTotalAmount: receiptData?.payingAmount || applicationData.TotalAmount || applicationData.Amount || 0,
+            lineTaxPercent: 0,
+            lineTaxAmount: 0
+          }];
+        }
+
+        // Create a minimal invoice from application data
+        const invoiceService = require('../services/InvoiceService');
+        const invoiceRepo = require('../repositories/InvoiceRepository');
+        const invoiceServiceInstance = new invoiceService(invoiceRepo);
+
+        const invoicePayload = {
+          transactionDate: new Date(),
+          refDocNumber: code,
+          refDocName: normalizedCode.startsWith('INCR-') || normalizedCode.startsWith('I-') ? 'INCR' : 'NAPP',
+          customerName: applicationData.CustomerName || applicationData.ApplicantName,
+          totalAmount: receiptData?.totalAmount || applicationData.TotalAmount || applicationData.Amount || 0,
+          payingAmount: receiptData?.payingAmount || applicationData.TotalAmount || applicationData.Amount || 0,
+          paymentMode: receiptData?.paymentMode || 'Cash',
+          paymentModeDocNo: receiptData?.paymentModeDocNo || null,
+          taxCode: 'GST',
+          taxPercentage: 0, // No tax for this minimal invoice
+          taxAmount: 0,
+          nicheApplicationId: applicationData.NicheApplicationId || applicationData.NicheApplicationId,
+          userId: user.userId,
+          churchId: user.churchId,
+          status: 1
+        };
+
+        const result = await invoiceServiceInstance.saveInvoice(
+          invoicePayload,
+          invoiceDetails, // Pass the actual invoice details
+          user.userId,
+          user.churchId
+        );
+
+        if (!result.success) {
+          return res.status(400).json({
+            success: false,
+            error: result.error
+          });
+        }
+
+        invoiceId = result.data.invoiceId;
+      }
+
+      // Now create the receipt using the invoice ID
+      const receiptToCreate = {
+        invoiceId: invoiceId,
+        transactionDate: receiptData?.transactionDate || new Date(),
+        customerName: receiptData?.customerName || existingInvoice?.CustomerName || 'Unknown Customer',
+        code: receiptData?.code || null, // Will be generated if null
+        totalAmount: receiptData?.totalAmount || existingInvoice?.TotalAmount || 0,
+        payingAmount: receiptData?.payingAmount || existingInvoice?.PayingAmount || 0,
+        paymentMode: receiptData?.paymentMode || existingInvoice?.PaymentMode || 'Cash',
+        userId: user.userId,
+        churchId: user.churchId,
+        status: receiptData?.status || 2,
+        paymentModeDocNo: receiptData?.paymentModeDocNo || null,
+        payeeName: receiptData?.payeeName || receiptData?.customerName || existingInvoice?.CustomerName,
+        addressNo: receiptData?.addressNo || null,
+        address: receiptData?.address || null,
+        address2: receiptData?.address2 || null,
+        addressCity: receiptData?.addressCity || null,
+        districtCode: receiptData?.districtCode || null,
+        country: receiptData?.country || null,
+        outstandingAmount: receiptData?.outstandingAmount || 0
+      };
+
+      // Use the invoice details for receipt details as well to maintain consistency
+      const receiptDetailsForReceipt = receiptDetails || invoiceDetails;
+      
+      const result = await receiptService.createReceiptFromInvoice(
+        receiptToCreate,
+        receiptDetailsForReceipt,
+        user.userId,
+        user.churchId
+      );
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+
+      return res.status(201).json({
+        success: true,
+        code: result.data.code,
+        receiptId: result.data.receiptId,
+        invoiceId: invoiceId, // Return the invoice ID that was created/used
+        message: result.data.message || 'Receipt created successfully from application'
+      });
+
+    } catch (error) {
+      logger.error('Controller: Failed to create receipt from application:', error);
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error.message || 'Failed to create receipt from application'
+        }
+      });
+    }
+  }
+
   async getReceipt(req, res) {
     try {
       const { code } = req.params;

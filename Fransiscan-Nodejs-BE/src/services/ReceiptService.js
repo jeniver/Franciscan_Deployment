@@ -237,8 +237,7 @@ class ReceiptService extends BaseService {
           totalPayingAmount: detail.totalPayingAmount || 0,
           invoiceId: invoice.InvoiceId,
           refDocName: detail.refDocName || null,
-          refDocNumber: detail.refDocNumber || null,
-          refType: detail.refType || null
+          refDocNumber: detail.refDocNumber || null
         }));
 
         await this.repository.saveReceiptDetails(receiptId, receiptDetails);
@@ -252,8 +251,7 @@ class ReceiptService extends BaseService {
           totalPayingAmount: detail.totalPayingAmount || 0,
           invoiceId: invoice.InvoiceId,
           refDocName: detail.refDocName || null,
-          refDocNumber: detail.refDocNumber || null,
-          refType: detail.refType || null
+          refDocNumber: detail.refDocNumber || null
         }));
 
         await this.repository.saveReceiptDetails(receiptId, receiptDetails);

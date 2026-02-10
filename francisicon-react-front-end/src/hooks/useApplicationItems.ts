@@ -46,7 +46,7 @@ export const useApplicationItems = (): UseApplicationItemsReturn => {
             taxAmount: detail.lineTaxAmount || 0,
             grandTotal: detail.totalPayingAmount || 0,
             reference: detail.refDocNumber || '',
-            refType: detail.refType || '',
+
             itemId: detail.itemId || undefined,
             applicationCode: invoiceData.applicationCode || applicationCode
           })) || [],
@@ -78,7 +78,7 @@ export const useApplicationItems = (): UseApplicationItemsReturn => {
             taxAmount: detail.lineTaxAmount || 0,
             grandTotal: detail.totalPayingAmount || 0,
             reference: detail.refDocNumber || '',
-            refType: detail.refType || '',
+
             itemId: detail.itemId || undefined,
             applicationCode: invoiceData.refDocNumber || applicationCode
           })) || [],

@@ -303,6 +303,81 @@ export const invoiceService = {
   },
 
   /**
+   * Get combined invoice and receipt data by code
+   * GET /api/invoices/:code/combined
+   * 
+   * @param code - The invoice or application code (e.g., "1405-0", "I-5339-0", "INV-00123")
+   * @returns Combined invoice and receipt data with flags
+   */
+  getCombinedInvoiceReceiptData: async (code: string): Promise<any> => {
+    try {
+      if (!code) {
+        throw new InvoiceError('Code is required', 'validation');
+      }
+
+      const response = await api.get(`/api/invoices/${encodeURIComponent(code)}/combined`);
+
+      // Handle different response formats
+      if (response.data && typeof response.data === 'object') {
+        if ('success' in response.data && response.data.success === false) {
+          throw new InvoiceError(
+            (response.data as any).message || 'Failed to fetch combined invoice/receipt data',
+            'server',
+            response.status
+          );
+        }
+        
+        // Return the data directly or from nested structure
+        return (response.data as any).data || response.data;
+      }
+
+      throw new InvoiceError('Invalid response format', 'server', response.status);
+    } catch (error: any) {
+      if (error instanceof InvoiceError) {
+        throw error;
+      }
+
+      // Handle axios errors
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        if (status === 401 || status === 403) {
+          throw new InvoiceError(
+            errorData?.message || 'Unauthorized access',
+            'auth',
+            status
+          );
+        } else if (status === 400) {
+          throw new InvoiceError(
+            errorData?.message || 'Invalid code',
+            'validation',
+            status
+          );
+        } else if (status === 404) {
+          throw new InvoiceError(
+            errorData?.message || `No invoice/receipt data found for code: ${code}`,
+            'validation',
+            status
+          );
+        } else if (status >= 500) {
+          throw new InvoiceError('Server error occurred', 'server', status);
+        } else {
+          throw new InvoiceError(
+            errorData?.message || 'Failed to fetch combined invoice/receipt data',
+            'server',
+            status
+          );
+        }
+      } else if (error.request) {
+        throw new InvoiceError('Network error: Unable to connect to server', 'network');
+      } else {
+        throw new InvoiceError(error.message || 'An unexpected error occurred', 'server');
+      }
+    }
+  },
+
+  /**
    * Get all items linked to an application code
    * GET /api/invoices/application/:code
    * 
@@ -427,7 +502,7 @@ export interface ApplicationItem {
   taxAmount: number;
   grandTotal: number;
   reference?: string;
-  refType?: string;
+
   itemId?: number;
   applicationCode?: string;
 }

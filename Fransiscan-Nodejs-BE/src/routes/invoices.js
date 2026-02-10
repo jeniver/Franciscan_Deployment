@@ -112,6 +112,20 @@ router.get('/:code',
   invoiceController.getInvoiceByCode
 );
 
+// Get combined invoice and receipt data
+// GET /api/invoices/:code/combined - Returns both invoice and receipt data in a single response
+router.get('/:code/combined',
+  authenticateToken,
+  invoiceController.getCombinedInvoiceReceiptData
+);
+
+// Check receipt associations for an invoice
+// GET /api/invoices/:code/receipts - Checks if there are any receipts associated with the given invoice code
+router.get('/:code/receipts',
+  authenticateToken,
+  invoiceController.checkReceiptAssociations
+);
+
 // Get invoice by ID (legacy endpoint - keep for backward compatibility)
 router.get('/id/:id',
   authenticateToken,

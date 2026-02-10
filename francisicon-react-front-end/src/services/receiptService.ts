@@ -58,7 +58,7 @@ export interface InvoiceDetail {
   lineTaxAmount?: number;
   lineTotalAmount?: number;
   refDocName?: string;
-  refType?: string;
+
   outstandingAmount?: number;
 }
 
@@ -323,6 +323,48 @@ export const receiptService = {
         } else {
           throw new ReceiptError(
             error.response.data?.message || 'Failed to create receipt from invoice',
+            'server',
+            status
+          );
+        }
+      } else if (error.request) {
+        throw new ReceiptError('Network error: Unable to connect to server', 'network');
+      } else {
+        throw new ReceiptError(error.message || 'An unexpected error occurred', 'server');
+      }
+    }
+  },
+
+  // Create receipt from application code
+  createReceiptFromApplication: async (code: string, receiptData: any, receiptDetails: any[]): Promise<Receipt> => {
+    try {
+      const response = await api.post(`/api/receipts/from-application/${code}`, {
+        receiptData,
+        receiptDetails
+      });
+      return response.data;
+    } catch (error: any) {
+      if (error.response) {
+        const status = error.response.status;
+        if (status === 401 || status === 403) {
+          throw new ReceiptError('Unauthorized access', 'auth', status);
+        } else if (status === 400) {
+          throw new ReceiptError(
+            error.response.data?.message || 'Invalid receipt data',
+            'validation',
+            status
+          );
+        } else if (status === 404) {
+          throw new ReceiptError(
+            error.response.data?.message || 'Application not found',
+            'validation',
+            status
+          );
+        } else if (status >= 500) {
+          throw new ReceiptError('Server error occurred', 'server', status);
+        } else {
+          throw new ReceiptError(
+            error.response.data?.message || 'Failed to create receipt from application',
             'server',
             status
           );
@@ -1040,7 +1082,7 @@ export const receiptService = {
           lineTaxAmount: detail.LineTaxAmount || detail.lineTaxAmount || detail.TaxAmount || detail.taxAmount || detail.lineTaxAmount || 0,
           lineTotalAmount: detail.LineTotalAmount || detail.lineTotalAmount || detail.lineTotalAmount || detail.unitPrice || detail.UnitAmount || 0,
           refDocName: detail.RefDocName || detail.refDocName || detail.refDocName || '',
-          refType: detail.RefType || detail.refType || detail.refType || '',
+
           outstandingAmount: detail.OutstandingAmount || detail.outstandingAmount || detail.outstandingAmount || 0
         }))
       };

@@ -1710,6 +1710,190 @@ class InvoiceController extends BaseController {
   });
 
   /**
+   * Check receipt associations for an invoice
+   * GET /api/invoices/:code/receipts
+   * Checks if there are any receipts associated with the given invoice code
+   */
+  checkReceiptAssociations = this.asyncHandler(async(req, res) => {
+    this.logRequest(req, 'Check Receipt Associations for Invoice');
+
+    try {
+      const { code } = req.params;
+      const churchId = req.user?.churchId;
+
+      if (!code) {
+        return this.sendError(res, 'Invoice code is required', 400);
+      }
+
+      if (!churchId) {
+        return this.sendError(res, 'Authentication required with church ID', 401);
+      }
+
+      // First, get the invoice to confirm it exists and get its ID
+      const invoice = await this.invoiceRepository.getInvoiceByCode(code, churchId);
+      
+      if (!invoice) {
+        return this.sendError(res, 'Invoice not found', 404);
+      }
+
+      // Now check for associated receipts
+      const ReceiptRepository = require('../repositories/ReceiptRepository');
+      const receiptRepository = new ReceiptRepository();
+      
+      const receipt = await receiptRepository.findByInvoiceId(invoice.invoiceId, churchId);
+
+      // Prepare response with receipt association info
+      const response = {
+        invoiceCode: code,
+        invoiceId: invoice.invoiceId,
+        hasReceipt: !!receipt,
+        receipt: receipt ? {
+          receiptId: receipt.receiptId,
+          receiptCode: receipt.code,
+          transactionDate: receipt.transactionDate,
+          customerName: receipt.customerName,
+          totalAmount: receipt.totalAmount,
+          payingAmount: receipt.payingAmount,
+          paymentMode: receipt.paymentMode,
+          status: receipt.status
+        } : null,
+        message: receipt 
+          ? `Receipt found associated with invoice ${code}` 
+          : `No receipts found associated with invoice ${code}`
+      };
+
+      return this.sendSuccess(res, response, 'Receipt association check completed successfully');
+    } catch (error) {
+      logger.error('Controller: Failed to check receipt associations:', error);
+      return this.sendError(res, 'Failed to check receipt associations', 500);
+    }
+  });
+
+  /**
+   * Get combined invoice and receipt data for a given code
+   * GET /api/invoices/:code/combined
+   * Returns both invoice and receipt data in a single response
+   * Handles cases where only invoice exists, only receipt exists, or both exist
+   */
+  getCombinedInvoiceReceiptData = this.asyncHandler(async(req, res) => {
+    this.logRequest(req, 'Get Combined Invoice and Receipt Data');
+
+    try {
+      const { code } = req.params;
+      const churchId = req.user?.churchId;
+      const applicationCode = req.query.applicationCode || null;
+
+      if (!code) {
+        return this.sendError(res, 'Code is required', 400);
+      }
+
+      if (!churchId) {
+        return this.sendError(res, 'Authentication required with church ID', 401);
+      }
+
+      // Try to get invoice data first
+      let invoice = null;
+      let hasInvoice = false;
+      let invoiceError = null;
+
+      try {
+        invoice = await this.invoiceRepository.getInvoiceByCode(code, churchId, applicationCode);
+        hasInvoice = !!invoice;
+      } catch (invoiceErr) {
+        logger.warn('Invoice lookup failed:', invoiceErr.message);
+        invoiceError = invoiceErr.message;
+      }
+
+      // Check if it's an inscription code and get inscription data if no invoice exists
+      let inscriptionData = null;
+      if (!invoice) {
+        const normalizedCode = code.trim().toUpperCase();
+        if (normalizedCode.startsWith('I-') && 
+            (normalizedCode.match(/^I-\d+$/) || normalizedCode.startsWith('I-NAPP-'))) {
+          try {
+            const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+            inscriptionData = await InscriptionInvoiceService.getInscriptionItems(normalizedCode, churchId);
+          } catch (inscriptionError) {
+            logger.warn('Failed to get inscription items:', inscriptionError.message);
+          }
+        }
+      }
+
+      // If we have invoice data, check for associated receipt
+      let receipt = null;
+      let hasReceipt = false;
+      let receiptError = null;
+
+      if (invoice && invoice.invoiceId) {
+        try {
+          const ReceiptRepository = require('../repositories/ReceiptRepository');
+          const receiptRepository = new ReceiptRepository();
+          receipt = await receiptRepository.findByInvoiceId(invoice.invoiceId, churchId);
+          hasReceipt = !!receipt;
+        } catch (receiptErr) {
+          logger.warn('Receipt lookup failed:', receiptErr.message);
+          receiptError = receiptErr.message;
+        }
+      }
+
+      // If no invoice exists but we have inscription data, try to find receipt by reference document
+      if (!invoice && inscriptionData) {
+        try {
+          const ReceiptRepository = require('../repositories/ReceiptRepository');
+          const receiptRepository = new ReceiptRepository();
+          receipt = await receiptRepository.findByRefDocNumber(code, churchId);
+          hasReceipt = !!receipt;
+        } catch (receiptErr) {
+          logger.warn('Receipt lookup by ref doc failed:', receiptErr.message);
+          receiptError = receiptErr.message;
+        }
+      }
+
+      // Prepare combined response
+      const response = {
+        code: code,
+        churchId: churchId,
+        invoiceExists: hasInvoice,
+        receiptExists: hasReceipt,
+        invoice: invoice || null,
+        receipt: receipt || null,
+        inscriptionData: inscriptionData || null,
+        flags: {
+          hasInvoice: hasInvoice,
+          hasReceipt: hasReceipt,
+          canCreateInvoice: !hasInvoice && (!!inscriptionData || code.includes('-')), // Can create if no invoice exists but has potential application data
+          canCreateReceipt: hasInvoice && !hasReceipt, // Can create receipt if invoice exists but no receipt exists
+          isApplicationData: !hasInvoice && !!inscriptionData, // Flag if it's application data without invoice
+        },
+        diagnostics: {
+          invoiceError: invoiceError || null,
+          receiptError: receiptError || null
+        }
+      };
+
+      // Add helpful message based on what was found
+      if (hasInvoice && hasReceipt) {
+        response.message = `Invoice and receipt found for code ${code}`;
+      } else if (hasInvoice && !hasReceipt) {
+        response.message = `Invoice found for code ${code}, no receipt exists yet`;
+      } else if (!hasInvoice && hasReceipt) {
+        response.message = `Receipt found for code ${code}, no invoice exists`;
+      } else if (hasInvoice) {
+        response.message = `Invoice found for code ${code}`;
+      } else if (hasReceipt) {
+        response.message = `Receipt found for code ${code}`;
+      } else {
+        response.message = `No invoice or receipt found for code ${code}. May be application data.`;
+      }
+
+      return this.sendSuccess(res, response, 'Combined invoice and receipt data retrieved successfully');
+    } catch (error) {
+      logger.error('Controller: Failed to get combined invoice and receipt data:', error);
+      return this.sendError(res, 'Failed to retrieve combined data', 500);
+    }
+  });
+
+  /**
    * Get all items linked to an application code
    * GET /api/invoices/application/:code
    * Returns all items (niche, inscription, etc.) linked to the application code
