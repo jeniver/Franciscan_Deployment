@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, X, Grid, List, Filter, Hash, User, Home, MapPin, Calendar, Church, Clock, Database, BarChart3 } from 'lucide-react';
 import { useGlobalSearch } from '../hooks/useGlobalSearch';
 import { Button } from './common/Button';
@@ -45,6 +46,7 @@ interface SearchResult {
 }
 
 export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedEntityTypes, setSelectedEntityTypes] = useState<string[]>([
@@ -148,6 +150,80 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
     if (statusStr.includes('booked') || statusStr.includes('completed')) return 'bg-green-100 text-green-800';
     if (statusStr.includes('deleted') || statusStr.includes('cancelled')) return 'bg-red-100 text-red-800';
     return 'bg-gray-100 text-gray-800';
+  };
+
+  // Handle navigation when grid item is clicked
+  const handleResultClick = (result: SearchResult) => {
+    // Close the modal first
+    onClose();
+    
+    // Navigate to the appropriate page based on entity type
+    switch (result.entityType) {
+      case 'application':
+        // Navigate to view application page
+        if (result.code) {
+          navigate(`/niche/view/${result.code}`);
+        }
+        break;
+        
+      case 'inscription':
+        // Navigate to edit inscription page
+        if (result.code) {
+          navigate(`/inscriptions/${result.code}/edit`);
+        } else if (result.id) {
+          navigate(`/inscriptions/${result.id}/edit`);
+        }
+        break;
+        
+      case 'wake-room':
+        // Navigate to edit wake room booking
+        if (result.code) {
+          navigate(`/wake-room/edit/${result.code}`);
+        } else if (result.id) {
+          navigate(`/wake-room/edit/${result.id}`);
+        }
+        break;
+        
+      case 'person':
+        // For person entities, log selection
+        console.log('Person selected:', result);
+        break;
+        
+      case 'church':
+        // Navigate to create new niche application
+        navigate('/niche/new');
+        break;
+        
+      case 'niche':
+        // Navigate to create new niche application
+        navigate('/niche/new');
+        break;
+        
+      case 'date':
+        // For date entities, log selection
+        console.log('Date selected:', result);
+        break;
+        
+      case 'invoice':
+        // For invoice entities, navigate to invoice page if code exists
+        if (result.code) {
+          navigate(`/invoice-receipt/${result.code}`);
+        }
+        break;
+        
+      case 'gates-of-life':
+        // For gates-of-life entities, navigate to gates of life page
+        if (result.code) {
+          navigate(`/gate-of-life/edit/${result.code}`);
+        } else {
+          navigate('/gates-of-life');
+        }
+        break;
+        
+      default:
+        console.log('Unknown entity type:', result.entityType);
+        break;
+    }
   };
 
   if (!isOpen) return null;
@@ -289,7 +365,8 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                   {searchResults.map((result, index) => (
                     <div 
                       key={`${result.entityType}-${result.id}-${index}`}
-                      className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow p-4"
+                      className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all p-4 cursor-pointer hover:border-blue-300 hover:bg-blue-50"
+                      onClick={() => handleResultClick(result)}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2">
@@ -407,7 +484,8 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                   {searchResults.map((result, index) => (
                     <div 
                       key={`${result.entityType}-${result.id}-${index}`}
-                      className="bg-white border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                      className="bg-white border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors cursor-pointer hover:border-blue-300"
+                      onClick={() => handleResultClick(result)}
                     >
                       <div className="flex items-start gap-4">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getEntityTypeColor(result.entityType)}`}>
