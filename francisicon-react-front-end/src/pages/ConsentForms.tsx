@@ -1,6 +1,15 @@
-import { FileTextIcon, CheckCircleIcon, HashIcon } from 'lucide-react';
+import { FileTextIcon, CheckCircleIcon, HashIcon, UserIcon } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
+import { ConsentFormViewerModal } from '../components/ConsernFormAgreement/ConsentFormViewerModal';
+import React, { useState, useCallback } from 'react';
+
+interface Beneficiary {
+  id: number;
+  name: string;
+  idNo: string;
+  relationshipToApplicant?: string;
+}
 
 interface ConsentFormsProps {
   formData: any;
@@ -13,6 +22,9 @@ export function ConsentForms({
   setFormData,
   isReadOnly = false
 }: ConsentFormsProps) {
+  const [consentFormModalOpen, setConsentFormModalOpen] = useState(false);
+  const [consentFormData, setConsentFormData] = useState<any>(null);
+
   const handleBeneficiaryStatusChange = (beneficiaryType: string, status: string) => {
     if (isReadOnly) return;
     const updated = {
@@ -24,6 +36,54 @@ export function ConsentForms({
     };
     setFormData(updated);
   };
+
+  // Function to open consent form for a specific beneficiary and form type
+  const openConsentForm = useCallback((beneficiary: Beneficiary, formType: 'deceased' | 'living' | 'lostCapacity') => {
+    // Extract applicant data from formData
+    const applicantName = formData.applicantName || '';
+    const applicantNric = formData.applicantNRIC || formData.applicantIdNo || '';
+    
+    // Extract nominee data from formData
+    const nominee1Name = formData.nominee1Name || '';
+    const nominee1Nric = formData.nominee1NRIC || formData.nominee1IdNo || '';
+    const nominee2Name = formData.nominee2Name || '';
+    const nominee2Nric = formData.nominee2NRIC || formData.nominee2IdNo || '';
+    
+    // Extract niche/chapel data
+    const chapelName = formData.chapelName || 'Chapel';
+    const nicheNumber = formData.nicheNumber || 'XXXX';
+    
+    // Prepare the consent form data
+    const consentData = {
+      applicantName,
+      applicantNric,
+      nominee1Name,
+      nominee1Nric,
+      nominee2Name,
+      nominee2Nric,
+      chapelName,
+      nicheNumber,
+      beneficiary1: {
+        name: beneficiary.name || '',
+        nric: beneficiary.idNo || '',
+        relationship: beneficiary.relationshipToApplicant || '',
+      },
+      beneficiary2: undefined,
+      formType,
+    };
+    
+    setConsentFormData(consentData);
+    setConsentFormModalOpen(true);
+  }, [formData]);
+
+  // Function to open consent form with a specific beneficiary (first or second)
+  const openConsentFormForBeneficiary = useCallback((beneficiaryIndex: number, formType: 'deceased' | 'living' | 'lostCapacity') => {
+    const beneficiaries = formData.beneficiaries || [];
+    const beneficiary = beneficiaries[beneficiaryIndex];
+    if (beneficiary) {
+      openConsentForm(beneficiary, formType);
+    }
+  }, [formData, openConsentForm]);
 
   const beneficiaryTypes = [
     {
@@ -78,8 +138,7 @@ export function ConsentForms({
       </div>
 
       {/* Consent Forms Section */}
-      <div >
-  
+      <div>
         <div className="p-6 space-y-6">
           {beneficiaryTypes.map((beneficiary) => (
             <div key={beneficiary.key} className="border-b border-gray-100 pb-6 last:border-b-0">
@@ -93,21 +152,22 @@ export function ConsentForms({
                   const isSelected = formData.consentForms?.[beneficiary.key] === status.key;
                   
                   return (
-                    <Button
-                      key={status.key}
-                      variant={isSelected ? "primary" : "outline"}
-                      size="sm"
-                      icon={<IconComponent className="w-4 h-4" />}
-                      onClick={() => handleBeneficiaryStatusChange(beneficiary.key, status.key)}
-                      disabled={isReadOnly}
-                      className={`${
-                        isSelected
-                          ? 'bg-[#8b2828] text-white border-[#8b2828] hover:bg-[#7d1f1f] hover:text-white'
-                          : 'bg-white text-[#8b2828] border-[#8b2828] hover:bg-[#8b2828] hover:text-white'
-                      } transition-all duration-200 ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      {status.label}
-                    </Button>
+                    <React.Fragment key={status.key}>
+                      <Button
+                        variant={isSelected ? "primary" : "outline"}
+                        size="sm"
+                        icon={<IconComponent className="w-4 h-4" />}
+                        onClick={() => openConsentFormForBeneficiary(0, status.key as 'deceased' | 'living' | 'lostCapacity')}
+                        disabled={isReadOnly}
+                        className={`${
+                          isSelected
+                            ? 'bg-[#8b2828] text-white border-[#8b2828] hover:bg-[#7d1f1f] hover:text-white'
+                            : 'bg-white text-[#8b2828] border-[#8b2828] hover:bg-[#8b2828] hover:text-white'
+                        } transition-all duration-200 ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {status.label}
+                      </Button> 
+                    </React.Fragment>
                   );
                 })}
               </div>
@@ -155,6 +215,13 @@ export function ConsentForms({
           </div>
         </Card>
       )}
+
+      {/* Consent Form Viewer Modal */}
+      <ConsentFormViewerModal
+        isOpen={consentFormModalOpen}
+        onClose={() => setConsentFormModalOpen(false)}
+        formData={consentFormData}
+      />
     </div>
   );
 }

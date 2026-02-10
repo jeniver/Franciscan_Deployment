@@ -16,16 +16,32 @@ const parseDate = (value) => {
     return value;
   }
 
-  // Handle DD-MMM-YYYY format (e.g., "16-Feb-2012")
-  if (typeof value === 'string' && /^[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}$/.test(value)) {
-    const [day, month, year] = value.split('-');
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthIndex = monthNames.indexOf(month);
-    if (monthIndex !== -1) {
-      const date = new Date(parseInt(year), monthIndex, parseInt(day));
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-  }
+  // // Handle DD-MMM-YYYY format (e.g., "16-Feb-2012")
+  // if (typeof value === 'string' && /^[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}$/.test(value)) {
+  //   const [day, month, year] = value.split('-');
+  //   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  //   const monthIndex = monthNames.indexOf(month);
+  //   if (monthIndex !== -1) {
+  //     const date = new Date(parseInt(year), monthIndex, parseInt(day));
+  //     return Number.isNaN(date.getTime()) ? null : date;
+  //   }
+  // }
+
+  // // Handle DD-MM-YYYY format (e.g., "03-04-1996")
+  // if (typeof value === 'string' && /^[0-9]{1,2}-[0-9]{1,2}-[0-9]{4}$/.test(value)) {
+  //   const [day, month, year] = value.split('-');
+  //   const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  //   return Number.isNaN(date.getTime()) ? null : date;
+  // }
+
+  // // Handle 4-digit year only (e.g., "1994") - return as string for year-only storage
+  // if (typeof value === 'string' && /^[0-9]{4}$/.test(value)) {
+  //   const year = parseInt(value);
+  //   if (year >= 1900 && year <= new Date().getFullYear()) {
+  //     // Return the year as a string for year-only storage
+  //     return value;
+  //   }
+  // }
 
   // Handle standard date parsing
   const parsed = new Date(value);
@@ -576,8 +592,24 @@ const buildBeneficiaryEntity = (input = {}) => {
     input.relationshipToApp
   );
 
-  const dateOfBirth = parseDateValue(pickFirst(input.dateOfBirth, input.dob));
-  const birthYear = input.birthYear || (dateOfBirth ? dateOfBirth.getFullYear() : null);
+  // Handle dateOfBirth and birthYear conversion properly
+  let dateOfBirth = parseDateValue(pickFirst(input.dateOfBirth, input.dob));
+  let birthYear = input.birthYear;
+  
+  // If dateOfBirth is valid but birthYear is missing, extract year from date
+  if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
+    birthYear = dateOfBirth.getFullYear().toString();
+  }
+  
+  // If dateOfBirth is empty but birthYear exists, construct date from year
+  else if (!dateOfBirth && birthYear) {
+    dateOfBirth = new Date(`${birthYear}-01-01`);
+  }
+  
+  // If we have a valid date but birthYear is still missing, extract it
+  if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
+    birthYear = dateOfBirth.getFullYear().toString();
+  }
   const idNo = pickFirst(input.idNo, input.nric, input.identificationNumber, input.idNumber);
   const isCatholic = deriveIsCatholic(
     input.isCatholic !== undefined && input.isCatholic !== null
@@ -1699,10 +1731,7 @@ class NicheApplicationService {
    */
   async updateApplication(code, data, churchId) {
     try {
-      logger.info(`[Service] Starting updateApplication for code: ${code}`);
-      logger.info('[Service] Update data keys:', Object.keys(data));
-      logger.info('[Service] Has beneficiaries:', !!data.beneficiaries);
-      logger.info('[Service] Beneficiaries count:', Array.isArray(data.beneficiaries) ? data.beneficiaries.length : 'N/A');
+      logger.info('Date inputes', beneficiaries);
       
       // Validate optimized payload structure
       const validation = this.validateOptimizedPayload(data);
@@ -1732,11 +1761,40 @@ class NicheApplicationService {
       if (Array.isArray(data.beneficiaries)) {
         data.beneficiaries.forEach(beneficiary => {
           if (beneficiary && beneficiary.name) {
+            // Process dateOfBirth and birthYear properly
+            let dateOfBirth = beneficiary.dateOfBirth ? parseDate(beneficiary.dateOfBirth) : null;
+            let birthYear = beneficiary.birthYear;
+            
+            // If dateOfBirth is valid but birthYear is missing, extract year from date
+            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
+              birthYear = dateOfBirth.getFullYear().toString();
+            }
+            
+            // If dateOfBirth is empty but birthYear exists, construct date from year
+            if (!dateOfBirth && birthYear && birthYear !== '' && birthYear !== null) {
+              try {
+                dateOfBirth = new Date(`01-Jan-${birthYear}`);
+                // Validate that the constructed date is valid
+                if (Number.isNaN(dateOfBirth.getTime())) {
+                  dateOfBirth = null;
+                }
+              } catch (e) {
+                dateOfBirth = null;
+              }
+            }
+            
+            // If we have a valid date but birthYear is still missing, extract it
+            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
+              birthYear = dateOfBirth.getFullYear().toString();
+            }
+
+                 logger.info('Date inputes maping ', dateOfBirth ,  birthYear);
+
             beneficiaries.push(new NicheApplicationBeneficiary({
               name: beneficiary.name,
               relationshipToApplicant: beneficiary.relationship,
-              dateOfBirth: beneficiary.dateOfBirth ? parseDate(beneficiary.dateOfBirth) : null,
-              birthYear: beneficiary.birthYear,
+              dateOfBirth: dateOfBirth,
+              birthYear: birthYear,
               idNo: beneficiary.idNo,
               isCatholic: beneficiary.isCatholic,
               isMale: beneficiary.isMale,
@@ -2328,11 +2386,38 @@ class NicheApplicationService {
       if (Array.isArray(data.beneficiaries)) {
         data.beneficiaries.forEach(beneficiary => {
           if (beneficiary && beneficiary.name) {
+            // Process dateOfBirth and birthYear properly
+            let dateOfBirth = beneficiary.dateOfBirth ? parseDate(beneficiary.dateOfBirth) : null;
+            let birthYear = beneficiary.birthYear;
+            
+            // If dateOfBirth is valid but birthYear is missing, extract year from date
+            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
+              birthYear = dateOfBirth.getFullYear().toString();
+            }
+            
+            // If dateOfBirth is empty but birthYear exists, construct date from year
+            if (!dateOfBirth && birthYear && birthYear !== '' && birthYear !== null) {
+              try {
+                dateOfBirth = new Date(`01-Jan-${birthYear}`);
+                // Validate that the constructed date is valid
+                if (Number.isNaN(dateOfBirth.getTime())) {
+                  dateOfBirth = null;
+                }
+              } catch (e) {
+                dateOfBirth = null;
+              }
+            }
+            
+            // If we have a valid date but birthYear is still missing, extract it
+            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
+              birthYear = dateOfBirth.getFullYear().toString();
+            }
+            
             beneficiaries.push(new NicheApplicationBeneficiary({
               name: beneficiary.name,
               relationshipToApplicant: beneficiary.relationship,
-              dateOfBirth: beneficiary.dateOfBirth ? parseDate(beneficiary.dateOfBirth) : null,
-              birthYear: beneficiary.birthYear,
+              dateOfBirth: dateOfBirth,
+              birthYear: birthYear,
               idNo: beneficiary.idNo,
               isCatholic: beneficiary.isCatholic,
               isMale: beneficiary.isMale,
@@ -2346,11 +2431,38 @@ class NicheApplicationService {
         ['beneficiary1', 'beneficiary2', 'beneficiary3', 'beneficiary4', 'beneficiary5'].forEach((fieldPrefix, index) => {
           const beneficiaryData = data[fieldPrefix];
           if (beneficiaryData && beneficiaryData.name) {
+            // Process dateOfBirth and birthYear for legacy format too
+            let dateOfBirth = beneficiaryData.dateOfBirth ? new Date(beneficiaryData.dateOfBirth) : null;
+            let birthYear = beneficiaryData.birthYear;
+            
+            // If dateOfBirth is valid but birthYear is missing, extract year from date
+            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
+              birthYear = dateOfBirth.getFullYear().toString();
+            }
+            
+            // If dateOfBirth is empty but birthYear exists, construct date from year
+            if (!dateOfBirth && birthYear && birthYear !== '' && birthYear !== null) {
+              try {
+                dateOfBirth = new Date(`01-Jan-${birthYear}`);
+                // Validate that the constructed date is valid
+                if (Number.isNaN(dateOfBirth.getTime())) {
+                  dateOfBirth = null;
+                }
+              } catch (e) {
+                dateOfBirth = null;
+              }
+            }
+            
+            // If we have a valid date but birthYear is still missing, extract it
+            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
+              birthYear = dateOfBirth.getFullYear().toString();
+            }
+            
             beneficiaries.push(new NicheApplicationBeneficiary({
               name: beneficiaryData.name,
               relationshipToApplicant: beneficiaryData.relationship,
-              dateOfBirth: beneficiaryData.dateOfBirth ? new Date(beneficiaryData.dateOfBirth) : null,
-              birthYear: beneficiaryData.birthYear,
+              dateOfBirth: dateOfBirth,
+              birthYear: birthYear,
               idNo: beneficiaryData.idNo,
               isCatholic: beneficiaryData.isCatholic,
               isMale: beneficiaryData.isMale,
@@ -2362,11 +2474,38 @@ class NicheApplicationService {
           // Also handle individual fields like beneficiary1Name, beneficiary1IDNo, etc.
           const name = data[`${fieldPrefix}Name`];
           if (name) {
+            // Process dateOfBirth and birthYear for legacy format too
+            let dateOfBirth = data[`${fieldPrefix}DateOfBirth`] ? new Date(data[`${fieldPrefix}DateOfBirth`]) : null;
+            let birthYear = data[`${fieldPrefix}BirthYear`] || '';
+            
+            // If dateOfBirth is valid but birthYear is missing, extract year from date
+            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
+              birthYear = dateOfBirth.getFullYear().toString();
+            }
+            
+            // If dateOfBirth is empty but birthYear exists, construct date from year
+            if (!dateOfBirth && birthYear && birthYear !== '' && birthYear !== null) {
+              try {
+                dateOfBirth = new Date(`01-Jan-${birthYear}`);
+                // Validate that the constructed date is valid
+                if (Number.isNaN(dateOfBirth.getTime())) {
+                  dateOfBirth = null;
+                }
+              } catch (e) {
+                dateOfBirth = null;
+              }
+            }
+            
+            // If we have a valid date but birthYear is still missing, extract it
+            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
+              birthYear = dateOfBirth.getFullYear().toString();
+            }
+            
             beneficiaries.push(new NicheApplicationBeneficiary({
               name: name,
               relationshipToApplicant: data[`${fieldPrefix}Relationship`] || '',
-              dateOfBirth: data[`${fieldPrefix}DateOfBirth`] ? new Date(data[`${fieldPrefix}DateOfBirth`]) : null,
-              birthYear: data[`${fieldPrefix}BirthYear`] || '',
+              dateOfBirth: dateOfBirth,
+              birthYear: birthYear,
               idNo: data[`${fieldPrefix}IDNo`] || data[`${fieldPrefix}IdNo`] || '',
               isCatholic: data[`${fieldPrefix}IsCatholic`] || false,
               isMale: data[`${fieldPrefix}IsMale`] || false,

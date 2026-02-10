@@ -24,7 +24,6 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Global Search</h2>
-              <p className="text-sm text-gray-500">Search across all database entities</p>
             </div>
           </div>
           <button
@@ -41,7 +40,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Search anything in the database
             </label>
-            <GlobalSearch
+            {/* <GlobalSearch
               placeholder="Enter application code, person name, church, date, niche code..."
               onResultSelect={(result) => {
                 setSearchQuery(result.code || result.name || '');
@@ -53,7 +52,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
               autoFocus={true}
               showResultsInline={true}
               className="w-full"
-            />
+            /> */}
           </div>
 
           {/* Search Tips */}

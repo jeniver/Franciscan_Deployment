@@ -213,18 +213,7 @@ class NicheAgreementService {
         // ✅ FIX: Try to format date, with fallback to construct from birthYear if dateOfBirth is null
         let formattedDateOfBirth = formatDate(nicheAgreement.beneDateOfBirth_1);
         
-        // ✅ FALLBACK: If dateOfBirth is null but birthYear exists, construct a date
-        if (!formattedDateOfBirth && nicheAgreement.beneBirthYear_1) {
-          logger.info(`[processNicheAgreementData] dateOfBirth is null but birthYear exists (${nicheAgreement.beneBirthYear_1}), constructing date`);
-          try {
-            // Construct date as January 1st of the birth year
-            const constructedDate = new Date(parseInt(nicheAgreement.beneBirthYear_1, 10), 0, 1);
-            formattedDateOfBirth = formatDate(constructedDate);
-            logger.info(`[processNicheAgreementData] Constructed date from birthYear: ${formattedDateOfBirth}`);
-          } catch (e) {
-            logger.warn(`[processNicheAgreementData] Failed to construct date from birthYear:`, e.message);
-          }
-        }
+   
         
         logger.info(`[processNicheAgreementData] Beneficiary 1 formatted dateOfBirth:`, {
           input: nicheAgreement.beneDateOfBirth_1,

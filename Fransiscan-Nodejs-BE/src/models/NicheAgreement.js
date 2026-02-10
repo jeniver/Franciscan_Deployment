@@ -421,6 +421,7 @@ class NicheAgreement {
         chapelName: this.chapelName,
         totalAmount: this.nicheTotalAmount,
         lineAmount: this.nicheLineAmount,
+        rowPrice: this.nicheLocation?.row?.rowPrice || 0,
 
         // Complete location hierarchy
         location: this.nicheLocation || {
@@ -438,7 +439,8 @@ class NicheAgreement {
           row: {
             rowId: null,
             rowCode: null,
-            level: null
+            level: null,
+            rowPrice: this.nicheLocation?.row?.rowPrice || 0
           }
         }
       },

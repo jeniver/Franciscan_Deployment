@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { AddressInput } from '../components/AddressInput';
 import { useBatchedUpdates } from '../hooks/useBatchedUpdates';
+import { UpdateApplicationButton } from '../components/UpdateApplicationButton';
 
 interface ContactPersonDetailsProps {
   formData: any;
@@ -503,8 +504,6 @@ export function ContactPersonDetails({
                 { value: 'Catholic', label: 'Catholic' },
                 { value: 'Non Catholic', label: 'Non Catholic' }
               ]}
-              placeholder="Select religion"
-              error={validationErrors.applicantReligion || validationErrors.contactReligion}
               disabled={isReadOnly}
             />
             <FormSelect
@@ -527,7 +526,6 @@ export function ContactPersonDetails({
                 { value: 'Active', label: 'Active' },
                 { value: 'Non-Active', label: 'Non-Active' }
               ]}
-              placeholder="Select status"
               disabled={isReadOnly}
             />
           </div>
@@ -543,6 +541,13 @@ export function ContactPersonDetails({
           </div>
         </div>
         
-     
-    </div>;
+        {/* Update Application Button */}
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <UpdateApplicationButton 
+            formData={formData} 
+            isReadOnly={isReadOnly}
+            className="w-full sm:w-auto"
+          />
+        </div>
+      </div>;
 }

@@ -5,6 +5,7 @@ import { RootState } from '../store';
 import { FormSelect } from '../components/FormSelect';
 import { AddressInput } from '../components/AddressInput';
 import { PrintSecondNomineeButton } from '../components/PrintSecondNomineeButton';
+import { UpdateApplicationButton } from '../components/UpdateApplicationButton';
 interface NomineeDetailsProps {
   formData: any;
   setFormData: (data: any) => void;
@@ -1016,7 +1017,7 @@ export function NomineeDetails({
       ))}
 
       {nominees.length > 0 && (
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-between items-center mb-4">
         <button
           onClick={handleAddNominee}
           disabled={isReadOnly}
@@ -1026,6 +1027,12 @@ export function NomineeDetails({
           <PlusIcon className="w-4 h-4" />
           Add Nominee
         </button>
+        
+        {/* Update Application Button */}
+        <UpdateApplicationButton 
+          formData={formData} 
+          isReadOnly={isReadOnly}
+        />
       </div>
     )}
 
@@ -1035,7 +1042,7 @@ export function NomineeDetails({
           <UserCheckIcon className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">No nominees</h3>
           <p className="mt-1 text-sm text-gray-500">Get started by adding a nominee.</p>
-          <div className="mt-6">
+          <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center items-center">
             <button
               onClick={handleAddNominee}
               className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[#8b5a2b] hover:bg-[#6d4420] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#8b5a2b]"
@@ -1043,6 +1050,13 @@ export function NomineeDetails({
               <PlusIcon className="w-4 h-4 mr-2" />
               Add Nominee
             </button>
+            
+            {/* Update Application Button for empty state */}
+            <UpdateApplicationButton 
+              formData={formData} 
+              isReadOnly={isReadOnly}
+              variant="outline"
+            />
           </div>
         </div>
       )}

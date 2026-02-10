@@ -155,7 +155,8 @@ export function InscriptionRequest() { // Removed props parameter since they wer
       dateDied: '',
       internmentDate: '',
       internmentTime: '12:00',
-      deathCertNo: ''
+      deathCertNo: '',
+
     };
     addDeceased(newBeneficiary);
   };
@@ -167,27 +168,26 @@ export function InscriptionRequest() { // Removed props parameter since they wer
   const handleUpdateBeneficiary = (index: number, field: keyof DeceasedDetail, value: string) => {
     const updatedDetail = { [field]: value };
 
-    // Auto-calculate Internment Date/Time when Date Died is selected
-    // Internment Date should be 30 years LATER than Date Died
-    if (field === 'dateDied' && value) {
-      const dateDied = new Date(value);
-      if (!isNaN(dateDied.getTime())) {
-        // Calculate internment date as 30 years later
-        const internmentDate = new Date(dateDied);
-        internmentDate.setFullYear(internmentDate.getFullYear() + 30);
-
+    // Update storage period from when internment date is selected
+    if (field === 'internmentDate' && value) {
+      updatedDetail.storagePeriodFrom = value;
+      
+      // Calculate storage period to as 30 years after internment date
+      const internmentDate = new Date(value);
+      if (!isNaN(internmentDate.getTime())) {
+        const storageToDate = new Date(internmentDate);
+        storageToDate.setFullYear(internmentDate.getFullYear() + 30);
+        
         // Format as YYYY-MM-DD for date input
-        const year = internmentDate.getFullYear();
-        const month = String(internmentDate.getMonth() + 1).padStart(2, '0');
-        const day = String(internmentDate.getDate()).padStart(2, '0');
+        const year = storageToDate.getFullYear();
+        const month = String(storageToDate.getMonth() + 1).padStart(2, '0');
+        const day = String(storageToDate.getDate()).padStart(2, '0');
         const formattedDate = `${year}-${month}-${day}`;
-
-        // Set internment date to 30 years later
-        updatedDetail.internmentDate = formattedDate;
-        updatedDetail.internmentTime = '12:00';
+        
+        updatedDetail.storagePeriodTo = formattedDate;
       }
     }
-
+    
     updateDeceased(index, updatedDetail);
   };
 
@@ -205,12 +205,13 @@ export function InscriptionRequest() { // Removed props parameter since they wer
         dateDied: '', // Leave death date empty as it's not typically known from beneficiary info
         internmentDate: '', // Will be auto-calculated when dateDied is entered
         internmentTime: '12:00',
-        deathCertNo: '' // Leave death cert number empty
+        deathCertNo: '', // Leave death cert number empty
+  
       });
     } else {
       // If "Select" option or invalid selection, just update the select field
       updateDeceased(index, {
-        selectBeneficiary: beneficiaryName
+        selectBeneficiary: beneficiaryName,
       });
     }
   };
@@ -479,6 +480,8 @@ export function InscriptionRequest() { // Removed props parameter since they wer
                   <th className="pb-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Date Born</th>
                   <th className="pb-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Date Died</th>
                   <th className="pb-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Internment Date/Time</th>
+                  {/* <th className="pb-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Storage Period From</th> */}
+                  {/* <th className="pb-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Storage Period To</th> */}
                   <th className="pb-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Death Cert No.</th>
                   <th className="pb-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider text-center">Action</th>
                 </tr>

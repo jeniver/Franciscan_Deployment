@@ -757,7 +757,6 @@ The application list will be refreshed to show your new application.`);
           </div>
         </div>
 
-        <NichiWalle />
 
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           {applicationListError && (
@@ -1405,9 +1404,9 @@ The application list will be refreshed to show your new application.`);
     />
 
     {/* Global Search Modal */}
-    <GlobalSearchModal
+    {/* <GlobalSearchModal
       isOpen={isGlobalSearchModalOpen}
       onClose={() => setIsGlobalSearchModalOpen(false)}
-    />
+    /> */}
   </Layout>;
 }

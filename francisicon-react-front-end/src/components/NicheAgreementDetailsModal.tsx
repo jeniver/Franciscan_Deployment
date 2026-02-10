@@ -254,13 +254,15 @@ export function NicheAgreementDetailsModal({
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Date of Birth</span>
                                   <span className="font-semibold text-sm">
-                                    {beneficiary.dateOfBirth || 'N/A'}
+                                    {beneficiary.dateOfBirth && !beneficiary.dateOfBirth.startsWith('01-Jan-') ? beneficiary.dateOfBirth : 'N/A'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Birth Year</span>
                                   <span className="font-semibold text-sm">
-                                    {beneficiary.birthYear || 'N/A'}
+                                    {beneficiary.birthYear || 
+                                     (beneficiary.dateOfBirth && beneficiary.dateOfBirth.startsWith('01-Jan-') ? 
+                                       beneficiary.dateOfBirth.split('-')[2] : 'N/A')}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">

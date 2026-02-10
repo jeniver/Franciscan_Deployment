@@ -87,6 +87,6 @@ export const AGREEMENT_DEFAULTS = {
   orderTel: '6560-6361',
   orderHP: '9774-7053',
   orderEmail: 'franciscan.columbarium@gmail.com',
-  friarManager: 'Fr Justin Lim',
+  friarManager: 'FrGerard Victor',
   friarTitle: 'Friar - Manager',
 }

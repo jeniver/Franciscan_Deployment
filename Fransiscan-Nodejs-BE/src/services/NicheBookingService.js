@@ -524,13 +524,17 @@ const buildApplicationEntitiesFromBooking = ({
 
   const applicationBeneficiaries = beneficiaryRecords.slice(0, 3).map((record) => {
     const entity = record.entity || {};
+    // Process dateOfBirth and birthYear properly
+    let dateOfBirth = entity.dateOfBirth instanceof Date
+      ? entity.dateOfBirth
+      : parseDateValue(entity.dateOfBirth);
+    let birthYear = entity.birthYear;
+
     return new NicheApplicationBeneficiary({
       name: entity.name,
       relationshipToApplicant: entity.relationshipToApplicant,
-      dateOfBirth: entity.dateOfBirth instanceof Date
-        ? entity.dateOfBirth
-        : parseDateValue(entity.dateOfBirth),
-      birthYear: entity.birthYear,
+      dateOfBirth: dateOfBirth,
+      birthYear: birthYear,
       idNo: entity.idNo,
       isCatholic: entity.isCatholic,
       isMale: entity.isMale
