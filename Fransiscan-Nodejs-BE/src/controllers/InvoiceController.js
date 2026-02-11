@@ -17,6 +17,80 @@ class InvoiceController extends BaseController {
   }
 
   /**
+   * Get creation status for an application code
+   * GET /api/invoices/status/:code
+   * Returns status information about what's been created for a given code
+   */
+  getCreationStatus = this.asyncHandler(async(req, res) => {
+    this.logRequest(req, 'Get Creation Status');
+    
+    try {
+      const { code } = req.params;
+      const userId = req.user?.userId;
+      const churchId = req.user?.churchId;
+      
+      if (!code) {
+        return this.sendError(res, 'Code is required', 400);
+      }
+      
+      if (!userId || !churchId) {
+        return this.sendError(res, 'Authentication required', 401);
+      }
+      
+      // Check if invoice exists
+      const invoice = await this.invoiceRepository.getInvoiceByCode(code, churchId);
+      
+      // Check if receipt exists for this invoice/application
+      let receipt = null;
+      if (invoice) {
+        receipt = await this.receiptService.getReceiptByInvoiceId(invoice.InvoiceId, churchId);
+      } else {
+        // Check if there's a receipt for the application code directly
+        receipt = await this.receiptService.getReceiptByCode(code, churchId);
+      }
+      
+      // Determine if this is a fresh application
+      const { executeQuery } = require('../config/database');
+      const normalizedCode = code.trim().toUpperCase();
+      let isApplication = false;
+      let applicationData = null;
+      
+      // Check for application
+      if (normalizedCode.startsWith('NAPP-') || /^\d+-\d+$/.test(normalizedCode)) {
+        const appResult = await executeQuery(
+          'SELECT TOP 1 NicheApplicationId, Code, ApplicantName, Status, ChurchId FROM NicheApplication WITH(NOLOCK) WHERE Code = @code',
+          { code }
+        );
+        if (appResult.recordset && appResult.recordset.length > 0) {
+          applicationData = appResult.recordset[0];
+          isApplication = true;
+        }
+      }
+      
+      const status = {
+        code: code,
+        hasInvoice: !!invoice,
+        hasReceipt: !!receipt,
+        isApplication: isApplication,
+        isExistingRecord: !!invoice || !!receipt,
+        canCreateInvoice: isApplication && !invoice,
+        canCreateReceipt: (invoice || isApplication) && !receipt,
+        invoiceCode: invoice?.Code || null,
+        receiptCode: receipt?.Code || null,
+        invoiceId: invoice?.InvoiceId || null,
+        receiptId: receipt?.ReceiptId || null,
+        applicationData: applicationData
+      };
+      
+      return this.sendSuccess(res, status, 'Creation status retrieved successfully');
+      
+    } catch (error) {
+      logger.error('Controller: Failed to get creation status:', error);
+      return this.sendError(res, 'Failed to retrieve creation status', 500);
+    }
+  });
+
+  /**
    * Create new invoice
    * POST /api/invoices
    * Matching ASP.NET Capture.aspx.cs SaveInvoice
@@ -698,10 +772,16 @@ class InvoiceController extends BaseController {
         applicationCode
       );
 
+      // Add receiptCreated flag to indicate a new invoice was created
+      if (createdInvoice) {
+        createdInvoice.receiptCreated = true;
+      }
+
       if (!createdInvoice) {
         // Fallback: try to get by application code
         const fallbackInvoice = await this.invoiceRepository.getInvoiceByCode(code, churchId, applicationCode);
         if (fallbackInvoice) {
+          fallbackInvoice.receiptCreated = true;
           return this.sendSuccess(res, fallbackInvoice, 'Invoice created and retrieved successfully');
         }
         
@@ -711,6 +791,7 @@ class InvoiceController extends BaseController {
           data: {
             invoiceId: invoiceResult.data.invoiceId,
             invoiceCode: invoiceResult.data.invoiceCode,
+            receiptCreated: true,
             message: 'Invoice created successfully but could not be retrieved immediately'
           },
           message: 'Invoice created successfully'
@@ -721,6 +802,145 @@ class InvoiceController extends BaseController {
     } catch (error) {
       logger.error('Controller: Failed to create invoice by code (enhanced):', error);
       return this.sendError(res, error.message || 'Failed to create invoice', 500);
+    }
+  });
+
+  /**
+   * Create individual invoice for application code
+   * POST /api/invoices/individual
+   * Creates invoice directly from application data
+   */
+  createIndividualInvoice = this.asyncHandler(async(req, res) => {
+    this.logRequest(req, 'Create Individual Invoice');
+    
+    try {
+      const { body, user } = req;
+      
+      console.log('Request body:', body);
+      console.log('User:', user);
+      
+      if (!user || !user.churchId || !user.userId) {
+        return this.sendError(res, 'Authentication required with church ID and user ID', 401);
+      }
+
+      const { applicationCode, customerName, totalAmount, payingAmount, paymentMode, paymentModeDocNo, invoiceDetails: providedInvoiceDetails, addressNo, address, address2, addressCity, districtCode, country } = body;
+      
+      console.log('Application code:', applicationCode);
+      
+      let application = null;
+      let resolvedApplicationCode = applicationCode || '';
+      let resolvedRefDocName = 'NAPP';
+      let resolvedNicheApplicationId = null;
+      let resolvedCustomerName = customerName || 'Unknown Customer';
+      
+      // If application code is provided, try to get application data
+      if (applicationCode) {
+        const { executeQuery } = require('../config/database');
+        const appResult = await executeQuery(
+          'SELECT TOP 1 NicheApplicationId, Code, ApplicantName, Amount, Status, ChurchId FROM NicheApplication WITH(NOLOCK) WHERE Code = @code AND ChurchId = @churchId',
+          { code: applicationCode, churchId: user.churchId }
+        );
+        
+        if (!appResult.recordset || appResult.recordset.length === 0) {
+          return this.sendError(res, 'Application not found', 404);
+        }
+
+        application = appResult.recordset[0];
+        resolvedCustomerName = customerName || application.ApplicantName;
+        resolvedNicheApplicationId = application.NicheApplicationId;
+      }
+      
+      // Create invoice data
+      const invoiceData = {
+        transactionDate: new Date(),
+        refDocNumber: resolvedApplicationCode,
+        refDocName: resolvedRefDocName,
+        customerName: resolvedCustomerName,
+        totalAmount: totalAmount || 0,
+        payingAmount: payingAmount || 0,
+        taxAmount: 0,
+        taxPercentage: 0,
+        taxCode: null,
+        nicheApplicationId: resolvedNicheApplicationId,
+        paymentMode: paymentMode || 'Cash',
+        paymentModeDocNo: paymentModeDocNo || null,
+        // Include address fields if provided
+        addressNo: addressNo || null,
+        address: address || null,
+        address2: address2 || null,
+        addressCity: addressCity || null,
+        districtCode: districtCode || null,
+        country: country || null
+      };
+
+      // Convert payment mode string to number for database compatibility
+      // The InvoiceRepository expects paymentMode as integer (sql.Int)
+      if (typeof invoiceData.paymentMode === 'string') {
+        const Receipt = require('../models/Receipt');
+        invoiceData.paymentMode = Receipt.paymentModeToNumber(invoiceData.paymentMode);
+      }
+
+      // Create invoice details from provided details or use default
+      let invoiceDetails = [];
+      
+      if (providedInvoiceDetails && Array.isArray(providedInvoiceDetails) && providedInvoiceDetails.length > 0) {
+        // Use provided invoice details
+        invoiceDetails = providedInvoiceDetails.map(detail => ({
+          itemId: detail.itemId || 1,
+          quantity: detail.quantity || 1,
+          unitAmount: detail.unitAmount || 0,
+          payingAmount: detail.payingAmount || detail.unitAmount || 0,
+          totalPayingAmount: detail.totalPayingAmount || (detail.unitAmount || 0) * (detail.quantity || 1),
+          refDocNumber: detail.refDocNumber || resolvedApplicationCode || '',
+          refDocName: detail.refDocName || 'NAPP',
+          lineTotalAmount: detail.lineTotalAmount || (detail.unitAmount || 0) * (detail.quantity || 1),
+          lineTaxPercent: detail.lineTaxPercent || 0,
+          lineTaxAmount: detail.lineTaxAmount || 0,
+          outstandingAmount: detail.outstandingAmount || 0,
+          refType: detail.refType || 'NAPP'
+        }));
+      } else {
+        // Create default invoice details if no details provided
+        invoiceDetails = [{
+          itemId: 1, // Default item
+          quantity: 1,
+          unitAmount: invoiceData.payingAmount,
+          payingAmount: invoiceData.payingAmount,
+          totalPayingAmount: invoiceData.payingAmount,
+          refDocNumber: resolvedApplicationCode || '',
+          refDocName: 'NAPP',
+          lineTotalAmount: invoiceData.payingAmount,
+          lineTaxPercent: 0,
+          lineTaxAmount: 0,
+          outstandingAmount: 0,
+          refType: 'NAPP'
+        }];
+      }
+
+      // Save invoice - use validation bypass for standalone invoices (no application code)
+      const result = applicationCode 
+        ? await this.invoiceService.saveInvoice(invoiceData, invoiceDetails, user.userId, user.churchId)
+        : await this.invoiceService.saveInvoiceWithoutValidation(invoiceData, invoiceDetails, user.userId, user.churchId);
+      
+      if (!result.success) {
+        return this.sendError(res, result.error.message || 'Failed to create invoice', 400);
+      }
+      
+      logger.info(`Individual invoice created successfully: code=${result.data.invoiceCode}, applicationCode=${applicationCode}`);
+      
+      return res.status(201).json({
+        success: true,
+        data: {
+          invoiceId: result.data.invoiceId,
+          invoiceCode: result.data.invoiceCode
+        },
+        receiptCreated: false, // Individual invoices don't automatically create receipts
+        message: 'Individual invoice created successfully'
+      });
+      
+    } catch (error) {
+      logger.error('Controller: Failed to create individual invoice:', error);
+      return this.sendError(res, error.message || 'Failed to create individual invoice', 500);
     }
   });
 

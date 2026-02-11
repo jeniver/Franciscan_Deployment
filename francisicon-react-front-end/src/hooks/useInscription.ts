@@ -252,7 +252,7 @@ export function useInscription() {
       
       // ✅ FIX: Navigate to invoice-receipt page after successful inscription creation
       if (nicheApplicationCode) {
-        navigate('/invoice-receipt', {
+        navigate('/inscriptions', {
           state: { applicationNumber: nicheApplicationCode }
         });
       }

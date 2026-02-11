@@ -7,10 +7,13 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
+// Log environment variables for debugging
+console.log('JWT_SECRET from .env:', process.env.JWT_SECRET);
+
 const logger = require('./utils/logger');
-const errorHandler = require('./middleware/errorHandler');
-const notFoundHandler = require('./middleware/notFoundHandler');
+const { errorHandler, notFoundHandler, asyncHandler, validateInput, rateLimit: customRateLimit } = require('./middleware/errorHandler');
 const { responseCache } = require('./middleware/responseCache');
+const { apiPerformanceMiddleware } = require('./utils/performanceMonitor');
 const { connectDatabase } = require('./config/database');
 const NicheApplicationService = require('./services/NicheApplicationService');
 
@@ -79,7 +82,7 @@ app.use((req, res, next) => {
 });
 
 // Rate limiting
-const limiter = rateLimit({
+const limiter = customRateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
   message: {
@@ -90,6 +93,9 @@ app.use(limiter);
 
 // Compression middleware
 app.use(compression());
+
+// Performance monitoring middleware
+app.use(apiPerformanceMiddleware());
 
 // Logging middleware
 app.use(morgan('combined', {

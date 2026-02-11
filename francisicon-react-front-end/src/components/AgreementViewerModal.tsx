@@ -92,17 +92,17 @@ export function AgreementViewerModal({
   // }
 
   const handlePrint = () => {
-  if (!contentRef.current) return
+    if (!contentRef.current) return
 
-  const styledClone = cloneWithStyles(contentRef.current)
+    const styledClone = cloneWithStyles(contentRef.current)
 
-  const printWindow = window.open('', '_blank', 'width=900,height=1200')
-  if (!printWindow) {
-    alert('Please allow popups to print the document')
-    return
-  }
+    const printWindow = window.open('', '_blank', 'width=900,height=1200')
+    if (!printWindow) {
+      alert('Please allow popups to print the document')
+      return
+    }
 
-  const printStyles = `
+    const printStyles = `
     * {
       box-sizing: border-box;
     }
@@ -135,7 +135,7 @@ export function AgreementViewerModal({
     }
   `
 
-  printWindow.document.write(`
+    printWindow.document.write(`
     <!DOCTYPE html>
     <html>
       <head>
@@ -148,17 +148,17 @@ export function AgreementViewerModal({
     </html>
   `)
 
-  printWindow.document.close()
+    printWindow.document.close()
 
-  printWindow.onload = () => {
-    setTimeout(() => {
-      printWindow.focus()
-      printWindow.print()
-    }, 300)
-}
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus()
+        printWindow.print()
+      }, 300)
+    }
   }
 
-  
+
   const handleDownloadPdf = async () => {
     if (!contentRef.current) return
     setIsGeneratingPdf(true)
@@ -314,6 +314,7 @@ export function AgreementViewerModal({
             ) : secoundNomineeAgreement ? (
               <div ref={contentRef}>
                 <NomineeAgreement
+                  data={secoundNomineeAgreement.rawData || secoundNomineeAgreement}
                   nicheNo={secoundNomineeAgreement.nicheNo}
                   chapelName={secoundNomineeAgreement.chapelName}
                   applicant={secoundNomineeAgreement.applicant}

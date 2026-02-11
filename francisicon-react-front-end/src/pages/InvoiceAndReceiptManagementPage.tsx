@@ -362,12 +362,12 @@ export function InvoiceAndReceiptManagementPage() {
 
   const handleNewReceipt = () => {
     // Navigate to Invoice-Receipt page
-    navigate('/invoice-receipt');
+    navigate('/invoice-receipt/new');
   };
 
   const handleNewInvoice = () => {
     // Navigate to Invoice-Receipt page for creating new invoice
-    navigate('/invoice-receipt');
+    navigate('/invoice-receipt/new');
   };
 
   const stats = useMemo(() => {
@@ -558,7 +558,7 @@ export function InvoiceAndReceiptManagementPage() {
                             if (fullInvoice.country) addressParts.push(fullInvoice.country);
                             customerAddress = addressParts.join(', ');
                           }
-
+                            
                           // Format invoice date properly
                           let formattedInvoiceDate = '';
                           if (fullInvoice.invoiceDate) {

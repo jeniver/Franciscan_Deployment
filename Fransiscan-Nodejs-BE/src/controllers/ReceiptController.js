@@ -1,5 +1,6 @@
 const ReceiptService = require('../services/ReceiptService');
 const ReceiptRepository = require('../repositories/ReceiptRepository');
+const Receipt = require('../models/Receipt');
 const logger = require('../utils/logger');
 
 // Initialize service with repository
@@ -180,6 +181,148 @@ class ReceiptController {
   }
 
   /**
+   * Create individual receipt for application code
+   * POST /api/receipts/individual
+   * Creates receipt directly from application data
+   */
+  async createIndividualReceipt(req, res) {
+    try {
+      const { body, user } = req;
+
+      if (!user || !user.churchId || !user.userId) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required with church ID and user ID'
+          }
+        });
+      }
+
+      const { applicationCode, customerName, payingAmount, paymentMode, paymentModeDocNo } = body;
+
+      let application = null;
+      let resolvedCustomerName = customerName || 'Unknown Customer';
+      let resolvedAmount = payingAmount || 0;
+
+      // Get application data if applicationCode is provided
+      if (applicationCode) {
+        const { executeQuery } = require('../config/database');
+        
+        // Check for duplicate receipt first
+        const duplicateCheckQuery = `
+          SELECT TOP 1 r.ReceiptId, r.Code, r.TransactionDate, r.Status
+          FROM Receipt r
+          INNER JOIN NicheApplication na ON r.CustomerName = na.ApplicantName
+          WHERE na.Code = @applicationCode 
+          AND r.ChurchId = @churchId
+          AND r.Status > 0
+          AND CAST(r.TransactionDate AS DATE) = CAST(GETDATE() AS DATE)
+        `;
+        
+        const duplicateResult = await executeQuery(duplicateCheckQuery, { 
+          applicationCode, 
+          churchId: user.churchId 
+        });
+        
+        if (duplicateResult.recordset && duplicateResult.recordset.length > 0) {
+          return res.status(409).json({
+            success: false,
+            error: {
+              code: 'DUPLICATE_RECEIPT',
+              message: 'Receipt already created for this application today',
+              receiptCode: duplicateResult.recordset[0].Code,
+              transactionDate: duplicateResult.recordset[0].TransactionDate
+            }
+          });
+        }
+        
+        const appResult = await executeQuery(
+          'SELECT TOP 1 NicheApplicationId, Code, ApplicantName, Amount, Status, ChurchId FROM NicheApplication WITH(NOLOCK) WHERE Code = @code AND ChurchId = @churchId',
+          { code: applicationCode, churchId: user.churchId }
+        );
+
+        if (!appResult.recordset || appResult.recordset.length === 0) {
+          return res.status(404).json({
+            success: false,
+            error: {
+              code: 'APPLICATION_NOT_FOUND',
+              message: 'Application not found'
+            }
+          });
+        }
+
+        application = appResult.recordset[0];
+        resolvedCustomerName = customerName || application.ApplicantName;
+        resolvedAmount = payingAmount || application.Amount || 0;
+      } else {
+        // When no application code, use provided payingAmount or default to 0
+        resolvedAmount = payingAmount || 0;
+      }
+      
+      // Use resolved values for receipt creation
+      const receipt = new Receipt({
+        invoiceId: null, // No invoice for individual receipt
+        transactionDate: new Date(),
+        customerName: resolvedCustomerName,
+        code: null, // Will be generated
+        totalAmount: resolvedAmount,
+        payingAmount: resolvedAmount,
+        paymentMode: paymentMode || 'Cash',
+        userId: user.userId,
+        churchId: user.churchId,
+        status: 2,
+        paymentModeDocNo: paymentModeDocNo || null,
+        payeeName: resolvedCustomerName,
+        addressNo: null,
+        address: null,
+        address2: null,
+        addressCity: null,
+        districtCode: null,
+        country: null,
+        outstandingAmount: 0
+      });
+
+      logger.debug('Before conversion - paymentMode:', receipt.paymentMode, 'type:', typeof receipt.paymentMode);
+
+      // Convert payment mode string to number for Receipt (stored as numeric in database)
+      if (typeof receipt.paymentMode === 'string') {
+        receipt.paymentMode = Receipt.paymentModeToNumber(receipt.paymentMode);
+        logger.debug('After conversion - paymentMode:', receipt.paymentMode, 'type:', typeof receipt.paymentMode);
+      } else {
+        logger.debug('No conversion needed - paymentMode is already:', receipt.paymentMode, 'type:', typeof receipt.paymentMode);
+      }
+
+      // Save receipt
+      const result = await receiptService.createReceipt(receipt, user.userId, user.churchId);
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+
+      logger.info(`Individual receipt created successfully: code=${result.data.code}, applicationCode=${applicationCode}`);
+
+      return res.status(201).json({
+        success: true,
+        code: result.data.code,
+        receiptCreated: true,
+        receiptCode: result.data.code,
+        message: 'Individual receipt created successfully'
+      });
+
+    } catch (error) {
+      logger.error('Controller: Failed to create individual receipt:', error);
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error.message || 'Failed to create individual receipt'
+        }
+      });
+    }
+  }
+
+  /**
    * Get last receipt number
    * GET /api/receipts/last-number
    * Based on: Invoice/InduvidualReceiptCapture.aspx.cs LoadLastReceiptNumber WebMethod
@@ -229,13 +372,13 @@ class ReceiptController {
    */
   extractQueryParam(query, key) {
     const value = query[key];
-    
+
     // Handle nested object format (e.g., fromDate[fromDate]=value)
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       // Return the nested value with the same key name
       return value[key];
     }
-    
+
     // Return flat value
     return typeof value === 'string' ? value : undefined;
   }
@@ -251,7 +394,7 @@ class ReceiptController {
       // Check if parameters are nested in fromDate object (frontend sends fromDate[fromDate], fromDate[toDate], etc.)
       // When Express parses fromDate[fromDate]=value, it creates req.query.fromDate = { fromDate: 'value' }
       const isNested = req.query.fromDate && typeof req.query.fromDate === 'object' && !Array.isArray(req.query.fromDate);
-      
+
       let fromDateStr, toDateStr, pageStr, limitStr, sortBy, sortOrder, search;
 
       if (isNested) {
@@ -278,14 +421,14 @@ class ReceiptController {
       // Parse dates safely
       let from = null;
       let to = null;
-      
+
       if (fromDateStr) {
         const fromDate = new Date(fromDateStr);
         if (!isNaN(fromDate.getTime())) {
           from = fromDate;
         }
       }
-      
+
       if (toDateStr) {
         const toDate = new Date(toDateStr);
         if (!isNaN(toDate.getTime())) {
@@ -639,30 +782,30 @@ class ReceiptController {
       }
 
       logger.info(`Getting receipt PDF for code: ${code} (churchId: ${user.churchId})`);
-      
+
       // Check if client explicitly wants JSON data (for frontend PDF generation)
       const wantsData = req.query.data === 'true' || req.query.format === 'json' || req.query.json === 'true';
       const wantsPdf = req.query.download === 'true' || req.query.pdf === 'true';
-      
+
       // Get applicationCode from query string if provided (e.g., INCR, NAPP, WAPP, GOLA)
       // This is used to filter receipts by the invoice's RefDocName field
       const { applicationCode } = req.query;
-      
+
       // Default behavior: return PDF so existing clients are not broken.
       // If frontend needs JSON to build PDF, they must send ?data=true (or format=json/json=true).
       if (wantsData && !wantsPdf) {
         // Return JSON data for frontend PDF generation
         logger.info(`Returning receipt data as JSON for frontend PDF generation: code=${code}${applicationCode ? `, applicationCode=${applicationCode}` : ''}`);
         const receiptDataResult = await receiptService.getReceiptDataForPdf(code, user.churchId, true, applicationCode);
-        
+
         if (!receiptDataResult.success) {
           logger.warn(`Receipt data not found: code=${code}, churchId=${user.churchId}, error=${receiptDataResult.error?.code}`);
-          
+
           // Enhanced diagnostic: Check if receipt exists at all and find similar codes
           let diagnosticInfo = null;
           try {
             const diagnosis = await receiptRepository.diagnoseReceiptCode(code);
-            
+
             if (diagnosis.exists) {
               logger.warn(`Receipt exists (${diagnosis.matchType}): code=${code}, receipt churchId=${diagnosis.receipt?.ChurchId}, user churchId=${user.churchId}`);
               diagnosticInfo = {
@@ -689,7 +832,7 @@ class ReceiptController {
             logger.error('Error checking receipt existence:', checkError);
             diagnosticInfo = { diagnosticError: checkError.message };
           }
-          
+
           const statusCode = receiptDataResult.error?.code === 'NOT_FOUND' ? 404 : 400;
           const errorResponse = {
             ...receiptDataResult,
@@ -697,20 +840,20 @@ class ReceiptController {
           };
           return res.status(statusCode).json(errorResponse);
         }
-        
+
         return res.status(200).json(receiptDataResult);
       }
-      
+
       // PDF generation requested (default path) - get receipt first
       const receiptResult = await receiptService.getReceiptByCode(code, user.churchId, true);
       if (!receiptResult.success) {
         logger.warn(`Receipt not found for PDF generation: code=${code}, churchId=${user.churchId}, error=${receiptResult.error?.code}`);
-        
+
         // Enhanced diagnostic
         let diagnosticInfo = null;
         try {
           const diagnosis = await receiptRepository.diagnoseReceiptCode(code);
-          
+
           if (diagnosis.exists) {
             diagnosticInfo = {
               receiptExists: true,
@@ -735,7 +878,7 @@ class ReceiptController {
           logger.error('Error checking receipt existence:', checkError);
           diagnosticInfo = { diagnosticError: checkError.message };
         }
-        
+
         const statusCode = receiptResult.error?.code === 'NOT_FOUND' ? 404 : 400;
         const errorResponse = {
           ...receiptResult,
@@ -743,7 +886,7 @@ class ReceiptController {
         };
         return res.status(statusCode).json(errorResponse);
       }
-      
+
       logger.info(`Receipt found, generating PDF for code: ${code}, receiptId: ${receiptResult.data?.receiptId}`);
 
       // Generate PDF file
@@ -834,12 +977,12 @@ class ReceiptController {
       }
 
       const invoiceResult = await receiptService.getInvoiceByCode(code, user.churchId, applicationCode);
-      
+
       if (req.timedOut || res.headersSent) {
         logger.warn('Response already sent or timed out, skipping invoice PDF response.');
         return;
       }
-      
+
       if (!invoiceResult.success) {
         // Attach diagnostic information similar to receipt PDF diagnostics
         let diagnostic = null;

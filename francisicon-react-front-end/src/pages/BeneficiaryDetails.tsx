@@ -62,6 +62,19 @@ export function BeneficiaryDetails({
       processed.birthYear = null;
     }
 
+    // If we have a birthYear but no dateOfBirth, don't automatically set dateOfBirth to Jan 1st
+    // This preserves the year-only format when needed
+    if (processed.birthYear && !processed.dateOfBirth) {
+      // Leave as is - birthYear exists but dateOfBirth is null
+    }
+    // If we have a dateOfBirth but no birthYear, extract year from date
+    else if (processed.dateOfBirth && !processed.birthYear && typeof processed.dateOfBirth === 'string' && processed.dateOfBirth.includes('-')) {
+      const parts = processed.dateOfBirth.split('-');
+      if (parts.length === 3) {
+        processed.birthYear = parts[2];
+      }
+    }
+
     // Handle religious affiliation mapping
     if (processed.religion === 'Catholic') {
       processed.isCatholic = true;
@@ -102,19 +115,6 @@ export function BeneficiaryDetails({
   }>({})
   const currentBeneficiariesRef = useRef<Beneficiary[]>([])
 
-  // Helper function to resolve DOB value for display
-  const resolveDOBValue = (
-    dateOfBirth?: string | null,
-    birthYear?: string | number | null
-  ): string => {
-    // Handle empty strings as null values
-    const dob = dateOfBirth === '' || dateOfBirth === 'null' ? null : dateOfBirth;
-    const by = birthYear === '' || birthYear === 'null' ? null : birthYear;
-    
-    if (dob) return dob;
-    if (by) return String(by);
-    return '';
-  }
 
 
   // Process beneficiary date fields and other properties
@@ -224,20 +224,20 @@ export function BeneficiaryDetails({
       const allBeneficiaryData: any = {
         beneficiaries: updatedBeneficiaries,
       }
-      
+
       // Process each beneficiary efficiently
       for (let index = 0; index < updatedBeneficiaries.length; index++) {
         const beneficiary = updatedBeneficiaries[index];
         const i = index + 1
-        
+
         let dateOfBirth = beneficiary.dateOfBirth || ''
         let birthYear: string | number | null = beneficiary.birthYear || null
-        
+
         if (dateOfBirth && dateOfBirth.includes('-')) {
           const parts = dateOfBirth.split('-')
           if (parts.length === 3) birthYear = parts[2]
         }
-        
+
         allBeneficiaryData[`beneficiary${i}Name`] = beneficiary.name || ''
         allBeneficiaryData[`beneficiary${i}IDNo`] = beneficiary.idNo || ''
         allBeneficiaryData[`beneficiary${i}Relationship`] =
@@ -257,7 +257,7 @@ export function BeneficiaryDetails({
           !!beneficiary.isCatholic
         allBeneficiaryData[`beneficiary${i}IsMale`] = !!beneficiary.isMale
       }
-      
+
       // Clear fields for removed beneficiaries
       for (let i = updatedBeneficiaries.length + 1; i <= 5; i++) {
         allBeneficiaryData[`beneficiary${i}Name`] = ''
@@ -273,7 +273,7 @@ export function BeneficiaryDetails({
         allBeneficiaryData[`beneficiary${i}IsCatholic`] = false
         allBeneficiaryData[`beneficiary${i}IsMale`] = false
       }
-      
+
       setFormData(allBeneficiaryData)
     },
     [setFormData],
@@ -331,14 +331,19 @@ export function BeneficiaryDetails({
               updatedBeneficiary.isMale = value;
             }
 
+            // Only automatically set dateOfBirth from birthYear if dateOfBirth is null AND we want this behavior
+            // To preserve year-only format, we should not automatically convert birthYear to full date
+            // The reverse conversion (full date to extract year) happens when dateOfBirth is set
             if (
-              field === 'birthYear' &&
+              field === 'dateOfBirth' &&
               value &&
-              (typeof value === 'string' || typeof value === 'number') &&
-              (!b.dateOfBirth || b.dateOfBirth === '')
+              typeof value === 'string' &&
+              value.includes('-')
             ) {
-              const yearStr = typeof value === 'number' ? value.toString() : value;
-              updatedBeneficiary.dateOfBirth = `01-Jan-${yearStr}`
+              const parts = value.split('-');
+              if (parts.length === 3) {
+                updatedBeneficiary.birthYear = parts[2];
+              }
             }
             return updatedBeneficiary
           }
@@ -389,96 +394,33 @@ export function BeneficiaryDetails({
   // Handle date of birth changes for EnhancedBeneficiaryDatePicker
   const handleEnhancedDateChange = useCallback(
     (beneficiaryId: number) => {
-      return (value: string) => {
+      return (dateOfBirth: string | null, birthYear: number | null) => {
         // Skip update if we're in a render cycle by checking a flag
         if (isUpdatingFromComponent.current) {
           return;
         }
 
-        // Handle different input formats
-        const stringValue = String(value || '');
-        if (!stringValue || stringValue.trim() === '' || stringValue === 'null') {
+        // Handle the dateOfBirth and birthYear values
+        if (dateOfBirth === null && birthYear === null) {
           // Clear both fields
           handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', null);
           handleUpdateBeneficiary(beneficiaryId, 'birthYear', null);
           return;
         }
 
-        // Check if it's a 4-digit year only
-        if (/^\d{4}$/.test(stringValue.trim())) {
-          const yearValue = parseInt(stringValue.trim());
-          if (yearValue >= 1900 && yearValue <= new Date().getFullYear()) {
-            handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', null); // Clear full date
-            handleUpdateBeneficiary(beneficiaryId, 'birthYear', stringValue.trim()); // Set year only
-            return;
-          }
+        if (birthYear !== null) {
+          // Year only provided
+          handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', null);
+          handleUpdateBeneficiary(beneficiaryId, 'birthYear', birthYear);
+          return;
         }
 
-
-        // Check if it's a full date format (DD-MMM-YYYY or DD-MM-YYYY)
-        if (/^\d{1,2}[-/]\d{1,2}[-/]\d{4}$/.test(stringValue.trim()) ||
-          /^\d{1,2}-[A-Za-z]{3}-\d{4}$/.test(stringValue.trim())) {
-          // Validate the date
-          let dateObj: Date | null = null;
-          let formattedDate: string = stringValue.trim();
-
-          // Try to parse different formats
-          if (stringValue.includes('-')) {
-            const parts = stringValue.split('-');
-            if (parts.length === 3) {
-              const [day, month, year] = parts;
-
-              // Handle month names (MMM format)
-              if (isNaN(parseInt(month))) {
-                const monthNames = [
-                  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-                ];
-                const monthIndex = monthNames.findIndex(m =>
-                  m.toLowerCase() === month.toLowerCase().substring(0, 3)
-                );
-                if (monthIndex !== -1) {
-                  dateObj = new Date(parseInt(year), monthIndex, parseInt(day));
-                  formattedDate = `${day.padStart(2, '0')}-${monthNames[monthIndex]}-${year}`;
-                }
-              } else {
-                // Handle numeric month (MM format)
-                const monthIndex = parseInt(month) - 1;
-                if (monthIndex >= 0 && monthIndex <= 11) {
-                  const monthNames = [
-                    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-                  ];
-                  dateObj = new Date(parseInt(year), monthIndex, parseInt(day));
-                  formattedDate = `${day.padStart(2, '0')}-${monthNames[monthIndex]}-${year}`;
-                }
-              }
-            }
-          }
-
-          // Validate the date object
-          if (dateObj && dateObj instanceof Date && !isNaN(dateObj.getTime())) {
-            const day = dateObj.getDate();
-            const month = dateObj.getMonth();
-            const year = dateObj.getFullYear();
-
-            // Double-check it's the same date
-            if (dateObj.getDate() === day && dateObj.getMonth() === month && dateObj.getFullYear() === year) {
-              const monthNames = [
-                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-              ];
-              const formattedDate = `${day.toString().padStart(2, '0')}-${monthNames[month]}-${year}`;
-              handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', formattedDate);
-              handleUpdateBeneficiary(beneficiaryId, 'birthYear', null); // Clear year field
-              return;
-            }
-          }
+        if (dateOfBirth !== null) {
+          // Full date provided
+          handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', dateOfBirth);
+          handleUpdateBeneficiary(beneficiaryId, 'birthYear', null);
+          return;
         }
-
-        // For any other format, store as-is in dateOfBirth field
-        handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', stringValue.trim());
-        handleUpdateBeneficiary(beneficiaryId, 'birthYear', null);
       };
     },
     [handleUpdateBeneficiary]
@@ -606,10 +548,8 @@ export function BeneficiaryDetails({
                 {/* Row 2: Date of Birth */}
                 <EnhancedBeneficiaryDatePicker
                   label="Date of Birth"
-                  value={resolveDOBValue(
-                    beneficiary.dateOfBirth,
-                    beneficiary.birthYear
-                  )}
+                  dateOfBirth={beneficiary.dateOfBirth}
+                  birthYear={beneficiary.birthYear}
                   onChange={handleEnhancedDateChange(beneficiary.id)}
                   disabled={isReadOnly}
                 />

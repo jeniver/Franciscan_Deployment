@@ -67,6 +67,7 @@ export function TaxInvoice({
   return (
     <div className="w-full max-w-[800px] bg-white p-8 md:p-12 mx-auto text-black font-serif shadow-sm border border-gray-200">
       {/* Header */}
+      <>{console.log("address", address)}</>
       <div className="flex justify-between items-start mb-8">
         {/* Franciscan Logo */}
         <img
@@ -76,17 +77,14 @@ export function TaxInvoice({
         />
 
         <div className="text-right text-sm leading-relaxed flex-1 ml-8">
-           <h2 className="font-bold text-lg uppercase mb-1">
-           THE ORDER OF FRIARS MINOR (S) LTD
+          <h2 className="font-bold text-lg uppercase mb-1">
+            THE ORDER OF FRIARS MINOR (S) LTD
           </h2>
           <p>Co. & GST Reg. No. 201016236M</p>
           <p>Franciscan Columbarium</p>
           <p>5 Bukit Batok East Ave 2, Singapore 659918</p>
-          <p>
-            Tel: 6560-6361 , HP: 9774-7053
-            ,
-          </p>
-          <p>email:Email:franciscan.columbarium@gmail.com</p>
+          <p>Tel: 6560-6361 , HP: 9774-7053</p>
+          <p>Email: franciscan.columbarium@gmail.com</p>
         </div>
       </div>
 
@@ -103,7 +101,9 @@ export function TaxInvoice({
           <span className="font-bold">Name :</span>
           <span>{name}</span>
           <span className="font-bold">Address :</span>
-          <span>{address}</span>
+          <div className="flex flex-col">
+            {address}
+          </div>
         </div>
         <div className="w-1/3 grid grid-cols-[100px_1fr] gap-y-2 text-right">
           <span className="text-left">Invoice No :</span>

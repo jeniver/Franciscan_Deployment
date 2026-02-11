@@ -34,7 +34,7 @@ class NicheAgreementRepository extends BaseRepository {
       // Step 1: Get application data first (fast, indexed lookup)
       const useIndexHints = process.env.USE_INDEX_HINTS === 'true';
       const indexHint = useIndexHints ? 'WITH (NOLOCK, INDEX(IX_NicheApplication_Code))' : 'WITH (NOLOCK)';
-      
+
       const applicationQuery = `
         SELECT TOP 1 na.*
         FROM NicheApplication na ${indexHint}
@@ -54,7 +54,7 @@ class NicheAgreementRepository extends BaseRepository {
       }
 
       const na = applicationResult.recordset[0];
-      
+
       // Step 2: Get location hierarchy separately (only if NicheId exists)
       // This query runs in parallel with other queries, so it doesn't block
       let locationData = {
@@ -116,32 +116,32 @@ class NicheAgreementRepository extends BaseRepository {
       };
 
       logger.info(`Found application: ${mergedData.Code} in Chapel: ${mergedData.ChapelCode || 'N/A'}, Wall: ${mergedData.WallCode || 'N/A'}`);
-      console.log( "Adresss finder",mergedData)
+      console.log("Adresss finder", mergedData)
       // Helper function to extract street address from full address
       const extractStreetAddress = (fullAddress) => {
         if (!fullAddress || typeof fullAddress !== 'string') {
           return fullAddress;
         }
-        
+
         // Remove "Block" prefix if present
         let cleanedAddress = fullAddress.replace(/^\s*Block\s+\d+\s*,?\s*/i, '');
-        
+
         // Look for unit number patterns like "#floor-unit" or "-floor-unit"
         const unitPattern = /[#\-]\d+[\-\/]\d+/;
         const unitMatch = cleanedAddress.match(unitPattern);
-        
+
         if (unitMatch) {
           // Split by the unit number and take the first part (street address)
           const parts = cleanedAddress.split(unitMatch[0]);
           cleanedAddress = parts[0].trim();
         }
-        
+
         // Remove postal code if it exists at the end (usually 6 digits)
         cleanedAddress = cleanedAddress.replace(/\s+\d{6}\s*$/, '').trim();
-        
+
         // Remove city name if it ends with "Singapore"
         cleanedAddress = cleanedAddress.replace(/\s*,?\s*Singapore\s*$/i, '').trim();
-        
+
         return cleanedAddress;
       };
 
@@ -155,7 +155,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Applicant (all data is in NicheApplication table)
         applicantName: mergedData.ApplicantName,
         applicantAddressNo: mergedData.ApplicantAddressNo,
-        applicantAddressLine1:mergedData.ApplicantAddressLine1,
+        applicantAddressLine1: mergedData.ApplicantAddressLine1,
         applicantAddressLine2: mergedData.ApplicantAddressLine2,
         applicantAddressCity: mergedData.ApplicantAddressCity,
         applicantAddressCountry: mergedData.ApplicantAddressCountry,
@@ -273,12 +273,12 @@ class NicheAgreementRepository extends BaseRepository {
    */
   formatDateOfBirth(dbValue) {
     logger.debug(`[formatDateOfBirth] Input: ${dbValue}, Type: ${typeof dbValue}`);
-    
+
     if (!dbValue) {
       logger.debug(`[formatDateOfBirth] Value is null/undefined/empty`);
       return null;
     }
-    
+
     // If it's already a Date object (from DATETIME column)
     if (dbValue instanceof Date) {
       if (isNaN(dbValue.getTime())) {
@@ -289,7 +289,7 @@ class NicheAgreementRepository extends BaseRepository {
       logger.debug(`[formatDateOfBirth] Date object converted to ISO: ${isoString}`);
       return isoString;
     }
-    
+
     // If it's a string (from NVARCHAR column)
     if (typeof dbValue === 'string') {
       const trimmed = dbValue.trim();
@@ -297,7 +297,7 @@ class NicheAgreementRepository extends BaseRepository {
         logger.debug(`[formatDateOfBirth] Empty or null string: "${trimmed}"`);
         return null;
       }
-      
+
       // Try to parse as date
       const parsed = new Date(trimmed);
       if (!isNaN(parsed.getTime())) {
@@ -305,7 +305,7 @@ class NicheAgreementRepository extends BaseRepository {
         logger.debug(`[formatDateOfBirth] String "${trimmed}" parsed to ISO: ${isoString}`);
         return isoString;
       }
-      
+
       // Try common date formats
       // Format: "2012-04-15" (YYYY-MM-DD)
       const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -318,7 +318,7 @@ class NicheAgreementRepository extends BaseRepository {
           return isoString;
         }
       }
-      
+
       // Format: "15-Apr-2012" or "15 Apr 2012" (DD-MMM-YYYY)
       const dmyMatch = trimmed.match(/^(\d{1,2})[\s-](\w{3})[\s-](\d{4})/i);
       if (dmyMatch) {
@@ -334,12 +334,12 @@ class NicheAgreementRepository extends BaseRepository {
           }
         }
       }
-      
+
       logger.warn(`[formatDateOfBirth] Could not parse date string: "${trimmed}"`);
       // Return as-is if can't parse (might be formatted string that frontend can handle)
       return trimmed;
     }
-    
+
     // Try to convert to Date
     try {
       const date = new Date(dbValue);
@@ -351,7 +351,7 @@ class NicheAgreementRepository extends BaseRepository {
     } catch (e) {
       logger.warn(`[formatDateOfBirth] Error converting to Date:`, e.message);
     }
-    
+
     logger.warn(`[formatDateOfBirth] Could not format date value: ${dbValue} (type: ${typeof dbValue})`);
     return null;
   }
@@ -362,26 +362,26 @@ class NicheAgreementRepository extends BaseRepository {
    */
   formatBirthYear(dbValue) {
     if (dbValue === null || dbValue === undefined) return null;
-    
+
     // If it's already a number
     if (typeof dbValue === 'number') {
       return dbValue;
     }
-    
+
     // If it's a string, try to parse
     if (typeof dbValue === 'string') {
       const trimmed = dbValue.trim();
       if (!trimmed) return null;
-      
+
       const parsed = parseInt(trimmed, 10);
       if (!isNaN(parsed)) {
         return parsed;
       }
-      
+
       // Return as string if can't parse to number
       return trimmed;
     }
-    
+
     return null;
   }
 
@@ -394,7 +394,7 @@ class NicheAgreementRepository extends BaseRepository {
   async addBeneficiaries(nicheApplicationId, nicheAgreement) {
     try {
       logger.info(`[addBeneficiaries] Starting for nicheApplicationId: ${nicheApplicationId}`);
-      
+
       // PRIMARY: Query NicheApplicationBeneficiary first (this is where POST data is saved)
       const primaryQuery = `
         SELECT TOP 2
@@ -439,24 +439,24 @@ class NicheAgreementRepository extends BaseRepository {
           RelationshipToNominee1: bene1.RelationshipToNominee1,
           RelationshipToNominee2: bene1.RelationshipToNominee2
         });
-        
+
         nicheAgreement.beneName_1 = bene1.Name;
         nicheAgreement.beneIDNo_1 = bene1.IDNo;
         nicheAgreement.beneIsCatholic_1 = bene1.IsCatholic;
         nicheAgreement.beneIsMale_1 = bene1.IsMale;
         nicheAgreement.beneRelationshipToApplicant_1 = bene1.RelationshipToApplicant;
-        
+
         // ✅ FIX: Format DateOfBirth properly (handles NVARCHAR string)
         nicheAgreement.beneDateOfBirth_1 = this.formatDateOfBirth(bene1.DateOfBirth);
-        
+
         // ✅ FIX: Format BirthYear properly (handles NVARCHAR string)
         nicheAgreement.beneBirthYear_1 = this.formatBirthYear(bene1.BirthYear);
-        
+
         logger.info(`[addBeneficiaries] Beneficiary 1 formatted:`, {
           dateOfBirth: nicheAgreement.beneDateOfBirth_1,
           birthYear: nicheAgreement.beneBirthYear_1
         });
-        
+
         // ✅ Set nominee relationships from the query result (will be null if columns don't exist)
         nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1 || null;
         nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2 || null;
@@ -473,24 +473,24 @@ class NicheAgreementRepository extends BaseRepository {
           RelationshipToNominee1: bene2.RelationshipToNominee1,
           RelationshipToNominee2: bene2.RelationshipToNominee2
         });
-        
+
         nicheAgreement.beneName_2 = bene2.Name;
         nicheAgreement.beneIDNo_2 = bene2.IDNo;
         nicheAgreement.beneIsCatholic_2 = bene2.IsCatholic;
         nicheAgreement.beneIsMale_2 = bene2.IsMale;
         nicheAgreement.beneRelationshipToApplicant_2 = bene2.RelationshipToApplicant;
-        
+
         // ✅ FIX: Format DateOfBirth properly
         nicheAgreement.beneDateOfBirth_2 = this.formatDateOfBirth(bene2.DateOfBirth);
-        
+
         // ✅ FIX: Format BirthYear properly
         nicheAgreement.beneBirthYear_2 = this.formatBirthYear(bene2.BirthYear);
-        
+
         logger.info(`[addBeneficiaries] Beneficiary 2 formatted:`, {
           dateOfBirth: nicheAgreement.beneDateOfBirth_2,
           birthYear: nicheAgreement.beneBirthYear_2
         });
-        
+
         // ✅ Set nominee relationships from the query result (will be null if columns don't exist)
         nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1 || null;
         nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2 || null;
@@ -499,7 +499,7 @@ class NicheAgreementRepository extends BaseRepository {
       // FALLBACK: If no data found, try NicheBookingBeneficiary (legacy/booking data)
       if (!nicheAgreement.beneName_1 && !nicheAgreement.beneName_2) {
         logger.info(`[addBeneficiaries] No data in NicheApplicationBeneficiary, trying NicheBookingBeneficiary`);
-        
+
         const fallbackQuery = `
           SELECT TOP 2
             Name,
@@ -530,24 +530,24 @@ class NicheAgreementRepository extends BaseRepository {
             BirthYear: bene1.BirthYear,
             BirthYearType: typeof bene1.BirthYear
           });
-          
+
           nicheAgreement.beneName_1 = bene1.Name;
           nicheAgreement.beneIDNo_1 = bene1.IDNo;
           nicheAgreement.beneIsCatholic_1 = bene1.IsCatholic;
           nicheAgreement.beneIsMale_1 = bene1.IsMale;
           nicheAgreement.beneRelationshipToApplicant_1 = bene1.RelationshipToApplicant;
-          
+
           // ✅ FIX: Format DateOfBirth properly (handles DATETIME)
           nicheAgreement.beneDateOfBirth_1 = this.formatDateOfBirth(bene1.DateOfBirth);
-          
+
           // ✅ FIX: Format BirthYear properly (handles INT)
           nicheAgreement.beneBirthYear_1 = this.formatBirthYear(bene1.BirthYear);
-          
+
           logger.info(`[addBeneficiaries] Fallback Beneficiary 1 formatted:`, {
             dateOfBirth: nicheAgreement.beneDateOfBirth_1,
             birthYear: nicheAgreement.beneBirthYear_1
           });
-          
+
           nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1 || null;
           nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2 || null;
         }
@@ -561,29 +561,29 @@ class NicheAgreementRepository extends BaseRepository {
             BirthYear: bene2.BirthYear,
             BirthYearType: typeof bene2.BirthYear
           });
-          
+
           nicheAgreement.beneName_2 = bene2.Name;
           nicheAgreement.beneIDNo_2 = bene2.IDNo;
           nicheAgreement.beneIsCatholic_2 = bene2.IsCatholic;
           nicheAgreement.beneIsMale_2 = bene2.IsMale;
           nicheAgreement.beneRelationshipToApplicant_2 = bene2.RelationshipToApplicant;
-          
+
           // ✅ FIX: Format DateOfBirth properly
           nicheAgreement.beneDateOfBirth_2 = this.formatDateOfBirth(bene2.DateOfBirth);
-          
+
           // ✅ FIX: Format BirthYear properly
           nicheAgreement.beneBirthYear_2 = this.formatBirthYear(bene2.BirthYear);
-          
+
           logger.info(`[addBeneficiaries] Fallback Beneficiary 2 formatted:`, {
             dateOfBirth: nicheAgreement.beneDateOfBirth_2,
             birthYear: nicheAgreement.beneBirthYear_2
           });
-          
+
           nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1 || null;
           nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2 || null;
         }
       }
-      
+
       logger.info(`[addBeneficiaries] Completed. Final values:`, {
         bene1: {
           name: nicheAgreement.beneName_1,
@@ -668,7 +668,7 @@ class NicheAgreementRepository extends BaseRepository {
 
       if (result.recordset.length > 0) {
         const row = result.recordset[0];
-        
+
         // Update applicant info from Person table (if available)
         if (row.ApplicantName) {
           nicheAgreement.applicantName = row.ApplicantName;
@@ -866,12 +866,12 @@ class NicheAgreementRepository extends BaseRepository {
           ORDER BY inv.TransactionDate DESC
         `;
         const invoiceResultNoStatus = await executeQuery(invoiceQueryNoStatus, { applicationCode }, { timeout: 10000 });
-        
+
         if (invoiceResultNoStatus.recordset.length === 0) {
           logger.info(`No invoice found for application: ${applicationCode}`);
           return;
         }
-        
+
         inv = invoiceResultNoStatus.recordset[0];
         invoiceId = inv.InvoiceId;
       } else {
@@ -992,13 +992,12 @@ class NicheAgreementRepository extends BaseRepository {
   async addInscriptionInfo(applicationCode, nicheApplicationId, nicheAgreement) {
     try {
       logger.info(`[addInscriptionInfo] Starting for applicationCode: ${applicationCode}, nicheApplicationId: ${nicheApplicationId}`);
-      
+
       // Query for inscription linked to this application via NicheBooking
       const inscriptionQuery = `
         SELECT TOP 1
           nir.Code AS InscriptionCode,
           nir.NicheBookingId,
-          nir.NicheApplicationCode,
           nir.BibleInscriptionChoiceId,
           nir.BibleInscriptionChoiceNo,
           nir.AdditionalInscriptionPhrase,
@@ -1008,12 +1007,12 @@ class NicheAgreementRepository extends BaseRepository {
         WHERE nb.NicheApplicationId = @nicheApplicationId
         ORDER BY nir.NicheInscriptionRequestId DESC
       `;
-      
+
       const inscriptionResult = await executeQuery(inscriptionQuery, { nicheApplicationId }, { timeout: 10000 });
-      
+
       if (inscriptionResult.recordset.length > 0) {
         const inscription = inscriptionResult.recordset[0];
-        
+
         // Store inscription information in the niche agreement object
         nicheAgreement.inscription = {
           code: inscription.InscriptionCode,
@@ -1023,14 +1022,14 @@ class NicheAgreementRepository extends BaseRepository {
           additionalInscriptionPhrase: inscription.AdditionalInscriptionPhrase,
           createdDate: inscription.CreatedDate
         };
-        
+
         logger.info(`[addInscriptionInfo] Found inscription for application: ${applicationCode}, code: ${inscription.InscriptionCode}`);
-        
+
         // Now fetch inscription items using InscriptionInvoiceService
         try {
           const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
           const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscription.InscriptionCode, null); // churchId may not be available here
-          
+
           if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
             // Map inscription items to a format compatible with the response
             const inscriptionItems = inscriptionData.items.map(inscriptionItem => ({
@@ -1051,10 +1050,10 @@ class NicheAgreementRepository extends BaseRepository {
               lineTaxPercent: 9, // Default 9% GST for inscription items
               lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
             }));
-            
+
             // Store inscription items in the niche agreement object
             nicheAgreement.inscriptionItems = inscriptionItems;
-            
+
             logger.info(`[addInscriptionInfo] Added ${inscriptionItems.length} inscription items to agreement for application: ${applicationCode}`);
           }
         } catch (inscriptionServiceError) {

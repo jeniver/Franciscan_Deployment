@@ -99,7 +99,7 @@ export function InvoiceViewerModal({
   const handleDownloadPdf = async () => {
     try {
       setIsGeneratingPdf(true);
-      
+
       // Create a temporary container to render the template for PDF generation
       const tempContainer = document.createElement('div');
       tempContainer.style.position = 'absolute';
@@ -112,7 +112,7 @@ export function InvoiceViewerModal({
       tempContainer.style.fontFamily = 'Inter, Arial, sans-serif';
       tempContainer.style.fontSize = '12px';
       tempContainer.style.lineHeight = '1.4';
-      
+
       // Get the template HTML based on whether it's a receipt or invoice
       let templateHTML = '';
       if (invoiceData?.receipt) {
@@ -128,31 +128,31 @@ export function InvoiceViewerModal({
         const invoiceTemplate = invoiceTemplateService.generateInvoiceTemplate(invoiceTemplateData);
         templateHTML = `<div class="invoice-container" style="width: 100%; height: 100%;">${invoiceTemplate}</div>`;
       }
-      
+
       tempContainer.innerHTML = templateHTML;
       document.body.appendChild(tempContainer);
-      
+
       // Wait for content to render
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Dynamically import html2canvas and jsPDF
       const html2canvas = (await import('html2canvas')).default;
       const { jsPDF } = await import('jspdf');
-      
+
       const canvas = await html2canvas(tempContainer, {
         scale: 2, // Higher quality
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
       });
-      
+
       const imgData = canvas.toDataURL('image/jpeg', 0.8);
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4',
       });
-      
+
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const imgWidth = canvas.width;
@@ -160,16 +160,16 @@ export function InvoiceViewerModal({
       const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
       const imgX = (pdfWidth - imgWidth * ratio) / 2;
       const imgY = 10; // Small margin from top
-      
+
       pdf.addImage(imgData, 'JPEG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-      
+
       // Determine filename based on type
-      const fileName = invoiceData?.receipt 
+      const fileName = invoiceData?.receipt
         ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'unknown'}.pdf`
         : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'unknown'}.pdf`;
-      
+
       pdf.save(fileName);
-      
+
       // Clean up
       document.body.removeChild(tempContainer);
       setIsGeneratingPdf(false);
@@ -188,7 +188,7 @@ export function InvoiceViewerModal({
         alert('Please allow popups for printing');
         return;
       }
-      
+
       // Get the template HTML based on whether it's a receipt or invoice
       let templateHTML = '';
       if (invoiceData?.receipt) {
@@ -204,7 +204,7 @@ export function InvoiceViewerModal({
         const invoiceTemplate = invoiceTemplateService.generateInvoiceTemplate(invoiceTemplateData);
         templateHTML = `<div class="invoice-container" style="width: 100%; height: 100%;">${invoiceTemplate}</div>`;
       }
-      
+
       // Write the template to the print window
       printWindow.document.write(`
         <html>
@@ -221,10 +221,10 @@ export function InvoiceViewerModal({
           <body>${templateHTML}</body>
         </html>
       `);
-      
+
       printWindow.document.close();
       printWindow.focus();
-      
+
       // Wait for content to render before printing
       setTimeout(() => {
         printWindow.print();
@@ -244,15 +244,19 @@ export function InvoiceViewerModal({
   const mapToInvoiceTemplateData = (apiData: any): InvoiceTemplateData => {
     // Calculate address string from available address fields
     const addressParts = [
-      apiData.addressNo || '',
-      apiData.address || '',
-      apiData.address2 || '',
-      apiData.addressCity || '',
-      apiData.country || ''
-    ].filter(part => part && part.trim() !== '');
-    
-    const customerAddress = addressParts.length > 0 ? addressParts.join(', ') : undefined;
+      apiData.addressNo,
+      apiData.address,
+      apiData.address2,
+      apiData.addressCity,
+      apiData.country
+    ].filter(part => part &&
+      part !== 'undefined' &&
+      part !== 'null' &&
+      typeof part === 'string' &&
+      part.trim() !== '');
 
+    const customerAddress = addressParts.length > 0 ? addressParts.join(', ') : undefined;
+    console.log("Customer Address:++++++++++++++++++++++++++++++++++++++", invoiceData)
     // Map details to InvoiceTemplateItem format
     const items = (apiData.details || []).map((detail: any) => ({
       description: detail.itemName || detail.description || detail.ItemName || detail.Description || 'Item',
@@ -265,7 +269,7 @@ export function InvoiceViewerModal({
       invoiceCode: apiData.code || apiData.invoiceCode || apiData.Code || 'N/A',
       invoiceDate: formatDate(apiData.transactionDate || apiData.TransactionDate || apiData.invoiceDate || apiData.InvoiceDate || new Date()),
       customerName: apiData.customerName || apiData.CustomerName || 'N/A',
-      customerAddress: customerAddress,
+      customerAddress: apiData.customerAddress || 'N/A',
       paymentMode: apiData.paymentMode || apiData.PaymentMode || 'N/A',
       totalAmount: apiData.totalAmount || apiData.TotalAmount || 0,
       taxAmount: apiData.taxAmount || apiData.TaxAmount || 0,
@@ -276,12 +280,12 @@ export function InvoiceViewerModal({
   // Function to format dates consistently
   const formatDate = (date: string | Date): string => {
     if (!date) return new Date().toLocaleDateString('en-SG');
-    
+
     const dateObj = new Date(date);
     if (isNaN(dateObj.getTime())) {
       return date.toString(); // Return as-is if it's already formatted
     }
-    
+
     return dateObj.toLocaleDateString('en-SG', {
       year: 'numeric',
       month: 'short',
@@ -293,13 +297,17 @@ export function InvoiceViewerModal({
   const mapToReceiptTemplateData = (apiData: any) => {
     // Calculate address string from available address fields
     const addressParts = [
-      apiData.addressNo || '',
-      apiData.address || '',
-      apiData.address2 || '',
-      apiData.addressCity || '',
-      apiData.country || ''
-    ].filter(part => part && part.trim() !== '');
-    
+      apiData.addressNo,
+      apiData.address,
+      apiData.address2,
+      apiData.addressCity,
+      apiData.country
+    ].filter(part => part &&
+      part !== 'undefined' &&
+      part !== 'null' &&
+      typeof part === 'string' &&
+      part.trim() !== '');
+
     const customerAddress = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
 
     // Calculate description from details
@@ -313,7 +321,7 @@ export function InvoiceViewerModal({
       // Very simple converter, could be expanded
       const num = Math.abs(Math.round(amount));
       if (num === 0) return 'Zero Only';
-      
+
       // For now, return a simple representation - in production you'd want a proper number-to-words library
       return `${typeof num === 'number' ? num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '0.00'} Only`;
     };
@@ -335,25 +343,23 @@ export function InvoiceViewerModal({
   const mapToTaxInvoiceProps = (apiData: any) => {
     // Calculate address string from available address fields
     const addressParts = [
-      apiData.addressNo || '',
-      apiData.address || '',
-      apiData.address2 || '',
-      apiData.addressCity || '',
-      apiData.country || ''
-    ].filter(part => part && part.trim() !== '');
-    
-    const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+      apiData.addressNo,
+      apiData.address,
+      apiData.address2,
+      apiData.addressCity,
+      apiData.country
+    ].filter(part => part &&
+      part !== 'undefined' &&
+      part !== 'null' &&
+      typeof part === 'string' &&
+      part.trim() !== '');
 
-    // Debug: Log incoming apiData
-    console.log('[mapToTaxInvoiceProps] apiData received:', apiData);
-    console.log('[mapToTaxInvoiceProps] apiData.details:', apiData.details);
-    console.log('[mapToTaxInvoiceProps] apiData.items:', apiData.items);
-    console.log('[mapToTaxInvoiceProps] Has direct items:', Array.isArray(apiData.items) && apiData.items.length > 0);
-    console.log('[mapToTaxInvoiceProps] Has details to map:', Array.isArray(apiData.details) && apiData.details.length > 0);
-    
+    const address = apiData.customerAddress || 'N/A';
+
+
     // Handle both direct items array and details mapping
     let items: any[] = [];
-    
+
     // If apiData already has items array (from template data), use it directly
     if (Array.isArray(apiData.items) && apiData.items.length > 0) {
       items = apiData.items.map((item: any) => ({
@@ -375,15 +381,15 @@ export function InvoiceViewerModal({
         amount: detail.lineTotalAmount || detail.LineTotalAmount || detail.totalPayingAmount || detail.TotalPayingAmount || 0
       }));
     }
-    
+
     // Calculate subTotal
     const subTotal = apiData.summary?.subtotal || apiData.subtotal || (apiData.totalAmount || 0) - (apiData.taxAmount || 0);
-    
+
     // Convert amount to words
     const amountToWords = (amount: number): string => {
       const num = Math.abs(Math.round(amount));
       if (num === 0) return 'Zero Only';
-      
+
       return `${typeof num === 'number' ? num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '0.00'} Only`;
     };
 
@@ -416,14 +422,12 @@ export function InvoiceViewerModal({
 
       {/* Modal Container */}
       <div
-        className={`fixed inset-0 flex items-center justify-center p-4 transition-all ${
-          isFullscreen ? 'p-0' : ''
-        }`}
+        className={`fixed inset-0 flex items-center justify-center p-4 transition-all ${isFullscreen ? 'p-0' : ''
+          }`}
       >
         <div
-          className={`relative bg-white rounded-lg shadow-2xl flex flex-col transition-all ${
-            isFullscreen ? 'w-full h-full rounded-none' : 'w-full max-w-6xl h-[90vh]'
-          }`}
+          className={`relative bg-white rounded-lg shadow-2xl flex flex-col transition-all ${isFullscreen ? 'w-full h-full rounded-none' : 'w-full max-w-6xl h-[90vh]'
+            }`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}

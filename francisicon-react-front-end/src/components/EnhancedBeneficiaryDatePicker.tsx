@@ -1,105 +1,166 @@
-import { useEffect, useState } from 'react';
-import { XIcon } from 'lucide-react';
-
+import React, { useEffect, useState, useRef } from 'react'
+import { XIcon } from 'lucide-react'
 interface EnhancedBeneficiaryDatePickerProps {
-  value?: string;
-  onChange: (value: string) => void;
-  label?: string;
-  minYear?: number;
-  maxYear?: number;
-  disabled?: boolean;
-  required?: boolean;
+  dateOfBirth: string | null // Format: 'DD-MM-YYYY'
+  birthYear: string | number | null | undefined // Format: YYYY
+  onChange: (dateOfBirth: string | null, birthYear: number | null) => void
+  label?: string
+  minYear?: number
+  maxYear?: number
+  disabled?: boolean
+  required?: boolean
 }
-
 export function EnhancedBeneficiaryDatePicker({
-  value = '',
+  dateOfBirth,
+  birthYear,
   onChange,
   label,
   minYear = 1900,
   maxYear = new Date().getFullYear(),
   disabled = false,
-  required = false
+  required = false,
 }: EnhancedBeneficiaryDatePickerProps) {
-  const [day, setDay] = useState('');
-  const [month, setMonth] = useState('');
-  const [year, setYear] = useState('');
-
-  /* 🔁 Sync FROM parent value */
+  // Internal state for inputs
+  const [day, setDay] = useState('')
+  const [month, setMonth] = useState('')
+  const [year, setYear] = useState('')
+  // Track if the update is coming from internal user interaction to avoid loops
+  const isInternalUpdate = useRef(false)
+  /* 🔁 Sync FROM parent props to internal state */
   useEffect(() => {
-    if (!value) {
-      setDay('');
-      setMonth('');
-      setYear('');
-      return;
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false
+      return
     }
 
-    if (/^\d{4}$/.test(value)) {
-      setDay('');
-      setMonth('');
-      setYear(value);
-      return;
+    // Scenario 1: Full date provided (takes precedence)
+    if (dateOfBirth) {
+      let d = '', m = '', y = ''
+
+      // Try numeric DD-MM-YYYY or D-M-YYYY
+      const numericMatch = dateOfBirth.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+      if (numericMatch) {
+        d = numericMatch[1].padStart(2, '0')
+        m = numericMatch[2].padStart(2, '0')
+        y = numericMatch[3]
+      } else {
+        // Try parsing other formats (like DD-MMM-YYYY e.g. 02-Feb-1941)
+        const parsedDate = new Date(dateOfBirth)
+        if (!isNaN(parsedDate.getTime()) && dateOfBirth.includes('-')) {
+          d = String(parsedDate.getDate()).padStart(2, '0')
+          m = String(parsedDate.getMonth() + 1).padStart(2, '0')
+          y = String(parsedDate.getFullYear())
+        }
+      }
+
+      if (d && m && y) {
+        setDay(d)
+        setMonth(m)
+        setYear(y)
+        return
+      }
     }
 
-    if (/^\d{2}-\d{2}-\d{4}$/.test(value)) {
-      const [d, m, y] = value.split('-');
-      setDay(d);
-      setMonth(m);
-      setYear(y);
+    // Scenario 2: Only birth year provided
+    if (birthYear !== null && birthYear !== undefined && birthYear !== '') {
+      setDay('')
+      setMonth('')
+      setYear(Number(birthYear).toString())
+      return
     }
-  }, [value]);
 
-  /* 🔄 Emit TO parent */
+    // Scenario 3: Both null or empty
+    setDay('')
+    setMonth('')
+    setYear('')
+  }, [dateOfBirth, birthYear])
+  /* 🔄 Emit TO parent when inputs change */
   useEffect(() => {
-    // Only year entered
-    if (year && !day && !month) {
-      const y = Number(year);
-      if (y >= minYear && y <= maxYear) {
-        onChange(year);
+    // We only trigger onChange if this effect was caused by user input (state change)
+    // However, in React, we can't easily distinguish source in useEffect without refs or handlers.
+    // We'll rely on the parent to handle the "prop update" cycle correctly (not re-triggering if values match).
+    const d = day.replace(/\D/g, '')
+    const m = month.replace(/\D/g, '')
+    const y = year.replace(/\D/g, '')
+    // 1. Empty state
+    if (!d && !m && !y) {
+      if (dateOfBirth !== null || birthYear !== null) {
+        isInternalUpdate.current = true
+        onChange(null, null)
       }
-      return;
+      return
     }
-
-    // Full date entered
-    if (day && month && year) {
-      const d = Number(day);
-      const m = Number(month);
-      const y = Number(year);
-
-      if (
-        y < minYear ||
-        y > maxYear ||
-        m < 1 ||
-        m > 12 ||
-        d < 1 ||
-        d > 31
-      ) {
-        return;
+    // 2. Only Year entered (valid year)
+    if (y.length === 4 && !d && !m) {
+      const yNum = parseInt(y, 10)
+      if (yNum >= minYear && yNum <= maxYear) {
+        // Check if we need to update
+        if (dateOfBirth !== null || birthYear !== yNum) {
+          isInternalUpdate.current = true
+          onChange(null, yNum)
+        }
       }
-
-      const date = new Date(y, m - 1, d);
-      if (
-        date.getFullYear() === y &&
-        date.getMonth() === m - 1 &&
-        date.getDate() === d
-      ) {
-        onChange(
-          `${String(d).padStart(2, '0')}-${String(m).padStart(2, '0')}-${y}`
-        );
-      }
-      return;
+      return
     }
-
-    // Incomplete input → emit nothing
-    onChange('');
-  }, [day, month, year, minYear, maxYear, onChange]);
-
+    // 3. Full Date entered
+    if (d.length === 2 && m.length === 2 && y.length === 4) {
+      const dayNum = parseInt(d, 10)
+      const monthNum = parseInt(m, 10)
+      const yearNum = parseInt(y, 10)
+      // Basic validation
+      if (
+        yearNum < minYear ||
+        yearNum > maxYear ||
+        monthNum < 1 ||
+        monthNum > 12 ||
+        dayNum < 1 ||
+        dayNum > 31
+      ) {
+        // Invalid date parts, don't emit valid date yet, or emit null if it was previously valid
+        if (dateOfBirth !== null || birthYear !== null) {
+          // Optional: could emit null here to clear parent error state if desired,
+          // but usually we wait for valid input. Let's emit null to be safe if it was valid before.
+          isInternalUpdate.current = true
+          onChange(null, null)
+        }
+        return
+      }
+      // Strict date check (e.g. 31-02-2000 is invalid)
+      const dateObj = new Date(yearNum, monthNum - 1, dayNum)
+      if (
+        dateObj.getFullYear() === yearNum &&
+        dateObj.getMonth() === monthNum - 1 &&
+        dateObj.getDate() === dayNum
+      ) {
+        const newDateStr = `${d}-${m}-${y}`
+        // Update if different
+        if (dateOfBirth !== newDateStr || birthYear !== yearNum) {
+          isInternalUpdate.current = true
+          onChange(newDateStr, yearNum)
+        }
+      } else {
+        // Invalid date logic (e.g. Feb 30)
+        if (dateOfBirth !== null || birthYear !== null) {
+          isInternalUpdate.current = true
+          onChange(null, null)
+        }
+      }
+      return
+    }
+    // 4. Partial/Incomplete state (e.g. just day, or day+month but no year)
+    // We emit nulls to clear any previous valid state
+    if (dateOfBirth !== null || birthYear !== null) {
+      isInternalUpdate.current = true
+      onChange(null, null)
+    }
+  }, [day, month, year, minYear, maxYear, onChange, dateOfBirth, birthYear])
   const clearAll = () => {
-    setDay('');
-    setMonth('');
-    setYear('');
-    onChange('');
-  };
-
+    setDay('')
+    setMonth('')
+    setYear('')
+    isInternalUpdate.current = true
+    onChange(null, null)
+  }
   return (
     <div className="w-full">
       {label && (
@@ -108,7 +169,6 @@ export function EnhancedBeneficiaryDatePicker({
           {required && <span className="text-red-500 ml-1">*</span>}
         </label>
       )}
-
       <div className="flex gap-2 items-center relative">
         <input
           type="text"
@@ -118,9 +178,9 @@ export function EnhancedBeneficiaryDatePicker({
           value={day}
           disabled={disabled}
           onChange={(e) => setDay(e.target.value.replace(/\D/g, ''))}
-          className="w-16 rounded-md border px-2 py-2 text-center focus:ring-2 focus:ring-[#8b5a2b]"
+          className="w-16 rounded-md border border-gray-300 px-2 py-2 text-center focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent transition-all"
         />
-
+        <span className="text-gray-400">-</span>
         <input
           type="text"
           inputMode="numeric"
@@ -129,9 +189,9 @@ export function EnhancedBeneficiaryDatePicker({
           value={month}
           disabled={disabled}
           onChange={(e) => setMonth(e.target.value.replace(/\D/g, ''))}
-          className="w-16 rounded-md border px-2 py-2 text-center focus:ring-2 focus:ring-[#8b5a2b]"
+          className="w-16 rounded-md border border-gray-300 px-2 py-2 text-center focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent transition-all"
         />
-
+        <span className="text-gray-400">-</span>
         <input
           type="text"
           inputMode="numeric"
@@ -140,23 +200,23 @@ export function EnhancedBeneficiaryDatePicker({
           value={year}
           disabled={disabled}
           onChange={(e) => setYear(e.target.value.replace(/\D/g, ''))}
-          className="w-24 rounded-md border px-2 py-2 text-center focus:ring-2 focus:ring-[#8b5a2b]"
+          className="w-24 rounded-md border border-gray-300 px-2 py-2 text-center focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent transition-all"
         />
 
         {(day || month || year) && !disabled && (
           <button
             type="button"
             onClick={clearAll}
-            className="ml-2 text-gray-400 hover:text-gray-600"
+            className="ml-2 p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label="Clear date"
           >
             <XIcon className="h-4 w-4" />
           </button>
         )}
       </div>
-
-      <p className="mt-1 text-xs text-gray-500">
+      <p className="mt-2 text-xs text-gray-500">
         Enter full date (DD-MM-YYYY) or only year (YYYY)
       </p>
     </div>
-  );
+  )
 }

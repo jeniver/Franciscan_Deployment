@@ -22,6 +22,11 @@ router.post('/', ReceiptController.createReceipt);
 // Based on: Invoice/InduvidualReceiptCapture.aspx.cs CaptureReceipt
 router.post('/from-invoice', ReceiptController.createReceiptFromInvoice);
 
+// Create individual receipt
+// POST /api/receipts/individual
+// Create receipt for application code directly
+router.post('/individual', ReceiptController.createIndividualReceipt);
+
 // Get last receipt number
 // GET /api/receipts/last-number
 // Based on: Invoice/InduvidualReceiptCapture.aspx.cs LoadLastReceiptNumber

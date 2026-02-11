@@ -173,6 +173,28 @@ export const createReceiptFromInvoice = createAsyncThunk(
   }
 );
 
+export const createIndividualReceipt = createAsyncThunk(
+  'receipt/createIndividualReceipt',
+  async (data: CreateIndividualReceiptRequest, { rejectWithValue }) => {
+    try {
+      const receipt = await receiptService.createIndividualReceipt(data);
+      return receipt;
+    } catch (error: any) {
+      if (error instanceof ReceiptError) {
+        return rejectWithValue({
+          message: error.message,
+          type: error.type,
+          statusCode: error.statusCode,
+        });
+      }
+      return rejectWithValue({
+        message: 'An unexpected error occurred',
+        type: 'server' as const,
+      });
+    }
+  }
+);
+
 export const fetchLastReceiptNumber = createAsyncThunk(
   'receipt/fetchLastReceiptNumber',
   async (_, { rejectWithValue }) => {
@@ -555,6 +577,26 @@ export const receiptSlice = createSlice({
         state.lastErrorType = null;
       })
       .addCase(createReceiptFromInvoice.rejected, (state, action) => {
+        state.isCreating = false;
+        const errorData = action.payload as { message: string; type: string; statusCode?: number };
+        state.error = errorData.message;
+        state.lastErrorType = errorData.type as 'auth' | 'network' | 'validation' | 'server';
+      })
+      // Create individual receipt
+      .addCase(createIndividualReceipt.pending, (state) => {
+        state.isCreating = true;
+        state.error = null;
+        state.lastErrorType = null;
+      })
+      .addCase(createIndividualReceipt.fulfilled, (state, action) => {
+        state.isCreating = false;
+        state.currentReceipt = action.payload;
+        state.receipts.unshift(action.payload);
+        state.totalReceipts += 1;
+        state.error = null;
+        state.lastErrorType = null;
+      })
+      .addCase(createIndividualReceipt.rejected, (state, action) => {
         state.isCreating = false;
         const errorData = action.payload as { message: string; type: string; statusCode?: number };
         state.error = errorData.message;

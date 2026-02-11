@@ -90,6 +90,12 @@ router.get('/search',
   invoiceController.searchInvoices
 );
 
+// Create individual invoice
+router.post('/individual',
+  authenticateToken,
+  invoiceController.createIndividualInvoice
+);
+
 // Create invoice by code (application code)
 // POST /api/invoices/:code - Creates invoice for application code (e.g., "4652-0", "NAPP-52")
 // This route must come before GET /:code to avoid conflicts
@@ -103,6 +109,13 @@ router.post('/:code',
 router.get('/application/:code',
   authenticateToken,
   invoiceController.getApplicationItems
+);
+
+// Get creation status for a code
+// GET /api/invoices/status/:code - Get status of what's been created
+router.get('/status/:code',
+  authenticateToken,
+  invoiceController.getCreationStatus
 );
 
 // Get invoice by code

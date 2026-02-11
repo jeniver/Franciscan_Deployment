@@ -85,6 +85,14 @@ export interface CreateReceiptFromInvoiceRequest {
   invoiceDetails: InvoiceDetail[];
 }
 
+export interface CreateIndividualReceiptRequest {
+  applicationCode: string;
+  customerName?: string;
+  payingAmount?: number;
+  paymentMode?: string;
+  paymentModeDocNo?: string;
+}
+
 export interface Invoice {
   invoiceId: number;
   invoiceCode: string;
@@ -323,6 +331,39 @@ export const receiptService = {
         } else {
           throw new ReceiptError(
             error.response.data?.message || 'Failed to create receipt from invoice',
+            'server',
+            status
+          );
+        }
+      } else if (error.request) {
+        throw new ReceiptError('Network error: Unable to connect to server', 'network');
+      } else {
+        throw new ReceiptError(error.message || 'An unexpected error occurred', 'server');
+      }
+    }
+  },
+
+  // Create individual receipt
+  createIndividualReceipt: async (data: CreateIndividualReceiptRequest): Promise<Receipt> => {
+    try {
+      if (!data.applicationCode) {
+        throw new ReceiptError('Application code is required', 'validation');
+      }
+
+      const response = await api.post('/api/receipts/individual', data);
+      return response.data;
+    } catch (error: any) {
+      if (error.response) {
+        const status = error.response.status;
+        if (status === 401 || status === 403) {
+          throw new ReceiptError('Unauthorized access', 'auth', status);
+        } else if (status === 404) {
+          throw new ReceiptError('Application not found', 'validation', status);
+        } else if (status >= 500) {
+          throw new ReceiptError('Server error occurred', 'server', status);
+        } else {
+          throw new ReceiptError(
+            error.response.data?.message || 'Failed to create individual receipt',
             'server',
             status
           );

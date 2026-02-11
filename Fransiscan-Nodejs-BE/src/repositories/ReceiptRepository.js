@@ -623,6 +623,8 @@ class ReceiptRepository extends BaseRepository {
       const lastNumber = await this.getLastReceiptNumber();
       receipt.code = lastNumber;
 
+      console.log('ReceiptRepository.createReceipt - paymentMode:', receipt.paymentMode, 'type:', typeof receipt.paymentMode);
+
       const query = `
         INSERT INTO Receipt (
           InvoiceId, TransactionDate, CustomerName, Code, TotalAmount, 
@@ -640,7 +642,7 @@ class ReceiptRepository extends BaseRepository {
       `;
 
       const params = {
-        invoiceId: receipt.invoiceId,
+        invoiceId: receipt.invoiceId || 0,  // Use 0 as default for individual receipts without invoices
         transactionDate: receipt.transactionDate || new Date(),
         customerName: receipt.customerName,
         code: receipt.code,
@@ -660,6 +662,8 @@ class ReceiptRepository extends BaseRepository {
         country: receipt.country || null,
         outstandingAmount: receipt.outstandingAmount || 0
       };
+
+      console.log('SQL parameters - paymentMode:', params.paymentMode, 'type:', typeof params.paymentMode);
 
       const result = await executeQuery(query, params);
       return result.recordset[0].Code;

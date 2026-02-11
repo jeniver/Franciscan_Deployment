@@ -3,6 +3,7 @@ const Invoice = require('../models/Invoice');
 const InvoiceDetail = require('../models/InvoiceDetail');
 const ReferenceDocumentValidator = require('./ReferenceDocumentValidator');
 const logger = require('../utils/logger');
+const cacheManager = require('../utils/cacheManager');
 
 /**
  * Invoice service for business logic
@@ -27,6 +28,42 @@ class InvoiceService extends BaseService {
     errors.push(...modelErrors);
 
     return errors;
+  }
+
+  /**
+   * Get invoice by code with caching
+   * @param {string} code - Invoice code
+   * @param {number} churchId - Church ID
+   * @param {string} applicationCode - Optional application code
+   * @returns {Promise<Object|null>} Invoice data or null
+   */
+  async getInvoiceByCode(code, churchId, applicationCode = null) {
+    try {
+      // Build cache key
+      const cacheKey = cacheManager.buildInvoiceKey(churchId, code);
+
+      // Try cache first
+      const cached = await cacheManager.get(cacheKey);
+      if (cached) {
+        logger.debug(`Invoice cache HIT: ${code}`);
+        return cached;
+      }
+
+      // Cache miss - fetch from repository
+      logger.debug(`Invoice cache MISS: ${code}`);
+      const invoice = await this.repository.getInvoiceByCode(code, churchId, applicationCode);
+
+      if (invoice) {
+        // Cache for 10 minutes
+        await cacheManager.set(cacheKey, invoice, 600);
+        logger.debug(`Invoice cached: ${code} (TTL: 600s)`);
+      }
+
+      return invoice;
+    } catch (error) {
+      logger.error(`Error getting invoice by code: ${code}`, error);
+      throw error;
+    }
   }
 
   /**
@@ -57,7 +94,7 @@ class InvoiceService extends BaseService {
 
     try {
       // Execute payment within transaction
-      const result = await withTransaction(async(trx) => {
+      const result = await withTransaction(async (trx) => {
         // 1. Get invoice by code
         const getInvoiceQuery = `
           SELECT * FROM Invoice 
@@ -235,7 +272,7 @@ class InvoiceService extends BaseService {
           baseRefDocNumber = normalizedDetailRef;
         }
       }
-      
+
       // Normalize base RefDocNumber
       baseRefDocNumber = baseRefDocNumber ? String(baseRefDocNumber).trim() : null;
 
@@ -272,10 +309,10 @@ class InvoiceService extends BaseService {
           docType: validationResult.docType,
           error: validationResult.error
         });
-        
+
         // Wait 150ms for database consistency
         await new Promise(resolve => setTimeout(resolve, 150));
-        
+
         // Retry validation
         validationResult = await ReferenceDocumentValidator.validateInvoiceDetails(
           invoiceDetails,
@@ -295,7 +332,7 @@ class InvoiceService extends BaseService {
             refDocName: d.refDocName
           }))
         });
-        
+
         return {
           success: false,
           error: {
@@ -316,7 +353,7 @@ class InvoiceService extends BaseService {
       // CRITICAL: Use baseRefDocNumber for invoice header (not detail RefDocNumber which might be "I-NAPP-XX")
       const invoiceRefDocName = invoiceData.refDocName || firstDetail.refDocName;
       const normalizedInvoiceRefDocName = invoiceRefDocName ? String(invoiceRefDocName).trim().toUpperCase() : null;
-      
+
       const invoice = new Invoice({
         code: invoiceCode,
         transactionDate: invoiceData.transactionDate || new Date(),
@@ -400,6 +437,10 @@ class InvoiceService extends BaseService {
         status: invoice.status
       });
 
+      // Invalidate cache for this church's invoices
+      await cacheManager.invalidate(cacheManager.buildInvalidationPattern('invoice', churchId));
+      logger.debug(`Cache invalidated for church ${churchId} invoices`);
+
       return {
         success: true,
         data: {
@@ -466,6 +507,11 @@ class InvoiceService extends BaseService {
 
       logger.info(`Invoice cancelled (soft delete): Code=${effectiveCode}, ChurchId=${churchId}`);
 
+      // Invalidate cache for this invoice and church
+      await cacheManager.del(cacheManager.buildInvoiceKey(churchId, effectiveCode));
+      await cacheManager.invalidate(cacheManager.buildInvalidationPattern('invoice', churchId));
+      logger.debug(`Cache invalidated for invoice ${effectiveCode}`);
+
       return {
         success: true,
         data: {
@@ -479,6 +525,149 @@ class InvoiceService extends BaseService {
         error: {
           code: 'INTERNAL_ERROR',
           message: error.message || 'Failed to cancel invoice'
+        }
+      };
+    }
+  }
+
+  /**
+   * Save invoice without reference document validation
+   * Used for standalone invoice creation where no application reference is required
+   * @param {Object} invoiceData - Invoice header data
+   * @param {Array} invoiceDetails - Invoice detail items
+   * @param {number} userId - User ID
+   * @param {number} churchId - Church ID
+   * @returns {Promise<Object>} Result object with success flag and data
+   */
+  async saveInvoiceWithoutValidation(invoiceData, invoiceDetails, userId, churchId) {
+    try {
+      // 1. Validate input data
+      if (!invoiceData) {
+        throw new Error('Invoice data is required');
+      }
+
+      if (!invoiceDetails || invoiceDetails.length === 0) {
+        throw new Error('Invoice details are required');
+      }
+
+      // Skip reference document validation and duplicate check for standalone invoices
+      
+      // 2. Generate Invoice Code
+      const invoiceCode = await this.repository.generateInvoiceCode();
+
+      // 3. Prepare Invoice object
+      const firstDetail = invoiceDetails[0];
+      const invoiceRefDocName = invoiceData.refDocName || firstDetail.refDocName;
+      const normalizedInvoiceRefDocName = invoiceRefDocName ? String(invoiceRefDocName).trim().toUpperCase() : null;
+
+      // Use the provided refDocNumber or create a default one for standalone invoices
+      let baseRefDocNumber = invoiceData.refDocNumber || '';
+      if (!baseRefDocNumber && firstDetail?.refDocNumber) {
+        baseRefDocNumber = String(firstDetail.refDocNumber).trim();
+      }
+
+      const invoice = new Invoice({
+        code: invoiceCode,
+        transactionDate: invoiceData.transactionDate || new Date(),
+        refDocNumber: baseRefDocNumber, // May be empty for standalone invoices
+        refDocName: normalizedInvoiceRefDocName || 'OTHERS',
+        customerName: invoiceData.customerName,
+        totalAmount: invoiceData.totalAmount || 0,
+        payingAmount: invoiceData.payingAmount || null,
+        paymentMode: invoiceData.paymentMode || null,
+        paymentModeDocNo: invoiceData.paymentModeDocNo || null,
+        userId: userId,
+        churchId: churchId,
+        status: 1, // Active
+        nicheApplicationId: invoiceData.nicheApplicationId || null,
+        taxCode: invoiceData.taxCode || null,
+        taxPercentage: invoiceData.taxPercentage || null,
+        taxAmount: invoiceData.taxAmount || null,
+        // Add address fields
+        addressNo: invoiceData.addressNo || null,
+        address: invoiceData.address || null,
+        address2: invoiceData.address2 || null,
+        addressCity: invoiceData.addressCity || null,
+        districtCode: invoiceData.districtCode || null,
+        country: invoiceData.country || null
+      });
+
+      // Validate invoice
+      const invoiceErrors = invoice.validate();
+      if (invoiceErrors.length > 0) {
+        return {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invoice validation failed',
+            details: invoiceErrors
+          }
+        };
+      }
+
+      // Validate invoice details
+      for (const detailData of invoiceDetails) {
+        const detail = new InvoiceDetail({
+          ...detailData,
+          // InvoiceId is not known yet during validation; use a temporary positive value
+          // so InvoiceDetail.validate() can still validate other fields.
+          invoiceId: 1
+        });
+
+        const detailErrors = detail.validate();
+        if (detailErrors.length > 0) {
+          return {
+            success: false,
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Invoice detail validation failed',
+              details: detailErrors
+            }
+          };
+        }
+      }
+
+      // 4. Save Invoice and Details (transaction-based)
+      const invoiceId = await this.repository.addInvoiceAndDetail(invoice, invoiceDetails);
+
+      if (!invoiceId || invoiceId <= 0) {
+        return {
+          success: false,
+          error: {
+            code: 'SAVE_FAILED',
+            message: 'Failed to save invoice'
+          }
+        };
+      }
+
+      logger.info(`Standalone invoice saved successfully. InvoiceId: ${invoiceId}, Code: ${invoiceCode}`, {
+        invoiceId,
+        invoiceCode,
+        refDocNumber: invoice.refDocNumber,
+        refDocName: invoice.refDocName,
+        churchId: invoice.churchId,
+        status: invoice.status
+      });
+
+      // Invalidate cache for this church's invoices
+      await cacheManager.invalidate(cacheManager.buildInvalidationPattern('invoice', churchId));
+      logger.debug(`Cache invalidated for church ${churchId} invoices`);
+
+      return {
+        success: true,
+        data: {
+          invoiceId: invoiceId,
+          invoiceCode: invoiceCode
+        },
+        message: 'Standalone invoice created successfully'
+      };
+    } catch (error) {
+      logger.error('Error saving standalone invoice:', error);
+      return {
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error.message || 'Failed to save standalone invoice'
         }
       };
     }

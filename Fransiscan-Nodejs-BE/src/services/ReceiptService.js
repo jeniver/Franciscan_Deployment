@@ -3,6 +3,7 @@ const Receipt = require('../models/Receipt');
 const logger = require('../utils/logger');
 const { cache } = require('../utils/cache');
 const ReceiptPdfService = require('./ReceiptPdfService');
+const cacheManager = require('../utils/cacheManager');
 
 /**
  * Receipt service for business logic
@@ -27,8 +28,11 @@ class ReceiptService extends BaseService {
     const errors = [];
     const receipt = new Receipt(data);
 
+    logger.debug('ReceiptService.validateData - paymentMode:', receipt.paymentMode, 'type:', typeof receipt.paymentMode);
+
     // Use model validation
     const modelErrors = receipt.validate();
+    logger.debug('Model validation errors:', modelErrors);
     errors.push(...modelErrors);
 
     return errors;
@@ -48,6 +52,22 @@ class ReceiptService extends BaseService {
         throw new Error('Receipt code is required');
       }
 
+      // Build cache key
+      const cacheKey = cacheManager.buildReceiptKey(churchId, code);
+
+      // Try cache first (only if not using fallback)
+      if (!allowFallback) {
+        const cached = await cacheManager.get(cacheKey);
+        if (cached) {
+          logger.debug(`Receipt cache HIT: ${code}`);
+          return {
+            success: true,
+            data: cached
+          };
+        }
+        logger.debug(`Receipt cache MISS: ${code}`);
+      }
+
       logger.info(`Getting receipt by code: ${code}, churchId: ${churchId}, allowFallback: ${allowFallback}${applicationCode ? `, applicationCode: ${applicationCode}` : ''}`);
       const receipt = await this.repository.getReceiptWithDetails(code, churchId, allowFallback, applicationCode);
       if (!receipt) {
@@ -62,7 +82,7 @@ class ReceiptService extends BaseService {
       }
 
       // Log receipt data structure for debugging
-      logger.info(`Receipt data structure:`, {
+      logger.debug(`Receipt data structure:`, {
         receiptId: receipt.receiptId,
         code: receipt.code,
         invoiceId: receipt.invoiceId,
@@ -72,6 +92,12 @@ class ReceiptService extends BaseService {
         invoiceDetailsCount: receipt.invoice?.details?.length || 0,
         receiptDetailsCount: receipt.details?.length || 0
       });
+
+      // Cache the receipt (10 minutes)
+      if (!allowFallback) {
+        await cacheManager.set(cacheKey, receipt, 600);
+        logger.debug(`Receipt cached: ${code} (TTL: 600s)`);
+      }
 
       logger.info(`Receipt found: code=${code}, receiptId=${receipt.receiptId}, churchId=${receipt.churchId}`);
       return {
@@ -86,6 +112,34 @@ class ReceiptService extends BaseService {
         errorMessage: error.message,
         errorStack: error.stack
       });
+      throw error;
+    }
+  }
+
+  /**
+   * Get receipt by invoice ID
+   * @param {number} invoiceId - Invoice ID
+   * @param {number} churchId - Church ID for access control
+   * @returns {Promise<Object>} Receipt data or null
+   */
+  async getReceiptByInvoiceId(invoiceId, churchId) {
+    try {
+      if (!invoiceId) {
+        throw new Error('Invoice ID is required');
+      }
+
+      logger.info(`Getting receipt by invoice ID: ${invoiceId}, churchId: ${churchId}`);
+      const receipt = await this.repository.findByInvoiceId(invoiceId, churchId);
+
+      if (!receipt) {
+        logger.info(`No receipt found for invoice ID: ${invoiceId}`);
+        return null;
+      }
+
+      logger.info(`Receipt found for invoice ID: ${invoiceId}, receiptId: ${receipt.ReceiptId}`);
+      return receipt;
+    } catch (error) {
+      logger.error('Error getting receipt by invoice ID:', error);
       throw error;
     }
   }
@@ -144,6 +198,10 @@ class ReceiptService extends BaseService {
           }
         };
       }
+
+      // Invalidate cache for this church's receipts
+      await cacheManager.invalidate(cacheManager.buildInvalidationPattern('receipt', churchId));
+      logger.debug(`Cache invalidated for church ${churchId} receipts`);
 
       return {
         success: true,
@@ -292,6 +350,11 @@ class ReceiptService extends BaseService {
         });
       }
 
+      // Invalidate cache for this church's receipts and invoices
+      await cacheManager.invalidate(cacheManager.buildInvalidationPattern('receipt', churchId));
+      await cacheManager.invalidate(cacheManager.buildInvalidationPattern('invoice', churchId));
+      logger.debug(`Cache invalidated for church ${churchId} receipts and invoices`);
+
       return {
         success: true,
         data: {
@@ -375,19 +438,19 @@ class ReceiptService extends BaseService {
       items = items.filter((row = {}) => {
         // Use Code as primary key, fallback to ReceiptId if Code doesn't exist
         const uniqueKey = row.Code || row.code || row.ReceiptId || row.receiptId;
-        
+
         if (!uniqueKey) {
           // If no unique key, keep the row but log a warning
           logger.warn('Receipt row without unique identifier found:', row);
           return true;
         }
-        
+
         const keyStr = String(uniqueKey);
         if (seen.has(keyStr)) {
           // Duplicate found, skip it
           return false;
         }
-        
+
         seen.set(keyStr, true);
         return true;
       });
@@ -530,7 +593,7 @@ class ReceiptService extends BaseService {
   async getReceiptsByDateRange(fromDate, toDate, churchId, options = {}) {
     try {
       const receipts = await this.repository.findByDateRange(fromDate, toDate, churchId, options);
-      
+
       // Additional deduplication by ReceiptId as a safety measure (repository already does this, but double-check)
       const seen = new Map();
       const uniqueReceipts = receipts.filter(receipt => {
@@ -546,7 +609,7 @@ class ReceiptService extends BaseService {
         seen.set(receiptId, true);
         return true;
       });
-      
+
       return {
         success: true,
         data: uniqueReceipts
@@ -607,7 +670,7 @@ class ReceiptService extends BaseService {
       }
 
       logger.info(`Getting receipt data for PDF: ${code}, churchId: ${churchId}, allowFallback: ${allowFallback}, applicationCode: ${applicationCode}`);
-      
+
       // Get receipt with invoice and details (using JOIN query)
       // Pass applicationCode to filter by RefDocName if provided
       const receipt = await this.repository.getReceiptWithDetails(code, churchId, allowFallback, applicationCode);

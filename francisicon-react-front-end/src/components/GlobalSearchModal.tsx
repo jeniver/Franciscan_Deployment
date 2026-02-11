@@ -40,7 +40,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Search anything in the database
             </label>
-            {/* <GlobalSearch
+            <GlobalSearch
               placeholder="Enter application code, person name, church, date, niche code..."
               onResultSelect={(result) => {
                 setSearchQuery(result.code || result.name || '');
@@ -52,7 +52,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
               autoFocus={true}
               showResultsInline={true}
               className="w-full"
-            /> */}
+            />
           </div>
 
           {/* Search Tips */}

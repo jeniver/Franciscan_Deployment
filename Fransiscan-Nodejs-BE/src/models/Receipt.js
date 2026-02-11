@@ -34,9 +34,13 @@ class Receipt {
    */
   validate() {
     const errors = [];
+    
 
-    if (!this.invoiceId || this.invoiceId <= 0) {
-      errors.push('Invoice ID is required');
+
+    // For receipts linked to invoices, invoiceId should be provided and valid
+    // For individual receipts, a default value of 0 is acceptable
+    if (this.invoiceId && this.invoiceId < 0) {
+      errors.push('Invoice ID must be 0 or greater');
     }
 
     if (!this.customerName || this.customerName.trim().length === 0) {

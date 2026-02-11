@@ -9,6 +9,22 @@ export interface InvoiceFlags {
   canCreateInvoice: boolean;
 }
 
+// Creation Status Interface
+export interface CreationStatus {
+  code: string;
+  hasInvoice: boolean;
+  hasReceipt: boolean;
+  isApplication: boolean;
+  isExistingRecord: boolean;
+  canCreateInvoice: boolean;
+  canCreateReceipt: boolean;
+  invoiceCode: string | null;
+  receiptCode: string | null;
+  invoiceId: number | null;
+  receiptId: number | null;
+  applicationData: any | null;
+}
+
 export interface InvoiceDetail {
   invoiceDetailId?: number | null;
   invoiceId?: number | null;
@@ -112,6 +128,24 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
 }
 
 // Create Invoice Request Type
+export interface CreateIndividualInvoiceRequest {
+  applicationCode: string;
+  customerName: string;
+  totalAmount: number;
+  payingAmount: number;
+  paymentMode: string;
+  paymentModeDocNo?: string;
+}
+
+export interface CreateIndividualReceiptRequest {
+  applicationCode: string;
+  customerName: string;
+  payingAmount: number;
+  paymentMode: string;
+  paymentModeDocNo?: string;
+}
+
+// Create Invoice Request Type
 export interface CreateInvoicePayload {
   invoice: {
     transactionDate: string;
@@ -153,6 +187,7 @@ export interface CreateInvoicePayload {
 
 interface InvoiceState {
   currentData: InvoiceOrApplicationData | null;
+  creationStatus: CreationStatus | null;
   loading: boolean;
   error: string | null;
   creatingInvoice: boolean;
@@ -165,6 +200,7 @@ interface InvoiceState {
 
 const initialState: InvoiceState = {
   currentData: null,
+  creationStatus: null,
   loading: false,
   error: null,
   creatingInvoice: false,
@@ -241,6 +277,75 @@ export const createInvoice = createAsyncThunk<
   }
 );
 
+// Fetch creation status
+export const fetchCreationStatus = createAsyncThunk<
+  CreationStatus,
+  string,
+  { rejectValue: string }
+>(
+  'invoice/fetchCreationStatus',
+  async (code: string, { rejectWithValue }) => {
+    try {
+      const response = await api.get(`/api/invoices/status/${code.trim()}`);
+      return response.data.data || response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch creation status');
+    }
+  }
+);
+
+// Create individual invoice from application
+export const createIndividualInvoice = createAsyncThunk<
+  { invoiceCode: string; receiptCreated?: boolean },
+  CreateIndividualInvoiceRequest,
+  { rejectValue: string }
+>(
+  'invoice/createIndividualInvoice',
+  async (payload: CreateIndividualInvoiceRequest, { rejectWithValue }) => {
+    try {
+      // Backend route: POST /api/invoices/individual
+      const response = await api.post('/api/invoices/individual', payload);
+      
+      if (response.data.success === false) {
+        return rejectWithValue(response.data.message || 'Failed to create individual invoice');
+      }
+      
+      return {
+        invoiceCode: response.data.data?.invoiceCode || response.data.invoiceCode,
+        receiptCreated: response.data.receiptCreated,
+      };
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to create individual invoice');
+    }
+  }
+);
+
+// Create individual receipt from application
+export const createIndividualReceipt = createAsyncThunk<
+  { receiptCode: string; receiptCreated?: boolean },
+  CreateIndividualReceiptRequest,
+  { rejectValue: string }
+>(
+  'invoice/createIndividualReceipt',
+  async (payload: CreateIndividualReceiptRequest, { rejectWithValue }) => {
+    try {
+      // Backend route: POST /api/receipts/individual
+      const response = await api.post('/api/receipts/individual', payload);
+      
+      if (response.data.success === false) {
+        return rejectWithValue(response.data.message || 'Failed to create individual receipt');
+      }
+      
+      return {
+        receiptCode: response.data.code || response.data.receiptCode,
+        receiptCreated: response.data.receiptCreated,
+      };
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to create individual receipt');
+    }
+  }
+);
+
 // Invoice slice
 const invoiceSlice = createSlice({
   name: 'invoice',
@@ -248,11 +353,15 @@ const invoiceSlice = createSlice({
   reducers: {
     clearCurrentData: (state) => {
       state.currentData = null;
+      state.creationStatus = null;
       state.error = null;
       state.createInvoiceSuccess = false;
       state.createReceiptSuccess = false;
       state.lastCreatedInvoiceCode = null;
       state.lastCreatedReceiptCode = null;
+    },
+    clearCreationStatus: (state) => {
+      state.creationStatus = null;
     },
     clearError: (state) => {
       state.error = null;
@@ -265,6 +374,22 @@ const invoiceSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
+    // Fetch creation status
+    builder.addCase(fetchCreationStatus.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    });
+    builder.addCase(fetchCreationStatus.fulfilled, (state, action) => {
+      state.loading = false;
+      state.creationStatus = action.payload;
+      state.error = null;
+    });
+    builder.addCase(fetchCreationStatus.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload || 'Failed to fetch creation status';
+      state.creationStatus = null;
+    });
+    
     // Fetch invoice or application
     builder.addCase(fetchInvoiceOrApplication.pending, (state) => {
       state.loading = true;
@@ -304,10 +429,53 @@ const invoiceSlice = createSlice({
       state.error = action.payload || 'Failed to create invoice';
     });
     
+    // Create individual invoice
+    builder.addCase(createIndividualInvoice.pending, (state) => {
+      state.creatingInvoice = true;
+      state.error = null;
+      state.createInvoiceSuccess = false;
+    });
+    builder.addCase(createIndividualInvoice.fulfilled, (state, action) => {
+      state.creatingInvoice = false;
+      state.createInvoiceSuccess = true;
+      state.lastCreatedInvoiceCode = action.payload.invoiceCode;
+      if (action.payload.receiptCreated) {
+        state.lastCreatedReceiptCode = action.payload.invoiceCode; // Use invoice code as receipt code if receipt was created
+        state.createReceiptSuccess = true;
+      }
+      state.error = null;
+    });
+    builder.addCase(createIndividualInvoice.rejected, (state, action) => {
+      state.creatingInvoice = false;
+      state.createInvoiceSuccess = false;
+      state.error = action.payload || 'Failed to create individual invoice';
+    });
+    
+    // Create individual receipt
+    builder.addCase(createIndividualReceipt.pending, (state) => {
+      state.creatingReceipt = true;
+      state.error = null;
+      state.createReceiptSuccess = false;
+    });
+    builder.addCase(createIndividualReceipt.fulfilled, (state, action) => {
+      state.creatingReceipt = false;
+      state.createReceiptSuccess = true;
+      state.lastCreatedReceiptCode = action.payload.receiptCode;
+      if (action.payload.receiptCreated) {
+        state.createReceiptSuccess = true;
+      }
+      state.error = null;
+    });
+    builder.addCase(createIndividualReceipt.rejected, (state, action) => {
+      state.creatingReceipt = false;
+      state.createReceiptSuccess = false;
+      state.error = action.payload || 'Failed to create individual receipt';
+    });
+    
     // Receipt is created together with invoice when createReceipt=true on createInvoice
   },
 });
 
-export const { clearCurrentData, clearError, resetCreateStatus } = invoiceSlice.actions;
+export const { clearCurrentData, clearCreationStatus, clearError, resetCreateStatus } = invoiceSlice.actions;
 export default invoiceSlice.reducer;
 

@@ -52,16 +52,13 @@ export function ReceiptTemplate({
 
         <div className="text-right text-sm leading-relaxed">
           <h2 className="font-bold text-lg uppercase mb-1">
-           THE ORDER OF FRIARS MINOR (S) LTD
+            THE ORDER OF FRIARS MINOR (S) LTD
           </h2>
           <p>Co. & GST Reg. No. 201016236M</p>
           <p>Franciscan Columbarium</p>
           <p>5 Bukit Batok East Ave 2, Singapore 659918</p>
-          <p>
-            Tel: 6560-6361 , HP: 9774-7053
-            ,
-          </p>
-          <p>email:Email:franciscan.columbarium@gmail.com</p>
+          <p>Tel: 6560-6361 , HP: 9774-7053</p>
+          <p>Email: franciscan.columbarium@gmail.com</p>
 
           <div className="mt-6 grid grid-cols-[auto_100px] gap-x-4 justify-end">
             <span className="text-right">Receipt No:</span>
@@ -77,8 +74,12 @@ export function ReceiptTemplate({
         <div className="grid grid-cols-[120px_1fr] gap-4">
           <span className="whitespace-nowrap">Received From :</span>
           <span>{receivedFrom}</span>
-          <span>Address:</span>
-          <span>{address}</span>
+          <span className="font-bold">Address :</span>
+          <div className="flex flex-col">
+            {address?.split(', ').map((line, i) => (
+              <span key={i} className="leading-tight mb-0.5 last:mb-0">{line}</span>
+            ))}
+          </div>
         </div>
 
         {/* Invoice Details Grid */}
@@ -110,7 +111,7 @@ export function ReceiptTemplate({
                   </div>
                 </div>
               ))}
-              
+
               {/* Total Line */}
               <div className="flex justify-end items-center gap-8 mb-2 mt-4 pt-2 border-t border-gray-300">
                 <span className="font-bold">Total :</span>
