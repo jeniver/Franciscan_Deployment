@@ -15,7 +15,7 @@ class NicheApplicationController {
       }
 
       const { query, user } = req;
-      
+
       // Log received query parameters for debugging
       logger.info('[Controller] Received search parameters:', {
         query: query,
@@ -57,7 +57,7 @@ class NicheApplicationController {
         logger.warn('Cannot send error response - headers already sent:', error.message);
         return;
       }
-      
+
       logger.error('Controller: Failed to search niche applications:', error);
       return res.status(500).json({
         success: false,
@@ -138,17 +138,17 @@ class NicheApplicationController {
    */
   optimizeApplicationPayload(rawPayload) {
     const payload = { ...rawPayload };
-    
 
-    
+
+
     // Handle both old flat structure and new optimized structure
     // If we already have the optimized structure, use it as-is but ensure beneficiaries are preserved
     if (payload.applicant && payload.nominees && payload.beneficiaries) {
       logger.info('[Controller] Received optimized payload structure, using as-is');
-      
+
       // Ensure beneficiaries array is properly structured
       const beneficiaries = Array.isArray(payload.beneficiaries) ? payload.beneficiaries : [];
-      
+
       return this.removeEmptyValues({
         chapel: payload.chapel || {
           id: payload.chapelId,
@@ -175,7 +175,7 @@ class NicheApplicationController {
         }
       });
     }
-    
+
     // Handle old flat structure - this is likely what's coming from PUT requests
     logger.info('[Controller] Received flat payload structure, optimizing...');
     const optimized = {
@@ -185,17 +185,17 @@ class NicheApplicationController {
         name: payload.chapel,
         code: payload.chapelCode
       },
-      
+
       // Niche information
       niche: {
         id: payload.nicheId,
         code: payload.nicheCode || payload.niche?.code,
         number: payload.niche?.number
       },
-      
+
       // Selected niches array
       selectedNiches: payload.selectedNiches || [],
-      
+
       // Applicant information (organized as object)
       applicant: {
         name: payload.applicantName,
@@ -220,13 +220,13 @@ class NicheApplicationController {
           postalCode: payload.applicantPostalCode
         }
       },
-      
+
       // Nominees as array (organized)
       nominees: this.optimizeNominees(payload),
-      
+
       // Beneficiaries as array (organized) - CRITICAL: Ensure this is properly handled
       beneficiaries: this.optimizeBeneficiaries(payload),
-      
+
       // Additional fields
       code: payload.code || payload.applicationCode,
       contact: {
@@ -245,7 +245,7 @@ class NicheApplicationController {
     // Remove any undefined/null values to clean up the payload
     const cleanedPayload = this.removeEmptyValues(optimized);
     logger.info('[Controller] Final cleaned payload beneficiaries count:', cleanedPayload.beneficiaries?.length || 0);
-    
+
     return cleanedPayload;
   }
 
@@ -254,7 +254,7 @@ class NicheApplicationController {
    */
   optimizeNominees(payload) {
     const nominees = [];
-    
+
     // Process main nominee
     if (payload.nomineeName || payload.nominee?.name) {
       nominees.push({
@@ -279,7 +279,7 @@ class NicheApplicationController {
         }
       });
     }
-    
+
     // Process nominee2
     if (payload.nominee2Name || payload.nominee2?.name) {
       nominees.push({
@@ -304,12 +304,12 @@ class NicheApplicationController {
         }
       });
     }
-    
+
     // Process additional nominees array if provided
     if (Array.isArray(payload.nominees)) {
       payload.nominees.forEach(nominee => {
         // Avoid duplicates by checking if already added
-        const exists = nominees.some(n => 
+        const exists = nominees.some(n =>
           (n.name === nominee.name && n.idNo === nominee.idNo) ||
           n.name === nominee.name
         );
@@ -329,7 +329,7 @@ class NicheApplicationController {
         }
       });
     }
-    
+
     return nominees;
   }
 
@@ -339,14 +339,23 @@ class NicheApplicationController {
    */
   optimizeBeneficiaries(payload) {
     const beneficiaries = [];
-    
+
     // Log incoming payload for debugging
     logger.info('[Controller] optimizeBeneficiaries called with payload keys:', Object.keys(payload));
-    
+
     // Process beneficiaries array if provided (from optimized structure)
     if (Array.isArray(payload.beneficiaries) && payload.beneficiaries.length > 0) {
       logger.info('[Controller] Found beneficiaries array with', payload.beneficiaries.length, 'items');
       payload.beneficiaries.forEach((beneficiary, index) => {
+        const dateOfBirth = beneficiary.dateOfBirth;
+        const birthYear = beneficiary.birthYear;
+
+        logger.info(`[Controller] Processing beneficiary ${index + 1}:`, {
+          name: beneficiary.name,
+          dateOfBirth,
+          birthYear
+        });
+
         beneficiaries.push({
           id: beneficiary.id,
           name: beneficiary.name || beneficiary.fullName,
@@ -355,8 +364,8 @@ class NicheApplicationController {
           isMale: beneficiary.isMale,
           gender: beneficiary.gender || (beneficiary.isMale ? 'Male' : 'Female'),
           relationship: beneficiary.relationship || beneficiary.relationshipToApplicant,
-          dateOfBirth: beneficiary.dateOfBirth,
-          birthYear: beneficiary.birthYear,
+          dateOfBirth: dateOfBirth,
+          birthYear: birthYear,
           status: beneficiary.status,
           relationshipToNominee1: beneficiary.relationshipToNominee1,
           relationshipToNominee2: beneficiary.relationshipToNominee2,
@@ -367,35 +376,38 @@ class NicheApplicationController {
       // Fallback to individual beneficiary fields (from flat structure)
       logger.info('[Controller] Processing individual beneficiary fields from flat structure');
       const beneficiaryFields = ['beneficiary1', 'beneficiary2', 'beneficiary3', 'beneficiary4', 'beneficiary5'];
-      
+
       beneficiaryFields.forEach((fieldPrefix, index) => {
         const name = payload[`${fieldPrefix}Name`] || payload[fieldPrefix]?.name;
         if (name) {
+          const dateOfBirth = payload[`${fieldPrefix}DateOfBirth`] || payload[fieldPrefix]?.dateOfBirth || '';
+          const birthYear = payload[`${fieldPrefix}BirthYear`] || payload[fieldPrefix]?.birthYear || '';
+
           const beneficiary = {
             id: payload[`${fieldPrefix}Id`] || payload[fieldPrefix]?.id || Date.now() + index,
             name: name,
             idNo: payload[`${fieldPrefix}IDNo`] || payload[fieldPrefix]?.idNo || payload[`${fieldPrefix}Nric`] || '',
             isCatholic: payload[`${fieldPrefix}IsCatholic`] || payload[fieldPrefix]?.isCatholic || false,
             isMale: payload[`${fieldPrefix}IsMale`] || payload[fieldPrefix]?.isMale || false,
-            gender: payload[`${fieldPrefix}Gender`] || payload[fieldPrefix]?.gender || 
-                    (payload[`${fieldPrefix}IsMale`] ? 'Male' : 'Female'),
+            gender: payload[`${fieldPrefix}Gender`] || payload[fieldPrefix]?.gender ||
+              (payload[`${fieldPrefix}IsMale`] ? 'Male' : 'Female'),
             relationship: payload[`${fieldPrefix}Relationship`] || payload[fieldPrefix]?.relationship || '',
-            dateOfBirth: payload[`${fieldPrefix}DateOfBirth`] || payload[fieldPrefix]?.dateOfBirth || '',
-            birthYear: payload[`${fieldPrefix}BirthYear`] || payload[fieldPrefix]?.birthYear || '',
+            dateOfBirth: dateOfBirth,
+            birthYear: birthYear,
             status: payload[`${fieldPrefix}Status`] || payload[fieldPrefix]?.status || 'Not Occupied',
-            relationshipToNominee1: payload[`${fieldPrefix}RelationshipToNominee1`] || 
-                                  payload[fieldPrefix]?.relationshipToNominee1 || '',
-            relationshipToNominee2: payload[`${fieldPrefix}RelationshipToNominee2`] || 
-                                  payload[fieldPrefix]?.relationshipToNominee2 || '',
+            relationshipToNominee1: payload[`${fieldPrefix}RelationshipToNominee1`] ||
+              payload[fieldPrefix]?.relationshipToNominee1 || '',
+            relationshipToNominee2: payload[`${fieldPrefix}RelationshipToNominee2`] ||
+              payload[fieldPrefix]?.relationshipToNominee2 || '',
             religion: payload[`${fieldPrefix}Religion`] || payload[fieldPrefix]?.religion || ''
           };
-          
+
           beneficiaries.push(beneficiary);
           logger.info(`[Controller] Added beneficiary ${index + 1}:`, beneficiary.name);
         }
       });
     }
-    
+
     logger.info('[Controller] optimizeBeneficiaries returning', beneficiaries.length, 'beneficiaries');
     return beneficiaries;
   }
@@ -406,11 +418,11 @@ class NicheApplicationController {
   removeEmptyValues(obj) {
     if (obj === null || obj === undefined) return undefined;
     if (typeof obj !== 'object') return obj;
-    
+
     if (Array.isArray(obj)) {
       return obj.map(item => this.removeEmptyValues(item)).filter(item => item !== undefined);
     }
-    
+
     const result = {};
     for (const [key, value] of Object.entries(obj)) {
       const cleanedValue = this.removeEmptyValues(value);
@@ -418,7 +430,7 @@ class NicheApplicationController {
         result[key] = cleanedValue;
       }
     }
-    
+
     return Object.keys(result).length > 0 ? result : undefined;
   }
 
@@ -427,7 +439,7 @@ class NicheApplicationController {
    */
   optimizeResponseStructure(data) {
     if (!data) return data;
-    
+
     return {
       applicationCode: data.code || data.applicationNumber,
       appliedDate: data.appliedDate,
@@ -504,11 +516,11 @@ class NicheApplicationController {
         logger.warn('Cannot send error response - headers already sent:', error.message);
         return;
       }
-      
+
       logger.error('Controller: Failed to get niche application:', error);
 
       // Check for connection/timeout errors and provide better error messages
-      const isConnectionError = 
+      const isConnectionError =
         error.code === 'ETIMEOUT' ||
         error.code === 'ETIMEDOUT' ||
         error.code === 'ECONNRESET' ||
@@ -559,7 +571,7 @@ class NicheApplicationController {
 
       // Transform and optimize the payload structure for updates
       const optimizedPayload = this.optimizeApplicationPayload(body);
-      
+
       const result = await NicheApplicationService.updateApplication(
         code,
         optimizedPayload,

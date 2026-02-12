@@ -225,7 +225,7 @@ export function InscriptionAgreementViewerModal({
       dateBorn: '',
       dateDied: '',
     }
-    
+
     const deceased2: DeceasedDetails = data.deceased?.[1] ? {
       name: data.deceased[1].name || '',
       deathCertNo: data.deceased[1].deathCertificateNo || '',
@@ -259,7 +259,7 @@ export function InscriptionAgreementViewerModal({
       telOff: data.applicant?.phone || '',
       telRes: '',
       telHP: data.applicant?.mobile || '',
-      crossType: 'Crucifix', // Default value
+      crossType: data.inscription?.crossType || 'Crucifix',
       deceased1: deceased1,
       deceased2: deceased2,
       bibleInscriptionNumber: data.inscription?.bibleChoiceId || '',
@@ -307,7 +307,7 @@ export function InscriptionAgreementViewerModal({
                   <Maximize2Icon className="w-5 h-5" />
                 )}
               </button>
-             
+
               <button
                 onClick={handlePrint}
                 disabled={isGeneratingPdf || loading}
@@ -324,7 +324,7 @@ export function InscriptionAgreementViewerModal({
               >
                 <DownloadIcon className="w-5 h-5" />
               </button>
-              
+
               <button
                 onClick={onClose}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"

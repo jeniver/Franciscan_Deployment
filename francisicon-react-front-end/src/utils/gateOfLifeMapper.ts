@@ -35,7 +35,7 @@ export const mapApiApplicationToFormData = (apiData: GateOfLifeApplication) => {
   // Map applicant data - handle both applicant object and applicantDetails
   const applicant = apiData.applicant || apiData.applicantDetails || {};
   const address = applicant.address || {};
-  
+
   // Handle address mapping - API returns:
   // address.no = "Block" (label, not the block letter - can be ignored)
   // address.line1 = "202" (block number)
@@ -43,17 +43,17 @@ export const mapApiApplicationToFormData = (apiData: GateOfLifeApplication) => {
   // address.city = "#14-102" (unit number)
   // address.state = "650202" (postal code)
   // address.country = "Singapore"
-  
+
   // Map address fields directly - address.no is just a label "Block", not the block letter
   // Block letter (A, B, C) is not in the API response, so we leave it empty
   const applicantData = {
     name: (applicant.name || '').trim(),
     idNo: (applicant.idNo || applicant.idNumber || '').trim(), // ID/NRIC/Passport number
-    block: applicant.block || '', // Block letter (A, B, C) - not in API response, leave empty
-    blockNo: (address.line1 || applicant.blockNo || '').trim(), // Block number from line1
-    streetName: (address.line2 || applicant.streetName || '').trim(), // Street name from line2
-    unitNo: (address.city || applicant.unitNo || '').trim(), // Unit number from city
-    postalCode: (address.state || applicant.postalCode || '').trim(), // Postal code from state
+    block: (address.no || applicant.block || '').trim(), // Block letter (A, B, C)
+    blockNo: (address.line1 || applicant.blockNo || '').trim(), // Block number
+    streetName: (address.line2 || applicant.streetName || '').trim(), // Street name
+    unitNo: (address.city || applicant.unitNo || '').trim(), // Unit number
+    postalCode: (address.state || applicant.postalCode || '').trim(), // Postal code
     country: (address.country || applicant.country || 'Singapore').trim(),
     mobileNo: (applicant.mobileNo || '').trim(),
     homeTelephone: (applicant.homeTelNo || applicant.homeTelephone || '').trim(),

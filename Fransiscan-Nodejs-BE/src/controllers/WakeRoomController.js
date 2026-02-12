@@ -17,7 +17,7 @@ class WakeRoomController extends BaseController {
    * Get all wake rooms across all churches
    * GET /api/wake-rooms/all
    */
-  getAllWakeRooms = this.asyncHandler(async(req, res) => {
+  getAllWakeRooms = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get All Wake Rooms (All Churches)');
 
     try {
@@ -34,7 +34,7 @@ class WakeRoomController extends BaseController {
    * Get wake rooms (filtered by church query param)
    * GET /api/wake-rooms?church=:churchId
    */
-  getWakeRooms = this.asyncHandler(async(req, res) => {
+  getWakeRooms = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Wake Rooms');
 
     const churchId = req.query.church || req.user?.churchId;
@@ -58,7 +58,7 @@ class WakeRoomController extends BaseController {
    * GET /api/wake-rooms/dropdown?church=:churchId
    * Mirrors ASP.NET LoadWakeRooms web method
    */
-  getWakeRoomOptions = this.asyncHandler(async(req, res) => {
+  getWakeRoomOptions = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Wake Room Dropdown Options');
 
     const churchId = req.query.church || req.user?.churchId;
@@ -82,7 +82,7 @@ class WakeRoomController extends BaseController {
    * GET /api/wake-rooms/church/:churchId
    * Based on: LoadWakeRooms() WebMethod
    */
-  getWakeRoomsByChurch = this.asyncHandler(async(req, res) => {
+  getWakeRoomsByChurch = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Wake Rooms by Church');
 
     const { churchId } = req.params;
@@ -105,7 +105,7 @@ class WakeRoomController extends BaseController {
    * Get wake room by ID
    * GET /api/wake-rooms/:id
    */
-  getWakeRoomById = this.asyncHandler(async(req, res) => {
+  getWakeRoomById = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Wake Room by ID');
 
     const { id } = req.params;
@@ -134,7 +134,7 @@ class WakeRoomController extends BaseController {
    * GET /api/wake-room-bookings/:code
    * Based on: ViewWakeRoomBooking(string wakeRoomBookingCode) WebMethod
    */
-  getWakeRoomBooking = this.asyncHandler(async(req, res) => {
+  getWakeRoomBooking = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Wake Room Booking');
 
     const { code } = req.params;
@@ -168,7 +168,7 @@ class WakeRoomController extends BaseController {
    * POST /api/wake-room-bookings/search
    * Based on: SearchWakeBookings(string searchParamsEntity) WebMethod
    */
-  searchWakeBookings = this.asyncHandler(async(req, res) => {
+  searchWakeBookings = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Search Wake Room Bookings');
 
     const searchParams = req.body || {};
@@ -181,17 +181,22 @@ class WakeRoomController extends BaseController {
 
       // Add church ID to search params
       searchParams.churchId = parseInt(churchId);
+      searchParams.page = parseInt(req.query.page || searchParams.page || 1);
+      searchParams.pageSize = parseInt(req.query.pageSize || searchParams.pageSize || 10);
 
       logger.info('Search params:', JSON.stringify(searchParams));
 
-      const bookings = await this.wakeRoomService.searchWakeBookings(searchParams);
+      const result = await this.wakeRoomService.searchWakeBookings(searchParams);
 
       // Always return success, even with empty results
-      if (bookings.length === 0) {
-        return this.sendSuccess(res, [], 'No bookings found matching the criteria');
+      if (!result.bookings || result.bookings.length === 0) {
+        return this.sendSuccess(res, {
+          ...result,
+          bookings: []
+        }, 'No bookings found matching the criteria');
       }
 
-      this.sendSuccess(res, bookings, `Found ${bookings.length} booking(s)`);
+      this.sendSuccess(res, result, `Found ${result.total} booking(s)`);
     } catch (error) {
       logger.error('Error in searchWakeBookings:', error);
 
@@ -208,7 +213,7 @@ class WakeRoomController extends BaseController {
    * POST /api/wake-room-bookings
    * Based on: CaptureWakeRoomBooking(string entityDescription) WebMethod
    */
-  createWakeRoomBooking = this.asyncHandler(async(req, res) => {
+  createWakeRoomBooking = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Create Wake Room Booking');
 
     const bookingData = req.body;
@@ -256,7 +261,7 @@ class WakeRoomController extends BaseController {
    * PUT /api/wake-room-bookings/:id
    * Based on: UpdateWakeRoomBooking(string entityDescription) WebMethod
    */
-  updateWakeRoomBooking = this.asyncHandler(async(req, res) => {
+  updateWakeRoomBooking = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Update Wake Room Booking');
 
     const { id } = req.params;
@@ -309,7 +314,7 @@ class WakeRoomController extends BaseController {
    * GET /api/wake-room-bookings/last-number/:churchId
    * Based on: GetLastBookingNumber() WebMethod
    */
-  getLastBookingNumber = this.asyncHandler(async(req, res) => {
+  getLastBookingNumber = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Last Booking Number');
 
     const { churchId } = req.params;
@@ -332,7 +337,7 @@ class WakeRoomController extends BaseController {
    * Check wake room availability for a specific time slot
    * POST /api/wake-rooms/check-availability
    */
-  checkAvailability = this.asyncHandler(async(req, res) => {
+  checkAvailability = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Check Wake Room Availability');
 
     const { wakeRoomId, fromTime, toTime } = req.body;
@@ -359,7 +364,7 @@ class WakeRoomController extends BaseController {
    * Check wake room availability for a date range
    * POST /api/wake-rooms/check-availability-range
    */
-  checkAvailabilityByDateRange = this.asyncHandler(async(req, res) => {
+  checkAvailabilityByDateRange = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Check Wake Room Availability by Date Range');
 
     const { wakeRoomId, fromDate, toDate } = req.body;
@@ -386,7 +391,7 @@ class WakeRoomController extends BaseController {
    * Get availability for multiple specific dates (calendar view)
    * POST /api/wake-rooms/check-availability-dates
    */
-  getAvailabilityForDates = this.asyncHandler(async(req, res) => {
+  getAvailabilityForDates = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Wake Room Availability for Dates');
 
     const { wakeRoomId, dates } = req.body;
@@ -413,7 +418,7 @@ class WakeRoomController extends BaseController {
    * Get bookings for a wake room within a date range
    * GET /api/wake-rooms/:id/bookings-range?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD
    */
-  getBookingsByDateRange = this.asyncHandler(async(req, res) => {
+  getBookingsByDateRange = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Bookings by Date Range');
 
     const { id } = req.params;
@@ -441,7 +446,7 @@ class WakeRoomController extends BaseController {
    * Get bookings for a specific date (via query param)
    * GET /api/wake-rooms/:id/bookings?date=YYYY-MM-DD
    */
-  getBookingsForDateQuery = this.asyncHandler(async(req, res) => {
+  getBookingsForDateQuery = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Bookings for Date (Query)');
 
     const { id } = req.params;
@@ -468,7 +473,7 @@ class WakeRoomController extends BaseController {
    * Get bookings for a specific date
    * GET /api/wake-rooms/:id/bookings/:date
    */
-  getBookingsForDate = this.asyncHandler(async(req, res) => {
+  getBookingsForDate = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Bookings for Date');
 
     const { id, date } = req.params;
@@ -495,7 +500,7 @@ class WakeRoomController extends BaseController {
    * POST /api/wake-rooms/:id/bookings
    * Based on stored procedure: sp_add_wake_room_booking
    */
-  createWakeRoomBookingForRoom = this.asyncHandler(async(req, res) => {
+  createWakeRoomBookingForRoom = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Create Wake Room Booking for Room');
 
     const { id } = req.params;
@@ -557,7 +562,7 @@ class WakeRoomController extends BaseController {
    * Delete wake room booking
    * DELETE /api/wake-room-bookings/:id
    */
-  deleteWakeRoomBooking = this.asyncHandler(async(req, res) => {
+  deleteWakeRoomBooking = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Delete Wake Room Booking');
 
     const { id } = req.params;

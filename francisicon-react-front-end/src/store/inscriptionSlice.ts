@@ -23,12 +23,12 @@ export interface InscriptionState {
   // Form state
   inscriptionRequestNo: string;
   nicheApplicationCode: string;
-  
+
   // Create/Update inscription state
   creatingInscription: boolean;
   updatingInscription: boolean;
   inscriptionError: string | null;
-  
+
   // Applicant/Contact Details
   applicantName: string;
   nricPassportNo: string;
@@ -64,6 +64,8 @@ export interface InscriptionState {
   bibleChoicesError: string | null;
   selectedBibleChoiceId: number | null;
   phraseOfChoice: string;
+  crossType: string;
+
 
   // Beneficiary data
   beneficiaries: Beneficiary[];
@@ -99,6 +101,8 @@ const initialState: InscriptionState = {
   bibleChoicesError: null,
   selectedBibleChoiceId: null,
   phraseOfChoice: '',
+  crossType: 'Crucifix',
+
   beneficiaries: [],
   loading: false,
   error: null,
@@ -232,7 +236,9 @@ export const createInscription = createAsyncThunk<
       bibleInscriptionText: string;
       additionalInscriptionPhrase: string;
       remarks: string;
+      crossType?: string;
       nicheApplicationCode: string;
+
       nicheBookingId: number | null;
     };
   },
@@ -295,6 +301,7 @@ export const updateInscription = createAsyncThunk<
       bibleInscriptionText: string;
       additionalInscriptionPhrase: string;
       remarks: string;
+      crossType?: string;
     };
   },
   { rejectValue: { message: string; type: string; statusCode?: number } }
@@ -402,6 +409,9 @@ const inscriptionSlice = createSlice({
         }
       }
     },
+    setCrossType: (state, action: PayloadAction<string>) => {
+      state.crossType = action.payload;
+    },
 
     // Beneficiary updates
     setBeneficiaries: (state, action: PayloadAction<Beneficiary[]>) => {
@@ -449,15 +459,15 @@ const inscriptionSlice = createSlice({
       .addCase(fetchInscriptionItems.fulfilled, (state, action) => {
         state.itemsLoading = false;
         const data = action.payload;
-        
+
         // Map items
         state.inscriptionItems = data.items || [];
-        
+
         // Map inscription request number
         if (data.inscriptionRequestNo) {
           state.inscriptionRequestNo = data.inscriptionRequestNo;
         }
-        
+
         // Map applicant details
         if (data.applicant) {
           state.applicantName = data.applicant.name || '';
@@ -465,7 +475,7 @@ const inscriptionSlice = createSlice({
           state.mobile = data.applicant.mobile || '';
           state.homeTel = data.applicant.homeTel || '';
           state.emailId = data.applicant.emailId || '';
-          
+
           // Map address
           if (data.applicant.address) {
             state.block = data.applicant.address.blockNo || data.applicant.address.block || '';
@@ -474,7 +484,7 @@ const inscriptionSlice = createSlice({
             state.postalCode = data.applicant.address.postalCode || '';
           }
         }
-        
+
         // Map deceased details
         if (data.deceasedDetails && Array.isArray(data.deceasedDetails)) {
           state.deceasedDetails = data.deceasedDetails.map((deceased) => {
@@ -485,13 +495,13 @@ const inscriptionSlice = createSlice({
               try {
                 // Remove time portion if present (e.g., "2026-01-07 12:00" -> "2026-01-07")
                 const dateOnly = dateStr.split(' ')[0].trim();
-                
+
                 // Check if already in YYYY-MM-DD format (e.g., "2026-01-07")
                 const ymdPattern = /^\d{4}-\d{2}-\d{2}$/;
                 if (ymdPattern.test(dateOnly)) {
                   return dateOnly;
                 }
-                
+
                 // Try parsing DD-MMM-YYYY format (e.g., "02-Jun-2025")
                 const parts = dateOnly.split('-');
                 if (parts.length === 3) {
@@ -505,7 +515,7 @@ const inscriptionSlice = createSlice({
                     return `${year}-${month}-${day}`;
                   }
                 }
-                
+
                 // If can't parse, try to use as-is or parse with Date object
                 const parsed = new Date(dateOnly);
                 if (!isNaN(parsed.getTime())) {
@@ -514,18 +524,18 @@ const inscriptionSlice = createSlice({
                   const day = String(parsed.getDate()).padStart(2, '0');
                   return `${year}-${month}-${day}`;
                 }
-                
+
                 return dateOnly;
               } catch {
                 return dateStr;
               }
             };
-            
+
             // Parse internment date and time
             const internmentDateStr = deceased.internmentDate || '';
             let internmentDate = '';
             let internmentTime = '12:00'; // Default time
-            
+
             if (internmentDateStr) {
               // Check if it includes time (e.g., "2026-01-07 12:00" or "2056-01-07 12:00")
               const dateTimeParts = internmentDateStr.split(' ');
@@ -534,7 +544,7 @@ const inscriptionSlice = createSlice({
                 internmentTime = dateTimeParts[1] || '12:00';
               }
             }
-            
+
             return {
               selectBeneficiary: '',
               nameOfDeceased: deceased.name || '',
@@ -545,7 +555,7 @@ const inscriptionSlice = createSlice({
               deathCertNo: deceased.deathCertificateNo || ''
             };
           });
-          
+
           // If no deceased details, add empty one
           if (state.deceasedDetails.length === 0) {
             state.deceasedDetails = [{
@@ -559,7 +569,7 @@ const inscriptionSlice = createSlice({
             }];
           }
         }
-        
+
         // Map additional details
         if (data.additionalDetails) {
           // Map Bible choice
@@ -573,33 +583,41 @@ const inscriptionSlice = createSlice({
               state.phraseOfChoice = selectedChoice.bibleInscriptionChoiceNoValue;
             }
           }
-          
+
           // Map phrase of choice (prioritize additionalInscriptionPhrase over bibleInscriptionText)
           if (data.additionalDetails.additionalInscriptionPhrase) {
             state.phraseOfChoice = data.additionalDetails.additionalInscriptionPhrase;
           } else if (data.additionalDetails.bibleInscriptionText) {
             state.phraseOfChoice = data.additionalDetails.bibleInscriptionText;
           }
-          
+
           // Map niche application code if available
           if (data.additionalDetails.nicheApplicationCode) {
             state.nicheApplicationCode = data.additionalDetails.nicheApplicationCode;
           }
+
+          // Map crossType if available
+          if (data.additionalDetails.crossType) {
+            state.crossType = data.additionalDetails.crossType;
+          } else if (data.additionalDetails.remarks && ['Crucifix', 'WoodenCross', 'NoCrucifix/Cross'].includes(data.additionalDetails.remarks)) {
+            // Fallback: Check if remarks contains crossType value (legacy support)
+            state.crossType = data.additionalDetails.remarks;
+          }
         }
-        
+
         // Map beneficiaries if available
         if (data.beneficiaries && Array.isArray(data.beneficiaries)) {
           state.beneficiaries = data.beneficiaries;
         } else {
           state.beneficiaries = [];
         }
-        
+
         // CRITICAL: Ensure nicheApplicationCode is set from the code parameter if not already set
         // This handles cases where the API doesn't return it in additionalDetails
         if (!state.nicheApplicationCode && action.meta.arg) {
           state.nicheApplicationCode = action.meta.arg;
         }
-        
+
         state.itemsError = null;
       })
       .addCase(fetchInscriptionItems.rejected, (state, action) => {
@@ -697,6 +715,7 @@ export const {
   updateDeceasedDetail,
   setSelectedBibleChoiceId,
   setPhraseOfChoice,
+  setCrossType,
   setBeneficiaries,
   addBeneficiary,
   removeBeneficiary,

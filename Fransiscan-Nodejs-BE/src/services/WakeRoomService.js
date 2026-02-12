@@ -150,22 +150,29 @@ class WakeRoomService {
       }
 
       // Check if at least one search parameter is provided (excluding churchId)
-      const hasSearchCriteria = searchParams.code ||
-                                searchParams.applicantName ||
-                                searchParams.nameOfDeceased ||
-                                searchParams.usingDate ||
-                                searchParams.wakeRoomId;
+      // We now allow empty criteria to support listing all bookings with pagination
+      // const hasSearchCriteria = searchParams.code ||
+      //   searchParams.applicantName ||
+      //   searchParams.nameOfDeceased ||
+      //   searchParams.usingDate ||
+      //   searchParams.wakeRoomId;
 
       // If no search criteria, return empty array instead of error (matches ASP.NET behavior)
-      if (!hasSearchCriteria) {
-        logger.info('No search criteria provided, returning empty results');
-        return [];
-      }
+      // if (!hasSearchCriteria) {
+      //   logger.info('No search criteria provided, returning empty results');
+      //   return [];
+      // }
 
-      const bookings = await this.wakeRoomRepository.searchWakeBookings(searchParams);
+      const result = await this.wakeRoomRepository.searchWakeBookings(searchParams);
 
-      logger.info(`Found ${bookings.length} booking(s)`);
-      return bookings.map(b => b.toJSON());
+      logger.info(`Found ${result.bookings.length} booking(s)`);
+
+      const bookings = result.bookings.map(b => b.toJSON());
+
+      return {
+        ...result,
+        bookings
+      };
     } catch (error) {
       logger.error('Error in searchWakeBookings:', error);
       throw error;
@@ -215,7 +222,7 @@ class WakeRoomService {
       // Parse and normalize dates
       const usingTimeFromDate = parseDate(bookingData.usingTimeFrom);
       const usingTimeToDate = parseDate(bookingData.usingTimeTo);
-      
+
       // Ensure usingDate is set from usingTimeFrom if not provided
       if (!bookingData.usingDate && usingTimeFromDate) {
         const usingDateObj = new Date(usingTimeFromDate);

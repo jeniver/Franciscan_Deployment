@@ -25,7 +25,7 @@ export function mapNichiBookingToApplicationRequest(formData: {
   refDocNumber: string;
   lineTaxPercent: number;
   itemId: number;
-  
+
   // Optional: Applicant details (if provided)
   applicantName?: string;
   applicantIdNo?: string;
@@ -43,7 +43,7 @@ export function mapNichiBookingToApplicationRequest(formData: {
   inscriptionAddressCity?: string;
   inscriptionAddressState?: string;
   inscriptionAddressCountry?: string;
-  
+
   // Optional: Nominee details (if provided)
   nomineeName?: string;
   nomineeIdNo?: string;
@@ -53,14 +53,14 @@ export function mapNichiBookingToApplicationRequest(formData: {
   nomineeRelationship?: string;
   nomineeHomeTel?: string;
   nomineeOfficeTel?: string;
-  
+
   // Optional: Beneficiary details (if provided)
   beneficiaryName?: string;
   beneficiaryIdNo?: string;
   beneficiaryRelationship?: string;
   beneficiaryDateOfBirth?: string;
   beneficiaryIsCatholic?: boolean;
-  
+
   // Optional: Niche details (if provided)
   nicheNumber?: string;
   nicheCode?: string;
@@ -75,10 +75,10 @@ export function mapNichiBookingToApplicationRequest(formData: {
   rowCode?: string;
   rowNumber?: string;
   rowLevel?: string | number;
-  
+
   // Deceased details (from Inscription)
   deceasedDetails?: DeceasedDetail[];
-  
+
   // Additional details (from Inscription)
   selectedBibleChoiceId?: number | null;
   phraseOfChoice?: string;
@@ -99,33 +99,33 @@ export function mapNichiBookingToApplicationRequest(formData: {
   // Map deceased details
   const deceased1 = formData.deceasedDetails && formData.deceasedDetails.length > 0
     ? {
-        name: formData.deceasedDetails[0].nameOfDeceased || null,
-        dateDied: formData.deceasedDetails[0].dateDied 
-          ? formatDateForAPI(formData.deceasedDetails[0].dateDied) 
-          : null,
-        internmentDate: formData.deceasedDetails[0].internmentDate
-          ? formatDateForAPI(formData.deceasedDetails[0].internmentDate)
-          : null,
-        deathCertificateNo: formData.deceasedDetails[0].deathCertNo || null,
-      }
+      name: formData.deceasedDetails[0].nameOfDeceased || null,
+      dateDied: formData.deceasedDetails[0].dateDied
+        ? formatDateForAPI(formData.deceasedDetails[0].dateDied)
+        : null,
+      internmentDate: formData.deceasedDetails[0].internmentDate
+        ? formatDateForAPI(formData.deceasedDetails[0].internmentDate)
+        : null,
+      deathCertificateNo: formData.deceasedDetails[0].deathCertNo || null,
+    }
     : {
-        name: null,
-        dateDied: null,
-        internmentDate: null,
-        deathCertificateNo: null,
-      };
+      name: null,
+      dateDied: null,
+      internmentDate: null,
+      deathCertificateNo: null,
+    };
 
   const deceased2 = formData.deceasedDetails && formData.deceasedDetails.length > 1
     ? {
-        name: formData.deceasedDetails[1].nameOfDeceased || null,
-        dateDied: formData.deceasedDetails[1].dateDied
-          ? formatDateForAPI(formData.deceasedDetails[1].dateDied)
-          : null,
-        internmentDate: formData.deceasedDetails[1].internmentDate
-          ? formatDateForAPI(formData.deceasedDetails[1].internmentDate)
-          : null,
-        deathCertificateNo: formData.deceasedDetails[1].deathCertNo || null,
-      }
+      name: formData.deceasedDetails[1].nameOfDeceased || null,
+      dateDied: formData.deceasedDetails[1].dateDied
+        ? formatDateForAPI(formData.deceasedDetails[1].dateDied)
+        : null,
+      internmentDate: formData.deceasedDetails[1].internmentDate
+        ? formatDateForAPI(formData.deceasedDetails[1].internmentDate)
+        : null,
+      deathCertificateNo: formData.deceasedDetails[1].deathCertNo || null,
+    }
     : undefined;
 
   // Map applicant (use provided data or defaults)
@@ -151,30 +151,30 @@ export function mapNichiBookingToApplicationRequest(formData: {
   // Map nominee (optional)
   const nominee = formData.nomineeName
     ? {
-        name: formData.nomineeName,
-        address: formData.nomineeAddress || '',
-        email: formData.nomineeEmail || '',
-        idNo: formData.nomineeIdNo || '',
-        mobileNo: formData.nomineePhone || '',
-        homeTelNo: formData.nomineeHomeTel || '',
-        officeTelNo: formData.nomineeOfficeTel || '',
-        relationship: formData.nomineeRelationship || '',
-      }
+      name: formData.nomineeName,
+      address: formData.nomineeAddress || '',
+      email: formData.nomineeEmail || '',
+      idNo: formData.nomineeIdNo || '',
+      mobileNo: formData.nomineePhone || '',
+      homeTelNo: formData.nomineeHomeTel || '',
+      officeTelNo: formData.nomineeOfficeTel || '',
+      relationship: formData.nomineeRelationship || '',
+    }
     : undefined;
 
   // Map beneficiaries (optional)
   const beneficiaries = formData.beneficiaryName
     ? [
-        {
-          name: formData.beneficiaryName,
-          idNo: formData.beneficiaryIdNo || '',
-          isCatholic: formData.beneficiaryIsCatholic ?? false,
-          relationshipToApplicant: formData.beneficiaryRelationship || '',
-          dateOfBirth: formData.beneficiaryDateOfBirth
-            ? formatDateForAPI(formData.beneficiaryDateOfBirth)
-            : undefined,
-        },
-      ]
+      {
+        name: formData.beneficiaryName,
+        idNo: formData.beneficiaryIdNo || '',
+        isCatholic: formData.beneficiaryIsCatholic ?? false,
+        relationshipToApplicant: formData.beneficiaryRelationship || '',
+        dateOfBirth: formData.beneficiaryDateOfBirth
+          ? formatDateForAPI(formData.beneficiaryDateOfBirth)
+          : undefined,
+      },
+    ]
     : [];
 
   // Extract nicheId from nicheCode or formData
@@ -310,12 +310,12 @@ export function mapNichiApplicationToFormData(
     formData.invoiceNumber = applicationData.invoice.invoiceNo || '';
     formData.paymentMode = mapPaymentModeToString(applicationData.invoice.paymentMode);
     formData.refDocNumber = applicationData.invoice.refDocNumber || applicationData.applicationCode || '';
-    
+
     // Calculate quantity and unit price from invoice amounts
     if (applicationData.invoice.totalAmount && applicationData.niche) {
       formData.nichiUnitPrice = applicationData.niche.totalAmount || 0;
       formData.nichiQuantity = 1; // Default to 1 for Nichi
-      
+
       // Calculate tax percent if possible
       if (applicationData.invoice.taxAmount && applicationData.invoice.totalAmount) {
         const subtotal = applicationData.invoice.totalAmount - applicationData.invoice.taxAmount;
@@ -363,7 +363,7 @@ export function mapNichiApplicationToFormData(
   // Fallback to nested niche.location structure if nicheDetails not available
   if (applicationData.niche) {
     const niche = applicationData.niche;
-    
+
     // Extract nicheId from niche code or number if not already set
     if (!nicheId) {
       if (niche.code) {
@@ -382,7 +382,7 @@ export function mapNichiApplicationToFormData(
     // Use nested structure values only if not already set from nicheDetails
     if (!nicheCode) nicheCode = niche.code || niche.number || '';
     if (!nicheNumber) nicheNumber = niche.number || niche.code || '';
-    
+
     // Map location details (only if not already set from nicheDetails)
     if (niche.location) {
       if (niche.location.chapel) {
@@ -390,13 +390,13 @@ export function mapNichiApplicationToFormData(
         if (!chapelCode) chapelCode = niche.location.chapel.chapelCode || '';
         if (!chapelName) chapelName = niche.location.chapel.chapelName || niche.location.chapel.chapelCode || '';
       }
-      
+
       if (niche.location.wall) {
         if (wallId === undefined) wallId = niche.location.wall.wallId || undefined;
         if (!wallCode) wallCode = niche.location.wall.wallCode || '';
         if (!wallName) wallName = niche.location.wall.wallName || niche.location.wall.wallCode || '';
       }
-      
+
       if (niche.location.row) {
         if (rowId === undefined) rowId = niche.location.row.rowId || undefined;
         if (!rowCode) rowCode = niche.location.row.rowCode || '';
@@ -430,11 +430,11 @@ export function mapNichiApplicationToFormData(
     // Prefer structured address parts when present, but keep legacy address string
     formData.applicantAddress = applicationData.applicant.address || '';
     if (applicationData.applicant.addressNo ||
-        applicationData.applicant.addressLine1 ||
-        applicationData.applicant.addressLine2 ||
-        applicationData.applicant.addressCity ||
-        applicationData.applicant.addressState ||
-        applicationData.applicant.addressCountry) {
+      applicationData.applicant.addressLine1 ||
+      applicationData.applicant.addressLine2 ||
+      applicationData.applicant.addressCity ||
+      applicationData.applicant.addressState ||
+      applicationData.applicant.addressCountry) {
       formData.applicantBlock = applicationData.applicant.addressNo || '';
       formData.applicantBlockNo = applicationData.applicant.addressLine1 || '';
       formData.applicantStreetName = applicationData.applicant.addressLine2 || '';
@@ -467,11 +467,11 @@ export function mapNichiApplicationToFormData(
     formData.nomineeOfficeTel = applicationData.nominee.officeTelNo || '';
     // Map structured nominee address parts when present
     if (applicationData.nominee.addressNo ||
-        applicationData.nominee.addressLine1 ||
-        applicationData.nominee.addressLine2 ||
-        applicationData.nominee.addressCity ||
-        applicationData.nominee.addressState ||
-        applicationData.nominee.addressCountry) {
+      applicationData.nominee.addressLine1 ||
+      applicationData.nominee.addressLine2 ||
+      applicationData.nominee.addressCity ||
+      applicationData.nominee.addressState ||
+      applicationData.nominee.addressCountry) {
       formData.nomineeBlock = applicationData.nominee.addressNo || '';
       formData.nomineeBlockNo = applicationData.nominee.addressLine1 || '';
       formData.nomineeStreetName = applicationData.nominee.addressLine2 || '';
@@ -480,7 +480,7 @@ export function mapNichiApplicationToFormData(
       formData.nomineeCountry = applicationData.nominee.addressCountry || formData.applicantCountry || 'Singapore';
     }
   }
-  
+
   // Map second nominee details (optional)
   if (applicationData.nominee2) {
     formData.nomineeName2 = applicationData.nominee2.name || '';
@@ -493,11 +493,11 @@ export function mapNichiApplicationToFormData(
     formData.nomineeOfficeTel2 = applicationData.nominee2.officeTelNo || '';
     // Map structured second nominee address parts when present
     if (applicationData.nominee2.addressNo ||
-        applicationData.nominee2.addressLine1 ||
-        applicationData.nominee2.addressLine2 ||
-        applicationData.nominee2.addressCity ||
-        applicationData.nominee2.addressState ||
-        applicationData.nominee2.addressCountry) {
+      applicationData.nominee2.addressLine1 ||
+      applicationData.nominee2.addressLine2 ||
+      applicationData.nominee2.addressCity ||
+      applicationData.nominee2.addressState ||
+      applicationData.nominee2.addressCountry) {
       formData.nomineeBlock2 = applicationData.nominee2.addressNo || '';
       formData.nomineeBlockNo2 = applicationData.nominee2.addressLine1 || '';
       formData.nomineeStreetName2 = applicationData.nominee2.addressLine2 || '';
@@ -515,21 +515,21 @@ export function mapNichiApplicationToFormData(
         selectBeneficiary: '',
         nameOfDeceased: applicationData.deceased.deceased1.name || '',
         dateBorn: '',
-        dateDied: applicationData.deceased.deceased1.dateDied 
-          ? formatDateFromAPI(applicationData.deceased.deceased1.dateDied) 
+        dateDied: applicationData.deceased.deceased1.dateDied
+          ? formatDateFromAPI(applicationData.deceased.deceased1.dateDied)
           : '',
         internmentDate: applicationData.deceased.deceased1.internmentDate
           ? formatDateFromAPI(applicationData.deceased.deceased1.internmentDate.split(' ')[0]) // Remove time if present
           : '',
         internmentTime: applicationData.deceased.deceased1.internmentDate
-          ? (applicationData.deceased.deceased1.internmentDate.includes(' ') 
-              ? applicationData.deceased.deceased1.internmentDate.split(' ')[1] || '12:00'
-              : '12:00')
+          ? (applicationData.deceased.deceased1.internmentDate.includes(' ')
+            ? applicationData.deceased.deceased1.internmentDate.split(' ')[1] || '12:00'
+            : '12:00')
           : '12:00',
         deathCertNo: applicationData.deceased.deceased1.deathCertificateNo || '',
       });
     }
-    
+
     if (applicationData.deceased.deceased2 && applicationData.deceased.deceased2.name) {
       deceasedDetailsArray.push({
         selectBeneficiary: '',
@@ -543,8 +543,8 @@ export function mapNichiApplicationToFormData(
           : '',
         internmentTime: applicationData.deceased.deceased2.internmentDate
           ? (applicationData.deceased.deceased2.internmentDate.includes(' ')
-              ? applicationData.deceased.deceased2.internmentDate.split(' ')[1] || '12:00'
-              : '12:00')
+            ? applicationData.deceased.deceased2.internmentDate.split(' ')[1] || '12:00'
+            : '12:00')
           : '12:00',
         deathCertNo: applicationData.deceased.deceased2.deathCertificateNo || '',
       });
@@ -556,8 +556,8 @@ export function mapNichiApplicationToFormData(
   const additionalDetails = applicationData.additionalDetails || applicationData.additionalDetails;
   if (additionalDetails) {
     formData.selectedBibleChoiceId = additionalDetails.bibleInscriptionChoiceId || null;
-    formData.phraseOfChoice = additionalDetails.additionalInscriptionPhrase || 
-                               additionalDetails.bibleInscriptionText || '';
+    formData.phraseOfChoice = additionalDetails.additionalInscriptionPhrase ||
+      additionalDetails.bibleInscriptionText || '';
     formData.crossType = additionalDetails.crossType || 'Crucifix';
   }
 
@@ -569,16 +569,16 @@ export function mapNichiApplicationToFormData(
  */
 function formatDateForAPI(dateStr: string): string {
   if (!dateStr) return '';
-  
+
   try {
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return dateStr;
-    
+
     const day = String(date.getDate()).padStart(2, '0');
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const month = monthNames[date.getMonth()];
     const year = date.getFullYear();
-    
+
     return `${day}-${month}-${year}`;
   } catch {
     return dateStr;
@@ -590,7 +590,7 @@ function formatDateForAPI(dateStr: string): string {
  */
 function formatDateFromAPI(dateStr: string): string {
   if (!dateStr) return '';
-  
+
   try {
     // Handle DD-MMM-YYYY format (e.g., "05-Jun-2025")
     const parts = dateStr.split('-');
@@ -603,7 +603,7 @@ function formatDateFromAPI(dateStr: string): string {
       const year = parts[2];
       return `${year}-${month}-${day}`;
     }
-    
+
     // If already in YYYY-MM-DD format, return as is
     return dateStr;
   } catch {
@@ -621,7 +621,7 @@ function mapPaymentModeToNumber(paymentMode: string): number {
     'Bank Transfer': 3,
     'Credit Card': 4,
   };
-  
+
   return modeMap[paymentMode] || 1; // Default to Cash (1)
 }
 
@@ -632,14 +632,14 @@ function mapPaymentModeToString(paymentMode: number | string): string {
   if (typeof paymentMode === 'string') {
     return paymentMode;
   }
-  
+
   const modeMap: Record<number, string> = {
     1: 'Cash',
     2: 'Cheque',
     3: 'Bank Transfer',
     4: 'Credit Card',
   };
-  
+
   return modeMap[paymentMode] || 'Cash';
 }
 
@@ -676,25 +676,25 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
     hasApplicantObject: !!formData.applicant,
     applicantObject: formData.applicant
   });
-  
+
   // Build chapel information - handle both flat and nested structures
   const chapel = {
     id: formData.chapelId,
     name: formData.chapelName || formData.chapel?.name || formData.chapel,
     code: formData.chapelCode || formData.chapel?.code || formData.chapel
   };
-  
+
   // Build niche information - handle both flat and nested structures
-  const nicheId = formData.nicheId || 
-                  (formData.nicheCode ? parseInt(formData.nicheCode, 10) : undefined) ||
-                  formData.niche?.id;
-  
+  const nicheId = formData.nicheId ||
+    (formData.nicheCode ? parseInt(formData.nicheCode, 10) : undefined) ||
+    formData.niche?.id;
+
   const niche = {
     id: nicheId,
     code: formData.nicheCode || formData.nicheNumber || formData.niche?.code || formData.niche?.number,
     number: formData.nicheNumber || formData.nicheCode || formData.niche?.number || formData.niche?.code
   };
-  
+
   // Build applicant information - handle both flat and nested structures
   const applicant = {
     name: formData.applicantName || formData.applicant?.name || formData.contactName || '',
@@ -703,37 +703,37 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
     homeTel: formData.applicantHomeTel || formData.applicant?.homeTel || '',
     officeTel: formData.applicantOfficeTel || formData.applicant?.officeTel || '',
     idNo: formData.applicantIDNo || formData.applicant?.idNo || formData.contactNric || '',
-    isCatholic: formData.applicantIsCatholic ?? 
-                formData.applicant?.isCatholic ?? 
-                ((formData.applicantReligion === 'Catholic') ||
-                (formData.applicant?.religion === 'Catholic') ||
-                (formData.contactReligion === 'Catholic')),
-    religion: formData.applicantReligion || 
-              formData.applicant?.religion || 
-              formData.contactReligion || 
-              (formData.applicantIsCatholic ? 'Catholic' : 'Non Catholic') ||
-              (formData.applicant?.isCatholic ? 'Catholic' : 'Non Catholic'),
+    isCatholic: formData.applicantIsCatholic ??
+      formData.applicant?.isCatholic ??
+      ((formData.applicantReligion === 'Catholic') ||
+        (formData.applicant?.religion === 'Catholic') ||
+        (formData.contactReligion === 'Catholic')),
+    religion: formData.applicantReligion ||
+      formData.applicant?.religion ||
+      formData.contactReligion ||
+      (formData.applicantIsCatholic ? 'Catholic' : 'Non Catholic') ||
+      (formData.applicant?.isCatholic ? 'Catholic' : 'Non Catholic'),
     address: {
       no: formData.applicantAddressNo || formData.applicant?.address?.no || '',
       line1: formData.applicantAddressLine1 || formData.applicant?.address?.line1 || '',
       line2: formData.applicantAddressLine2 || formData.applicant?.address?.line2 || '',
       city: formData.applicantAddressCity || formData.applicant?.address?.city || '',
       state: formData.applicantAddressState || formData.applicant?.address?.state || '',
-      country: formData.applicantAddressCountry || 
-               formData.applicant?.address?.country || 
-               formData.applicantCountry || 
-               formData.applicant?.country || 
-               formData.contactCountry || 
-               'Singapore'
+      country: formData.applicantAddressCountry ||
+        formData.applicant?.address?.country ||
+        formData.applicantCountry ||
+        formData.applicant?.country ||
+        formData.contactCountry ||
+        'Singapore'
     }
   };
-  
+
   // Build nominees array (organized) - handle both flat and nested structures
   const nominees = buildCleanNominees(formData);
-  
+
   // Build beneficiaries array (organized) - handle both flat and nested structures
   const beneficiaries = buildCleanBeneficiaries(formData);
-  
+
   // Create the clean optimized payload
   const optimizedPayload = {
     // Core information
@@ -741,12 +741,12 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
     niche,
     selectedNiches: formData.selectedNiches || (nicheId ? [nicheId] : []),
     code: formData.applicationCode || formData.code || '',
-    
+
     // Main entities
     applicant,
     nominees,
     beneficiaries,
-    
+
     // Contact info (minimal duplicate for compatibility)
     contact: {
       name: formData.contactName || applicant.name,
@@ -757,9 +757,9 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
       status: formData.contactStatus || 'Active'
     }
   };
-  
+
   console.log('[generateOptimizedPayload] Generated optimized payload:', JSON.stringify(optimizedPayload, null, 2));
-  
+
   return optimizedPayload;
 }
 
@@ -768,7 +768,7 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
  */
 function buildCleanNominees(formData: Record<string, any>): Array<Record<string, any>> {
   const nominees: Array<Record<string, any>> = [];
-  
+
   // Add first nominee if present - handle both flat and nested structures
   const nomineeName = formData.nomineeName || formData.nominee?.name;
   if (nomineeName) {
@@ -788,15 +788,15 @@ function buildCleanNominees(formData: Record<string, any>): Array<Record<string,
         line2: formData.nomineeAddressLine2 || formData.nominee?.address?.line2 || '',
         city: formData.nomineeAddressCity || formData.nominee?.address?.city || '',
         state: formData.nomineeAddressState || formData.nominee?.address?.state || '',
-        country: formData.nomineeAddressCountry || 
-                 formData.nominee?.address?.country || 
-                 formData.nomineeCountry || 
-                 formData.nominee?.country || 
-                 'Singapore'
+        country: formData.nomineeAddressCountry ||
+          formData.nominee?.address?.country ||
+          formData.nomineeCountry ||
+          formData.nominee?.country ||
+          'Singapore'
       }
     });
   }
-  
+
   // Add second nominee if present - handle both flat and nested structures
   const nomineeName2 = formData.nomineeName2 || formData.nominee2?.name;
   if (nomineeName2) {
@@ -816,15 +816,15 @@ function buildCleanNominees(formData: Record<string, any>): Array<Record<string,
         line2: formData.nomineeAddressLine22 || formData.nominee2?.address?.line2 || '',
         city: formData.nomineeAddressCity2 || formData.nominee2?.address?.city || '',
         state: formData.nomineeAddressState2 || formData.nominee2?.address?.state || '',
-        country: formData.nomineeAddressCountry2 || 
-                 formData.nominee2?.address?.country || 
-                 formData.nomineeCountry2 || 
-                 formData.nominee2?.country || 
-                 'Singapore'
+        country: formData.nomineeAddressCountry2 ||
+          formData.nominee2?.address?.country ||
+          formData.nomineeCountry2 ||
+          formData.nominee2?.country ||
+          'Singapore'
       }
     });
   }
-  
+
   return nominees;
 }
 
@@ -833,7 +833,7 @@ function buildCleanNominees(formData: Record<string, any>): Array<Record<string,
  */
 function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<string, any>> {
   const beneficiaries: Array<Record<string, any>> = [];
-  
+
   // Handle nested beneficiaries array first
   if (Array.isArray(formData.beneficiaries) && formData.beneficiaries.length > 0) {
     formData.beneficiaries.forEach((beneficiary: any, index: number) => {
@@ -855,54 +855,54 @@ function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<st
     });
     return beneficiaries;
   }
-  
+
   // Process individual beneficiary fields (beneficiary1, beneficiary2, etc.)
   const beneficiaryFields = [
     'beneficiary1', 'beneficiary2', 'beneficiary3', 'beneficiary4', 'beneficiary5'
   ];
-  
+
   beneficiaryFields.forEach((fieldPrefix, index) => {
     // Handle both flat and nested field structures
-    const name = formData[`${fieldPrefix}Name`] || 
-                 formData[fieldPrefix]?.name || 
-                 formData[`${fieldPrefix}?.fullName`];
-                 
+    const name = formData[`${fieldPrefix}Name`] ||
+      formData[fieldPrefix]?.name ||
+      formData[`${fieldPrefix}?.fullName`];
+
     if (name) {
       beneficiaries.push({
         id: Date.now() + index + 2, // Generate unique ID
         name: name,
-        idNo: formData[`${fieldPrefix}IDNo`] || 
-              formData[fieldPrefix]?.idNo || 
-              formData[fieldPrefix]?.nric || '',
-        isCatholic: formData[`${fieldPrefix}IsCatholic`] || 
-                    formData[fieldPrefix]?.isCatholic || 
-                    false,
-        isMale: formData[`${fieldPrefix}IsMale`] || 
-                formData[fieldPrefix]?.isMale || 
-                false,
-        gender: formData[`${fieldPrefix}Gender`] || 
-                formData[fieldPrefix]?.gender || 
-                (formData[`${fieldPrefix}IsMale`] ? 'Male' : 'Female'),
-        relationship: formData[`${fieldPrefix}Relationship`] || 
-                     formData[fieldPrefix]?.relationship || 
-                     formData[fieldPrefix]?.relationshipToApplicant || '',
-        dateOfBirth: formData[`${fieldPrefix}DateOfBirth`] || 
-                     formData[fieldPrefix]?.dateOfBirth || '',
-        birthYear: formData[`${fieldPrefix}BirthYear`] || 
-                   formData[fieldPrefix]?.birthYear || '',
-        status: formData[`${fieldPrefix}Status`] || 
-                formData[fieldPrefix]?.status || 
-                'Not Occupied',
-        relationshipToNominee1: formData[`${fieldPrefix}RelationshipToNominee1`] || 
-                              formData[fieldPrefix]?.relationshipToNominee1 || '',
-        relationshipToNominee2: formData[`${fieldPrefix}RelationshipToNominee2`] || 
-                              formData[fieldPrefix]?.relationshipToNominee2 || '',
-        religion: formData[`${fieldPrefix}Religion`] || 
-                 formData[fieldPrefix]?.religion || ''
+        idNo: formData[`${fieldPrefix}IDNo`] ||
+          formData[fieldPrefix]?.idNo ||
+          formData[fieldPrefix]?.nric || '',
+        isCatholic: formData[`${fieldPrefix}IsCatholic`] ||
+          formData[fieldPrefix]?.isCatholic ||
+          false,
+        isMale: formData[`${fieldPrefix}IsMale`] ||
+          formData[fieldPrefix]?.isMale ||
+          false,
+        gender: formData[`${fieldPrefix}Gender`] ||
+          formData[fieldPrefix]?.gender ||
+          (formData[`${fieldPrefix}IsMale`] ? 'Male' : 'Female'),
+        relationship: formData[`${fieldPrefix}Relationship`] ||
+          formData[fieldPrefix]?.relationship ||
+          formData[fieldPrefix]?.relationshipToApplicant || '',
+        dateOfBirth: formData[`${fieldPrefix}DateOfBirth`] ||
+          formData[fieldPrefix]?.dateOfBirth || '',
+        birthYear: formData[`${fieldPrefix}BirthYear`] ||
+          formData[fieldPrefix]?.birthYear || '',
+        status: formData[`${fieldPrefix}Status`] ||
+          formData[fieldPrefix]?.status ||
+          'Not Occupied',
+        relationshipToNominee1: formData[`${fieldPrefix}RelationshipToNominee1`] ||
+          formData[fieldPrefix]?.relationshipToNominee1 || '',
+        relationshipToNominee2: formData[`${fieldPrefix}RelationshipToNominee2`] ||
+          formData[fieldPrefix]?.relationshipToNominee2 || '',
+        religion: formData[`${fieldPrefix}Religion`] ||
+          formData[fieldPrefix]?.religion || ''
       });
     }
   });
-  
+
   return beneficiaries;
 }
 
@@ -911,7 +911,7 @@ function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<st
  */
 function buildOptimizedNominees(formData: Record<string, any>, nomineeFields: any, nominee2Fields: any): Array<Record<string, any>> {
   const nominees: Array<Record<string, any>> = [];
-  
+
   // Add first nominee if present
   if (formData.nomineeName || formData.nominee?.name) {
     nominees.push({
@@ -938,7 +938,7 @@ function buildOptimizedNominees(formData: Record<string, any>, nomineeFields: an
       }
     });
   }
-  
+
   // Add second nominee if present
   if (formData.nomineeName2 || formData.nominee2?.name) {
     nominees.push({
@@ -965,12 +965,12 @@ function buildOptimizedNominees(formData: Record<string, any>, nomineeFields: an
       }
     });
   }
-  
+
   // Add any additional nominees from nominees array if present
   if (Array.isArray(formData.nominees)) {
     formData.nominees.forEach((nominee: any) => {
       // Avoid duplicates by checking if already added
-      const exists = nominees.some((n: Record<string, any>) => 
+      const exists = nominees.some((n: Record<string, any>) =>
         (n.name === nominee.name && n.idNo === nominee.idNo) ||
         n.name === nominee.name
       );
@@ -990,7 +990,7 @@ function buildOptimizedNominees(formData: Record<string, any>, nomineeFields: an
       }
     });
   }
-  
+
   return nominees;
 }
 
@@ -999,7 +999,7 @@ function buildOptimizedNominees(formData: Record<string, any>, nomineeFields: an
  */
 function buildOptimizedBeneficiaries(formData: Record<string, any>): Array<Record<string, any>> {
   const beneficiaries: Array<Record<string, any>> = [];
-  
+
   // Process beneficiaries array if provided
   if (Array.isArray(formData.beneficiaries) && formData.beneficiaries.length > 0) {
     formData.beneficiaries.forEach((beneficiary: any, index: number) => {
@@ -1024,7 +1024,7 @@ function buildOptimizedBeneficiaries(formData: Record<string, any>): Array<Recor
     const beneficiaryFields = [
       'beneficiary1', 'beneficiary2', 'beneficiary3', 'beneficiary4', 'beneficiary5'
     ];
-    
+
     beneficiaryFields.forEach((fieldPrefix, index) => {
       const name = formData[`${fieldPrefix}Name`] || formData[fieldPrefix]?.name;
       if (name) {
@@ -1046,7 +1046,7 @@ function buildOptimizedBeneficiaries(formData: Record<string, any>): Array<Recor
       }
     });
   }
-  
+
   return beneficiaries;
 }
 
@@ -1058,7 +1058,7 @@ function buildOptimizedBeneficiaries(formData: Record<string, any>): Array<Recor
 export function mapApiApplicationToFormData(apiData: any): Record<string, any> {
   // Create a copy of the API data to avoid mutating the original
   const formData = { ...apiData };
-  
+
   // Ensure nominee objects are properly structured for the frontend
   if (apiData.nominee) {
     formData.nominee = {
@@ -1078,7 +1078,7 @@ export function mapApiApplicationToFormData(apiData: any): Record<string, any> {
       relationship: apiData.nominee.relationship || ''
     };
   }
-  
+
   if (apiData.nominee2) {
     formData.nominee2 = {
       name: apiData.nominee2.name || '',
@@ -1097,38 +1097,36 @@ export function mapApiApplicationToFormData(apiData: any): Record<string, any> {
       relationship: apiData.nominee2.relationship || ''
     };
   }
-  
+
   // Process beneficiaries to handle dateOfBirth and birthYear mapping
   if (apiData.beneficiaries && Array.isArray(apiData.beneficiaries)) {
     formData.beneficiaries = apiData.beneficiaries.map((beneficiary: any) => {
       let processedBeneficiary = { ...beneficiary };
-      
-      // Handle date mapping: if dateOfBirth is null but birthYear exists, use birthYear
-      // If dateOfBirth exists but birthYear is null, use dateOfBirth
-      if ((processedBeneficiary.dateOfBirth === null || processedBeneficiary.dateOfBirth === '') && 
-          processedBeneficiary.birthYear !== null && 
-          processedBeneficiary.birthYear !== '') {
-        // Convert birthYear to date format (e.g., "2009" to "01-Jan-2009")
-        const year = processedBeneficiary.birthYear.toString();
-        processedBeneficiary.dateOfBirth = `01-Jan-${year}`;
-      } else if (processedBeneficiary.dateOfBirth !== null && 
-                 processedBeneficiary.dateOfBirth !== '' &&
-                 (processedBeneficiary.birthYear === null || processedBeneficiary.birthYear === '')) {
-        // Extract year from dateOfBirth and set birthYear
+
+      // Ensure null/empty handling
+      if (processedBeneficiary.dateOfBirth === '' || processedBeneficiary.dateOfBirth === 'null') {
+        processedBeneficiary.dateOfBirth = null;
+      }
+      if (processedBeneficiary.birthYear === '' || processedBeneficiary.birthYear === 'null') {
+        processedBeneficiary.birthYear = null;
+      }
+
+      // If birthYear is missing but dateOfBirth exists, extract it
+      if (processedBeneficiary.dateOfBirth && !processedBeneficiary.birthYear) {
         if (processedBeneficiary.dateOfBirth.includes('-')) {
           const parts = processedBeneficiary.dateOfBirth.split('-');
           if (parts.length === 3) {
-            processedBeneficiary.birthYear = parts[2]; // year is the third part in DD-MMM-YYYY format
+            processedBeneficiary.birthYear = parts[2];
           }
         }
       }
-      
+
       return processedBeneficiary;
     });
   } else {
     formData.beneficiaries = [];
   }
-  
+
   return formData;
 }
 

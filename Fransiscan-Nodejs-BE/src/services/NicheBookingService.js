@@ -216,7 +216,7 @@ const buildBeneficiaryEntity = (input = {}, churchId) => {
   const relationshipToNominee1 = (input.relationshipToNominee1 || '').trim() || null;
   const relationshipToNominee2 = (input.relationshipToNominee2 || '').trim() || null;
   const dateOfBirth = parseDateValue(input.dateOfBirth);
-  const birthYear = input.birthYear || (dateOfBirth ? String(dateOfBirth.getFullYear()) : null);
+  const birthYear = input.birthYear;  // No automatic conversion between dateOfBirth and birthYear
   const isMale = parseGender(
     input.isMale !== undefined ? input.isMale : input.sex
   );

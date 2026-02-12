@@ -1,23 +1,48 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { WakeRoomBookingForm } from '../components/WakeRoomBookingForm';
 import { WakeRoomSearch } from '../components/WakeRoomSearch';
-import { PlusIcon, SearchIcon, TableIcon, FileEditIcon } from 'lucide-react';
+import { TableIcon, FileEditIcon } from 'lucide-react';
 import { Button } from '../components/common/Button';
+import { useWakeRoom } from '../hooks/useWakeRoom';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 export function WakeRoomPage() {
+  const { bookingCode } = useParams<{ bookingCode?: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [viewMode, setViewMode] = useState<'form' | 'table'>('table');
+  const { handleGetBookingByCode } = useWakeRoom();
+  const user = useSelector((state: RootState) => state.auth.user);
+
+  // Effect to sync view mode with route
+  useEffect(() => {
+    if (bookingCode || location.pathname === '/wake-room/new') {
+      setViewMode('form');
+    } else if (location.pathname === '/wake-room') {
+      setViewMode('table');
+    }
+  }, [bookingCode, location.pathname]);
+
+  // Effect to load booking data if bookingCode exists
+  useEffect(() => {
+    if (bookingCode) {
+      handleGetBookingByCode(bookingCode, user?.churchId || 1);
+    }
+  }, [bookingCode, handleGetBookingByCode, user?.churchId]);
 
   const handleBookingCreated = (bookingCode: string) => {
     console.log('Booking created:', bookingCode);
     // Switch to table view to show the created booking
-    setViewMode('table');
+    navigate('/wake-room');
   };
 
   const handleBookingUpdated = (bookingCode: string) => {
     console.log('Booking updated:', bookingCode);
     // Switch to table view after update
-    setViewMode('table');
+    navigate('/wake-room');
   };
 
   return (
@@ -52,14 +77,14 @@ export function WakeRoomPage() {
                 <Button
                   variant={viewMode === 'form' ? 'primary' : 'outline'}
                   icon={<FileEditIcon className="w-4 h-4" />}
-                  onClick={() => setViewMode('form')}
+                  onClick={() => navigate('/wake-room/new')}
                 >
                   Form View
                 </Button>
                 <Button
                   variant={viewMode === 'table' ? 'primary' : 'outline'}
                   icon={<TableIcon className="w-4 h-4" />}
-                  onClick={() => setViewMode('table')}
+                  onClick={() => navigate('/wake-room')}
                 >
                   Table View
                 </Button>
@@ -72,7 +97,7 @@ export function WakeRoomPage() {
             {viewMode === 'table' ? (
               <WakeRoomSearch />
             ) : (
-              <WakeRoomBookingForm 
+              <WakeRoomBookingForm
                 onBookingCreated={handleBookingCreated}
                 onBookingUpdated={handleBookingUpdated}
               />

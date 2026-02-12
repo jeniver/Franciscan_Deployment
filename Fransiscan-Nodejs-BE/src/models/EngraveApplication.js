@@ -49,6 +49,7 @@ class EngraveApplication {
     this.churchId = data.churchId || data.ChurchId || null;
     this.userId = data.userId || data.UserId || null;
     this.remarks = data.remarks || data.Remarks || null;
+    this.crossType = data.crossType || data.CrossType || 'Crucifix'; // Default to Crucifix
   }
 
   /**
@@ -103,7 +104,8 @@ class EngraveApplication {
         bibleInscriptionChoiceId: this.bibleInscriptionChoiceId,
         bibleInscriptionText: this.bibleInscriptionText,
         nicheApplicationCode: this.nicheApplicationCode,
-        nicheBookingId: this.nicheBookingId
+        nicheBookingId: this.nicheBookingId,
+        crossType: this.crossType
       },
 
       // Deceased details

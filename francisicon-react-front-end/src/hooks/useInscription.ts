@@ -20,6 +20,7 @@ import {
   updateDeceasedDetail,
   setSelectedBibleChoiceId,
   setPhraseOfChoice,
+  setCrossType,
   clearError,
   clearInvoiceResult,
   resetForm,
@@ -50,28 +51,29 @@ export function useInscription() {
   const mobile = useSelector((state: RootState) => state.inscription.mobile);
   const homeTel = useSelector((state: RootState) => state.inscription.homeTel);
   const emailId = useSelector((state: RootState) => state.inscription.emailId);
-  
+
   const inscriptionItems = useSelector((state: RootState) => state.inscription.inscriptionItems);
   const itemsLoading = useSelector((state: RootState) => state.inscription.itemsLoading);
   const itemsError = useSelector((state: RootState) => state.inscription.itemsError);
-  
+
   const creatingInvoice = useSelector((state: RootState) => state.inscription.creatingInvoice);
   const invoiceError = useSelector((state: RootState) => state.inscription.invoiceError);
   const createdInvoice = useSelector((state: RootState) => state.inscription.createdInvoice);
-  
+
   const loading = useSelector((state: RootState) => state.inscription.loading);
   const error = useSelector((state: RootState) => state.inscription.error);
   const lastErrorType = useSelector((state: RootState) => state.inscription.lastErrorType);
-  
+
   const bibleChoices = useSelector((state: RootState) => state.inscription.bibleChoices);
   const bibleChoicesLoading = useSelector((state: RootState) => state.inscription.bibleChoicesLoading);
   const bibleChoicesError = useSelector((state: RootState) => state.inscription.bibleChoicesError);
   const selectedBibleChoiceId = useSelector((state: RootState) => state.inscription.selectedBibleChoiceId);
   const phraseOfChoice = useSelector((state: RootState) => state.inscription.phraseOfChoice);
-  
+  const crossType = useSelector((state: RootState) => state.inscription.crossType);
+
   const deceasedDetails = useSelector((state: RootState) => state.inscription.deceasedDetails);
   const beneficiaries = useSelector((state: RootState) => state.inscription.beneficiaries);
-  
+
   const creatingInscription = useSelector((state: RootState) => state.inscription.creatingInscription);
   const updatingInscription = useSelector((state: RootState) => state.inscription.updatingInscription);
   const inscriptionError = useSelector((state: RootState) => state.inscription.inscriptionError);
@@ -179,6 +181,11 @@ export function useInscription() {
     dispatch(setPhraseOfChoice(phrase));
   }, [dispatch]);
 
+  // Update cross type
+  const updateCrossType = useCallback((type: string) => {
+    dispatch(setCrossType(type));
+  }, [dispatch]);
+
   // Deceased details handlers
   const updateDeceasedDetails = useCallback((details: DeceasedDetail[]) => {
     dispatch(setDeceasedDetails(details));
@@ -237,6 +244,7 @@ export function useInscription() {
           bibleInscriptionText: phraseOfChoice,
           additionalInscriptionPhrase: phraseOfChoice,
           remarks: '',
+          crossType: crossType,
           nicheApplicationCode: nicheApplicationCode,
           nicheBookingId: null // Can be null when no booking exists
         }
@@ -244,26 +252,26 @@ export function useInscription() {
 
       const result = await dispatch(createInscription(data)).unwrap();
       showSuccess('Success', `Inscription created successfully: ${result.code}`);
-      
+
       // Refresh inscription items to get the new inscription data
       if (nicheApplicationCode) {
         await dispatch(fetchInscriptionItems(nicheApplicationCode));
       }
-      
+
       // ✅ FIX: Navigate to invoice-receipt page after successful inscription creation
       if (nicheApplicationCode) {
         navigate('/inscriptions', {
           state: { applicationNumber: nicheApplicationCode }
         });
       }
-      
+
       return result;
     } catch (error: any) {
       const errorMessage = error?.message || 'Failed to create inscription';
       showError('Error', errorMessage);
       throw error;
     }
-  }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, nicheApplicationCode]);
+  }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, crossType, nicheApplicationCode]);
 
   // Update inscription
   const handleUpdateInscription = useCallback(async (code: string) => {
@@ -301,25 +309,26 @@ export function useInscription() {
           bibleInscriptionChoiceId: selectedBibleChoiceId,
           bibleInscriptionText: phraseOfChoice,
           additionalInscriptionPhrase: phraseOfChoice,
-          remarks: ''
+          remarks: '', // Still keeping remarks empty as explicitly requested, using crossType field instead
+          crossType: crossType
         }
       };
 
       const result = await dispatch(updateInscription(data)).unwrap();
       showSuccess('Success', `Inscription updated successfully: ${result.code}`);
-      
+
       // Refresh inscription items to get the updated inscription data
       if (nicheApplicationCode) {
         await dispatch(fetchInscriptionItems(nicheApplicationCode));
       }
-      
+
       return result;
     } catch (error: any) {
       const errorMessage = error?.message || 'Failed to update inscription';
       showError('Error', errorMessage);
       throw error;
     }
-  }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, nicheApplicationCode]);
+  }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, crossType, nicheApplicationCode]);
 
   // Auto-fetch bible choices on mount
   useEffect(() => {
@@ -354,6 +363,7 @@ export function useInscription() {
     bibleChoicesError,
     selectedBibleChoiceId,
     phraseOfChoice,
+    crossType,
     beneficiaries, // Add beneficiaries to the returned state
     loading,
     error,
@@ -376,6 +386,7 @@ export function useInscription() {
     handleFetchBibleChoices,
     updateSelectedBibleChoice,
     updatePhraseOfChoice,
+    updateCrossType,
     handleClearError,
     handleClearInvoiceResult,
     handleResetForm,
@@ -385,7 +396,7 @@ export function useInscription() {
     addDeceased,
     removeDeceased,
     updateDeceased,
-    
+
     // Create/Update inscription
     creatingInscription,
     updatingInscription,
