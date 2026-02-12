@@ -25,6 +25,30 @@ export function ConsentForms({
   const [consentFormModalOpen, setConsentFormModalOpen] = useState(false);
   const [consentFormData, setConsentFormData] = useState<any>(null);
 
+  // Debug: Log formData structure on component mount
+  React.useEffect(() => {
+    console.log('ConsentForms component mounted with formData keys:', Object.keys(formData || {}));
+    console.log('FormData applicant info:', {
+      applicantName: formData?.applicantName,
+      contactName: formData?.contactName,
+      applicantIDNo: formData?.applicantIDNo,
+      contactNric: formData?.contactNric
+    });
+    console.log('FormData nominee info:', {
+      nomineeName: formData?.nomineeName,
+      nomineeIDNo: formData?.nomineeIDNo,
+      nomineeName2: formData?.nomineeName2,
+      nomineeIDNo2: formData?.nomineeIDNo2
+    });
+    console.log('FormData niche info:', {
+      chapelName: formData?.chapelName,
+      chapel: formData?.chapel,
+      nicheNumber: formData?.nicheNumber,
+      nicheCode: formData?.nicheCode
+    });
+    console.log('FormData beneficiaries:', formData?.beneficiaries);
+  }, [formData]);
+
   const handleBeneficiaryStatusChange = (beneficiaryType: string, status: string) => {
     if (isReadOnly) return;
     const updated = {
@@ -39,19 +63,29 @@ export function ConsentForms({
 
   // Function to open consent form for a specific beneficiary and form type
   const openConsentForm = useCallback((beneficiary: Beneficiary, formType: 'deceased' | 'living' | 'lostCapacity') => {
-    // Extract applicant data from formData
-    const applicantName = formData.applicantName || '';
-    const applicantNric = formData.applicantNRIC || formData.applicantIdNo || '';
+    // Extract applicant data from formData - using correct field names
+    const applicantName = formData.applicantName || formData.contactName || '';
+    const applicantNric = formData.applicantIDNo || formData.contactNric || '';
     
-    // Extract nominee data from formData
-    const nominee1Name = formData.nominee1Name || '';
-    const nominee1Nric = formData.nominee1NRIC || formData.nominee1IdNo || '';
-    const nominee2Name = formData.nominee2Name || '';
-    const nominee2Nric = formData.nominee2NRIC || formData.nominee2IdNo || '';
+    // Extract nominee data from formData - using correct field names
+    const nominee1Name = formData.nomineeName || '';
+    const nominee1Nric = formData.nomineeIDNo || '';
+    const nominee2Name = formData.nomineeName2 || '';
+    const nominee2Nric = formData.nomineeIDNo2 || '';
     
     // Extract niche/chapel data
-    const chapelName = formData.chapelName || 'Chapel';
-    const nicheNumber = formData.nicheNumber || 'XXXX';
+    const chapelName = formData.chapelName || formData.chapel || 'Chapel';
+    const nicheNumber = formData.nicheNumber || formData.nicheCode || 'XXXX';
+    
+    // Properly map beneficiary data - handle different field name conventions
+    const mappedBeneficiary = {
+      name: beneficiary.name || (beneficiary as any).fullName || '',
+      nric: beneficiary.idNo || (beneficiary as any).nric || '',
+      relationship: beneficiary.relationshipToApplicant || (beneficiary as any).relationship || '',
+      isDeceased: formType === 'deceased',
+      isLiving: formType === 'living',
+      isLostCapacity: formType === 'lostCapacity'
+    };
     
     // Prepare the consent form data
     const consentData = {
@@ -63,14 +97,13 @@ export function ConsentForms({
       nominee2Nric,
       chapelName,
       nicheNumber,
-      beneficiary1: {
-        name: beneficiary.name || '',
-        nric: beneficiary.idNo || '',
-        relationship: beneficiary.relationshipToApplicant || '',
-      },
+      beneficiary1: mappedBeneficiary,
       beneficiary2: undefined,
       formType,
     };
+    
+    console.log('Consent form data being prepared:', consentData);
+    console.log('Original beneficiary data:', beneficiary);
     
     setConsentFormData(consentData);
     setConsentFormModalOpen(true);
@@ -78,25 +111,48 @@ export function ConsentForms({
 
   // Function to open consent form with a specific beneficiary (first or second)
   const openConsentFormForBeneficiary = useCallback((beneficiaryIndex: number, formType: 'deceased' | 'living' | 'lostCapacity') => {
+    console.log('Attempting to open consent form for beneficiary index:', beneficiaryIndex);
+    console.log('Available beneficiaries:', formData.beneficiaries);
+    
     const beneficiaries = formData.beneficiaries || [];
     const beneficiary = beneficiaries[beneficiaryIndex];
+    
     if (beneficiary) {
+      console.log('Found beneficiary:', beneficiary);
       openConsentForm(beneficiary, formType);
+    } else {
+      console.warn('No beneficiary found at index:', beneficiaryIndex);
+      // Fallback: try to get individual beneficiary fields
+      const individualBeneficiary = {
+        name: formData[`beneficiary${beneficiaryIndex + 1}Name`] || (formData as any)[`beneficiary${beneficiaryIndex + 1}`]?.name || '',
+        idNo: formData[`beneficiary${beneficiaryIndex + 1}IDNo`] || (formData as any)[`beneficiary${beneficiaryIndex + 1}`]?.idNo || (formData as any)[`beneficiary${beneficiaryIndex + 1}`]?.nric || '',
+        relationshipToApplicant: formData[`beneficiary${beneficiaryIndex + 1}Relationship`] || (formData as any)[`beneficiary${beneficiaryIndex + 1}`]?.relationship || ''
+      };
+      
+      if (individualBeneficiary.name) {
+        console.log('Using individual beneficiary fields:', individualBeneficiary);
+        openConsentForm(individualBeneficiary as Beneficiary, formType);
+      } else {
+        console.error('No beneficiary data found at all for index:', beneficiaryIndex);
+      }
     }
   }, [formData, openConsentForm]);
 
   const beneficiaryTypes = [
     {
       key: 'firstBeneficiary',
-      label: '1st Beneficiary'
+      label: '1st Beneficiary',
+      index: 0
     },
     {
       key: 'secondBeneficiary', 
-      label: '2nd Beneficiary'
+      label: '2nd Beneficiary',
+      index: 1
     },
     {
       key: 'twoBeneficiaries',
-      label: '2 Beneficiaries'
+      label: '2 Beneficiaries',
+      index: 0  // For two beneficiaries, we'll show the first one
     }
   ];
 
@@ -144,6 +200,9 @@ export function ConsentForms({
             <div key={beneficiary.key} className="border-b border-gray-100 pb-6 last:border-b-0">
               <h4 className="text-base font-semibold text-gray-900 mb-4">
                 {beneficiary.label}
+                {beneficiary.key === 'twoBeneficiaries' && (
+                  <span className="text-sm text-gray-500 ml-2">(for first beneficiary)</span>
+                )}
               </h4>
               
               <div className="flex flex-wrap gap-3">
@@ -157,7 +216,7 @@ export function ConsentForms({
                         variant={isSelected ? "primary" : "outline"}
                         size="sm"
                         icon={<IconComponent className="w-4 h-4" />}
-                        onClick={() => openConsentFormForBeneficiary(0, status.key as 'deceased' | 'living' | 'lostCapacity')}
+                        onClick={() => openConsentFormForBeneficiary(beneficiary.index, status.key as 'deceased' | 'living' | 'lostCapacity')}
                         disabled={isReadOnly}
                         className={`${
                           isSelected

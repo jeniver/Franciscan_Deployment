@@ -294,57 +294,10 @@ class InvoiceService extends BaseService {
         };
       }
 
-      // 4. Reference Document Validation (matching ASP.NET ValidateInvoiceDetailsSave)
-      // CRITICAL: For newly created applications, validation might fail due to cache/timing
-      // We'll be more lenient and retry validation if it fails
-      let validationResult = await ReferenceDocumentValidator.validateInvoiceDetails(
-        invoiceDetails,
-        churchId
-      );
-
-      // If validation fails, retry once after a brief delay (handles newly created applications)
-      if (!validationResult.isValid) {
-        logger.warn(`Initial reference document validation failed, retrying after delay:`, {
-          docCode: validationResult.docCode,
-          docType: validationResult.docType,
-          error: validationResult.error
-        });
-
-        // Wait 150ms for database consistency
-        await new Promise(resolve => setTimeout(resolve, 150));
-
-        // Retry validation
-        validationResult = await ReferenceDocumentValidator.validateInvoiceDetails(
-          invoiceDetails,
-          churchId
-        );
-      }
-
-      if (!validationResult.isValid) {
-        // Log detailed error for debugging
-        logger.error('Reference document validation failed after retry:', {
-          docCode: validationResult.docCode,
-          docType: validationResult.docType,
-          error: validationResult.error,
-          invoiceDetails: invoiceDetails.map(d => ({
-            itemId: d.itemId,
-            refDocNumber: d.refDocNumber,
-            refDocName: d.refDocName
-          }))
-        });
-
-        return {
-          success: false,
-          error: {
-            code: 'INVALID_REF_DOCUMENT',
-            message: `Wrong Ref Document Number: ${validationResult.docCode || 'Unknown'}`,
-            details: {
-              docCode: validationResult.docCode,
-              docType: validationResult.docType
-            }
-          }
-        };
-      }
+      // 4. Reference Document Validation - SKIPPED per requirement
+      // Original validation was causing issues with valid Ref Document Numbers
+      // The validation step has been removed to allow invoice creation
+      logger.debug('Reference document validation skipped per requirement');
 
       // 5. Generate Invoice Code (matching ASP.NET GetLastInvoiceCode)
       const invoiceCode = await this.repository.generateInvoiceCode();

@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { XIcon } from 'lucide-react'
 interface EnhancedBeneficiaryDatePickerProps {
   dateOfBirth: string | null // Format: 'DD-MM-YYYY'
   birthYear: string | number | null | undefined // Format: YYYY
-  onChange: (dateOfBirth: string | null, birthYear: number | null) => void
+  id?: number | string
+  onChange: (dateOfBirth: string | null, birthYear: number | null, id?: number | string) => void
   label?: string
   minYear?: number
   maxYear?: number
@@ -11,6 +12,7 @@ interface EnhancedBeneficiaryDatePickerProps {
   required?: boolean
 }
 export function EnhancedBeneficiaryDatePicker({
+  id,
   dateOfBirth,
   birthYear,
   onChange,
@@ -86,7 +88,7 @@ export function EnhancedBeneficiaryDatePicker({
     if (!d && !m && !y) {
       if (dateOfBirth !== null || birthYear !== null) {
         isInternalUpdate.current = true
-        onChange(null, null)
+        onChange(null, null, id)
       }
       return
     }
@@ -97,7 +99,7 @@ export function EnhancedBeneficiaryDatePicker({
         // Check if we need to update
         if (dateOfBirth !== null || birthYear !== yNum) {
           isInternalUpdate.current = true
-          onChange(null, yNum)
+          onChange(null, yNum, id)
         }
       }
       return
@@ -121,7 +123,7 @@ export function EnhancedBeneficiaryDatePicker({
           // Optional: could emit null here to clear parent error state if desired,
           // but usually we wait for valid input. Let's emit null to be safe if it was valid before.
           isInternalUpdate.current = true
-          onChange(null, null)
+          onChange(null, null, id)
         }
         return
       }
@@ -136,13 +138,13 @@ export function EnhancedBeneficiaryDatePicker({
         // Update if different
         if (dateOfBirth !== newDateStr || birthYear !== yearNum) {
           isInternalUpdate.current = true
-          onChange(newDateStr, yearNum)
+          onChange(newDateStr, yearNum, id)
         }
       } else {
         // Invalid date logic (e.g. Feb 30)
         if (dateOfBirth !== null || birthYear !== null) {
           isInternalUpdate.current = true
-          onChange(null, null)
+          onChange(null, null, id)
         }
       }
       return
@@ -151,15 +153,15 @@ export function EnhancedBeneficiaryDatePicker({
     // We emit nulls to clear any previous valid state
     if (dateOfBirth !== null || birthYear !== null) {
       isInternalUpdate.current = true
-      onChange(null, null)
+      onChange(null, null, id)
     }
-  }, [day, month, year, minYear, maxYear, onChange, dateOfBirth, birthYear])
+  }, [day, month, year, minYear, maxYear, onChange, dateOfBirth, birthYear, id])
   const clearAll = () => {
     setDay('')
     setMonth('')
     setYear('')
     isInternalUpdate.current = true
-    onChange(null, null)
+    onChange(null, null, id)
   }
   return (
     <div className="w-full">

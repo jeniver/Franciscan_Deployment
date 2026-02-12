@@ -1,4 +1,6 @@
 import React from 'react'
+import { useSelector } from 'react-redux';
+import { RootState } from '../../store';
 
 interface BeneficiaryData {
   name: string
@@ -44,25 +46,41 @@ const FilledField = ({
 )
 
 export function ColumbariumFormLiving({ data }: ColumbariumFormLivingProps) {
-  // Extract data with defaults
+  // Use passed data if available, otherwise fall back to Redux store
+  const agreementModalData = useSelector((state: RootState) => state.application.agreementModalData);
+
+  // Extract data from passed props or Redux state
+  const formData = data || agreementModalData;
+
   const {
     applicantName = '',
     applicantNric = '',
+    nominee1Name = '',
+    nominee1Nric = '',
+    nominee2Name = '',
+    nominee2Nric = '',
     chapelName = '',
     nicheNumber = '',
-    beneficiary1 = { name: '', nric: '', relationship: '' },
+    beneficiary1 = { name: '', nric: '' },
     beneficiary2 = null
-  } = data || {}
+  } = formData || {};
+
+  // Extract beneficiary data
+  const beneficiary1Name = beneficiary1.name || '';
+  const beneficiary1Nric = beneficiary1.nric || '';
+  const beneficiary2Name = (beneficiary2 && beneficiary2.name && beneficiary2.name !== 'NA' && beneficiary2.name !== '') ? beneficiary2.name : 'NA';
+  const beneficiary2Nric = (beneficiary2 && (beneficiary2.nric || beneficiary2.nric) !== 'NA' && (beneficiary2.nric || beneficiary2.nric) !== '') ? (beneficiary2.nric || beneficiary2.nric) : 'NA';
+
+  // Use nominee data from props if available, otherwise from Redux
+  const finalApplicantName = applicantName || (formData?.applicant?.name || formData?.nominee?.name || '');
+  const finalApplicantNric = applicantNric || (formData?.applicant?.idNo || formData?.nominee?.idNo || '');
 
   const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')
 
-  const beneficiary2Name = beneficiary2?.name && beneficiary2.name !== 'NA' ? beneficiary2.name : 'NA'
-  const beneficiary2Nric = beneficiary2?.nric && beneficiary2.nric !== 'NA' ? beneficiary2.nric : 'NA'
-
   return (
     <div className="min-h-screen bg-gray-100 py-8 font-sans text-gray-900 print:bg-white print:py-0">
-      <div className="max-w-[210mm] mx-auto bg-white shadow-lg p-16 mb-8 min-h-[297mm] print:shadow-none print:mb-0 print:p-16 relative">
-
+      <div data-pdf-page className="max-w-[210mm] mx-auto bg-white shadow-lg p-16 mb-8 min-h-[297mm] print:shadow-none print:mb-0 print:p-16 relative">
+        <>{console.log("gggggggggggggggggggg", data)}</>
         {/* Date Row */}
         <div className="mb-6">
           <p className="text-sm">{dateStr}</p>
@@ -89,9 +107,9 @@ export function ColumbariumFormLiving({ data }: ColumbariumFormLivingProps) {
         <div className="mb-10 text-[14px] leading-[2.2] font-normal">
           <div className="flex flex-wrap items-baseline">
             <span>I,</span>
-            <FilledField width="200px">{beneficiary1.name}</FilledField>
+            <FilledField width="200px">{beneficiary1Name}</FilledField>
             <span>, of NRIC No.</span>
-            <FilledField width="130px" className="text-center">{beneficiary1.nric}</FilledField>
+            <FilledField width="130px" className="text-center">{beneficiary1Nric}</FilledField>
             <span>("Beneficiary 1") and</span>
           </div>
 
@@ -104,9 +122,9 @@ export function ColumbariumFormLiving({ data }: ColumbariumFormLivingProps) {
           </div>
 
           <div className="flex flex-wrap items-baseline mt-1">
-            <FilledField width="250px">{applicantName}</FilledField>
+            <FilledField width="250px">{finalApplicantName}</FilledField>
             <span>, of NRIC No.</span>
-            <FilledField width="130px" className="text-center">{applicantNric}</FilledField>
+            <FilledField width="130px" className="text-center">{finalApplicantNric}</FilledField>
             <span>to be the Applicant for a niche at the</span>
           </div>
 
@@ -128,7 +146,7 @@ export function ColumbariumFormLiving({ data }: ColumbariumFormLivingProps) {
             <div className="w-full border-b border-gray-400 mb-2 h-8"></div>
             <div className="flex gap-4 text-[13px] items-center">
               <span className="font-bold whitespace-nowrap">Beneficiary 1 Name:</span>
-              <span>{beneficiary1.name}</span>
+              <span>{beneficiary1Name}</span>
             </div>
           </div>
           <div>
@@ -149,9 +167,9 @@ export function ColumbariumFormLiving({ data }: ColumbariumFormLivingProps) {
         <div className="mb-12 text-[14px] leading-[2] font-normal">
           <div className="flex flex-wrap items-baseline">
             <span>I,</span>
-            <FilledField width="250px">{applicantName}</FilledField>
+            <FilledField width="250px">{finalApplicantName}</FilledField>
             <span>, of NRIC No.</span>
-            <FilledField width="130px" className="text-center">{applicantNric}</FilledField>
+            <FilledField width="130px" className="text-center">{finalApplicantNric}</FilledField>
             <span>as the Applicant of a niche at</span>
           </div>
           <p className="mt-2 text-justify">
@@ -176,7 +194,7 @@ export function ColumbariumFormLiving({ data }: ColumbariumFormLivingProps) {
           <div className="w-[300px] border-b border-gray-400 mb-2 h-8"></div>
           <div className="flex gap-4 text-[13px] items-center">
             <span className="font-bold">Applicant Name:</span>
-            <span>{applicantName}</span>
+            <span>{finalApplicantName}</span>
           </div>
         </div>
 

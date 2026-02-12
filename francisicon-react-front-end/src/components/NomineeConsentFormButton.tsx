@@ -9,8 +9,8 @@ interface NomineeConsentFormButtonProps {
   applicationNumber: string;
 }
 
-export const NomineeConsentFormButton: React.FC<NomineeConsentFormButtonProps> = ({ 
-  applicationNumber 
+export const NomineeConsentFormButton: React.FC<NomineeConsentFormButtonProps> = ({
+  applicationNumber
 }) => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [consentFormData, setConsentFormData] = useState<ConsentFormData | null>(null);
@@ -26,15 +26,21 @@ export const NomineeConsentFormButton: React.FC<NomineeConsentFormButtonProps> =
       setError('Application number is required to print nominee consent form');
       return;
     }
-    
+
     try {
       setLoading(true);
       setError(null);
-      
+
       // Fetch application data from the backend
       const response = await api.get(`/niche-application/${applicationNumber}`);
       const applicationData = response.data.data;
-      
+
+      const today = new Date().toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }).replace(/ /g, '-');
+
       // Map application data to consent form data
       const mappedData: ConsentFormData = {
         nicheNo: applicationData.nicheCode || applicationData.niche?.code || '',
@@ -44,16 +50,16 @@ export const NomineeConsentFormButton: React.FC<NomineeConsentFormButtonProps> =
           name: applicationData.nomineeName || applicationData.nominee?.name || '',
           nric: applicationData.nomineeIDNo || applicationData.nominee?.idNo || '',
           relationship: applicationData.nomineeRelationship || applicationData.nominee?.relationship || '',
-          date: applicationData.nomineeDate || applicationData.nominee?.date || ''
+          date: applicationData.nomineeDate || applicationData.nominee?.date || today
         },
         nominee2: {
           name: applicationData.nomineeName2 || applicationData.nominee2?.name || '',
           nric: applicationData.nomineeIDNo2 || applicationData.nominee2?.idNo || '',
           relationship: applicationData.nomineeRelationship2 || applicationData.nominee2?.relationship || '',
-          date: applicationData.nomineeDate2 || applicationData.nominee2?.date || ''
+          date: applicationData.nomineeDate2 || applicationData.nominee2?.date || today
         }
       };
-      
+
       setConsentFormData(mappedData);
       setShowModal(true);
     } catch (err: any) {
@@ -108,7 +114,7 @@ export const NomineeConsentFormButton: React.FC<NomineeConsentFormButtonProps> =
       >
         {!isApplicationNumberValid ? 'No App. Number' : loading ? 'Loading...' : 'Print Consent Form'}
       </Button>
-      
+
       {showModal && consentFormData && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">

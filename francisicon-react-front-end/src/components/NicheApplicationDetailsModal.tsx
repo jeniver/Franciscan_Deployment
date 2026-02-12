@@ -51,8 +51,16 @@ export function NicheApplicationDetailsModal({
   // --- HELPERS ---
   const formatDate = (dateString: string) => {
     if (!dateString) return '—'
+
+    // If it's just a 4-digit year, return it as-is
+    const str = String(dateString).trim();
+    if (/^\d{4}$/.test(str)) return str;
+
     try {
-      return new Date(dateString).toLocaleDateString('en-SG', {
+      const date = new Date(dateString)
+      if (isNaN(date.getTime())) return dateString
+
+      return date.toLocaleDateString('en-SG', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -574,7 +582,7 @@ export function NicheApplicationDetailsModal({
                         />
                         <InfoItem
                           label="DOB"
-                          value={formatDate(beneficiary.dateOfBirth)}
+                          value={formatDate(beneficiary.dateOfBirth || beneficiary.birthYear)}
                         />
                         <InfoItem label="ID No" value={beneficiary.idNo} />
                       </div>

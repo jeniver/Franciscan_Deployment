@@ -827,6 +827,36 @@ class InvoiceController extends BaseController {
       
       console.log('Application code:', applicationCode);
       
+      // Check for duplicate invoice first
+      if (applicationCode) {
+        const { executeQuery } = require('../config/database');
+        
+        const duplicateCheckQuery = `
+          SELECT TOP 1 i.InvoiceId, i.Code, i.TransactionDate, i.Status
+          FROM Invoice i
+          WHERE i.RefDocNumber = @refDocNumber 
+          AND i.ChurchId = @churchId
+          AND i.Status > 0
+        `;
+        
+        const duplicateResult = await executeQuery(duplicateCheckQuery, { 
+          refDocNumber: applicationCode, 
+          churchId: user.churchId 
+        });
+        
+        if (duplicateResult.recordset && duplicateResult.recordset.length > 0) {
+          return res.status(409).json({
+            success: false,
+            error: {
+              code: 'DUPLICATE_INVOICE',
+              message: 'Invoice already created for this application',
+              invoiceCode: duplicateResult.recordset[0].Code,
+              transactionDate: duplicateResult.recordset[0].TransactionDate
+            }
+          });
+        }
+      }
+      
       let application = null;
       let resolvedApplicationCode = applicationCode || '';
       let resolvedRefDocName = 'NAPP';
@@ -850,17 +880,21 @@ class InvoiceController extends BaseController {
         resolvedNicheApplicationId = application.NicheApplicationId;
       }
       
+      // Calculate total tax amount
+      const taxPercentage = 9; // 9% GST
+      const taxAmount = (totalAmount || 0) * (taxPercentage / 100);
+      
       // Create invoice data
       const invoiceData = {
         transactionDate: new Date(),
         refDocNumber: resolvedApplicationCode,
         refDocName: resolvedRefDocName,
         customerName: resolvedCustomerName,
-        totalAmount: totalAmount || 0,
-        payingAmount: payingAmount || 0,
-        taxAmount: 0,
-        taxPercentage: 0,
-        taxCode: null,
+        totalAmount: (totalAmount || 0) + taxAmount,
+        payingAmount: (payingAmount || 0) + taxAmount,
+        taxAmount: taxAmount,
+        taxPercentage: taxPercentage,
+        taxCode: 'GST',
         nicheApplicationId: resolvedNicheApplicationId,
         paymentMode: paymentMode || 'Cash',
         paymentModeDocNo: paymentModeDocNo || null,
@@ -884,34 +918,49 @@ class InvoiceController extends BaseController {
       let invoiceDetails = [];
       
       if (providedInvoiceDetails && Array.isArray(providedInvoiceDetails) && providedInvoiceDetails.length > 0) {
-        // Use provided invoice details
-        invoiceDetails = providedInvoiceDetails.map(detail => ({
-          itemId: detail.itemId || 1,
-          quantity: detail.quantity || 1,
-          unitAmount: detail.unitAmount || 0,
-          payingAmount: detail.payingAmount || detail.unitAmount || 0,
-          totalPayingAmount: detail.totalPayingAmount || (detail.unitAmount || 0) * (detail.quantity || 1),
-          refDocNumber: detail.refDocNumber || resolvedApplicationCode || '',
-          refDocName: detail.refDocName || 'NAPP',
-          lineTotalAmount: detail.lineTotalAmount || (detail.unitAmount || 0) * (detail.quantity || 1),
-          lineTaxPercent: detail.lineTaxPercent || 0,
-          lineTaxAmount: detail.lineTaxAmount || 0,
-          outstandingAmount: detail.outstandingAmount || 0,
-          refType: detail.refType || 'NAPP'
-        }));
+        // Use provided invoice details and preserve client-side GST values
+        invoiceDetails = providedInvoiceDetails.map(detail => {
+          // Calculate tax values if not provided, but prioritize client-provided values
+          const quantity = detail.quantity || 1;
+          const unitAmount = detail.unitAmount || 0;
+          const lineTotalAmount = detail.lineTotalAmount !== undefined ? detail.lineTotalAmount : (unitAmount * quantity);
+          const lineTaxPercent = detail.lineTaxPercent !== undefined ? detail.lineTaxPercent : 9; // Default 9% GST if not provided
+          const lineTaxAmount = detail.lineTaxAmount !== undefined ? detail.lineTaxAmount : (lineTotalAmount * (lineTaxPercent / 100));
+          const totalPayingAmount = detail.totalPayingAmount !== undefined ? detail.totalPayingAmount : (lineTotalAmount + lineTaxAmount);
+          
+          return {
+            itemId: detail.itemId || 1,
+            quantity: quantity,
+            unitAmount: unitAmount,
+            payingAmount: detail.payingAmount !== undefined ? detail.payingAmount : unitAmount,
+            totalPayingAmount: totalPayingAmount,
+            refDocNumber: detail.refDocNumber || resolvedApplicationCode || '',
+            refDocName: detail.refDocName || 'NAPP',
+            lineTotalAmount: lineTotalAmount,
+            lineTaxPercent: lineTaxPercent,
+            lineTaxAmount: lineTaxAmount,
+            outstandingAmount: detail.outstandingAmount || 0,
+            refType: detail.refType || 'NAPP'
+          };
+        });
       } else {
         // Create default invoice details if no details provided
+        const lineTotalAmount = invoiceData.payingAmount;
+        const lineTaxPercent = 9; // Default 9% GST
+        const lineTaxAmount = lineTotalAmount * (lineTaxPercent / 100);
+        const totalPayingAmount = lineTotalAmount + lineTaxAmount;
+        
         invoiceDetails = [{
           itemId: 1, // Default item
           quantity: 1,
           unitAmount: invoiceData.payingAmount,
           payingAmount: invoiceData.payingAmount,
-          totalPayingAmount: invoiceData.payingAmount,
+          totalPayingAmount: totalPayingAmount,
           refDocNumber: resolvedApplicationCode || '',
           refDocName: 'NAPP',
-          lineTotalAmount: invoiceData.payingAmount,
-          lineTaxPercent: 0,
-          lineTaxAmount: 0,
+          lineTotalAmount: lineTotalAmount,
+          lineTaxPercent: lineTaxPercent,
+          lineTaxAmount: lineTaxAmount,
           outstandingAmount: 0,
           refType: 'NAPP'
         }];
@@ -928,12 +977,51 @@ class InvoiceController extends BaseController {
       
       logger.info(`Individual invoice created successfully: code=${result.data.invoiceCode}, applicationCode=${applicationCode}`);
       
+      // Check if receipt exists for this application/invoice
+      let hasReceipt = false;
+      if (applicationCode) {
+        try {
+          const { executeQuery } = require('../config/database');
+          const receiptQuery = `
+            SELECT TOP 1 ReceiptId 
+            FROM Receipt WITH(NOLOCK) 
+            WHERE RefDocNumber = @refDocNumber AND ChurchId = @churchId
+          `;
+          const receiptResult = await executeQuery(receiptQuery, { 
+            refDocNumber: applicationCode, 
+            churchId: user.churchId 
+          });
+          hasReceipt = receiptResult.recordset && receiptResult.recordset.length > 0;
+        } catch (receiptCheckError) {
+          logger.warn('Failed to check receipt existence:', receiptCheckError.message);
+          hasReceipt = false;
+        }
+      }
+      
+      // Get the created invoice details for complete response
+      let createdInvoice = null;
+      try {
+        createdInvoice = await this.invoiceRepository.getInvoiceByCode(
+          result.data.invoiceCode,
+          user.churchId
+        );
+      } catch (fetchError) {
+        logger.warn('Could not fetch created invoice details:', fetchError.message);
+      }
+      
+      const responseData = {
+        invoiceId: result.data.invoiceId,
+        invoiceCode: result.data.invoiceCode,
+        hasInvoice: true,
+        hasReceipt: hasReceipt,
+        canCreateInvoice: false, // Invoice just created, so can't create another
+        canCreateReceipt: !hasReceipt, // Can create receipt if none exists
+        invoiceDetails: createdInvoice ? this.formatInvoiceResponse(createdInvoice) : null
+      };
+      
       return res.status(201).json({
         success: true,
-        data: {
-          invoiceId: result.data.invoiceId,
-          invoiceCode: result.data.invoiceCode
-        },
+        data: responseData,
         receiptCreated: false, // Individual invoices don't automatically create receipts
         message: 'Individual invoice created successfully'
       });

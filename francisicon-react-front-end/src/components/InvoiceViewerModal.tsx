@@ -342,21 +342,8 @@ export function InvoiceViewerModal({
   // Function to map API data to InvoiceTemplate interface for TaxInvoice component
   const mapToTaxInvoiceProps = (apiData: any) => {
     // Calculate address string from available address fields
-    const addressParts = [
-      apiData.addressNo,
-      apiData.address,
-      apiData.address2,
-      apiData.addressCity,
-      apiData.country
-    ].filter(part => part &&
-      part !== 'undefined' &&
-      part !== 'null' &&
-      typeof part === 'string' &&
-      part.trim() !== '');
 
     const address = apiData.customerAddress || 'N/A';
-
-
     // Handle both direct items array and details mapping
     let items: any[] = [];
 

@@ -127,13 +127,13 @@ const TableRow = ({ children, className = '' }: { children: React.ReactNode; cla
 )
 
 const LabelCell = ({ children, width = 'w-32', className = '' }: { children: React.ReactNode; width?: string; className?: string }) => (
-  <div className={width + ' border-r border-black p-1 pl-2 text-[11px] font-medium flex-shrink-0 ' + className}>
+  <div className={width + ' border-r border-black p-1 pl-2 text-[11px] font-medium flex-shrink-0 flex items-center ' + className}>
     {children}
   </div>
 )
 
 const ValueCell = ({ children, className = '', width = 'flex-1' }: { children: React.ReactNode; className?: string; width?: string }) => (
-  <div className={width + ' p-1 pl-2 text-[11px] ' + className}>{children}</div>
+  <div className={width + ' p-1 pl-2 text-[11px] flex items-center ' + className}>{children}</div>
 )
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
@@ -183,7 +183,7 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
   return (
     <div className="min-h-screen bg-gray-100 py-8 font-sans text-gray-900 print:bg-white print:py-0">
       {/* Page 1 */}
-      <div className="max-w-[210mm] mx-auto bg-white shadow-lg p-10 mb-8 min-h-[297mm] print:shadow-none print:mb-0 print:p-12">
+      <div data-pdf-page className="max-w-[210mm] mx-auto bg-white shadow-lg p-10 mb-8 min-h-[297mm] print:shadow-none print:mb-0 print:p-12">
         {/* Header */}
         <header className="flex justify-between items-start mb-6">
           <div className="flex-1 text-center pt-2">
@@ -259,9 +259,9 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
             </ValueCell>
           </TableRow>
           <div className="flex border-b border-black">
-            <LabelCell className="h-16 border-b-0">Address</LabelCell>
+            <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
             <div className="flex-1 flex flex-col">
-              <div className="flex border-b border-black h-[22px]">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
                   {applicantAddressLines[0]}
                 </ValueCell>
@@ -275,7 +275,7 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
                   {applicant?.mobileNo || ''}
                 </ValueCell>
               </div>
-              <div className="flex border-b border-black h-[22px]">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
                   {applicantAddressLines[1]}
                 </ValueCell>
@@ -289,7 +289,7 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
                   {applicant?.homeTelNo || ''}
                 </ValueCell>
               </div>
-              <div className="flex h-[22px]">
+              <div className="flex h-[26px]">
                 <ValueCell className="flex-1">
                   {applicantAddressLines[2]}
                 </ValueCell>
@@ -451,7 +451,7 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
       </div>
 
       {/* Page 2 - Nominees */}
-      <div className="max-w-[210mm] mx-auto bg-white shadow-lg p-10 min-h-[297mm] print:shadow-none print:p-12">
+      <div data-pdf-page className="max-w-[210mm] mx-auto bg-white shadow-lg p-10 min-h-[297mm] print:shadow-none print:p-12">
         <h2 className="text-lg font-bold uppercase mb-6 border-b-2 border-black pb-2">Nominee Contact Details</h2>
 
         {/* Nominee 1 */}
@@ -470,9 +470,9 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
             </ValueCell>
           </TableRow>
           <div className="flex border-b border-black">
-            <LabelCell className="h-16 border-b-0">Address</LabelCell>
+            <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
             <div className="flex-1 flex flex-col">
-              <div className="flex border-b border-black h-[22px]">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
                   {nominee1AddressLines[0]}
                 </ValueCell>
@@ -486,7 +486,7 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
                   {nominee1?.mobileNo || ''}
                 </ValueCell>
               </div>
-              <div className="flex border-b border-black h-[22px]">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
                   {nominee1AddressLines[1]}
                 </ValueCell>
@@ -500,7 +500,7 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
                   {nominee1?.homeTelNo || ''}
                 </ValueCell>
               </div>
-              <div className="flex h-[22px]">
+              <div className="flex h-[26px]">
                 <ValueCell className="flex-1">
                   {nominee1AddressLines[2]}
                 </ValueCell>
@@ -544,9 +544,9 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
             </ValueCell>
           </TableRow>
           <div className="flex border-b border-black">
-            <LabelCell className="h-16 border-b-0">Address</LabelCell>
+            <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
             <div className="flex-1 flex flex-col">
-              <div className="flex border-b border-black h-[22px]">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
                   {nominee2AddressLines[0]}
                 </ValueCell>
@@ -560,7 +560,7 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
                   {nominee2?.mobileNo || ''}
                 </ValueCell>
               </div>
-              <div className="flex border-b border-black h-[22px]">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
                   {nominee2AddressLines[1]}
                 </ValueCell>
@@ -574,7 +574,7 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
                   {nominee2?.homeTelNo || ''}
                 </ValueCell>
               </div>
-              <div className="flex h-[22px]">
+              <div className="flex h-[26px]">
                 <ValueCell className="flex-1">
                   {nominee2AddressLines[2]}
                 </ValueCell>

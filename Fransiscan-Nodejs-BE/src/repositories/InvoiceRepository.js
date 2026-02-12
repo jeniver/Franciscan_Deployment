@@ -1968,7 +1968,33 @@ class InvoiceRepository extends BaseRepository {
       invoiceRequest.input('customerName', sql.NVarChar, invoice.customerName);
       invoiceRequest.input('totalAmount', sql.Decimal(18, 2), invoice.totalAmount || 0);
       invoiceRequest.input('payingAmount', sql.Decimal(18, 2), invoice.payingAmount);
-      invoiceRequest.input('paymentMode', sql.Int, invoice.paymentMode);  // Changed to match database schema
+      // Convert paymentMode to a valid integer before database insertion
+      let paymentModeValue = invoice.paymentMode;
+      
+      // Handle string values by converting them to appropriate integer codes
+      if (typeof paymentModeValue === 'string') {
+        const modeMap = {
+          'Cash': 1, 'cash': 1, 'CASH': 1,
+          'Cheque': 2, 'cheque': 2, 'CHEQUE': 2,
+          'TT': 3, 'tt': 3, 'TRANSFER': 3, 'transfer': 3,
+          'Credit Card': 4, 'credit card': 4, 'CREDIT CARD': 4, 'CreditCard': 4, 'creditcard': 4,
+          'Others': 5, 'others': 5, 'OTHERS': 5
+        };
+        
+        // If it's a known string, convert to number; otherwise default to 1 (Cash)
+        paymentModeValue = modeMap[paymentModeValue] || 1;
+      } else if (typeof paymentModeValue === 'number') {
+        // If it's already a number, ensure it's valid (between 1-5), otherwise default to 1
+        paymentModeValue = (paymentModeValue >= 1 && paymentModeValue <= 5) ? paymentModeValue : 1;
+      } else if (paymentModeValue === null || paymentModeValue === undefined || paymentModeValue === '') {
+        // If it's null, undefined, or empty string, default to 1 (Cash)
+        paymentModeValue = 1;
+      } else {
+        // For any other type, default to 1 (Cash)
+        paymentModeValue = 1;
+      }
+      
+      invoiceRequest.input('paymentMode', sql.Int, paymentModeValue);
       invoiceRequest.input('paymentModeDocNo', sql.NVarChar, invoice.paymentModeDocNo);
       invoiceRequest.input('userId', sql.Int, invoice.userId);
       invoiceRequest.input('churchId', sql.Int, invoice.churchId);

@@ -1,4 +1,3 @@
-import React from 'react';
 import { ColumbariumFormDisceased } from './ColumbariumFormDisceased';
 import { ColumbariumFormLiving } from './ColumbariumFormLiving';
 import { ColumbariumFormLostCapacity } from './ColumbariumFormLostCapacity';
@@ -33,7 +32,7 @@ export function DynamicConsentForm({ formData }: { formData: FormData }) {
     case 'deceased':
       return <ColumbariumFormDisceased data={formData} />;
     case 'living':
-      return <ColumbariumFormLiving data={formData} />;
+      return <ColumbariumFormLiving data={formData} />; // No props needed
     case 'lostCapacity':
       return <ColumbariumFormLostCapacity data={formData} />;
     default:

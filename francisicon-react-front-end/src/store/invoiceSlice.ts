@@ -196,6 +196,8 @@ interface InvoiceState {
   createReceiptSuccess: boolean;
   lastCreatedInvoiceCode: string | null;
   lastCreatedReceiptCode: string | null;
+  canCreateInvoice: boolean;
+  canCreateReceipt: boolean;
 }
 
 const initialState: InvoiceState = {
@@ -209,6 +211,8 @@ const initialState: InvoiceState = {
   createReceiptSuccess: false,
   lastCreatedInvoiceCode: null,
   lastCreatedReceiptCode: null,
+  canCreateInvoice: true,
+  canCreateReceipt: true,
 };
 
 // Async thunks
@@ -295,8 +299,18 @@ export const fetchCreationStatus = createAsyncThunk<
 );
 
 // Create individual invoice from application
+export interface IndividualInvoiceResponse {
+  invoiceCode: string;
+  receiptCreated?: boolean;
+  hasInvoice: boolean;
+  hasReceipt: boolean;
+  canCreateInvoice: boolean;
+  canCreateReceipt: boolean;
+  invoiceDetails: any;
+}
+
 export const createIndividualInvoice = createAsyncThunk<
-  { invoiceCode: string; receiptCreated?: boolean },
+  IndividualInvoiceResponse,
   CreateIndividualInvoiceRequest,
   { rejectValue: string }
 >(
@@ -313,6 +327,11 @@ export const createIndividualInvoice = createAsyncThunk<
       return {
         invoiceCode: response.data.data?.invoiceCode || response.data.invoiceCode,
         receiptCreated: response.data.receiptCreated,
+        hasInvoice: response.data.data?.hasInvoice || true,
+        hasReceipt: response.data.data?.hasReceipt || false,
+        canCreateInvoice: response.data.data?.canCreateInvoice || false,
+        canCreateReceipt: response.data.data?.canCreateReceipt || true,
+        invoiceDetails: response.data.data?.invoiceDetails || null
       };
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to create individual invoice');
@@ -359,6 +378,8 @@ const invoiceSlice = createSlice({
       state.createReceiptSuccess = false;
       state.lastCreatedInvoiceCode = null;
       state.lastCreatedReceiptCode = null;
+      state.canCreateInvoice = true;
+      state.canCreateReceipt = true;
     },
     clearCreationStatus: (state) => {
       state.creationStatus = null;
@@ -371,6 +392,8 @@ const invoiceSlice = createSlice({
       state.createReceiptSuccess = false;
       state.lastCreatedInvoiceCode = null;
       state.lastCreatedReceiptCode = null;
+      state.canCreateInvoice = true;
+      state.canCreateReceipt = true;
     },
   },
   extraReducers: (builder) => {
@@ -443,6 +466,9 @@ const invoiceSlice = createSlice({
         state.lastCreatedReceiptCode = action.payload.invoiceCode; // Use invoice code as receipt code if receipt was created
         state.createReceiptSuccess = true;
       }
+      // Update button control flags
+      state.canCreateInvoice = action.payload.canCreateInvoice;
+      state.canCreateReceipt = action.payload.canCreateReceipt;
       state.error = null;
     });
     builder.addCase(createIndividualInvoice.rejected, (state, action) => {

@@ -79,15 +79,7 @@ class NicheApplicationController {
     try {
       const { body, user } = req;
 
-      // ✅ DEBUG: Log the raw request body
-      logger.info('==================== CREATE APPLICATION DEBUG ====================');
-      logger.info('[Controller] Raw request body received:', JSON.stringify(body, null, 2));
-      logger.info('[Controller] Request body keys:', Object.keys(body));
-      logger.info('[Controller] Content-Type header:', req.get('Content-Type'));
-      logger.info('[Controller] Beneficiaries in request:', JSON.stringify(body.beneficiaries, null, 2));
-      logger.info('[Controller] Beneficiary1:', JSON.stringify(body.beneficiary1, null, 2));
-      logger.info('[Controller] User:', { userId: user?.userId, churchId: user?.churchId });
-      logger.info('================================================================');
+
 
       if (!user || !user.churchId) {
         return res.status(401).json({
@@ -147,13 +139,7 @@ class NicheApplicationController {
   optimizeApplicationPayload(rawPayload) {
     const payload = { ...rawPayload };
     
-    // Log the incoming payload structure for debugging
-    logger.info('[Controller] optimizeApplicationPayload called with payload keys:', Object.keys(payload));
-    logger.info('[Controller] Has applicant:', !!payload.applicant);
-    logger.info('[Controller] Has nominees:', !!payload.nominees);
-    logger.info('[Controller] Has beneficiaries:', !!payload.beneficiaries);
-    logger.info('[Controller] Beneficiaries type:', Array.isArray(payload.beneficiaries) ? 'array' : typeof payload.beneficiaries);
-    logger.info('[Controller] Beneficiaries count:', Array.isArray(payload.beneficiaries) ? payload.beneficiaries.length : 'N/A');
+
     
     // Handle both old flat structure and new optimized structure
     // If we already have the optimized structure, use it as-is but ensure beneficiaries are preserved
@@ -254,14 +240,7 @@ class NicheApplicationController {
       }
     };
 
-    // Log the optimized structure
-    logger.info('[Controller] Optimized payload structure:');
-    logger.info('[Controller] - Chapel:', optimized.chapel);
-    logger.info('[Controller] - Niche:', optimized.niche);
-    logger.info('[Controller] - Applicant name:', optimized.applicant?.name);
-    logger.info('[Controller] - Nominees count:', optimized.nominees?.length || 0);
-    logger.info('[Controller] - Beneficiaries count:', optimized.beneficiaries?.length || 0);
-    logger.info('[Controller] - Beneficiaries data:', JSON.stringify(optimized.beneficiaries, null, 2));
+
 
     // Remove any undefined/null values to clean up the payload
     const cleanedPayload = this.removeEmptyValues(optimized);

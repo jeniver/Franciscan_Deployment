@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { XIcon, DownloadIcon, PrinterIcon, Maximize2Icon, Minimize2Icon } from 'lucide-react';
 import { DynamicConsentForm } from './DynamicConsentForm';
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
 
 interface BeneficiaryData {
   name: string;
@@ -40,6 +42,7 @@ export function ConsentFormViewerModal({
 }: ConsentFormViewerModalProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+   const [isGenerating, setIsGenerating] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Helper function to get all computed styles as inline styles
@@ -73,73 +76,135 @@ export function ConsentFormViewerModal({
     return clone;
   };
 
-  const handlePrint = () => {
-    if (!contentRef.current) return;
+  // const handlePrint = () => {
+  //   if (!contentRef.current) return;
 
-    const styledClone = cloneWithStyles(contentRef.current);
+  //   const styledClone = cloneWithStyles(contentRef.current);
 
-    const printWindow = window.open('', '_blank', 'width=900,height=1200');
-    if (!printWindow) {
-      alert('Please allow popups to print the document');
-      return;
-    }
+  //   const printWindow = window.open('', '_blank', 'width=900,height=1200');
+  //   if (!printWindow) {
+  //     alert('Please allow popups to print the document');
+  //     return;
+  //   }
 
-    const printStyles = `
-      * {
-        box-sizing: border-box;
+  //   const printStyles = `
+  //     * {
+  //       box-sizing: border-box;
+  //     }
+
+  //     body {
+  //       margin: 0;
+  //       padding: 0;
+  //       font-family: Arial, sans-serif;
+  //       -webkit-print-color-adjust: exact;
+  //       print-color-adjust: exact;
+  //     }
+
+  //     /* REAL A4 SIZE */
+  //     .print-container {
+  //       width: 210mm;
+  //       min-height: 320mm;
+  //       margin: 0 auto;
+  //       padding: 15mm;
+  //     }
+
+  //     @page {
+  //       size: A4;
+  //       margin: 0;
+  //     }
+
+  //     @media print {
+  //       body {
+  //         margin: 0;
+  //       }
+  //     }
+  //   `;
+
+  //   printWindow.document.write(`
+  //     <!DOCTYPE html>
+  //     <html>
+  //       <head>
+  //         <title>Consent Form - ${formData?.chapelName} ${formData?.nicheNumber}</title>
+  //         <style>${printStyles}</style>
+  //       </head>
+  //       <body>
+  //         ${styledClone.outerHTML}
+  //       </body>
+  //     </html>
+  //   `);
+
+  //   printWindow.document.close();
+
+  //   printWindow.onload = () => {
+  //     setTimeout(() => {
+  //       printWindow.focus();
+  //       printWindow.print();
+  //     }, 300);
+  //   };
+  // };
+   const handleGeneratePDF = async () => {
+    if (!contentRef.current || isGenerating) return
+    setIsGenerating(true)
+    try {
+      // Find all page elements
+      const pages = contentRef.current.querySelectorAll('[data-pdf-page]')
+      if (pages.length === 0) {
+        throw new Error('No pages found to print')
       }
-
-      body {
-        margin: 0;
-        padding: 0;
-        font-family: Arial, sans-serif;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-
-      /* REAL A4 SIZE */
-      .print-container {
-        width: 210mm;
-        min-height: 320mm;
-        margin: 0 auto;
-        padding: 15mm;
-      }
-
-      @page {
-        size: A4;
-        margin: 0;
-      }
-
-      @media print {
-        body {
-          margin: 0;
+      // Create PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      })
+      // Process each page
+      for (let i = 0; i < pages.length; i++) {
+        const pageElement = pages[i] as HTMLElement
+        // Temporarily remove shadow for clean capture
+        const originalBoxShadow = pageElement.style.boxShadow
+        pageElement.style.boxShadow = 'none'
+        // Capture the page
+        const canvas = await html2canvas(pageElement, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: pageElement.scrollWidth,
+          windowHeight: pageElement.scrollHeight,
+        })
+        // Restore styles
+        pageElement.style.boxShadow = originalBoxShadow
+        // Add page to PDF (except for the first one which is created by default)
+        if (i > 0) {
+          pdf.addPage()
         }
+        const imgData = canvas.toDataURL('image/png', 1.0)
+        const pdfWidth = pdf.internal.pageSize.getWidth()
+        const pdfHeight = pdf.internal.pageSize.getHeight()
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
       }
-    `;
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Consent Form - ${formData?.chapelName} ${formData?.nicheNumber}</title>
-          <style>${printStyles}</style>
-        </head>
-        <body>
-          ${styledClone.outerHTML}
-        </body>
-      </html>
-    `);
-
-    printWindow.document.close();
-
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-      }, 300);
-    };
-  };
-
+      // Generate blob and open in new tab
+      const pdfBlob = pdf.output('blob')
+      const blobUrl = URL.createObjectURL(pdfBlob)
+      const newTab = window.open(blobUrl, '_blank')
+      if (!newTab) {
+        // Fallback: download the file if popup blocked
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = `Consent Form - ${formData?.chapelName} ${formData?.nicheNumber}`
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
+      } else {
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+      }
+    } catch (error) {
+      console.error('PDF generation failed:', error)
+      alert('Failed to generate PDF. Please try again.')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
   const handleDownloadPdf = async () => {
     if (!contentRef.current || !formData) return;
     setIsGeneratingPdf(true);
@@ -254,8 +319,8 @@ export function ConsentFormViewerModal({
               </button>
 
               <button
-                onClick={handlePrint}
-                disabled={isGeneratingPdf}
+                onClick={handleGeneratePDF}
+                disabled={isGenerating}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Print Consent Form"
               >

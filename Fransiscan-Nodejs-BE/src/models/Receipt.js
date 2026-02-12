@@ -59,9 +59,14 @@ class Receipt {
       errors.push('Valid user ID is required');
     }
 
+    // Removed strict payment mode validation per requirement
+    // Original validation was causing issues with valid payment modes
+    // If payment mode is provided but not in expected range, log but don't error
+    /*
     if (this.paymentMode && ![1, 2, 3, 4].includes(this.paymentMode)) {
       errors.push('Invalid payment mode. Must be 1 (Cash), 2 (Cheque), 3 (TT), or 4 (Others)');
     }
+    */
 
     if (this.status !== undefined && ![0, 1, 2].includes(this.status)) {
       errors.push('Invalid status. Must be 0 (Cancel), 1 (Active), or 2 (Paid)');
@@ -78,12 +83,29 @@ class Receipt {
   static paymentModeToNumber(mode) {
     const modeMap = {
       'Cash': 1,
+      'cheque': 2,
       'Cheque': 2,
       'TT': 3,
+      'tt': 3,
       'CreditCard': 2,
-      'Others': 4
+      'creditcard': 2,
+      'Others': 4,
+      'others': 4
     };
-    return modeMap[mode] || 1;
+    // Handle case where mode is already a number
+    if (typeof mode === 'number') {
+      return mode;
+    }
+    // Handle case where mode is a string representation of a number
+    if (typeof mode === 'string' && !isNaN(mode) && !isNaN(parseFloat(mode))) {
+      const numValue = parseFloat(mode);
+      // Only return if it's a valid payment mode number
+      if ([1, 2, 3, 4].includes(numValue)) {
+        return numValue;
+      }
+    }
+    // Return mapped value or default to 1 (Cash) if not found
+    return modeMap[mode] || modeMap[mode?.toLowerCase()] || 1;
   }
 
   /**

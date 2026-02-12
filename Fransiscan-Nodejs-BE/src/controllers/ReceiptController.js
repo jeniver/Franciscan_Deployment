@@ -199,29 +199,31 @@ class ReceiptController {
         });
       }
 
-      const { applicationCode, customerName, payingAmount, paymentMode, paymentModeDocNo } = body;
+      const { applicationCode, customerName, payingAmount, paymentMode, paymentModeDocNo, addressNo, address, address2, addressCity, districtCode, country } = body;
 
       let application = null;
       let resolvedCustomerName = customerName || 'Unknown Customer';
       let resolvedAmount = payingAmount || 0;
+      let hasInvoice = false;
+      let resolvedRefDocName = 'NAPP'; // Default reference document name
 
       // Get application data if applicationCode is provided
       if (applicationCode) {
         const { executeQuery } = require('../config/database');
         
         // Check for duplicate receipt first
+        // Since Receipt table doesn't have RefDocNumber column, we check in MisalaniousReceiptDetail table
         const duplicateCheckQuery = `
           SELECT TOP 1 r.ReceiptId, r.Code, r.TransactionDate, r.Status
           FROM Receipt r
-          INNER JOIN NicheApplication na ON r.CustomerName = na.ApplicantName
-          WHERE na.Code = @applicationCode 
+          INNER JOIN MisalaniousReceiptDetail rd ON r.ReceiptId = rd.ReceiptId
+          WHERE rd.RefDocNumber = @refDocNumber
           AND r.ChurchId = @churchId
           AND r.Status > 0
-          AND CAST(r.TransactionDate AS DATE) = CAST(GETDATE() AS DATE)
         `;
         
         const duplicateResult = await executeQuery(duplicateCheckQuery, { 
-          applicationCode, 
+          refDocNumber: applicationCode, 
           churchId: user.churchId 
         });
         
@@ -230,9 +232,10 @@ class ReceiptController {
             success: false,
             error: {
               code: 'DUPLICATE_RECEIPT',
-              message: 'Receipt already created for this application today',
+              message: 'Receipt already created for this application',
               receiptCode: duplicateResult.recordset[0].Code,
-              transactionDate: duplicateResult.recordset[0].TransactionDate
+              transactionDate: duplicateResult.recordset[0].TransactionDate,
+              refDocNumber: duplicateResult.recordset[0].RefDocNumber
             }
           });
         }
@@ -255,9 +258,16 @@ class ReceiptController {
         application = appResult.recordset[0];
         resolvedCustomerName = customerName || application.ApplicantName;
         resolvedAmount = payingAmount || application.Amount || 0;
+        // Set resolvedRefDocName based on application RefDocType
+        resolvedRefDocName = application.RefDocType || 'NAPP';
       } else {
         // When no application code, use provided payingAmount or default to 0
         resolvedAmount = payingAmount || 0;
+              
+        // For standalone receipts without application code, set defaults
+        if (!applicationCode) {
+          hasInvoice = false;
+        }
       }
       
       // Use resolved values for receipt creation
@@ -274,14 +284,43 @@ class ReceiptController {
         status: 2,
         paymentModeDocNo: paymentModeDocNo || null,
         payeeName: resolvedCustomerName,
-        addressNo: null,
-        address: null,
-        address2: null,
-        addressCity: null,
-        districtCode: null,
-        country: null,
+        addressNo: addressNo || null,
+        address: address || null,
+        address2: address2 || null,
+        addressCity: addressCity || null,
+        districtCode: districtCode || null,
+        country: country || null,
         outstandingAmount: 0
       });
+      
+      // Create receipt details with reference document information
+      const receiptDetails = [];
+      if (applicationCode) {
+        // Add receipt detail with reference document information
+        receiptDetails.push({
+          itemId: 1, // Default item ID
+          quantity: 1,
+          unitAmount: resolvedAmount,
+          payingAmount: resolvedAmount,
+          totalPayingAmount: resolvedAmount,
+          refDocNumber: applicationCode, // Link to the application code
+          refDocName: resolvedRefDocName || 'NAPP' // Default to NAPP if not specified
+        });
+      } else {
+        // For standalone receipts without application code
+        receiptDetails.push({
+          itemId: 1, // Default item ID
+          quantity: 1,
+          unitAmount: resolvedAmount,
+          payingAmount: resolvedAmount,
+          totalPayingAmount: resolvedAmount,
+          refDocNumber: null, // No reference document
+          refDocName: 'OTHERS'
+        });
+      }
+      
+      // Add details to receipt object
+      receipt.details = receiptDetails;
 
       logger.debug('Before conversion - paymentMode:', receipt.paymentMode, 'type:', typeof receipt.paymentMode);
 
@@ -302,11 +341,43 @@ class ReceiptController {
 
       logger.info(`Individual receipt created successfully: code=${result.data.code}, applicationCode=${applicationCode}`);
 
+      // Check if invoice exists for this application
+      hasInvoice = false;
+      if (applicationCode) {
+        try {
+          const { executeQuery } = require('../config/database');
+          const invoiceQuery = `
+            SELECT TOP 1 InvoiceId 
+            FROM Invoice WITH(NOLOCK) 
+            WHERE RefDocNumber = @refDocNumber AND ChurchId = @churchId
+          `;
+          const invoiceResult = await executeQuery(invoiceQuery, { 
+            refDocNumber: applicationCode, 
+            churchId: user.churchId 
+          });
+          hasInvoice = invoiceResult.recordset && invoiceResult.recordset.length > 0;
+        } catch (invoiceCheckError) {
+          logger.warn('Failed to check invoice existence:', invoiceCheckError.message);
+          hasInvoice = false;
+        }
+      }
+      
+      // Check if receipt exists for this application (should be true since we just created it)
+      let hasReceipt = true;
+      
       return res.status(201).json({
         success: true,
         code: result.data.code,
         receiptCreated: true,
         receiptCode: result.data.code,
+        data: {
+          receiptCode: result.data.code,
+          hasInvoice: hasInvoice,
+          hasReceipt: hasReceipt,
+          canCreateInvoice: !hasInvoice, // Can create invoice if none exists
+          canCreateReceipt: false, // Can't create receipt since one just got created
+          receiptDetails: null // We don't fetch receipt details here
+        },
         message: 'Individual receipt created successfully'
       });
 

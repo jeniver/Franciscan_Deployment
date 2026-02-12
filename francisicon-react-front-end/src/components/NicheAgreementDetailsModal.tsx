@@ -59,8 +59,16 @@ export function NicheAgreementDetailsModal({
 
   const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
+
+    // If it's just a 4-digit year, return it as-is
+    const str = String(dateString).trim();
+    if (/^\d{4}$/.test(str)) return str;
+
     try {
-      return new Date(dateString).toLocaleDateString('en-SG', {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+
+      return date.toLocaleDateString('en-SG', {
         year: 'numeric',
         month: 'short',
         day: 'numeric'
@@ -138,33 +146,30 @@ export function NicheAgreementDetailsModal({
               <nav className="flex bg-gray-50 border-b border-gray-200 px-6">
                 <button
                   onClick={() => setActiveTab('general')}
-                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${
-                    activeTab === 'general'
+                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${activeTab === 'general'
                       ? 'text-[#802429] border-b-[#802429]'
                       : 'text-gray-600 border-transparent hover:text-[#802429]'
-                  }`}
+                    }`}
                   style={{ borderBottomWidth: activeTab === 'general' ? '3px' : '0' }}
                 >
                   General Details
                 </button>
                 <button
                   onClick={() => setActiveTab('financial')}
-                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${
-                    activeTab === 'financial'
+                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${activeTab === 'financial'
                       ? 'text-[#802429] border-b-[#802429]'
                       : 'text-gray-600 border-transparent hover:text-[#802429]'
-                  }`}
+                    }`}
                   style={{ borderBottomWidth: activeTab === 'financial' ? '3px' : '0' }}
                 >
                   Financials & Billing
                 </button>
                 <button
                   onClick={() => setActiveTab('attachments')}
-                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${
-                    activeTab === 'attachments'
+                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${activeTab === 'attachments'
                       ? 'text-[#802429] border-b-[#802429]'
                       : 'text-gray-600 border-transparent hover:text-[#802429]'
-                  }`}
+                    }`}
                   style={{ borderBottomWidth: activeTab === 'attachments' ? '3px' : '0' }}
                 >
                   Attachments ({agreementData.metadata.beneficiaryCount || 0})
@@ -254,15 +259,13 @@ export function NicheAgreementDetailsModal({
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Date of Birth</span>
                                   <span className="font-semibold text-sm">
-                                    {beneficiary.dateOfBirth && !beneficiary.dateOfBirth.startsWith('01-Jan-') ? beneficiary.dateOfBirth : 'N/A'}
+                                    {beneficiary.dateOfBirth || 'N/A'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Birth Year</span>
                                   <span className="font-semibold text-sm">
-                                    {beneficiary.birthYear || 
-                                     (beneficiary.dateOfBirth && beneficiary.dateOfBirth.startsWith('01-Jan-') ? 
-                                       beneficiary.dateOfBirth.split('-')[2] : 'N/A')}
+                                    {beneficiary.birthYear || 'N/A'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">

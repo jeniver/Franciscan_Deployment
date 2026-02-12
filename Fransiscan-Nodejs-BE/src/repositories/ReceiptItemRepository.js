@@ -91,12 +91,12 @@ class ReceiptItemRepository {
       const query = `
         INSERT INTO MisalaniousReceiptDetail (
           ReceiptId, ItemId, Quantity, UnitAmount, PayingAmount,
-          TotalPayingAmount, RefDocNumber, RefDocName, InvoiceId, RefType
+          TotalPayingAmount, RefDocNumber, RefDocName, InvoiceId
         )
         OUTPUT INSERTED.*
         VALUES (
           @receiptId, @itemId, @quantity, @unitAmount, @payingAmount,
-          @totalPayingAmount, @refDocNumber, @refDocName, @invoiceId, @refType
+          @totalPayingAmount, @refDocNumber, @refDocName, @invoiceId
         )
       `;
 
@@ -109,8 +109,7 @@ class ReceiptItemRepository {
         totalPayingAmount: receiptItem.totalPayingAmount || receiptItem.calculateTotal(),
         refDocNumber: receiptItem.refDocNumber || null,
         refDocName: receiptItem.refDocName || null,
-        invoiceId: receiptItem.invoiceId || null,
-        refType: receiptItem.refType || null
+        invoiceId: receiptItem.invoiceId || null
       };
 
       let result;

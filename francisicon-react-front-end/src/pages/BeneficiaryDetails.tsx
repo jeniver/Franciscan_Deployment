@@ -220,6 +220,7 @@ export function BeneficiaryDetails({
   // Update form data with all beneficiaries
   const updateFormDataWithBeneficiaries = useCallback(
     (updatedBeneficiaries: Beneficiary[]) => {
+      console.log('updateFormDataWithBeneficiaries called with:', updatedBeneficiaries);
       isUpdatingFromComponent.current = true
       const allBeneficiaryData: any = {
         beneficiaries: updatedBeneficiaries,
@@ -237,6 +238,8 @@ export function BeneficiaryDetails({
           const parts = dateOfBirth.split('-')
           if (parts.length === 3) birthYear = parts[2]
         }
+        
+        console.log(`Setting beneficiary${i}BirthYear to:`, typeof birthYear === 'number' ? birthYear.toString() : birthYear);
 
         allBeneficiaryData[`beneficiary${i}Name`] = beneficiary.name || ''
         allBeneficiaryData[`beneficiary${i}IDNo`] = beneficiary.idNo || ''
@@ -342,7 +345,8 @@ export function BeneficiaryDetails({
             ) {
               const parts = value.split('-');
               if (parts.length === 3) {
-                updatedBeneficiary.birthYear = parts[2];
+                // Convert to number to maintain consistency with EnhancedDatePicker
+                updatedBeneficiary.birthYear = parseInt(parts[2], 10);
               }
             }
             return updatedBeneficiary
@@ -393,38 +397,108 @@ export function BeneficiaryDetails({
   )
   // Handle date of birth changes for EnhancedBeneficiaryDatePicker
   const handleEnhancedDateChange = useCallback(
-    (beneficiaryId: number) => {
-      return (dateOfBirth: string | null, birthYear: number | null) => {
-        // Skip update if we're in a render cycle by checking a flag
-        if (isUpdatingFromComponent.current) {
-          return;
-        }
+    (dateOfBirth: string | null, birthYear: number | null, beneficiaryId?: number | string) => {
+      console.log('handleEnhancedDateChange called with:', { dateOfBirth, birthYear, beneficiaryId });
+      
+      // Early return checks
+      if (isUpdatingFromComponent.current || beneficiaryId === undefined) {
+        console.log('Early return in handleEnhancedDateChange');
+        return;
+      }
 
-        // Handle the dateOfBirth and birthYear values
-        if (dateOfBirth === null && birthYear === null) {
-          // Clear both fields
-          handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', null);
-          handleUpdateBeneficiary(beneficiaryId, 'birthYear', null);
-          return;
-        }
+      const id = Number(beneficiaryId);
+      console.log('Processing beneficiary id:', id);
 
-        if (birthYear !== null) {
-          // Year only provided
-          handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', null);
-          handleUpdateBeneficiary(beneficiaryId, 'birthYear', birthYear);
-          return;
+      setBeneficiaries(prevBeneficiaries => {
+        // Check if beneficiary exists
+        const beneficiaryExists = prevBeneficiaries.some(b => b.id === id);
+        if (!beneficiaryExists) {
+          console.warn(`Beneficiary with id ${id} not found`);
+          return prevBeneficiaries; // Return unchanged if beneficiary doesn't exist
         }
+        
+        console.log('Found beneficiary, updating...');
 
-        if (dateOfBirth !== null) {
-          // Full date provided
-          handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', dateOfBirth);
-          handleUpdateBeneficiary(beneficiaryId, 'birthYear', null);
-          return;
-        }
-      };
+        const updatedBeneficiaries = prevBeneficiaries.map(beneficiary => {
+          // Only update the matching beneficiary
+          if (beneficiary.id !== id) {
+            return beneficiary;
+          }
+
+          // Create updated beneficiary object
+          const updatedBeneficiary = { ...beneficiary };
+
+          // Handle different scenarios
+          if (dateOfBirth === null && birthYear === null) {
+            // Clear both fields
+            updatedBeneficiary.dateOfBirth = null;
+            updatedBeneficiary.birthYear = null;
+            console.log('Cleared both dateOfBirth and birthYear');
+          } else if (dateOfBirth !== null) {
+            // Full date provided
+            updatedBeneficiary.dateOfBirth = dateOfBirth;
+
+            if (birthYear !== null && birthYear !== undefined) {
+              // Explicit year provided
+              updatedBeneficiary.birthYear = birthYear;
+              console.log('Set both dateOfBirth and explicit birthYear:', { dateOfBirth, birthYear });
+            } else {
+              // Extract year from date string
+              const extractedYear = extractYearFromDate(dateOfBirth);
+              if (extractedYear !== null) {
+                updatedBeneficiary.birthYear = extractedYear;
+                console.log('Extracted birthYear from dateOfBirth:', extractedYear);
+              }
+            }
+          } else if (birthYear !== null) {
+            // Year only provided
+            updatedBeneficiary.dateOfBirth = null;
+            updatedBeneficiary.birthYear = birthYear;
+            console.log('Set birthYear only:', birthYear);
+          }
+
+          return updatedBeneficiary;
+        });
+
+        // Update form data with all beneficiaries
+        console.log('Calling updateFormDataWithBeneficiaries with updated beneficiaries');
+        updateFormDataWithBeneficiaries(updatedBeneficiaries);
+
+        return updatedBeneficiaries;
+      });
     },
-    [handleUpdateBeneficiary]
+    [updateFormDataWithBeneficiaries]
   );
+
+  // Helper function to extract year from date string
+  const extractYearFromDate = (dateString: string): number | null => {
+    try {
+      // Handle different date formats: YYYY-MM-DD, DD-MM-YYYY, MM-DD-YYYY
+      const date = new Date(dateString);
+
+      if (!isNaN(date.getTime())) {
+        return date.getFullYear();
+      }
+
+      // Fallback: try to parse manually
+      const parts = dateString.split('-');
+      if (parts.length === 3) {
+        // Try DD-MM-YYYY format
+        if (parts[2].length === 4) {
+          return parseInt(parts[2], 10);
+        }
+        // Try YYYY-MM-DD format
+        if (parts[0].length === 4) {
+          return parseInt(parts[0], 10);
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error extracting year from date:', error);
+      return null;
+    }
+  };
   const inputBaseClass = `
     w-full px-4 py-2.5 
     border border-gray-300 rounded-lg 
@@ -548,9 +622,10 @@ export function BeneficiaryDetails({
                 {/* Row 2: Date of Birth */}
                 <EnhancedBeneficiaryDatePicker
                   label="Date of Birth"
+                  id={beneficiary.id}
                   dateOfBirth={beneficiary.dateOfBirth}
                   birthYear={beneficiary.birthYear}
-                  onChange={handleEnhancedDateChange(beneficiary.id)}
+                  onChange={handleEnhancedDateChange}
                   disabled={isReadOnly}
                 />
 

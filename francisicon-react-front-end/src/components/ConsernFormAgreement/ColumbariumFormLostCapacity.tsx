@@ -81,11 +81,9 @@ export function ColumbariumFormLostCapacity({ data }: ColumbariumFormLostCapacit
   return (
     <div className="min-h-screen bg-gray-100 py-8 font-sans text-gray-900 print:bg-white print:py-0">
       {/* Page 1 */}
-      <div className="max-w-[210mm] mx-auto bg-white shadow-lg p-10 mb-8 min-h-[297mm] print:shadow-none print:mb-0 print:p-12 relative overflow-hidden">
+      <div data-pdf-page className="max-w-[210mm] mx-auto bg-white shadow-lg p-10 mb-8 min-h-[297mm] print:shadow-none print:mb-0 print:p-12 relative overflow-hidden">
         {/* Stamp */}
-        <div className="absolute top-40 right-16 rotate-[-15deg] border-4 border-amber-600 text-amber-600 px-6 py-2 text-3xl font-black opacity-30 tracking-[0.3em] uppercase pointer-events-none select-none z-0">
-          Lost Capacity
-        </div>
+
 
         {/* Header */}
         <header className="flex justify-between items-start mb-8">
@@ -243,7 +241,7 @@ export function ColumbariumFormLostCapacity({ data }: ColumbariumFormLostCapacit
       </div>
 
       {/* Page 2 */}
-      <div className="max-w-[210mm] mx-auto bg-white shadow-lg p-10 min-h-[297mm] print:shadow-none print:p-12 relative flex flex-col justify-between">
+      <div data-pdf-page className="max-w-[210mm] mx-auto bg-white shadow-lg p-10 min-h-[297mm] print:shadow-none print:p-12 relative flex flex-col justify-between">
         <div>
           <div className="mb-10 pb-4 border-b border-black">
             <h3 className="text-center font-bold uppercase tracking-widest text-sm">Applicant's Acknowledgement</h3>

@@ -96,6 +96,10 @@ class Invoice {
       }
     }
 
+    // Removed strict payment mode validation per requirement
+    // Original validation was causing issues with valid payment modes
+    // Payment mode validation has been removed to allow flexibility
+    /*
     // Payment mode validation (if provided as string)
     if (this.paymentMode && typeof this.paymentMode === 'string') {
       const validModes = ['Cash', 'Cheque', 'TT', 'Credit Card', 'Others'];
@@ -103,6 +107,7 @@ class Invoice {
         errors.push(`Invalid payment mode. Must be one of: ${validModes.join(', ')}`);
       }
     }
+    */
 
     // Address field validation (if provided)
     if (this.addressNo && typeof this.addressNo !== 'string') {

@@ -198,6 +198,14 @@ class ReceiptService extends BaseService {
           }
         };
       }
+      
+      // Get the receipt ID for linking details
+      const receiptId = await this.repository.getReceiptIdByCode(receiptCode);
+      
+      // Save receipt details if provided
+      if (receipt.details && receipt.details.length > 0) {
+        await this.repository.saveReceiptDetails(receiptId, receipt.details);
+      }
 
       // Invalidate cache for this church's receipts
       await cacheManager.invalidate(cacheManager.buildInvalidationPattern('receipt', churchId));
