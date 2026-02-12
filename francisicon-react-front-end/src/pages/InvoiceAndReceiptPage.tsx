@@ -1145,7 +1145,7 @@ export function InvoiceAndReceiptPage() {
       // Prefer fetching the real receipt by code (so modal shows exact backend data)
       let receipt: ReceiptType | null = null;
       try {
-        receipt = await receiptService.getReceiptByCode(codeToUse);
+        receipt = await receiptService.getReceiptByCode(receiptCode);
       } catch (err) {
         // Fallback: build a local receipt from the current screen state
         const parseTransactionDateToIso = (d: string): string | undefined => {

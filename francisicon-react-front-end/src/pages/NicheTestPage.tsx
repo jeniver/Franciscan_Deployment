@@ -7,7 +7,7 @@ export function NicheTestPage() {
       <div className="max-w-6xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Niche Management System</h1>
-          <p className="text-gray-600">Integrated with real API endpoint: http://localhost:3000/api/niches/chapel/3/niches?churchId=1</p>
+          <p className="text-gray-600">Integrated with real API endpoint: http://192.168.1.24:3000/api/niches/chapel/3/niches?churchId=1</p>
         </div>
         
         <div className="bg-white rounded-lg shadow-sm p-6">
