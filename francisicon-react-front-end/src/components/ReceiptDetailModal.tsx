@@ -4,6 +4,8 @@ import { Receipt, receiptService } from '../services/receiptService';
 import { receiptPdfService } from '../services/receiptPdfService';
 import { useToast } from '../contexts/ToastContext';
 import { ReceiptTemplate } from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 interface ReceiptDetailModalProps {
   isOpen: boolean;
@@ -17,6 +19,7 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [htmlContent, setHtmlContent] = useState<string>('');
   const contentRef = useRef<HTMLDivElement>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !receipt) {
@@ -93,44 +96,95 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
 
   if (!isOpen || !receipt) return null;
 
-  const handlePrint = () => {
-    if (!htmlContent) return;
-    setIsGeneratingPdf(true);
+  const handlePrint = async () => {
+    if (!contentRef.current || isGenerating) return;
+    setIsGenerating(true);
     try {
-      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-      if (!printWindow) {
-        alert('Please allow popups to print the document');
-        setIsGeneratingPdf(false);
-        return;
+      // Ensure fonts are loaded
+      await document.fonts.ready;
+
+      // Re-verify ref after await
+      if (!contentRef.current) {
+        throw new Error('Capture content no longer available');
       }
 
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Receipt - ${receipt?.receiptCode || 'document'}</title>
-            <style>
-              body { margin: 0; padding: 0; }
-              @media print { 
-                @page { size: A4; margin: 0; }
-                body { margin: 0; }
-              }
-            </style>
-          </head>
-          <body>${htmlContent}</body>
-        </html>
-      `);
-      printWindow.document.close();
+      // Find all page elements or use the container itself
+      const pages = contentRef.current.querySelectorAll('[data-pdf-page]');
+      const targetPages = pages.length > 0 ? (Array.from(pages) as HTMLElement[]) : [contentRef.current];
 
-      setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-        printWindow.close();
-        setIsGeneratingPdf(false);
-      }, 500);
+      // Create PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+
+      // Process each page
+      for (let i = 0; i < targetPages.length; i++) {
+        const pageElement = targetPages[i];
+
+        // Temporarily prepare element for high-quality capture
+        const originalBoxShadow = pageElement.style.boxShadow;
+        const originalBorder = pageElement.style.border;
+        const originalWidth = pageElement.style.width;
+        const originalMaxWidth = pageElement.style.maxWidth;
+
+        pageElement.style.boxShadow = 'none';
+        pageElement.style.border = 'none';
+        pageElement.style.width = '794px'; // ~210mm at 96dpi
+        pageElement.style.maxWidth = 'none';
+
+        // Capture the page
+        const canvas = await html2canvas(pageElement, {
+          scale: 4, // Higher scale for "expected level" quality
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          imageTimeout: 0,
+          windowWidth: pageElement.scrollWidth,
+          windowHeight: pageElement.scrollHeight,
+        });
+
+        // Restore styles
+        pageElement.style.boxShadow = originalBoxShadow;
+        pageElement.style.border = originalBorder;
+        pageElement.style.width = originalWidth;
+        pageElement.style.maxWidth = originalMaxWidth;
+
+        // Add page to PDF (except for the first one)
+        if (i > 0) {
+          pdf.addPage();
+        }
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+      }
+
+      // Generate blob and open in new tab
+      const pdfBlob = pdf.output('blob');
+      const blobUrl = URL.createObjectURL(pdfBlob);
+
+      const newTab = window.open(blobUrl, '_blank');
+
+      if (!newTab || newTab.closed || typeof newTab.closed === 'undefined') {
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `Receipt-${receipt?.receiptCode || 'document'}.pdf`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      } else {
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+      }
     } catch (error) {
-      console.error('Error printing document:', error);
-      setIsGeneratingPdf(false);
+      console.error('PDF generation failed:', error);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -172,31 +226,54 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
   };
 
   // Helper function to convert number to words
-  const convertToDollarsInWords = (num: number): string => {
+  const convertToDollarsInWords = (num: number | string | null | undefined): string => {
+    const n = typeof num === 'string' ? parseFloat(num) : num;
+    if (n === null || n === undefined || isNaN(n) || n === 0) return 'Zero Only';
+
     const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
       'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
     const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
-    if (num === 0) return 'Zero Only';
-
-    const convertHundreds = (n: number): string => {
-      if (n === 0) return '';
-      if (n < 20) return ones[n];
-      if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 > 0 ? ' ' + ones[n % 10] : '');
-      return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 > 0 ? ' ' + convertHundreds(n % 100) : '');
+    const convertLessThanThousand = (val: number): string => {
+      if (val === 0) return '';
+      if (val < 20) return ones[val];
+      if (val < 100) return tens[Math.floor(val / 10)] + (val % 10 > 0 ? ' ' + ones[val % 10] : '');
+      return ones[Math.floor(val / 100)] + ' Hundred' + (val % 100 > 0 ? ' ' + convertLessThanThousand(val % 100) : '');
     };
 
-    const convertThousands = (n: number): string => {
-      if (n < 1000) return convertHundreds(n);
-      return convertHundreds(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 > 0 ? ' ' + convertHundreds(n % 1000) : '');
+    const convert = (val: number): string => {
+      if (val === 0) return '';
+
+      let res = '';
+
+      // Millions
+      if (val >= 1000000) {
+        res += convertLessThanThousand(Math.floor(val / 1000000)) + ' Million ';
+        val %= 1000000;
+      }
+
+      // Thousands
+      if (val >= 1000) {
+        res += convertLessThanThousand(Math.floor(val / 1000)) + ' Thousand ';
+        val %= 1000;
+      }
+
+      // Hundreds/Units
+      if (val > 0) {
+        res += convertLessThanThousand(Math.floor(val));
+      }
+
+      return res.trim();
     };
 
-    const wholePart = Math.floor(num);
-    const decimalPart = Math.round((num - wholePart) * 100);
-    let result = convertThousands(wholePart);
+    const wholePart = Math.floor(n);
+    const decimalPart = Math.round((n - wholePart) * 100);
+
+    let result = convert(wholePart);
+    if (!result) result = 'Zero';
 
     if (decimalPart > 0) {
-      result += ', And ' + convertHundreds(decimalPart) + ' Cents Only';
+      result += ' and Cents ' + convertLessThanThousand(decimalPart) + ' Only';
     } else {
       result += ' Only';
     }
@@ -206,7 +283,19 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
 
   // Pre-calculate address for the React component with comprehensive fallback
   const getDisplayAddress = () => {
-    // Attempt to build from components on receipt or invoice
+    if (!receipt) return 'N/A';
+
+    // Check various common field names for address
+    const address = (receipt as any).customerAddress ||
+      (receipt as any).address ||
+      (receipt as any).customer?.address ||
+      (receipt as any).invoice?.customerAddress ||
+      (receipt as any).invoice?.address ||
+      '';
+
+    if (address && address !== 'N/A' && address !== 'null') return address;
+
+    // Attempt to build from components
     const parts = [
       receipt.addressNo || (receipt as any).invoice?.addressNo,
       receipt.address || (receipt as any).addressLine1 || (receipt as any).invoice?.address || (receipt as any).invoice?.addressLine1,
@@ -225,8 +314,7 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
       return parts.join(', ');
     }
 
-    // Fallback to customerAddress if components aren't available
-    return (receipt as any).customerAddress || (receipt as any).invoice?.customerAddress || 'N/A';
+    return 'N/A';
   };
 
   const displayAddress = getDisplayAddress();
@@ -251,19 +339,19 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
             <div className="flex items-center gap-2">
               <button
                 onClick={handlePrint}
-                disabled={isGeneratingPdf || !htmlContent}
+                disabled={isGenerating || isGeneratingPdf || !receipt}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50"
                 title="Print"
               >
-                <PrinterIcon className={`w-5 h-5 ${isGeneratingPdf ? 'animate-pulse' : ''}`} />
+                <PrinterIcon className={`w-5 h-5 ${isGenerating || isGeneratingPdf ? 'animate-pulse' : ''}`} />
               </button>
               <button
                 onClick={handleDownloadPdf}
-                disabled={isGeneratingPdf || !htmlContent}
+                disabled={isGenerating || isGeneratingPdf || !htmlContent}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50"
                 title="Download PDF"
               >
-                <DownloadIcon className={`w-5 h-5 ${isGeneratingPdf ? 'animate-pulse' : ''}`} />
+                <DownloadIcon className={`w-5 h-5 ${isGenerating || isGeneratingPdf ? 'animate-pulse' : ''}`} />
               </button>
               <button onClick={onClose} className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2">
                 <XIcon className="w-5 h-5" />
@@ -273,7 +361,7 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
 
           {/* Content */}
           <div className="flex-1 p-6 bg-gray-50 overflow-auto relative">
-            {isGeneratingPdf && (
+            {(isGenerating || isGeneratingPdf) && (
               <div className="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-75 z-20">
                 <div className="text-center">
                   <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#8b2828] mb-4"></div>
@@ -281,24 +369,26 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
                 </div>
               </div>
             )}
-            <div>
-              <ReceiptTemplate
-                receiptNo={receipt.receiptCode}
-                date={receipt.receiptDate ? formatDate(receipt.receiptDate) : formatDate(receipt.createdAt)}
-                receivedFrom={receipt.customerName}
-                address={displayAddress}
-                invoiceNo={receipt.invoice?.code || receipt.invoiceCode || 'N/A'}
-                description={(receipt.description || (receipt.invoiceDetails && receipt.invoiceDetails.length > 0 ? receipt.invoiceDetails[0].description : '')) || 'Payment received'}
-                totalAmount={receipt.totalAmount}
-                dollarsInWords={convertToDollarsInWords(receipt.totalAmount)}
-                paymentMethod={receipt.paymentMode}
-                items={(receipt.invoiceDetails || []).map((d) => ({
-                  description: d.description || '',
-                  quantity: d.quantity || 0,
-                  unitPrice: d.unitPrice || 0,
-                  amount: d.amount || 0,
-                }))}
-              />
+            <div ref={contentRef}>
+              <div data-pdf-page>
+                <ReceiptTemplate
+                  receiptNo={receipt.receiptCode}
+                  date={receipt.receiptDate ? formatDate(receipt.receiptDate) : (receipt.createdAt ? formatDate(receipt.createdAt) : (receipt as any).transactionDate ? formatDate((receipt as any).transactionDate) : formatDate(new Date().toISOString()))}
+                  receivedFrom={receipt.customerName || (receipt as any).payeeName || 'N/A'}
+                  address={displayAddress}
+                  invoiceNo={receipt.invoice?.code || receipt.invoiceCode || (receipt as any).invoiceNo || 'N/A'}
+                  description={(receipt.description || (receipt.invoiceDetails && receipt.invoiceDetails.length > 0 ? receipt.invoiceDetails[0].description : '')) || 'Payment received'}
+                  totalAmount={receipt.totalAmount || (receipt as any).payingAmount || 0}
+                  dollarsInWords={convertToDollarsInWords(receipt.totalAmount || (receipt as any).payingAmount)}
+                  paymentMethod={receipt.paymentMode || (receipt as any).paymentMethod || 'Cash'}
+                  items={(receipt.invoiceDetails || []).map((d) => ({
+                    description: d.description || '',
+                    quantity: d.quantity || 0,
+                    unitPrice: d.unitPrice || 0,
+                    amount: d.amount || 0,
+                  }))}
+                />
+              </div>
             </div>
 
           </div>
