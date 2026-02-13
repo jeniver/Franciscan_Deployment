@@ -54,6 +54,44 @@ class NicheBookingController {
     }
   }
 
+  async updateBooking(req, res) {
+    try {
+      const { id } = req.params;
+      const { user } = req;
+
+      if (!user || !user.churchId) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required with church ID'
+          }
+        });
+      }
+
+      const result = await NicheBookingService.updateBooking({
+        nicheBookingId: parseInt(id),
+        ...req.body
+      }, user.churchId);
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+
+      return res.status(200).json(result);
+    } catch (error) {
+      logger.error('Controller: Failed to update niche booking:', error);
+
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to update niche booking'
+        }
+      });
+    }
+  }
+
   /**
    * Get niche booking by application code
    * GET /api/niche-bookings/:code

@@ -16,6 +16,7 @@ const ReceiptService = require('./ReceiptService');
 const EngraveApplicationRepository = require('../repositories/EngraveApplicationRepository');
 const { EngraveApplication, EngraveApplicationDetail } = require('../models/EngraveApplication');
 const logger = require('../utils/logger');
+const dateService = require('../utils/DateService');
 
 const personRepository = new PersonRepository();
 const personService = new PersonService(personRepository);
@@ -187,19 +188,7 @@ const parseBeneficiaryStatus = (value) => {
   return 1;
 };
 
-const parseDateValue = (value) => {
-  if (!value) return null;
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value;
-  }
-  const trimmed = String(value).trim();
-  if (!trimmed) return null;
-  const parsed = new Date(trimmed);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed;
-  }
-  return null;
-};
+const parseDateValue = (value) => dateService.parseDate(value);
 
 const buildBeneficiaryEntity = (input = {}, churchId) => {
   if (!input) {
@@ -215,8 +204,7 @@ const buildBeneficiaryEntity = (input = {}, churchId) => {
   const relationshipToApplicant = (input.relationship || input.relationshipToApplicant || '').trim() || 'Beneficiary';
   const relationshipToNominee1 = (input.relationshipToNominee1 || '').trim() || null;
   const relationshipToNominee2 = (input.relationshipToNominee2 || '').trim() || null;
-  const dateOfBirth = parseDateValue(input.dateOfBirth);
-  const birthYear = input.birthYear;  // No automatic conversion between dateOfBirth and birthYear
+  const { dateOfBirth, birthYear } = dateService.syncDobAndYear(input.dateOfBirth, input.birthYear);
   const isMale = parseGender(
     input.isMale !== undefined ? input.isMale : input.sex
   );
@@ -713,6 +701,50 @@ class NicheBookingService {
   }
 
   /**
+   * Update niche booking metadata (remarks, dated, etc.)
+   * @param {Object} bookingData - Booking update data
+   * @param {number} churchId - Church ID for ACL
+   * @returns {Promise<Object>} Update result
+   */
+  async updateBooking(bookingData, churchId) {
+    try {
+      const { nicheBookingId } = bookingData;
+      if (!nicheBookingId) {
+        return {
+          success: false,
+          error: {
+            code: 'VALIDATION_FAILED',
+            message: 'Niche booking ID is required for update'
+          }
+        };
+      }
+
+      // Check access and existence
+      // Since we don't have a direct getById in repository yet, we rely on the controller passing enough info
+      // or we can add a check here if needed.
+
+      const updatePayload = {
+        nicheBookingId,
+        bookedDate: dateService.parseDate(bookingData.bookedDate) || new Date(),
+        remarks: bookingData.remarks || null,
+        contactPersonId: bookingData.contactPersonId,
+        nomineeId: bookingData.nomineeId,
+        nomineeId2: bookingData.nomineeId2 || null
+      };
+
+      await NicheBookingRepository.updateBooking(updatePayload);
+
+      return {
+        success: true,
+        message: 'Booking updated successfully'
+      };
+    } catch (error) {
+      logger.error('Service: Failed to update niche booking:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update beneficiary details
    * @param {Object} beneficiaryData - Beneficiary data
    * @param {number} churchId - Church ID for ACL
@@ -720,7 +752,14 @@ class NicheBookingService {
    */
   async updateBeneficiary(beneficiaryData, churchId) {
     try {
-      const beneficiary = new NicheBookingBeneficiary(beneficiaryData);
+      // Synchronize DOB and Year before update
+      const { dateOfBirth, birthYear } = dateService.syncDobAndYear(beneficiaryData.dateOfBirth, beneficiaryData.birthYear);
+
+      const beneficiary = new NicheBookingBeneficiary({
+        ...beneficiaryData,
+        dateOfBirth,
+        birthYear
+      });
 
       // Validate
       const validation = beneficiary.validate();
@@ -1622,10 +1661,10 @@ class NicheBookingService {
       // ---------------------------------------------------------------------
       let inscriptionInfo = null;
       let inscriptionCreationError = null;
-      
+
       try {
         const applicationCode = application.code || application.Code || nicheApplicationCode;
-        
+
         if (applicationCode && created.id) {
           logger.info('DIAGNOSTIC: Auto-creating inscription application for booking:', {
             applicationCode,
@@ -1664,7 +1703,7 @@ class NicheBookingService {
           // Build deceased details from booking beneficiaries
           // If no beneficiaries, create a default entry from the contact person
           const deceasedDetails = [];
-          
+
           if (persistedBeneficiaries.length > 0) {
             // Use beneficiaries as deceased details for inscription
             // Note: Beneficiaries may not be deceased yet (pre-arranged inscriptions)
@@ -1699,7 +1738,7 @@ class NicheBookingService {
 
           // Create inscription application
           const inscriptionCode = await EngraveApplicationRepository.create(inscriptionApplication, deceasedDetails);
-          
+
           inscriptionInfo = {
             inscriptionCode,
             nicheBookingId: created.id,
@@ -1781,7 +1820,7 @@ class NicheBookingService {
       // ---------------------------------------------------------------------
       let billingInfo = null;
       let invoiceCreationError = null;
-      
+
       try {
         // Resolve application code - CRITICAL: Must match exactly
         const applicationCode =
@@ -1815,7 +1854,7 @@ class NicheBookingService {
         } else {
           // Ensure application code is a string and trimmed
           const normalizedApplicationCode = String(applicationCode).trim();
-          
+
           logger.info(`Attempting to create comprehensive invoice for niche booking: ${normalizedApplicationCode}`);
 
           // Helper function to fetch niche row level and price
@@ -1873,7 +1912,7 @@ class NicheBookingService {
             // 1. Niche item - based on niche level or provided item
             // Priority: 1) Explicit itemId in booking data, 2) ItemId matching niche level, 3) NICHES category
             let nicheItem = null;
-            
+
             // Priority 1: Check if itemId is explicitly provided
             const providedNicheItemId = bookingData.nicheDetails?.itemId || bookingData.itemId;
             if (providedNicheItemId) {
@@ -1882,7 +1921,7 @@ class NicheBookingService {
                 logger.info(`Using provided niche item: ItemId=${nicheItem.ItemId}, Name=${nicheItem.Name}`);
               }
             }
-            
+
             // Priority 2: Try to get item by niche level (ItemId typically matches level, e.g., Level 6 -> ItemId 6)
             if (!nicheItem && nicheInfo?.nicheLevel) {
               const levelItemId = nicheInfo.nicheLevel; // Level 6 -> try ItemId 6
@@ -1891,7 +1930,7 @@ class NicheBookingService {
                 logger.info(`Using niche item by level: Level=${nicheInfo.nicheLevel}, ItemId=${nicheItem.ItemId}, Name=${nicheItem.Name}`);
               }
             }
-            
+
             // Priority 3: If still not found, get first NICHES category item
             if (!nicheItem) {
               try {
@@ -1904,7 +1943,7 @@ class NicheBookingService {
                 logger.warn('Failed to get NICHES items:', error);
               }
             }
-            
+
             // Priority 4: If still not found, try any item with ItemId <= 7 (common niche item IDs)
             if (!nicheItem) {
               try {
@@ -1924,7 +1963,7 @@ class NicheBookingService {
                 logger.warn('Failed to get fallback items:', error);
               }
             }
-            
+
             // Priority 5: Last resort - get any active item for this church
             if (!nicheItem) {
               try {
@@ -1955,7 +1994,7 @@ class NicheBookingService {
                 nicheItem.Price ||
                 0
               ) || 0;
-              
+
               const taxPercent = 9; // 9% GST
               const taxAmount = (nicheAmount * taxPercent) / 100;
               const totalWithTax = nicheAmount + taxAmount;
@@ -1979,10 +2018,10 @@ class NicheBookingService {
             }
 
             // 2. Inscription item (ItemId 12) - if inscription is requested
-            const hasInscription = bookingData.inscription || 
-                                  bookingData.nicheDetails?.inscription ||
-                                  bookingData.hasInscription !== false; // Default to true if not explicitly false
-            
+            const hasInscription = bookingData.inscription ||
+              bookingData.nicheDetails?.inscription ||
+              bookingData.hasInscription !== false; // Default to true if not explicitly false
+
             if (hasInscription) {
               const inscriptionItem = await getItemById(12, churchId); // "Niche Inscription 1st Name"
               if (inscriptionItem) {
@@ -2011,10 +2050,10 @@ class NicheBookingService {
             }
 
             // 3. Urn item (ItemId 10) - if urn is requested
-            const hasUrn = bookingData.urn || 
-                          bookingData.nicheDetails?.urn ||
-                          bookingData.hasUrn !== false; // Default to true if not explicitly false
-            
+            const hasUrn = bookingData.urn ||
+              bookingData.nicheDetails?.urn ||
+              bookingData.hasUrn !== false; // Default to true if not explicitly false
+
             if (hasUrn) {
               const urnItem = await getItemById(10, churchId); // "Urn (Marble)"
               if (urnItem) {
@@ -2043,10 +2082,10 @@ class NicheBookingService {
             }
 
             // 4. Setting of tables (ItemId 33) - if requested
-            const hasSettingOfTables = bookingData.settingOfTables || 
-                                      bookingData.nicheDetails?.settingOfTables ||
-                                      bookingData.hasSettingOfTables !== false;
-            
+            const hasSettingOfTables = bookingData.settingOfTables ||
+              bookingData.nicheDetails?.settingOfTables ||
+              bookingData.hasSettingOfTables !== false;
+
             if (hasSettingOfTables) {
               const settingItem = await getItemById(33, churchId); // "Setting of tables"
               if (settingItem) {
@@ -2075,10 +2114,10 @@ class NicheBookingService {
             }
 
             // 5. Sealing of niche (ItemId 34) - if requested
-            const hasSealing = bookingData.sealing || 
-                              bookingData.nicheDetails?.sealing ||
-                              bookingData.hasSealing !== false;
-            
+            const hasSealing = bookingData.sealing ||
+              bookingData.nicheDetails?.sealing ||
+              bookingData.hasSealing !== false;
+
             if (hasSealing) {
               const sealingItem = await getItemById(34, churchId); // "Sealing of niche"
               if (sealingItem) {
@@ -2165,7 +2204,7 @@ class NicheBookingService {
                 nicheDetails: data.nicheDetails
               }
             });
-            
+
             // CRITICAL: Try emergency fallback - create invoice with a default item
             logger.warn('Attempting emergency fallback: Creating invoice with default item');
             try {
@@ -2178,14 +2217,14 @@ class NicheBookingService {
                 ORDER BY ItemId
               `;
               const emergencyItemResult = await executeQuery(emergencyItemQuery, { churchId: user.churchId });
-              
+
               if (emergencyItemResult.recordset && emergencyItemResult.recordset.length > 0) {
                 const emergencyItem = emergencyItemResult.recordset[0];
                 const defaultAmount = Number(data.nicheDetails?.amount || data.nicheDetails?.price || data.amount || emergencyItem.Price || 0) || 0;
                 const taxPercent = 9;
                 const taxAmount = (defaultAmount * taxPercent) / 100;
                 const totalWithTax = defaultAmount + taxAmount;
-                
+
                 invoiceItems.push({
                   itemId: emergencyItem.ItemId,
                   itemName: emergencyItem.Name,
@@ -2202,7 +2241,7 @@ class NicheBookingService {
                   lineTaxPercent: taxPercent,
                   lineTaxAmount: taxAmount
                 });
-                
+
                 logger.warn(`Emergency fallback: Using default item ItemId=${emergencyItem.ItemId} for invoice creation`);
                 invoiceCreationError = null; // Clear error since we have a fallback item
               } else {
@@ -2212,7 +2251,7 @@ class NicheBookingService {
               logger.error('Failed to get emergency fallback item:', emergencyError);
             }
           }
-          
+
           if (invoiceItems.length > 0) {
             // Calculate totals
             const totalAmount = invoiceItems.reduce((sum, item) => sum + item.lineTotalAmount, 0);
@@ -2252,15 +2291,15 @@ class NicheBookingService {
             // CRITICAL: Ensure RefDocNumber is properly normalized (trimmed, no trailing spaces)
             const invoiceDetails = invoiceItems.map(item => {
               // Normalize RefDocNumber: trim and ensure it's a string
-              const normalizedRefDocNumber = item.refDocNumber 
-                ? String(item.refDocNumber).trim() 
+              const normalizedRefDocNumber = item.refDocNumber
+                ? String(item.refDocNumber).trim()
                 : null;
-              
+
               // Normalize RefDocName: trim and ensure it's uppercase for consistency
-              const normalizedRefDocName = item.refDocName 
-                ? String(item.refDocName).trim().toUpperCase() 
+              const normalizedRefDocName = item.refDocName
+                ? String(item.refDocName).trim().toUpperCase()
                 : null;
-              
+
               const detail = {
                 itemId: item.itemId,
                 quantity: item.quantity,
@@ -2275,15 +2314,15 @@ class NicheBookingService {
                 lineTaxPercent: item.lineTaxPercent,
                 lineTaxAmount: item.lineTaxAmount
               };
-              
+
               // Log each detail being prepared with normalized values
               logger.debug(`Preparing invoice detail: ItemId=${detail.itemId}, RefDocNumber="${detail.refDocNumber}", RefDocName="${detail.refDocName}"`);
-              
+
               return detail;
             });
-            
+
             // Log all details before saving
-            logger.info(`Prepared ${invoiceDetails.length} invoice details for ${normalizedApplicationCode}:`, 
+            logger.info(`Prepared ${invoiceDetails.length} invoice details for ${normalizedApplicationCode}:`,
               invoiceDetails.map(d => ({
                 itemId: d.itemId,
                 refDocNumber: d.refDocNumber,
@@ -2342,25 +2381,25 @@ class NicheBookingService {
 
             // If validation failed but application was just created, retry with exponential backoff
             // (validation might fail due to cache/timing issues)
-            if (!invoiceResult.success && 
-                (invoiceResult.error?.code === 'INVALID_REF_DOCUMENT' || 
-                 invoiceResult.error?.code === 'VALIDATION_ERROR') && 
-                applicationWasCreatedInThisRequest) {
+            if (!invoiceResult.success &&
+              (invoiceResult.error?.code === 'INVALID_REF_DOCUMENT' ||
+                invoiceResult.error?.code === 'VALIDATION_ERROR') &&
+              applicationWasCreatedInThisRequest) {
               logger.warn(`Invoice validation failed for newly created application, retrying: ${normalizedApplicationCode}`, {
                 errorCode: invoiceResult.error?.code,
                 errorMessage: invoiceResult.error?.message,
                 attempt: 1
               });
-              
+
               // Retry with exponential backoff (3 attempts total)
               const maxRetries = 3;
               for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 // Wait with exponential backoff: 200ms, 500ms, 1000ms
                 const delay = attempt === 1 ? 200 : attempt === 2 ? 500 : 1000;
                 await new Promise(resolve => setTimeout(resolve, delay));
-                
+
                 logger.info(`Retry attempt ${attempt}/${maxRetries} for invoice creation: ${normalizedApplicationCode}`);
-                
+
                 // Retry invoice creation
                 invoiceResult = await invoiceService.saveInvoice(
                   invoiceData,
@@ -2368,7 +2407,7 @@ class NicheBookingService {
                   user.userId,
                   user.churchId
                 );
-                
+
                 if (invoiceResult.success) {
                   logger.info(`Invoice creation succeeded on retry attempt ${attempt}: ${normalizedApplicationCode}`);
                   break;
@@ -2425,20 +2464,20 @@ class NicheBookingService {
               // NOTE: Verification failures don't prevent billingInfo from being set
               let invoiceVerified = false;
               const maxVerificationAttempts = 3; // Reduced from 5 to avoid long delays
-              
+
               for (let verifyAttempt = 1; verifyAttempt <= maxVerificationAttempts; verifyAttempt++) {
                 try {
                   // Wait with increasing delay for transaction to fully commit
                   const verifyDelay = verifyAttempt * 300; // 300ms, 600ms, 900ms
                   await new Promise(resolve => setTimeout(resolve, verifyDelay));
-                  
+
                   // Verify invoice can be found by application code (RefDocNumber)
                   const verifyInvoice = await invoiceRepository.getInvoiceByCode(
                     normalizedApplicationCode,
                     user.churchId,
                     'NAPP'
                   );
-                  
+
                   if (verifyInvoice) {
                     invoiceVerified = true;
                     logger.info(`Invoice verification successful (attempt ${verifyAttempt}/${maxVerificationAttempts}): Found by application code ${normalizedApplicationCode}`, {
@@ -2454,7 +2493,7 @@ class NicheBookingService {
                       invoiceCode,
                       user.churchId
                     );
-                    
+
                     if (verifyByInvoiceCode) {
                       logger.warn(`Invoice found by invoice code but not by application code (attempt ${verifyAttempt}):`, {
                         applicationCode: normalizedApplicationCode,
@@ -2463,16 +2502,16 @@ class NicheBookingService {
                         invoiceRefDocNumber: verifyByInvoiceCode.refDocNumber,
                         invoiceDetailRefDocNumber: verifyByInvoiceCode.details?.[0]?.refDocNumber
                       });
-                      
+
                       // If found by invoice code, check if RefDocNumber matches
-                      if (verifyByInvoiceCode.refDocNumber && 
-                          String(verifyByInvoiceCode.refDocNumber).trim() === normalizedApplicationCode) {
+                      if (verifyByInvoiceCode.refDocNumber &&
+                        String(verifyByInvoiceCode.refDocNumber).trim() === normalizedApplicationCode) {
                         invoiceVerified = true;
                         logger.info(`Invoice verified by invoice code with matching RefDocNumber: ${normalizedApplicationCode}`);
                         break;
                       }
                     }
-                    
+
                     if (verifyAttempt < maxVerificationAttempts) {
                       logger.debug(`Invoice not yet findable (attempt ${verifyAttempt}/${maxVerificationAttempts}), retrying...`);
                     }
@@ -2484,7 +2523,7 @@ class NicheBookingService {
                     invoiceCode,
                     invoiceId
                   });
-                  
+
                   // Don't break on verification errors - invoice was created successfully
                   if (verifyAttempt === maxVerificationAttempts) {
                     logger.warn('Invoice verification failed but invoice was created successfully:', {
@@ -2496,7 +2535,7 @@ class NicheBookingService {
                   }
                 }
               }
-              
+
               if (!invoiceVerified) {
                 // Final check: Direct database query to confirm invoice exists
                 try {
@@ -2512,7 +2551,7 @@ class NicheBookingService {
                     WHERE i.InvoiceId = @invoiceId
                   `;
                   const directCheckResult = await executeQuery(directCheckQuery, { invoiceId });
-                  
+
                   if (directCheckResult.recordset && directCheckResult.recordset.length > 0) {
                     const dbInvoice = directCheckResult.recordset[0];
                     logger.warn(`Invoice exists in database but lookup failed (non-critical):`, {
@@ -2543,7 +2582,7 @@ class NicheBookingService {
                 try {
                   // Get the created invoice to pass to receipt service
                   const createdInvoice = await invoiceRepository.getInvoiceByCode(invoiceCode, user.churchId);
-                  
+
                   if (createdInvoice) {
                     const receiptResult = await receiptService.createReceiptFromInvoice(
                       {

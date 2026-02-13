@@ -14,12 +14,72 @@ const parseDateValue = (value) => {
     return value;
   }
 
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.toLowerCase() === 'null') return null;
+
+    // Handle ISO strings
+    if (trimmed.includes('T') && trimmed.endsWith('Z')) {
+      const parsed = new Date(trimmed);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    // Handle DD-MM-YYYY
+    const dmyMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (dmyMatch) {
+      const [, day, month, year] = dmyMatch;
+      const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    // Handle DD-MMM-YYYY
+    const dmmmMatch = trimmed.match(/^(\d{1,2})[\s-](\w{3})[\s-](\d{4})$/i);
+    if (dmmmMatch) {
+      const [, day, monthName, year] = dmmmMatch;
+      const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+      const monthIndex = months.indexOf(monthName.toLowerCase());
+      if (monthIndex !== -1) {
+        const date = new Date(parseInt(year, 10), monthIndex, parseInt(day, 10));
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+    }
+
+    // Default to standard parsing
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
-  return parsed;
+  return null;
+};
+
+/**
+ * Format date for NVARCHAR column storage
+ * Use DD-MM-YYYY to keep it consistent and human-readable in DB
+ */
+const formatDateForStorage = (value) => {
+  if (!value) return null;
+
+  let d;
+  if (value instanceof Date) {
+    d = value;
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.toLowerCase() === 'null') return null;
+
+    // If it's already in DD-MM-YYYY format, keep it
+    if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(trimmed)) return trimmed;
+
+    d = new Date(trimmed);
+  } else {
+    d = new Date(value);
+  }
+
+  if (!d || isNaN(d.getTime())) return typeof value === 'string' ? value : null;
+
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
 };
 
 const parseStatusValue = (value) => {
@@ -164,7 +224,7 @@ class NicheApplicationRepository {
           const isPrefixSearch = /^[A-Za-z0-9]/.test(trimmedTerm);
           const searchPattern = isPrefixSearch ? `${trimmedTerm}%` : `%${trimmedTerm}%`;
           queryParams.searchTerm = searchPattern;
-          
+
           whereClauses.push(`(
             Code COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
             OR ApplicantName COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
@@ -172,7 +232,7 @@ class NicheApplicationRepository {
             OR ApplicantIDNo COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
             OR NomineeIDNo COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
           )`);
-          
+
           // For wildcard searches (contains pattern with leading %), add default date range filter 
           // to limit scope if no date range is provided. This significantly improves performance 
           // on large datasets by limiting the search to recent records
@@ -217,9 +277,9 @@ class NicheApplicationRepository {
       // CRITICAL OPTIMIZATION: Add default date range filter when no filters are provided
       // This prevents full table scans on large datasets and significantly improves performance
       // Only applies when no explicit date filters, search filters, or code filters are provided
-      const hasAnyFilter = applicationCode || applicantName || nomineeName || searchTerm || 
-                           parsedFromDate || parsedToDate || parsedStatus !== null;
-      
+      const hasAnyFilter = applicationCode || applicantName || nomineeName || searchTerm ||
+        parsedFromDate || parsedToDate || parsedStatus !== null;
+
       if (!hasAnyFilter) {
         // Default to last 24 months for better performance on large datasets
         // This ensures queries use the index on AgreementDate instead of scanning entire table
@@ -292,7 +352,7 @@ class NicheApplicationRepository {
 
           total = totalRecords;
         } catch (countError) {
-          const isTimeoutError = 
+          const isTimeoutError =
             countError.code === 'ETIMEOUT' ||
             countError.code === 'ETIMEDOUT' ||
             countError.message?.includes('timeout') ||
@@ -322,7 +382,7 @@ class NicheApplicationRepository {
       // Lightweight mode reduces data transfer by 50-70% for list views
       // Using explicit column list instead of SELECT * for better index usage
       const lightweightMode = params.lightweight !== undefined ? Boolean(params.lightweight) : false;
-      
+
       let columnsList;
       if (lightweightMode) {
         // Lightweight columns for list views - only essential fields
@@ -349,18 +409,18 @@ class NicheApplicationRepository {
           Amount, DefaultAmount, ChurchId, UserId, Remarks, RefDocType
         `;
       }
-      
+
       // CRITICAL OPTIMIZATION: Use index hint for better query performance
       // This forces SQL Server to use the composite index we created
       // Only use hint if we're filtering by ChurchId and Status (index covers these)
       // IMPORTANT: Index hints are DISABLED by default until indexes are created
       // Enable via USE_INDEX_HINTS=true ONLY after running DATABASE_OPTIMIZATION.sql
-      const hasIndexFilters = whereClauses.some(clause => 
+      const hasIndexFilters = whereClauses.some(clause =>
         clause.includes('ChurchId = @churchId')
-      ) && whereClauses.some(clause => 
+      ) && whereClauses.some(clause =>
         clause.includes('Status > 0') || clause.includes('Status = @status')
       );
-      
+
       // Index hints are OPT-IN (disabled by default) to prevent errors if index doesn't exist
       // Only enable if you've confirmed the index exists in the database
       // To enable: Set USE_INDEX_HINTS=true in environment variables
@@ -369,7 +429,7 @@ class NicheApplicationRepository {
       const indexHint = hasIndexFilters && useIndexHints
         ? 'WITH (NOLOCK, INDEX(IX_NicheApplication_ChurchId_Status_AgreementDate))'
         : 'WITH (NOLOCK)';
-      
+
       const dataQuery = `
         SELECT ${columnsList}
         FROM NicheApplication ${indexHint}
@@ -377,7 +437,7 @@ class NicheApplicationRepository {
         ORDER BY AgreementDate DESC, NicheApplicationId DESC
         OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
       `;
-      
+
       if (useIndexHints && hasIndexFilters) {
         logger.debug('Using index hint for optimal query performance (index must exist in database)');
       }
@@ -391,15 +451,15 @@ class NicheApplicationRepository {
       // CRITICAL OPTIMIZATION: Dynamic timeout based on page size
       // Smaller page sizes should respond faster, larger pages can take more time
       // This ensures small queries complete quickly even without indexes
-      const dynamicTimeout = pageSize <= 10 
+      const dynamicTimeout = pageSize <= 10
         ? 10000  // 10s for small pages (should complete in < 2s with indexes)
         : pageSize <= 50
-        ? 15000  // 15s for medium pages
-        : 20000; // 20s for large pages
-      
+          ? 15000  // 15s for medium pages
+          : 20000; // 20s for large pages
+
       const startTime = Date.now();
       logger.debug(`Executing data query with ${dynamicTimeout}ms timeout, pageSize: ${pageSize}, offset: ${offset}`);
-      
+
       // Execute data query with dynamic timeout handling
       // Frontend typically times out at 30-60s, so we need to respond within timeout window
       // Add error handling for index hint errors (index may not exist)
@@ -408,15 +468,15 @@ class NicheApplicationRepository {
         dataResult = await executeQuery(dataQuery, dataParams, { timeout: dynamicTimeout });
       } catch (queryError) {
         // If query fails due to missing index hint, retry without the hint
-        if (useIndexHints && hasIndexFilters && 
-            (queryError.message?.includes('does not exist') || 
-             queryError.message?.includes('Index') ||
-             queryError.code === 'EREQUEST')) {
+        if (useIndexHints && hasIndexFilters &&
+          (queryError.message?.includes('does not exist') ||
+            queryError.message?.includes('Index') ||
+            queryError.code === 'EREQUEST')) {
           logger.warn('Query failed with index hint (index may not exist), retrying without hint:', {
             error: queryError.message,
             suggestion: 'Either create the index by running DATABASE_OPTIMIZATION.sql, or disable index hints with USE_INDEX_HINTS=false'
           });
-          
+
           // Retry query without index hint
           const fallbackQuery = `
             SELECT ${columnsList}
@@ -431,7 +491,7 @@ class NicheApplicationRepository {
           throw queryError;
         }
       }
-      
+
       const queryTime = Date.now() - startTime;
       logger.debug(`Data query completed in ${queryTime}ms, returned ${dataResult?.recordset?.length || 0} records`);
 
@@ -461,7 +521,7 @@ class NicheApplicationRepository {
       // Default: skip beneficiaries for list views (includeBeneficiaries=false)
       // Set includeBeneficiaries=true to load beneficiaries (for detail views)
       const shouldLoadBeneficiaries = includeBeneficiaries === true && records.length > 0;
-      
+
       if (!shouldLoadBeneficiaries) {
         // Skip beneficiary loading for better performance on list views
         // This saves 5-15 seconds per request
@@ -474,26 +534,26 @@ class NicheApplicationRepository {
           .filter(id => typeof id === 'number' && id > 0);
         try {
           const beneficiariesByApplication = {};
-          
+
           // Batch processing for large result sets (max 500 IDs per query for faster performance)
           const batchSize = 500;
-          
+
           for (let i = 0; i < applicationIds.length; i += batchSize) {
             const batchIds = applicationIds.slice(i, i + batchSize);
-            
+
             // Validate all IDs are safe integers (already filtered, but extra safety)
             const safeIds = batchIds.filter(id => Number.isInteger(id) && id > 0);
-            
+
             if (safeIds.length === 0) {
               continue;
             }
-            
+
             // Use parameterized query with table-valued parameter or multiple IN clauses
             // For better performance and security, batch IDs using IN clause
             // IDs are validated as safe integers, so direct IN is acceptable here
             // Alternative: Use table-valued parameter for even better performance
             const idList = safeIds.join(',');
-            
+
             const beneficiaryQuery = `
               SELECT 
                 NicheApplicationBeneficiaryId,
@@ -518,8 +578,8 @@ class NicheApplicationRepository {
             const beneficiaryTime = Date.now() - beneficiaryStartTime;
             logger.debug(`Beneficiary query completed in ${beneficiaryTime}ms for ${safeIds.length} application IDs`);
 
-            const beneficiaryRows = beneficiaryResult && beneficiaryResult.recordset 
-              ? beneficiaryResult.recordset 
+            const beneficiaryRows = beneficiaryResult && beneficiaryResult.recordset
+              ? beneficiaryResult.recordset
               : [];
 
             beneficiaryRows.forEach(row => {
@@ -654,7 +714,7 @@ class NicheApplicationRepository {
       // Get the actual niche identifier from the niche data
       const nicheId = application.nicheId;
       let nicheIdentifier = null;
-      
+
       if (nicheId) {
         // Query to get the actual niche code/identifier
         const nicheQuery = `
@@ -662,7 +722,7 @@ class NicheApplicationRepository {
           FROM Niche WITH (NOLOCK)
           WHERE NicheId = @nicheId
         `;
-        
+
         const nicheResult = await executeQuery(nicheQuery, { nicheId });
         if (nicheResult.recordset && nicheResult.recordset.length > 0) {
           // Extract the numeric part from the niche code (e.g., from "1409-0" extract "1409")
@@ -677,11 +737,11 @@ class NicheApplicationRepository {
           }
         }
       }
-      
+
       if (!nicheIdentifier) {
         // Fallback to incremental numbering if we can't get the niche identifier
         logger.warn('[createWithDirectInsert] Could not get niche identifier, using fallback sequential numbering');
-        
+
         const lastCodeQuery = `
           SELECT TOP 1 Code
           FROM NicheApplication WITH (NOLOCK)
@@ -705,7 +765,7 @@ class NicheApplicationRepository {
             nextNumber = parsedNumber + 1;
           }
         }
-        
+
         nicheIdentifier = nextNumber.toString();
       }
 
@@ -718,33 +778,33 @@ class NicheApplicationRepository {
           AND Code LIKE @nichePattern
         ORDER BY Code DESC
       `;
-      
-      const existingResult = await executeQuery(existingQuery, { 
-        churchId: application.churchId, 
-        nichePattern: `${nicheIdentifier}-%` 
+
+      const existingResult = await executeQuery(existingQuery, {
+        churchId: application.churchId,
+        nichePattern: `${nicheIdentifier}-%`
       });
-      
+
       let suffix = 0;
       if (existingResult.recordset && existingResult.recordset.length > 0) {
         // Find the highest suffix number and increment it
         const existingCodes = existingResult.recordset
           .map(row => row.Code)
           .filter(code => code != null);
-        
+
         const suffixNumbers = existingCodes
           .map(code => {
             const parts = code.split('-');
             return parts.length > 1 ? parseInt(parts[1], 10) : 0;
           })
           .filter(num => !Number.isNaN(num));
-        
+
         if (suffixNumbers.length > 0) {
           suffix = Math.max(...suffixNumbers) + 1;
         } else {
           suffix = 0;
         }
       }
-      
+
       const code = `${nicheIdentifier}-${suffix}`;
       logger.info(`[createWithDirectInsert] Generated application code: ${code} using niche identifier: ${nicheIdentifier}`);
 
@@ -862,7 +922,7 @@ class NicheApplicationRepository {
           applicationId,
           name: beneficiary.name,
           relationshipToApplicant: beneficiary.relationshipToApplicant,
-          dateOfBirth: beneficiary.dateOfBirth,
+          dateOfBirth: formatDateForStorage(beneficiary.dateOfBirth),
           birthYear: beneficiary.birthYear,
           idNo: beneficiary.idNo,
           isCatholic: beneficiary.isCatholic,
@@ -896,18 +956,18 @@ class NicheApplicationRepository {
   async getByCode(code) {
     try {
       const startTime = Date.now();
-      
+
       // CRITICAL OPTIMIZATION: Separate queries for better performance
       // Instead of LEFT JOIN (which can be slow), fetch application first, then beneficiaries
       // This allows SQL Server to use indexes better and reduces lock contention
-      
+
       // Step 1: Get application with niche info (optimized with WITH (NOLOCK) and index hint)
       // Use index hint for Code lookup if index exists (IX_NicheApplication_Code)
       const useIndexHints = process.env.USE_INDEX_HINTS === 'true';
       const indexHint = useIndexHints
         ? 'WITH (NOLOCK, INDEX(IX_NicheApplication_Code))'
         : 'WITH (NOLOCK)';
-      
+
       const applicationQuery = `
         SELECT 
           na.*,
@@ -955,8 +1015,8 @@ class NicheApplicationRepository {
           // Use shorter timeout for beneficiary query (5s should be enough with index)
           const beneficiaryStartTime = Date.now();
           const beneficiaryResult = await executeQuery(
-            beneficiaryQuery, 
-            { applicationId: application.nicheApplicationId }, 
+            beneficiaryQuery,
+            { applicationId: application.nicheApplicationId },
             { timeout: 5000 }
           );
 
@@ -967,26 +1027,8 @@ class NicheApplicationRepository {
           application.beneficiaries = (beneficiaryResult.recordset || [])
             .map(row => {
               // ✅ FIX: Format DateOfBirth (handles NVARCHAR string from database)
-              let formattedDateOfBirth = null;
-              if (row.DateOfBirth) {
-                if (row.DateOfBirth instanceof Date) {
-                  formattedDateOfBirth = row.DateOfBirth.toISOString();
-                } else if (typeof row.DateOfBirth === 'string') {
-                  const trimmed = row.DateOfBirth.trim();
-                  if (trimmed) {
-                    const parsed = new Date(trimmed);
-                    formattedDateOfBirth = !isNaN(parsed.getTime()) ? parsed.toISOString() : trimmed;
-                  }
-                } else {
-                  try {
-                    const date = new Date(row.DateOfBirth);
-                    formattedDateOfBirth = !isNaN(date.getTime()) ? date.toISOString() : null;
-                  } catch (e) {
-                    formattedDateOfBirth = null;
-                  }
-                }
-              }
-              
+              const formattedDateOfBirth = parseDateValue(row.DateOfBirth)?.toISOString() || (typeof row.DateOfBirth === 'string' ? row.DateOfBirth.trim() || null : null);
+
               // ✅ FIX: Format BirthYear (handles NVARCHAR string from database)
               let formattedBirthYear = null;
               if (row.BirthYear !== null && row.BirthYear !== undefined) {
@@ -1000,7 +1042,7 @@ class NicheApplicationRepository {
                   }
                 }
               }
-              
+
               logger.debug(`[getByCode] Beneficiary mapping:`, {
                 name: row.Name,
                 rawDateOfBirth: row.DateOfBirth,
@@ -1008,7 +1050,7 @@ class NicheApplicationRepository {
                 rawBirthYear: row.BirthYear,
                 formattedBirthYear
               });
-              
+
               return new NicheApplicationBeneficiary({
                 nicheApplicationBeneficiaryId: row.NicheApplicationBeneficiaryId,
                 nicheApplicationId: row.NicheApplicationId,
@@ -1190,7 +1232,7 @@ class NicheApplicationRepository {
           applicationId: existing.nicheApplicationId,
           name: beneficiary.name,
           relationshipToApplicant: beneficiary.relationshipToApplicant,
-          dateOfBirth: beneficiary.dateOfBirth,
+          dateOfBirth: formatDateForStorage(beneficiary.dateOfBirth),
           birthYear: beneficiary.birthYear,
           idNo: beneficiary.idNo,
           isCatholic: beneficiary.isCatholic,
@@ -1216,7 +1258,7 @@ class NicheApplicationRepository {
   async updateStatus(code, newStatus) {
     try {
       logger.info(`[NicheApplicationRepository.updateStatus] Updating status for code: ${code} to: ${newStatus}`);
-      
+
       // Validate new status
       if (![1, 2, 3, 4].includes(newStatus)) {
         throw new Error(`Invalid status value: ${newStatus}. Valid values: 1=Draft, 2=Pending, 3=Booked, 4=Completed`);
@@ -1237,7 +1279,7 @@ class NicheApplicationRepository {
       `;
 
       await executeQuery(updateQuery, { code, status: newStatus });
-      
+
       logger.info(`[NicheApplicationRepository.updateStatus] Successfully updated status for code: ${code} from ${existing.status} to ${newStatus}`);
       return true;
     } catch (error) {
@@ -1283,7 +1325,7 @@ class NicheApplicationRepository {
   async deleteByCode(code) {
     try {
       logger.info(`[NicheApplicationRepository.deleteByCode] Starting delete for code: ${code}`);
-      
+
       // Get application first
       const application = await this.getByCode(code);
 
