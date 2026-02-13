@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { SearchIcon, EyeIcon, EditIcon, TrashIcon, CalendarIcon, UserIcon, ClockIcon } from 'lucide-react';
+import { SearchIcon, EyeIcon, EditIcon, TrashIcon, CalendarIcon, UserIcon, ClockIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { Button } from './common/Button';
 import { Input } from './common/Input';
 import { DateInput } from './common/DateInput';
@@ -25,11 +25,11 @@ interface WakeRoomSearchProps {
 export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSearchProps) {
   const navigate = useNavigate();
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({
-    applicantName: '',
-    nameOfDeceased: '',
-    usingDate: '',
     wakeRoomId: 0,
   });
+
+  // const [currentPage, setCurrentPage] = useState(1);
+  // const itemsPerPage = 8;
 
   const user = useSelector((state: RootState) => state.auth.user);
   const defaultChurchId = user?.churchId || 1;
@@ -37,16 +37,14 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
   const {
     wakeRooms,
     searchResults,
+    searchPagination,
     loading,
     error,
-    // lastErrorType,
     handleSearchBookings,
     handleDeleteBooking,
     handleGetBookingByCode,
-    // handleSetSearchCriteria,
     handleLoadAllWakeRooms,
     handleClearError,
-    // handleSetSelectedBooking
   } = useWakeRoom();
 
   // Load all wake rooms once for the search dropdown
@@ -56,13 +54,22 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
     }
   }, [wakeRooms, handleLoadAllWakeRooms]);
 
+  // Initial search if no results (e.g. first load)
+  useEffect(() => {
+    // Only verify we aren't already loading and no error
+    if (searchResults.length === 0 && !loading && !error) {
+      // Search with defaults (page 1, size 10) to show all bookings
+      handleSearchBookings({ page: 1, pageSize: 10 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run on mount
+
   const handleSearch = async () => {
     const criteria: SearchCriteria = {
       ...searchCriteria,
       wakeRoomId: searchCriteria.wakeRoomId || undefined
     };
 
-    // Remove empty values in a type-safe way
     const cleanedCriteria: SearchCriteria = {};
     (Object.entries(criteria) as [keyof SearchCriteria, any][])
       .forEach(([key, value]) => {
@@ -76,86 +83,134 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
       return;
     }
 
-    await handleSearchBookings(cleanedCriteria);
+    await handleSearchBookings({ ...cleanedCriteria, page: 1, pageSize: 10 });
   };
+
+  const cleanCriteria = (criteria: SearchCriteria) => {
+    const cleaned: any = {};
+    (Object.entries(criteria) as [keyof SearchCriteria, any][])
+      .forEach(([key, value]) => {
+        if (value !== '' && value !== 0 && value !== undefined) {
+          cleaned[key] = value;
+        }
+      });
+    return cleaned;
+  };
+
+  const handlePageChange = (newPage: number) => {
+    const totalPages = searchPagination?.totalPages || 1;
+    if (newPage >= 1 && newPage <= totalPages) {
+      const cleaned = cleanCriteria({
+        ...searchCriteria,
+        wakeRoomId: searchCriteria.wakeRoomId || undefined
+      });
+      handleSearchBookings({
+        ...cleaned,
+        page: newPage,
+        pageSize: searchPagination?.pageSize || 10
+      });
+    }
+  };
+
+  const currentPage = searchPagination?.page || 1;
+  const pageSize = searchPagination?.pageSize || 10;
+  const totalItems = searchPagination?.total || 0;
+  const totalPages = searchPagination?.totalPages || 1;
+
+  // No client-side slice
+  const paginatedResults = searchResults;
 
   const handleDelete = async (bookingId: number, bookingCode: string) => {
     if (window.confirm(`Are you sure you want to delete booking ${bookingCode}?`)) {
       await handleDeleteBooking(bookingId);
+      // Refresh current page to update totals and fill the page
+      handlePageChange(currentPage);
     }
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
+    } catch (e) {
+      return 'N/A';
+    }
   };
 
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString();
+    if (!dateString) return 'N/A';
+    try {
+      return new Date(dateString).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      return 'N/A';
+    }
   };
 
   const getStatusBadge = (status: number) => {
     switch (status) {
       case 0:
-        return <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Active</span>;
+        return <span className="px-2.5 py-0.5 text-[9px] font-bold bg-[#ecfdf5] text-[#10b981] border border-[#d1fae5] rounded-full uppercase tracking-tighter shadow-sm">Active</span>;
       case 1:
-        return <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">Pending</span>;
+        return <span className="px-2.5 py-0.5 text-[9px] font-bold bg-[#fffbeb] text-[#f59e0b] border border-[#fef3c7] rounded-full uppercase tracking-tighter shadow-sm">Pending</span>;
       case 2:
-        return <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">Cancelled</span>;
+        return <span className="px-2.5 py-0.5 text-[9px] font-bold bg-[#fef2f2] text-[#ef4444] border border-[#fee2e2] rounded-full uppercase tracking-tighter shadow-sm">Cancelled</span>;
       default:
-        return <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">Unknown</span>;
+        return <span className="px-2.5 py-0.5 text-[9px] font-bold bg-gray-100 text-gray-500 border border-gray-200 rounded-full uppercase tracking-tighter">Unknown</span>;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-        {/* Search Form */}
-        <Card
-          gradient
-          hover
-          title="Search criteria"
-          subtitle="Use one or more filters to narrow down bookings. At least one field is required."
-          className="animate-in fade-in"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6 items-end">
-            {/* Applicant Name */}
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
+    <div className="min-h-screen bg-white">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-8 space-y-8">
+
+        {/* Search Reservations Card */}
+        <div className="bg-white rounded-2xl shadow-[0_4px_20px_0_rgba(0,0,0,0.03)] border border-gray-100 p-8 space-y-6">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Search Reservations</h2>
+            <p className="text-sm text-gray-400 mt-1">Filter bookings by applicant, date, or wake room.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+            <div className="space-y-2">
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                 Applicant name
               </label>
               <Input
                 type="text"
                 value={searchCriteria.applicantName}
                 onChange={(e) => setSearchCriteria({ ...searchCriteria, applicantName: e.target.value })}
-                className="w-full"
-                placeholder="e.g. John Tan"
+                className="w-full h-11 bg-gray-50 border-gray-200 rounded-xl focus:bg-white transition-all text-sm"
+                placeholder="Search name..."
               />
             </div>
 
-            {/* Using Date */}
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
+            <div className="space-y-2">
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                 Using date
               </label>
               <DateInput
                 value={searchCriteria.usingDate || ''}
                 onChange={(apiDate) => setSearchCriteria({ ...searchCriteria, usingDate: apiDate })}
                 placeholder="dd/mm/yyyy"
-                className="w-full"
+                className="w-full h-11 bg-gray-50 border-gray-200 rounded-xl focus:bg-white transition-all text-sm"
               />
             </div>
 
-            {/* Wake Room */}
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
+            <div className="space-y-2">
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                 Wake room
               </label>
-              <select 
+              <select
                 value={searchCriteria.wakeRoomId}
                 onChange={(e) => setSearchCriteria({ ...searchCriteria, wakeRoomId: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] bg-white text-sm"
+                className="w-full h-11 px-4 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8b2222] focus:border-transparent bg-gray-50 text-sm appearance-none transition-all"
               >
-                <option value={0}>All wake rooms</option>
+                <option value={0}>All Rooms</option>
                 {Array.isArray(wakeRooms) && wakeRooms.map(room => (
                   <option key={room.wakeRoomId} value={room.wakeRoomId}>
                     {room.name}
@@ -164,201 +219,193 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
               </select>
             </div>
 
-            {/* Search Button */}
-            <div className="flex items-end h-full md:justify-end">
-              <Button
+            <div className="flex h-11">
+              <button
                 type="button"
                 onClick={handleSearch}
                 disabled={loading}
-                className="w-full md:w-auto bg-[#8b5a2b] text-white hover:bg-[#6d4420] border-[#8b5a2b] flex items-center justify-center gap-2"
+                className="w-full bg-[#8b2222] text-white hover:bg-[#6d1b1b] rounded-xl flex items-center justify-center gap-2 text-sm font-bold shadow-sm transition-all disabled:opacity-50"
               >
-                {loading ? (
-                  <LoadingSpinner size="sm" text="" />
-                ) : (
-                  <SearchIcon className="w-4 h-4" />
-                )}
+                {loading ? <LoadingSpinner size="sm" text="" /> : <SearchIcon className="w-4 h-4" />}
                 <span>{loading ? 'Searching...' : 'Search'}</span>
-              </Button>
+              </button>
             </div>
           </div>
 
-          {/* Error Display */}
           {error && (
-            <div className="mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-800">
-              <div className="text-sm flex-1">{error}</div>
-              <button 
+            <div className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50/50 px-4 py-3 text-red-600 animate-in fade-in zoom-in duration-200">
+              <div className="text-xs font-medium flex-1">{error}</div>
+              <button
                 type="button"
                 onClick={handleClearError}
-                className="text-xs font-medium underline underline-offset-2 hover:opacity-80"
+                className="text-[10px] font-bold uppercase tracking-wider hover:opacity-80"
               >
                 Dismiss
               </button>
             </div>
           )}
-        </Card>
-      </div>
+        </div>
 
-      {/* Search Results */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-10">
-        {loading ? (
-          <Card className="flex justify-center items-center py-12">
-            <LoadingSpinner size="lg" text="Searching bookings..." />
-          </Card>
-        ) : searchResults.length > 0 ? (
-          <Card
-            gradient
-            hover
-            title="Search results"
-            subtitle={`${searchResults.length} booking${searchResults.length > 1 ? 's' : ''} found`}
-            className="animate-in slide-in-from-bottom"
-          >
-            <div className="overflow-x-auto -mx-6 sm:mx-0">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Booking code
-                    </th>
-                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Applicant
-                    </th>
-                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Deceased
-                    </th>
-                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">
-                      Wake room
-                    </th>
-                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Date &amp; time
-                    </th>
-                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                      Amount
-                    </th>
-                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                      Status
-                    </th>
-                    <th className="px-4 sm:px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
+        {/* Search Results Card */}
+        <div className="bg-white rounded-2xl shadow-[0_4px_24px_0_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden">
+          <div className="p-8 border-b border-gray-50">
+            <h2 className="text-xl font-bold text-gray-800">Search Results</h2>
+            <p className="text-xs text-gray-400 mt-1.5 font-medium">{searchResults.length} bookings found</p>
+          </div>
+
+          <div className="">
+            <table className="w-full divide-y divide-gray-100 text-sm table-fixed">
+              <thead className="bg-[#fcfcfc]">
+                <tr>
+                  <th className="w-[80px] px-4 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em]">Code</th>
+                  <th className="px-4 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em]">Applicant</th>
+                  <th className="px-4 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em]">Deceased</th>
+                  <th className="w-[140px] px-4 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em]">Room</th>
+                  <th className="w-[180px] px-4 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em]">Date & Time</th>
+                  <th className="w-[100px] px-4 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em]">Status</th>
+                  <th className="w-[110px] px-4 py-4 text-right text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em]">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-50">
+                {paginatedResults.map((booking) => (
+                  <tr key={booking.wakeRoomBookingId} className="hover:bg-[#fcfcfc] transition-colors group">
+                    <td className="px-4 py-4 whitespace-nowrap align-top">
+                      <div className="text-xs font-bold text-gray-900 tracking-tight">
+                        {booking.code}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap align-top">
+                      <div className="flex items-start gap-3 overflow-hidden">
+                        <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center flex-shrink-0 group-hover:bg-white transition-colors border border-gray-100">
+                          <UserIcon className="w-3.5 h-3.5 text-gray-400" />
+                        </div>
+                        <div className="truncate min-w-0">
+                          <div className="text-sm font-bold text-gray-800 truncate leading-snug">
+                            {booking.applicant.name}
+                          </div>
+                          {booking.applicant.email && (
+                            <div className="text-[11px] text-gray-400 truncate mt-0.5" title={booking.applicant.email}>
+                              {booking.applicant.email}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap align-top">
+                      <div className="text-sm font-medium text-gray-600 truncate leading-snug" title={booking.booking.nameOfDeceased}>
+                        {booking.booking.nameOfDeceased}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap align-top">
+                      <div className="text-xs text-gray-500 font-medium truncate leading-snug">
+                        {booking.wakeRoom?.name || 'N/A'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap align-top">
+                      <div className="flex items-start gap-3">
+                        <CalendarIcon className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-gray-700 leading-snug">
+                            {formatDate(booking.booking.usingTimeFrom)}
+                          </div>
+                          <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1.5 flex items-center gap-1.5">
+                            {formatTime(booking.booking.usingTimeFrom)} - {formatTime(booking.booking.usingTimeTo)}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap align-top">
+                      {getStatusBadge(booking.status)}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap align-top text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={async () => {
+                            const churchId = booking.churchId || defaultChurchId;
+                            await handleGetBookingByCode(booking.code, churchId);
+                            onBookingSelected?.(booking);
+                          }}
+                          className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-all border border-transparent hover:border-blue-100"
+                          title="View"
+                        >
+                          <EyeIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => navigate(`/wake-room/edit/${booking.code}`)}
+                          className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg transition-all border border-transparent hover:border-amber-100"
+                          title="Edit"
+                        >
+                          <EditIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(booking.wakeRoomBookingId, booking.code)}
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all border border-transparent hover:border-red-100"
+                          title="Delete"
+                        >
+                          <TrashIcon className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
-                  {searchResults.map((booking) => (
-                    <tr
-                      key={booking.wakeRoomBookingId}
-                      className="hover:bg-gray-50/60 transition-colors"
-                    >
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap align-top">
-                        <div className="text-sm font-semibold text-gray-900">
-                          {booking.code}
-                        </div>
-                        <div className="mt-1 text-xs text-gray-500 lg:hidden">
-                          {booking.wakeRoom?.name || 'N/A'}
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap align-top">
-                        <div className="flex items-start">
-                          <UserIcon className="w-4 h-4 text-gray-400 mr-2 mt-0.5" />
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {booking.applicant.name}
-                            </div>
-                            {booking.applicant.email && (
-                              <div className="text-xs text-gray-500 break-all">
-                                {booking.applicant.email}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap align-top">
-                        <div className="text-sm text-gray-900">
-                          {booking.booking.nameOfDeceased}
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap align-top hidden lg:table-cell">
-                        <div className="text-sm text-gray-900">
-                          {booking.wakeRoom?.name || 'N/A'}
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap align-top">
-                        <div className="flex items-start">
-                          <CalendarIcon className="w-4 h-4 text-gray-400 mr-2 mt-0.5" />
-                          <div>
-                            <div className="text-sm text-gray-900">
-                              {formatDate(booking.booking.usingTimeFrom)}
-                            </div>
-                            <div className="flex items-center text-xs text-gray-500 mt-0.5">
-                              <ClockIcon className="w-3 h-3 mr-1" />
-                              {formatTime(booking.booking.usingTimeFrom)} – {formatTime(booking.booking.usingTimeTo)}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap align-top hidden md:table-cell">
-                        <div className="text-sm font-semibold text-gray-900">
-                          ${typeof booking.financial.donationAmount === 'number' ? booking.financial.donationAmount.toFixed(2) : '0.00'}
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap align-top hidden md:table-cell">
-                        {getStatusBadge(booking.status)}
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap align-top text-right text-sm font-medium">
-                        <div className="flex flex-col sm:flex-row sm:justify-end sm:items-center gap-2">
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            icon={<EyeIcon className="w-4 h-4" />}
-                            onClick={async () => {
-                              const churchId = booking.churchId || defaultChurchId;
-                              await handleGetBookingByCode(booking.code, churchId);
-                              onBookingSelected?.(booking);
-                            }}
-                          >
-                            View
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            icon={<EditIcon className="w-4 h-4" />}
-                            onClick={() => navigate(`/wake-room/edit/${booking.code}`)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            icon={<TrashIcon className="w-4 h-4" />}
-                            onClick={() => handleDelete(booking.wakeRoomBookingId, booking.code)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="px-8 py-8 border-t border-gray-50 flex items-center justify-between bg-[#fafafa]/30">
+            <div className="flex items-center gap-4">
+              <p className="text-[11px] text-gray-400 font-bold uppercase tracking-widest leading-none">
+                Showing
+                <span className="text-gray-900 mx-1.5">{(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalItems)}</span>
+                of {totalItems} results
+              </p>
+              {totalPages > 1 && (
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 disabled:opacity-20 hover:bg-white hover:shadow-sm transition-all"
+                >
+                  <ChevronLeftIcon className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
-          </Card>
-        ) : searchResults.length === 0 && !loading ? (
-          <Card
-            gradient
-            hover
-            className="flex flex-col items-center justify-center py-12 text-center space-y-3"
-          >
-            <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mb-1">
-              <SearchIcon className="w-6 h-6 text-gray-400" />
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                {[...Array(totalPages)].map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handlePageChange(i + 1)}
+                    className={`w-7 h-7 rounded-md text-[11px] font-black transition-all ${currentPage === i + 1
+                      ? 'bg-[#8b2222] text-white shadow-md'
+                      : 'text-gray-400 hover:bg-white hover:text-gray-800'
+                      }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="w-8 h-8 ml-2 flex items-center justify-center rounded-lg border border-gray-200 disabled:opacity-20 hover:bg-white hover:shadow-sm transition-all"
+                >
+                  <ChevronRightIcon className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {searchResults.length === 0 && !loading && (
+          <div className="bg-white rounded-2xl border border-gray-100 py-20 text-center space-y-4">
+            <div className="w-16 h-16 rounded-3xl bg-gray-50 flex items-center justify-center mx-auto mb-2 border border-dashed border-gray-200">
+              <SearchIcon className="w-6 h-6 text-gray-300" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">
-              No bookings found
-            </h3>
-            <p className="text-sm text-gray-500 max-w-md">
-              Try adjusting your date, applicant name, or wake room filters and search again.
-            </p>
-          </Card>
-        ) : null}
+            <h3 className="text-lg font-bold text-gray-800">No bookings found</h3>
+            <p className="text-sm text-gray-400 max-w-xs mx-auto">Try adjusting your filters to find existing wake room reservations.</p>
+          </div>
+        )}
       </div>
     </div>
   );

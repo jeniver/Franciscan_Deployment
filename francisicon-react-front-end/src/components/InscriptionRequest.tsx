@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EyeIcon, ArrowLeftIcon, PlusIcon, ChevronDownIcon, UserIcon, ChurchIcon, BookOpenIcon, MailIcon, LoaderIcon } from 'lucide-react';
 import { useInscription } from '../hooks/useInscription';
@@ -90,7 +90,9 @@ export function InscriptionRequest() { // Removed props parameter since they wer
     updatingInscription,
     inscriptionError,
     handleCreateInscription,
-    handleUpdateInscription
+    handleUpdateInscription,
+    crossType,
+    updateCrossType
   } = useInscription();
 
   const { showError } = useToast();
@@ -145,7 +147,7 @@ export function InscriptionRequest() { // Removed props parameter since they wer
   ];
 
   // Additional Details
-  const [crossType, setCrossType] = useState('Crucifix');
+
 
   const handleAddBeneficiary = () => {
     const newBeneficiary: DeceasedDetail = {
@@ -171,23 +173,23 @@ export function InscriptionRequest() { // Removed props parameter since they wer
     // Update storage period from when internment date is selected
     if (field === 'internmentDate' && value) {
       updatedDetail.storagePeriodFrom = value;
-      
+
       // Calculate storage period to as 30 years after internment date
       const internmentDate = new Date(value);
       if (!isNaN(internmentDate.getTime())) {
         const storageToDate = new Date(internmentDate);
         storageToDate.setFullYear(internmentDate.getFullYear() + 30);
-        
+
         // Format as YYYY-MM-DD for date input
         const year = storageToDate.getFullYear();
         const month = String(storageToDate.getMonth() + 1).padStart(2, '0');
         const day = String(storageToDate.getDate()).padStart(2, '0');
         const formattedDate = `${year}-${month}-${day}`;
-        
+
         updatedDetail.storagePeriodTo = formattedDate;
       }
     }
-    
+
     updateDeceased(index, updatedDetail);
   };
 
@@ -206,7 +208,7 @@ export function InscriptionRequest() { // Removed props parameter since they wer
         internmentDate: '', // Will be auto-calculated when dateDied is entered
         internmentTime: '12:00',
         deathCertNo: '', // Leave death cert number empty
-  
+
       });
     } else {
       // If "Select" option or invalid selection, just update the select field
@@ -238,7 +240,7 @@ export function InscriptionRequest() { // Removed props parameter since they wer
         invoiceCode = result.invoiceCode;
         codeToNavigate = inscriptionCode;
       }
-      
+
       // Navigate to the invoice-receipt page after successful invoice creation
       navigate(`/invoice-receipt/${codeToNavigate}`);
     } catch (error) {
@@ -275,7 +277,7 @@ export function InscriptionRequest() { // Removed props parameter since they wer
     // Reset will clear deceased details in Redux
     updateSelectedBibleChoice(null);
     updatePhraseOfChoice('');
-    setCrossType('Crucifix');
+    updateCrossType('Crucifix');
   };
 
   const handleAddressChange = (addressData: any) => {
@@ -687,12 +689,12 @@ ${selected.bibleInscriptionChoiceNoValue}`);
               <label className="text-sm font-semibold text-gray-700 block">Cross Type</label>
               <select
                 value={crossType}
-                onChange={(e) => setCrossType(e.target.value)}
+                onChange={(e) => updateCrossType(e.target.value)}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all"
               >
-                   <option value="Crucifix">Crucifix</option>
-                  <option value="WoodenCross">Wooden Cross</option>
-                  <option value="NoCrucifix/Cross">No Crucifix/Cross</option>
+                <option value="Crucifix">Crucifix</option>
+                <option value="WoodenCross">Wooden Cross</option>
+                <option value="NoCrucifix/Cross">No Crucifix/Cross</option>
               </select>
             </div>
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">

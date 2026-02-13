@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { EyeIcon, RefreshCwIcon, CheckIcon, AlertCircleIcon, ChevronLeftIcon, ChevronRightIcon, UserIcon, CalendarIcon, ClockIcon } from 'lucide-react';
+import { EyeIcon, RefreshCwIcon, CheckIcon, AlertCircleIcon, ChevronLeftIcon, ChevronRightIcon, UserIcon, CalendarIcon, ClockIcon, XIcon, FileTextIcon } from 'lucide-react';
+import { WakeRoomAgreementModal } from './WakeRoomAgreementModal';
 import { Button } from './common/Button';
 import { Input } from './common/Input';
 import { DateInput } from './common/DateInput';
@@ -30,6 +31,11 @@ const steps = [
     id: 3,
     label: 'Service Details',
     icon: ClockIcon
+  },
+  {
+    id: 4,
+    label: 'Review & Submit',
+    icon: CheckIcon
   }
 ];
 
@@ -37,7 +43,8 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
   const dispatch = useDispatch<AppDispatch>();
   const [currentStep, setCurrentStep] = useState(1);
   const [bookingCode, setBookingCode] = useState('');
-  
+  const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
+
   // Get user's church ID from auth
   const user = useSelector((state: RootState) => state.auth.user);
   const defaultChurchId = user?.churchId || 1;
@@ -53,6 +60,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     handleLoadAllWakeRooms,
     handleCheckAvailability,
     handleGetBookingByCode,
+    handleUpdateBooking,
     handleSetSelectedWakeRoom,
     handleClearAvailabilityCheck,
     handleClearError,
@@ -167,17 +175,17 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
       if (selectedBooking.applicant) {
         const applicant = selectedBooking.applicant;
         const addressDetails = (applicant.addressDetails || {}) as any;
-        
+
         // Helper function to safely convert null/undefined to empty string
         const safeString = (value: any) => {
           if (value === null || value === undefined || value === '') return '';
           return String(value);
         };
-        
+
         const newContactData = {
-          name: safeString(applicant.name),
-          idNo: safeString(applicant.idNo),
-          email: safeString(applicant.email),
+          name: safeString(applicant.name || applicant.applicantName),
+          idNo: safeString(applicant.idNo || applicant.applicantIDNo),
+          email: safeString(applicant.email || applicant.applicantEmailID),
           mobileNo: safeString(applicant.mobileNo),
           homeTelNo: safeString(applicant.homeTelNo),
           officeTelNo: safeString(applicant.officeTelNo),
@@ -190,10 +198,10 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
             country: safeString(addressDetails.country) || 'Singapore'
           }
         };
-        
+
         console.log('Setting contact data:', newContactData);
         setContactData(newContactData);
-        
+
         // Log raw values for debugging
         console.log('Raw applicant values:', {
           idNo: applicant.idNo,
@@ -223,11 +231,11 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
 
       // Populate service data - correctly map all service fields
       setServiceData({
-        serviceby: selectedBooking.service?.serviceby || '',
-        casketCompany: selectedBooking.service?.casketCompany || '',
-        hallNo: selectedBooking.service?.hallNo || '',
-        timeOfCremation: selectedBooking.service?.timeOfCremation ? safeParseDate(selectedBooking.service.timeOfCremation) : '',
-        massTime: selectedBooking.booking?.massTime ? safeParseTime(selectedBooking.booking.massTime) : ''
+        serviceby: selectedBooking.service?.serviceby || selectedBooking.serviceby || '',
+        casketCompany: selectedBooking.service?.casketCompany || selectedBooking.casketCompany || '',
+        hallNo: selectedBooking.service?.hallNo || selectedBooking.hallNo || '',
+        timeOfCremation: (selectedBooking.service?.timeOfCremation || selectedBooking.timeOfCremation) ? safeParseDate(selectedBooking.service?.timeOfCremation || selectedBooking.timeOfCremation) : '',
+        massTime: (selectedBooking.booking?.massTime || selectedBooking.massTime) ? safeParseTime(selectedBooking.booking?.massTime || selectedBooking.massTime) : ''
       });
 
       // Set the booking code
@@ -324,6 +332,27 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     }
   };
 
+  const updateBooking = async () => {
+    if (!selectedBooking?.wakeRoomBookingId) {
+      alert('No booking selected for update');
+      return;
+    }
+
+    const completeBookingData = createCompleteBookingData(contactData, {
+      ...bookingData,
+      ...serviceData,
+      churchId: defaultChurchId
+    });
+
+    try {
+      await handleUpdateBooking(selectedBooking.wakeRoomBookingId, completeBookingData);
+      alert('Booking updated successfully!');
+      _onBookingUpdated?.(selectedBooking.code || '');
+    } catch (error) {
+      console.error('Error updating booking:', error);
+    }
+  };
+
   const handleClear = () => {
     setBookingCode('');
     setContactData({
@@ -410,6 +439,150 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     }
   };
 
+  const renderReviewStep = () => {
+    return (
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-[#fdf8f3] border border-[#ecd5c5] rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-[#8b5a2b] flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-full bg-[#ecd5c5] flex items-center justify-center">
+              <UserIcon className="w-4 h-4 text-[#8b5a2b]" />
+            </div>
+            Contact Information
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Applicant Name</p>
+              <p className="text-gray-900 font-medium">{contactData.name || '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">ID Number</p>
+              <p className="text-gray-900 font-medium">{contactData.idNo || '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Email Address</p>
+              <p className="text-gray-900 font-medium">{contactData.email || '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Mobile number</p>
+              <p className="text-gray-900 font-medium">{contactData.mobileNo || '—'}</p>
+            </div>
+            <div className="md:col-span-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Residential Address</p>
+              <p className="text-gray-900 font-medium">
+                {[
+                  contactData.addressDetails.no,
+                  contactData.addressDetails.line1,
+                  contactData.addressDetails.line2,
+                  contactData.addressDetails.city,
+                  contactData.addressDetails.state,
+                  contactData.addressDetails.country
+                ].filter(Boolean).join(', ') || '—'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[#f5f7fa] border border-[#e2e8f0] rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
+              <CalendarIcon className="w-4 h-4 text-slate-600" />
+            </div>
+            Booking Details
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Wake Room</p>
+              <p className="text-gray-900 font-medium">
+                {getWakeRoomById(bookingData.wakeRoomId)?.name || 'Not selected'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Name of Deceased</p>
+              <p className="text-gray-900 font-medium italic">{bookingData.nameOfDeceased || '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Duration</p>
+              <p className="text-gray-900 font-medium">{bookingData.noOfDays} Day(s)</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">From</p>
+              <p className="text-gray-900 font-medium">{bookingData.usingTimeFrom ? new Date(bookingData.usingTimeFrom).toLocaleString() : '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">To</p>
+              <p className="text-gray-900 font-medium">{bookingData.usingTimeTo ? new Date(bookingData.usingTimeTo).toLocaleString() : '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Donation</p>
+              <p className="text-gray-900 font-bold text-lg text-emerald-700">
+                ${bookingData.donationAmount.toFixed(2)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-blue-800 flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+              <ClockIcon className="w-4 h-4 text-blue-600" />
+            </div>
+            Service & Partner Information
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Service Provider</p>
+              <p className="text-gray-900 font-medium">{serviceData.serviceby || 'Internal'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Casket Company</p>
+              <p className="text-gray-900 font-medium">{serviceData.casketCompany || '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Time of Cremation</p>
+              <p className="text-gray-900 font-medium">{serviceData.timeOfCremation ? new Date(serviceData.timeOfCremation).toLocaleString() : '—'}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-6 border-t border-gray-200 flex items-center justify-between">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<ChevronLeftIcon className="w-4 h-4" />}
+            onClick={previousStep}
+          >
+            Review Details
+          </Button>
+          <div className="flex gap-2">
+            {selectedBooking && (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="bg-gray-100 text-gray-700 hover:bg-gray-200"
+                icon={<FileTextIcon className="w-4 h-4" />}
+                onClick={() => setIsAgreementModalOpen(true)}
+              >
+                View Agreement
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              size="sm"
+              className="px-8 bg-gradient-to-r from-[#8b5a2b] to-[#6d4420] text-white"
+              icon={<CheckIcon className="w-4 h-4" />}
+              onClick={selectedBooking ? updateBooking : createBooking}
+              disabled={loading}
+            >
+              {loading
+                ? (selectedBooking ? 'Updating booking...' : 'Creating booking...')
+                : (selectedBooking ? 'Confirm and update booking' : 'Complete booking')}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderStep = () => {
     switch (currentStep) {
       case 1:
@@ -428,7 +601,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="text"
                   value={contactData.name}
-                  onChange={(e) => setContactData({...contactData, name: e.target.value})}
+                  onChange={(e) => setContactData({ ...contactData, name: e.target.value })}
                   className="w-full"
                   placeholder="Enter full name"
                   required
@@ -443,7 +616,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="text"
                   value={contactData.idNo}
-                  onChange={(e) => setContactData({...contactData, idNo: e.target.value})}
+                  onChange={(e) => setContactData({ ...contactData, idNo: e.target.value })}
                   className="w-full"
                   placeholder="Enter ID number"
                 />
@@ -457,7 +630,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="email"
                   value={contactData.email}
-                  onChange={(e) => setContactData({...contactData, email: e.target.value})}
+                  onChange={(e) => setContactData({ ...contactData, email: e.target.value })}
                   className="w-full"
                   placeholder="Enter email address"
                   required
@@ -472,7 +645,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="tel"
                   value={contactData.mobileNo}
-                  onChange={(e) => setContactData({...contactData, mobileNo: e.target.value})}
+                  onChange={(e) => setContactData({ ...contactData, mobileNo: e.target.value })}
                   className="w-full"
                   placeholder="Enter mobile number"
                   required
@@ -487,7 +660,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="tel"
                   value={contactData.homeTelNo}
-                  onChange={(e) => setContactData({...contactData, homeTelNo: e.target.value})}
+                  onChange={(e) => setContactData({ ...contactData, homeTelNo: e.target.value })}
                   className="w-full"
                   placeholder="Enter home telephone"
                 />
@@ -501,7 +674,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="tel"
                   value={contactData.officeTelNo}
-                  onChange={(e) => setContactData({...contactData, officeTelNo: e.target.value})}
+                  onChange={(e) => setContactData({ ...contactData, officeTelNo: e.target.value })}
                   className="w-full"
                   placeholder="Enter office telephone"
                 />
@@ -520,7 +693,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                     value={contactData.addressDetails.no}
                     onChange={(e) => setContactData({
                       ...contactData,
-                      addressDetails: {...contactData.addressDetails, no: e.target.value}
+                      addressDetails: { ...contactData.addressDetails, no: e.target.value }
                     })}
                     placeholder="House / Block no."
                   />
@@ -531,7 +704,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                     value={contactData.addressDetails.line1}
                     onChange={(e) => setContactData({
                       ...contactData,
-                      addressDetails: {...contactData.addressDetails, line1: e.target.value}
+                      addressDetails: { ...contactData.addressDetails, line1: e.target.value }
                     })}
                     placeholder="Street name"
                   />
@@ -542,7 +715,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                     value={contactData.addressDetails.line2}
                     onChange={(e) => setContactData({
                       ...contactData,
-                      addressDetails: {...contactData.addressDetails, line2: e.target.value}
+                      addressDetails: { ...contactData.addressDetails, line2: e.target.value }
                     })}
                     placeholder="Unit / Floor"
                   />
@@ -553,7 +726,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                     value={contactData.addressDetails.city}
                     onChange={(e) => setContactData({
                       ...contactData,
-                      addressDetails: {...contactData.addressDetails, city: e.target.value}
+                      addressDetails: { ...contactData.addressDetails, city: e.target.value }
                     })}
                     placeholder="City"
                   />
@@ -564,7 +737,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                     value={contactData.addressDetails.state}
                     onChange={(e) => setContactData({
                       ...contactData,
-                      addressDetails: {...contactData.addressDetails, state: e.target.value}
+                      addressDetails: { ...contactData.addressDetails, state: e.target.value }
                     })}
                     placeholder="State"
                   />
@@ -575,7 +748,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                     value={contactData.addressDetails.country}
                     onChange={(e) => setContactData({
                       ...contactData,
-                      addressDetails: {...contactData.addressDetails, country: e.target.value}
+                      addressDetails: { ...contactData.addressDetails, country: e.target.value }
                     })}
                     placeholder="Country"
                   />
@@ -610,11 +783,11 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Wake Room: <span className="text-red-500">*</span>
                 </label>
-                <select 
+                <select
                   value={bookingData.wakeRoomId}
                   onChange={(e) => {
                     const wakeRoomId = parseInt(e.target.value);
-                    setBookingData({...bookingData, wakeRoomId});
+                    setBookingData({ ...bookingData, wakeRoomId });
                     const wakeRoom = getWakeRoomById(wakeRoomId);
                     if (wakeRoom) {
                       handleSetSelectedWakeRoom(wakeRoom as any);
@@ -647,7 +820,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="text"
                   value={bookingData.nameOfDeceased}
-                  onChange={(e) => setBookingData({...bookingData, nameOfDeceased: e.target.value})}
+                  onChange={(e) => setBookingData({ ...bookingData, nameOfDeceased: e.target.value })}
                   className="w-full"
                   placeholder="Enter deceased person's name"
                   required
@@ -662,7 +835,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="text"
                   value={bookingData.purpose}
-                  onChange={(e) => setBookingData({...bookingData, purpose: e.target.value})}
+                  onChange={(e) => setBookingData({ ...bookingData, purpose: e.target.value })}
                   className="w-full"
                   placeholder="Wake Service"
                 />
@@ -690,7 +863,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="datetime-local"
                   value={bookingData.usingTimeFrom}
-                  onChange={(e) => setBookingData({...bookingData, usingTimeFrom: e.target.value})}
+                  onChange={(e) => setBookingData({ ...bookingData, usingTimeFrom: e.target.value })}
                   className="w-full"
                   required
                 />
@@ -704,7 +877,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="datetime-local"
                   value={bookingData.usingTimeTo}
-                  onChange={(e) => setBookingData({...bookingData, usingTimeTo: e.target.value})}
+                  onChange={(e) => setBookingData({ ...bookingData, usingTimeTo: e.target.value })}
                   className="w-full"
                   required
                 />
@@ -746,7 +919,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                   type="number"
                   step="0.01"
                   value={bookingData.donationAmount}
-                  onChange={(e) => setBookingData({...bookingData, donationAmount: parseFloat(e.target.value) || 0})}
+                  onChange={(e) => setBookingData({ ...bookingData, donationAmount: parseFloat(e.target.value) || 0 })}
                   className="w-full"
                   placeholder="0.00"
                 />
@@ -759,7 +932,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 </label>
                 <textarea
                   value={bookingData.remarks}
-                  onChange={(e) => setBookingData({...bookingData, remarks: e.target.value})}
+                  onChange={(e) => setBookingData({ ...bookingData, remarks: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]"
                   rows={3}
                   placeholder="Enter any additional remarks"
@@ -778,13 +951,12 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 >
                   {loading ? 'Checking...' : 'Check Availability'}
                 </Button>
-                
+
                 {availabilityCheck && (
-                  <div className={`mt-4 p-4 rounded-lg ${
-                    availabilityCheck.isAvailable 
-                      ? 'bg-green-50 border border-green-200 text-green-800' 
-                      : 'bg-red-50 border border-red-200 text-red-800'
-                  }`}>
+                  <div className={`mt-4 p-4 rounded-lg ${availabilityCheck.isAvailable
+                    ? 'bg-green-50 border border-green-200 text-green-800'
+                    : 'bg-red-50 border border-red-200 text-red-800'
+                    }`}>
                     <p className="font-medium">{availabilityCheck.message}</p>
                     {!availabilityCheck.isAvailable && availabilityCheck.conflicts.length > 0 && (
                       <div className="mt-2">
@@ -840,7 +1012,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="text"
                   value={serviceData.serviceby}
-                  onChange={(e) => setServiceData({...serviceData, serviceby: e.target.value})}
+                  onChange={(e) => setServiceData({ ...serviceData, serviceby: e.target.value })}
                   className="w-full"
                   placeholder="Enter service provider"
                 />
@@ -854,7 +1026,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="text"
                   value={serviceData.casketCompany}
-                  onChange={(e) => setServiceData({...serviceData, casketCompany: e.target.value})}
+                  onChange={(e) => setServiceData({ ...serviceData, casketCompany: e.target.value })}
                   className="w-full"
                   placeholder="Enter casket company"
                 />
@@ -868,7 +1040,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="text"
                   value={serviceData.hallNo}
-                  onChange={(e) => setServiceData({...serviceData, hallNo: e.target.value})}
+                  onChange={(e) => setServiceData({ ...serviceData, hallNo: e.target.value })}
                   className="w-full"
                   placeholder="Enter hall number"
                 />
@@ -882,7 +1054,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="datetime-local"
                   value={serviceData.timeOfCremation}
-                  onChange={(e) => setServiceData({...serviceData, timeOfCremation: e.target.value})}
+                  onChange={(e) => setServiceData({ ...serviceData, timeOfCremation: e.target.value })}
                   className="w-full"
                 />
               </div>
@@ -895,7 +1067,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="time"
                   value={serviceData.massTime}
-                  onChange={(e) => setServiceData({...serviceData, massTime: e.target.value})}
+                  onChange={(e) => setServiceData({ ...serviceData, massTime: e.target.value })}
                   className="w-full"
                 />
               </div>
@@ -915,14 +1087,19 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 variant="primary"
                 size="sm"
                 icon={<CheckIcon className="w-4 h-4" />}
-                onClick={createBooking}
+                onClick={selectedBooking ? updateBooking : createBooking}
                 disabled={loading}
               >
-                {loading ? 'Creating…' : 'Create booking'}
+                {loading
+                  ? (selectedBooking ? 'Updating...' : 'Creating...')
+                  : (selectedBooking ? 'Update booking' : 'Create booking')}
               </Button>
             </div>
           </div>
         );
+
+      case 4:
+        return renderReviewStep();
 
       default:
         return null;
@@ -930,111 +1107,97 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-        {/* Top bar: booking code & actions */}
-        <Card
-          gradient
-          className="animate-in fade-in"
-          title="Wake room booking"
-          subtitle="Retrieve an existing booking by code or start a new one using the steps below."
-        >
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-4 justify-between">
-              <div className="flex items-center gap-3 flex-wrap">
-                <p className="text-sm font-medium text-gray-700">
-                  Booking code
-                </p>
-                <Input
-                  type="text"
-                  value={bookingCode}
-                  onChange={(e) => setBookingCode(e.target.value)}
-                  className="text-base md:text-lg font-semibold text-gray-900 w-36 md:w-48"
-                  placeholder="e.g. WR1-001"
-                />
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button 
-                  variant="primary" 
-                  icon={loading ? <LoadingSpinner size="sm" text="" /> : <EyeIcon className="w-4 h-4" />}
-                  onClick={handleViewBooking}
-                  disabled={loading || !bookingCode.trim()}
-                >
-                  {loading ? 'Loading…' : 'View booking'}
-                </Button>
-                <Button 
-                  variant="secondary" 
-                  icon={<RefreshCwIcon className="w-4 h-4" />}
-                  onClick={handleClear}
-                >
-                  Clear form
-                </Button>
-              </div>
+    <div className="max-w-5xl mx-auto space-y-6 pb-20">
+      {/* Dynamic Progress Indicator */}
+      <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-black text-gray-900 tracking-tight">
+                {selectedBooking ? 'Edit Booking' : 'New Reservation'}
+              </h1>
+              <p className="text-gray-500 font-medium">
+                {selectedBooking ? `Updating ${selectedBooking.code}` : 'Complete the steps below to secure a wake room.'}
+              </p>
             </div>
-
-            {error && (
-              <div className={`mt-2 p-4 border rounded-xl flex items-start gap-3 text-sm ${getErrorStyling()}`}>
-                {getErrorIcon()}
-                <div className="flex-1">{error}</div>
-                <button 
-                  onClick={handleClearError}
-                  className="text-xs font-medium underline underline-offset-2 hover:opacity-80"
-                >
-                  Dismiss
-                </button>
-              </div>
+            {!selectedBooking && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full bg-emerald-50 text-emerald-700 border-emerald-100"
+                onClick={handleClear}
+              >
+                Clear Form
+              </Button>
             )}
           </div>
-        </Card>
 
-        {/* Wizard Stepper */}
-        <Card gradient hover className="animate-in slide-in-from-top-1">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center flex-wrap gap-3">
+          <div className="relative pt-4 pb-2">
+            <div className="flex items-center justify-between relative z-10">
               {steps.map((step) => {
                 const Icon = step.icon;
                 const isActive = currentStep === step.id;
                 const isCompleted = currentStep > step.id;
-                
+
                 return (
-                  <button
-                    key={step.id}
-                    type="button"
-                    onClick={() => goToStep(step.id)}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all duration-200 font-semibold text-sm ${
-                      isActive 
-                        ? 'bg-gradient-to-r from-[#8b2828] to-[#7d1f1f] text-white shadow-md' 
-                        : isCompleted 
-                          ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100' 
-                          : 'text-gray-600 bg-white/60 border border-transparent hover:text-gray-900 hover:border-gray-200'
-                    }`}
-                  >
-                    <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${
-                      isActive
-                        ? 'bg-white/20 text-white'
+                  <div key={step.id} className="flex flex-col items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => goToStep(step.id)}
+                      className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 transform ${isActive
+                        ? 'bg-[#8b5a2b] text-white shadow-xl scale-110 -translate-y-1'
                         : isCompleted
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {step.id}
+                          ? 'bg-emerald-500 text-white shadow-md'
+                          : 'bg-gray-100 text-gray-400 grayscale hover:grayscale-0'
+                        }`}
+                    >
+                      {isCompleted ? <CheckIcon className="w-6 h-6" /> : <Icon className="w-6 h-6" />}
+                    </button>
+                    <span className={`text-xs font-bold uppercase tracking-widest ${isActive ? 'text-[#8b5a2b]' : 'text-gray-400'}`}>
+                      {step.label}
                     </span>
-                    <Icon className="w-4 h-4" />
-                    <span className="font-medium">{step.label}</span>
-                  </button>
+                  </div>
                 );
               })}
             </div>
+            {/* Progress Bar Background */}
+            <div className="absolute top-[3.75rem] left-8 right-8 h-1 bg-gray-100 rounded-full -z-0">
+              <div
+                className="h-full bg-emerald-500 transition-all duration-500 rounded-full"
+                style={{ width: `${Math.max(0, (currentStep - 1) / (steps.length - 1) * 100)}%` }}
+              />
+            </div>
           </div>
-        </Card>
-
-        {/* Main Content */}
-        <Card className="animate-in zoom-in-95">
-          {renderStep()}
-        </Card>
+        </div>
       </div>
+
+      {/* Main Content Card */}
+      <Card gradient className="rounded-3xl shadow-xl border-0 overflow-visible p-6 sm:p-8">
+        {renderStep()}
+      </Card>
+
+      {/* Error Notifications */}
+      {/* Error Notifications */}
+      {error && (
+        <div className={`p-4 rounded-2xl border flex items-center gap-4 animate-in slide-in-from-top-4 ${getErrorStyling()}`}>
+          <div className="p-2 rounded-full bg-white/20">
+            {getErrorIcon()}
+          </div>
+          <p className="flex-1 font-semibold">{error}</p>
+          <button onClick={handleClearError} className="p-1 hover:bg-black/5 rounded-lg transition-colors">
+            <XIcon className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
+      {/* Agreement Modal */}
+      <WakeRoomAgreementModal
+        isOpen={isAgreementModalOpen}
+        onClose={() => setIsAgreementModalOpen(false)}
+        booking={selectedBooking}
+      />
     </div>
   );
-}
+};
 
 export default WakeRoomBookingForm;

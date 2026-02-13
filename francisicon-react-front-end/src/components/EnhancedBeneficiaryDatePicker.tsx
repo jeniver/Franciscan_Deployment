@@ -96,10 +96,10 @@ export function EnhancedBeneficiaryDatePicker({
     if (y.length === 4 && !d && !m) {
       const yNum = parseInt(y, 10)
       if (yNum >= minYear && yNum <= maxYear) {
-        // Check if we need to update
+        // Check if we need to update - clear dateOfBirth to enforce mutual exclusivity
         if (dateOfBirth !== null || birthYear !== yNum) {
           isInternalUpdate.current = true
-          onChange(null, yNum, id)
+          onChange(null, yNum, id)  // Send null for dateOfBirth when year is set
         }
       }
       return
@@ -135,10 +135,10 @@ export function EnhancedBeneficiaryDatePicker({
         dateObj.getDate() === dayNum
       ) {
         const newDateStr = `${d}-${m}-${y}`
-        // Update if different
-        if (dateOfBirth !== newDateStr || birthYear !== yearNum) {
+        // Update if different - clear birthYear to enforce mutual exclusivity
+        if (dateOfBirth !== newDateStr || birthYear !== null) {  // Check if birthYear needs clearing
           isInternalUpdate.current = true
-          onChange(newDateStr, yearNum, id)
+          onChange(newDateStr, null, id)  // Send null for birthYear when full date is set
         }
       } else {
         // Invalid date logic (e.g. Feb 30)

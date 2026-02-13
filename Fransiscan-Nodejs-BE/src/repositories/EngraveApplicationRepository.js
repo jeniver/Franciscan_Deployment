@@ -47,11 +47,11 @@ class EngraveApplicationRepository {
         }
       } catch (spError) {
         // Check if error is "procedure not found" - this is expected
-        const isProcedureNotFound = 
+        const isProcedureNotFound =
           spError.message?.includes('Could not find stored procedure') ||
           spError.message?.includes('stored procedure') && spError.message?.includes('not found') ||
           (spError.originalError?.info?.number === 2812); // SQL Server error 2812 = object not found
-        
+
         if (isProcedureNotFound) {
           // This is expected - stored procedure doesn't exist, use direct insert
           logger.debug(`Stored procedure ${spName} not found, using direct insert method`);
@@ -79,22 +79,22 @@ class EngraveApplicationRepository {
       // If nicheApplicationCode is provided (e.g., "7980-0"), use it: "I-7980-0"
       // Otherwise, generate sequential number: "I-1", "I-2", etc.
       let code;
-      
+
       if (application.nicheApplicationCode && application.nicheApplicationCode.trim() !== '') {
         // Use the niche application code format: I-{applicationNumber}
         code = `I-${application.nicheApplicationCode}`;
-        
+
         // Check if this code already exists
         const existingQuery = `
           SELECT TOP 1 Code 
           FROM NicheInscriptionRequest 
           WHERE Code = @code AND ChurchId = @churchId
         `;
-        const existingResult = await executeRawQuery(existingQuery, { 
-          code, 
-          churchId: application.churchId 
+        const existingResult = await executeRawQuery(existingQuery, {
+          code,
+          churchId: application.churchId
         });
-        
+
         if (existingResult.recordset && existingResult.recordset.length > 0) {
           // Code already exists, append suffix
           const lastCodeQuery = `
@@ -103,11 +103,11 @@ class EngraveApplicationRepository {
             WHERE Code LIKE @codePattern AND ChurchId = @churchId
             ORDER BY NicheInscriptionRequestId DESC
           `;
-          const lastCodeResult = await executeRawQuery(lastCodeQuery, { 
+          const lastCodeResult = await executeRawQuery(lastCodeQuery, {
             codePattern: `${code}-%`,
-            churchId: application.churchId 
+            churchId: application.churchId
           });
-          
+
           let suffix = 1;
           if (lastCodeResult.recordset && lastCodeResult.recordset.length > 0) {
             const lastCode = lastCodeResult.recordset[0].Code;
@@ -148,7 +148,7 @@ class EngraveApplicationRepository {
 
       // NicheBookingId is NOT NULL in the database - we need to find or create a booking
       let nicheBookingId = application.nicheBookingId;
-      
+
       // If no booking ID provided, try to find existing booking for the niche application
       if (!nicheBookingId && application.nicheApplicationCode) {
         try {
@@ -166,7 +166,7 @@ class EngraveApplicationRepository {
             code: application.nicheApplicationCode,
             churchId: application.churchId
           });
-          
+
           if (existingInscriptionResult.recordset && existingInscriptionResult.recordset.length > 0) {
             // Use the existing booking ID from the existing inscription
             nicheBookingId = existingInscriptionResult.recordset[0].NicheBookingId;
@@ -182,11 +182,11 @@ class EngraveApplicationRepository {
               code: application.nicheApplicationCode,
               churchId: application.churchId
             });
-            
+
             if (nicheAppResult.recordset && nicheAppResult.recordset.length > 0) {
               const nicheApplicationId = nicheAppResult.recordset[0].NicheApplicationId;
               const nicheId = nicheAppResult.recordset[0].NicheId;
-              
+
               // Try to find existing booking for this application
               const bookingQuery = `
                 SELECT TOP 1 NicheBookingId
@@ -196,35 +196,35 @@ class EngraveApplicationRepository {
                 ORDER BY NicheBookingId DESC
               `;
               const bookingResult = await executeRawQuery(bookingQuery, { nicheApplicationId });
-              
+
               if (bookingResult.recordset && bookingResult.recordset.length > 0) {
                 nicheBookingId = bookingResult.recordset[0].NicheBookingId;
                 logger.info(`Found existing booking ${nicheBookingId} for niche application ${application.nicheApplicationCode}`);
               } else {
-              // Create a minimal booking for the inscription
-              // We need at least a contact person - try to find or create one
-              let contactPersonId = null;
-              
-              // Try to find existing person by ID number
-              if (application.applicantIDNo) {
-                const personQuery = `
+                // Create a minimal booking for the inscription
+                // We need at least a contact person - try to find or create one
+                let contactPersonId = null;
+
+                // Try to find existing person by ID number
+                if (application.applicantIDNo) {
+                  const personQuery = `
                   SELECT TOP 1 PersonId
                   FROM Person WITH (NOLOCK)
                   WHERE IDNo = @idNo AND ChurchId = @churchId
                 `;
-                const personResult = await executeQuery(personQuery, {
-                  idNo: application.applicantIDNo,
-                  churchId: application.churchId
-                });
-                
-                if (personResult.recordset && personResult.recordset.length > 0) {
-                  contactPersonId = personResult.recordset[0].PersonId;
+                  const personResult = await executeQuery(personQuery, {
+                    idNo: application.applicantIDNo,
+                    churchId: application.churchId
+                  });
+
+                  if (personResult.recordset && personResult.recordset.length > 0) {
+                    contactPersonId = personResult.recordset[0].PersonId;
+                  }
                 }
-              }
-              
-              // If no person found, we'll create a booking with minimal data
-              // Use a default contact person ID if available, or create booking without it
-              const createBookingQuery = `
+
+                // If no person found, we'll create a booking with minimal data
+                // Use a default contact person ID if available, or create booking without it
+                const createBookingQuery = `
                 INSERT INTO NicheBooking (
                   NicheApplicationId, NicheId, ContactPersonId,
                   BookedDate, BookingStatus, ChurchId, UserId, Remarks
@@ -235,21 +235,21 @@ class EngraveApplicationRepository {
                 );
                 SELECT SCOPE_IDENTITY() AS NicheBookingId;
               `;
-              
-              const createBookingResult = await executeQuery(createBookingQuery, {
-                nicheApplicationId,
-                nicheId: nicheId || 0, // Use 0 if no niche ID
-                contactPersonId,
-                churchId: application.churchId,
-                userId: application.userId
-              });
-              
-              if (createBookingResult.recordset && createBookingResult.recordset.length > 0) {
-                nicheBookingId = createBookingResult.recordset[0].NicheBookingId;
-                logger.info(`Created new booking ${nicheBookingId} for niche application ${application.nicheApplicationCode}`);
+
+                const createBookingResult = await executeQuery(createBookingQuery, {
+                  nicheApplicationId,
+                  nicheId: nicheId || 0, // Use 0 if no niche ID
+                  contactPersonId,
+                  churchId: application.churchId,
+                  userId: application.userId
+                });
+
+                if (createBookingResult.recordset && createBookingResult.recordset.length > 0) {
+                  nicheBookingId = createBookingResult.recordset[0].NicheBookingId;
+                  logger.info(`Created new booking ${nicheBookingId} for niche application ${application.nicheApplicationCode}`);
+                }
               }
             }
-          }
           }
         } catch (bookingError) {
           logger.warn('Failed to find or create booking, will use default:', bookingError.message);
@@ -270,12 +270,12 @@ class EngraveApplicationRepository {
           }
         }
       }
-      
+
       // If still no booking ID, throw error
       if (!nicheBookingId) {
         throw new Error('Cannot create inscription: NicheBookingId is required. Please ensure the niche application has a booking or provide a booking ID.');
       }
-      
+
       const insertQuery = `
         INSERT INTO NicheInscriptionRequest (
           TranscationDate, NicheBookingId, Code, ApplicantName, ApplicantIDNo, ApplicantEmailID, 
@@ -424,7 +424,7 @@ class EngraveApplicationRepository {
                 inscriptionText: row.InscriptionText || null,
                 sequence: index + 1
               }));
-            
+
             logger.info('DIAGNOSTIC: Loaded deceased details from database:', {
               requestId: nir.NicheInscriptionRequestId,
               recordCount: deceasedResult.recordset.length,
@@ -680,8 +680,8 @@ class EngraveApplicationRepository {
         params.toDate = new Date(toDate);
       }
 
-      const whereClause = whereConditions.length > 0 
-        ? 'WHERE ' + whereConditions.join(' AND ') 
+      const whereClause = whereConditions.length > 0
+        ? 'WHERE ' + whereConditions.join(' AND ')
         : '';
 
       // Get total count - simpler query without join
@@ -737,7 +737,7 @@ class EngraveApplicationRepository {
           WHERE NicheInscriptionRequestId = @requestId
         `;
         const deceasedResult = await executeQuery(deceasedQuery, { requestId: row.NicheInscriptionRequestId });
-        
+
         const deceasedDetails = deceasedResult.recordset ? deceasedResult.recordset.map(r => ({
           nicheInscriptionRequestDecesedId: r.NicheInscriptionRequestDecesedId,
           name: r.NameOfDeceased,
@@ -748,7 +748,7 @@ class EngraveApplicationRepository {
           birthYear: r.BirthYear,
           inscriptionText: r.InscriptionText
         })) : [];
-        
+
         const application = new EngraveApplication({
           nicheInscriptionRequestId: row.NicheInscriptionRequestId,
           code: row.Code,
@@ -758,10 +758,10 @@ class EngraveApplicationRepository {
           createdOn: row.CreatedOn,
           churchId: row.ChurchId
         });
-        
+
         // Set deceased details on the application instance so toJSON() will include them
         application.deceasedDetails = deceasedDetails;
-        
+
         records.push(application);
       }
 
@@ -797,7 +797,7 @@ class EngraveApplicationRepository {
       // Note: NicheInscriptionRequest table doesn't have a Status column
       // Confirmation is typically handled by creating an invoice via stored procedure
       // This fallback method just verifies the application exists
-      
+
       // Generate invoice code (simplified - in real scenario, create invoice record)
       const invoiceCode = `INV-${code}-${Date.now()}`;
 

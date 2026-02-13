@@ -1,7 +1,7 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useCallback } from 'react';
 import { RootState, AppDispatch } from '../store';
-import { 
+import {
   loadAllWakeRooms,
   loadWakeRoomsByChurch,
   loadWakeRoomsDropdown,
@@ -26,7 +26,7 @@ import {
 
 export function useWakeRoom() {
   const dispatch = useDispatch<AppDispatch>();
-  
+
   const {
     wakeRooms,
     selectedWakeRoom,
@@ -42,7 +42,8 @@ export function useWakeRoom() {
     error,
     lastErrorType,
     isDataLoaded,
-    searchCriteria
+    searchCriteria,
+    searchPagination
   } = useSelector((state: RootState) => state.wakeRoom);
 
   const handleLoadAllWakeRooms = useCallback(() => {
@@ -162,6 +163,7 @@ export function useWakeRoom() {
       applicantEmailID: applicantData.email,
       applicantMobileNo: applicantData.mobileNo,
       applicantHomeTelNo: applicantData.homeTelNo || '',
+      applicantOfficeTelNo: applicantData.officeTelNo || '',
       applicantAddressNo: applicantData.addressDetails?.no || '',
       applicantAddressLine1: applicantData.addressDetails?.line1 || '',
       applicantAddressLine2: applicantData.addressDetails?.line2 || '',
@@ -196,7 +198,7 @@ export function useWakeRoom() {
   const createCompleteBookingData = useCallback((applicantData: any, bookingData: any) => {
     const formattedApplicant = formatApplicantData(applicantData);
     const formattedBooking = formatBookingData(bookingData);
-    
+
     return {
       ...formattedApplicant,
       ...formattedBooking
@@ -220,7 +222,8 @@ export function useWakeRoom() {
     lastErrorType,
     isDataLoaded,
     searchCriteria,
-    
+    searchPagination,
+
     // Actions
     handleLoadAllWakeRooms,
     handleLoadWakeRoomsByChurch,
@@ -242,7 +245,7 @@ export function useWakeRoom() {
     handleClearAvailabilityDatesCheck,
     handleClearError,
     handleResetWakeRoomState,
-    
+
     // Helper functions
     getWakeRoomById,
     getAvailableWakeRooms,

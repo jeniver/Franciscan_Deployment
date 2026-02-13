@@ -1,27 +1,28 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
-import wakeRoomService, { 
-  WakeRoom, 
-  WakeRoomBooking, 
+import wakeRoomService, {
+  WakeRoom,
+  WakeRoomBooking,
   WakeRoomError,
   AvailabilityRangeCheck,
   AvailabilityDatesCheck,
-  WakeRoomDropdownOption
+  WakeRoomDropdownOption,
+  WakeRoomBookingSearchResponse
 } from '../services/wakeRoomService';
 
 export interface WakeRoomState {
   // Wake room data
   wakeRooms: WakeRoom[];
   selectedWakeRoom: WakeRoom | null;
-  
+
   // Church selection and dropdown
   selectedChurchId: number | null;
   wakeRoomDropdownOptions: WakeRoomDropdownOption[];
-  
+
   // Booking data
   bookings: WakeRoomBooking[];
   selectedBooking: WakeRoomBooking | null;
   searchResults: WakeRoomBooking[];
-  
+
   // Availability checking
   availabilityCheck: {
     isAvailable: boolean;
@@ -30,23 +31,32 @@ export interface WakeRoomState {
   } | null;
   availabilityRangeCheck: AvailabilityRangeCheck | null;
   availabilityDatesCheck: AvailabilityDatesCheck | null;
-  
+
   // UI State
   loading: boolean;
   error: string | null;
   lastErrorType: 'auth' | 'network' | 'validation' | 'server' | null;
   isDataLoaded: boolean;
-  
+
   // Request tracking to prevent duplicates
   lastLoadedChurchId: number | null;
   isRequestInProgress: boolean;
-  
+
   // Search state
   searchCriteria: {
     applicantName?: string;
     nameOfDeceased?: string;
     usingDate?: string;
     wakeRoomId?: number;
+    page?: number;
+    pageSize?: number;
+  };
+
+  searchPagination: {
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
   };
 }
 
@@ -67,7 +77,13 @@ const initialState: WakeRoomState = {
   isDataLoaded: false,
   lastLoadedChurchId: null,
   isRequestInProgress: false,
-  searchCriteria: {}
+  searchCriteria: {},
+  searchPagination: {
+    total: 0,
+    page: 1,
+    pageSize: 10,
+    totalPages: 0
+  }
 };
 
 // Async thunk to load all wake rooms (no church filter)
@@ -99,15 +115,15 @@ export const loadWakeRoomsByChurch = createAsyncThunk(
   async (churchId: number, { rejectWithValue, getState }) => {
     try {
       const state = getState() as { wakeRoom: WakeRoomState };
-      
+
       // Check if we already have data for this church and request is not in progress
-      if (state.wakeRoom.lastLoadedChurchId === churchId && 
-          state.wakeRoom.isDataLoaded && 
-          !state.wakeRoom.isRequestInProgress) {
+      if (state.wakeRoom.lastLoadedChurchId === churchId &&
+        state.wakeRoom.isDataLoaded &&
+        !state.wakeRoom.isRequestInProgress) {
         console.log(`Wake room data for church ${churchId} already loaded, skipping request`);
         return { skip: true, churchId };
       }
-      
+
       // Check if request is already in progress for this church
       if (state.wakeRoom.isRequestInProgress && state.wakeRoom.lastLoadedChurchId === churchId) {
         console.log(`Request already in progress for church ${churchId}, skipping duplicate`);
@@ -253,8 +269,37 @@ export const searchBookings = createAsyncThunk(
   'wakeRoom/searchBookings',
   async (searchCriteria: any, { rejectWithValue }) => {
     try {
+      // Pass pagination params if not present
+      if (!searchCriteria.page) searchCriteria.page = 1;
+      if (!searchCriteria.pageSize) searchCriteria.pageSize = 10;
+
       const response = await wakeRoomService.searchBookings(searchCriteria);
-      return { results: response.data, criteria: searchCriteria };
+      // The updated service returns { bookings, total, page, pageSize, totalPages }
+      // But we need to handle legacy response (array) just in case
+      let results: any = response.data || response;
+
+      if (Array.isArray(results)) {
+        // Legacy response (should not happen with new backend)
+        results = {
+          bookings: results,
+          total: results.length,
+          page: 1,
+          pageSize: results.length,
+          totalPages: 1
+        };
+      } else if (results.data && Array.isArray(results.data)) {
+        // Handle wrapped { success, data: [] } 
+        const data = results.data;
+        results = {
+          bookings: data,
+          total: data.length,
+          page: 1,
+          pageSize: data.length,
+          totalPages: 1
+        };
+      }
+
+      return { results: results as WakeRoomBookingSearchResponse, criteria: searchCriteria };
     } catch (error: any) {
       if (error instanceof WakeRoomError) {
         return rejectWithValue({
@@ -429,13 +474,13 @@ export const wakeRoomSlice = createSlice({
       .addCase(loadWakeRoomsByChurch.fulfilled, (state, action) => {
         state.loading = false;
         state.isRequestInProgress = false;
-        
+
         // Check if this was a skipped request
         if (action.payload.skip) {
           console.log(`Skipped loading wake rooms for church ${action.payload.churchId}`);
           return;
         }
-        
+
         state.wakeRooms = action.payload.data || [];
         state.lastLoadedChurchId = action.payload.churchId;
         state.isDataLoaded = true;
@@ -552,7 +597,28 @@ export const wakeRoomSlice = createSlice({
       })
       .addCase(searchBookings.fulfilled, (state, action) => {
         state.loading = false;
-        state.searchResults = action.payload.results;
+
+        const results = action.payload.results as any;
+
+        // Handle both paginated and non-paginated responses
+        if (results.bookings && Array.isArray(results.bookings)) {
+          state.searchResults = results.bookings as WakeRoomBooking[];
+          state.searchPagination = {
+            total: results.total || 0,
+            page: results.page || 1,
+            pageSize: results.pageSize || 10,
+            totalPages: results.totalPages || 0
+          };
+        } else if (Array.isArray(results)) {
+          state.searchResults = results as WakeRoomBooking[];
+          state.searchPagination = {
+            total: results.length,
+            page: 1,
+            pageSize: results.length,
+            totalPages: 1
+          };
+        }
+
         state.searchCriteria = action.payload.criteria;
         state.error = null;
         state.lastErrorType = null;

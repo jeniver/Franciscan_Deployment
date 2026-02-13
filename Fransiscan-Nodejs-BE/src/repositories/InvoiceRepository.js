@@ -219,69 +219,116 @@ class InvoiceRepository extends BaseRepository {
       const searchCode = code.trim();
       logger.info(`Fetching application details for code: ${searchCode}, churchId: ${churchId}`);
 
-      // Step 1: Get NicheApplication data
-      let applicationQuery = `
-        SELECT TOP 1
-          na.NicheApplicationId,
-          na.Code AS ApplicationCode,
-          na.NicheId,
-          na.AppliedDate,
-          na.AgreementDate,
-          na.Status AS ApplicationStatus,
-          na.ApplicantName,
-          na.ApplicantIDNo,
-          na.ApplicantEmailID,
-          na.ApplicantMobileNo,
-          na.ApplicantHomeTelNo,
-          na.ApplicantOfficeTelNo,
-          na.ApplicantIsCatholic,
-          na.ApplicantAddressNo,
-          na.ApplicantAddressLine1,
-          na.ApplicantAddressLine2,
-          na.ApplicantAddressCity,
-          na.ApplicantAddressState,
-          na.ApplicantAddressCountry,
-          na.NomineeName,
-          na.NomineeIDNo,
-          na.NomineeEmailID,
-          na.NomineeMobileNo,
-          na.NomineeHomeTelNo,
-          na.NomineeOfficeTelNo,
-          na.NomineeRelationship,
-          na.NomineeIsCatholic,
-          na.NomineeAddressNo,
-          na.NomineeAddressLine1,
-          na.NomineeAddressLine2,
-          na.NomineeAddressCity,
-          na.NomineeAddressState,
-          na.NomineeAddressCountry,
-          na.NomineeName2,
-          na.NomineeIDNo2,
-          na.Amount AS ApplicationAmount,
-          na.DefaultAmount AS ApplicationDefaultAmount,
-          na.ChurchId,
-          na.UserId,
-          na.Remarks,
-          na.RefDocType
-        FROM NicheApplication na WITH(NOLOCK)
-        WHERE na.Code = @code
-      `;
+      let application = null;
+      let refDocType = 'NAPP';
 
-      const applicationParams = { code: searchCode };
+      // Step 1: Detect application type and fetch data
+      if (searchCode.startsWith('GOL-') || searchCode.startsWith('GOLA-')) {
+        refDocType = 'GOLA';
+        const golQuery = `
+          SELECT TOP 1
+            e.EngraveWallApplicationId AS ApplicationId,
+            e.Code AS ApplicationCode,
+            e.BookingDate AS AppliedDate,
+            e.BookingDate AS AgreementDate,
+            e.Status AS ApplicationStatus,
+            e.ApplicantName,
+            e.ApplicantIDNo,
+            e.ApplicantEmailID,
+            e.ApplicantMobileNo,
+            e.ApplicantHomeTelNo,
+            e.ApplicantOfficeTelNo,
+            e.ApplicantAddressNo,
+            e.ApplicantAddressLine1,
+            e.ApplicantAddressLine2,
+            e.ApplicantAddressCity,
+            e.ApplicantAddressState,
+            e.ApplicantAddressCountry,
+            e.DonationAmount AS ApplicationAmount,
+            e.DefaultDonationAmount AS ApplicationDefaultAmount,
+            e.ChurchId,
+            e.UserId,
+            e.Remarks,
+            e.RefDocType
+          FROM EngraveWallApplication e WITH(NOLOCK)
+          WHERE e.Code = @code OR e.Code = @codeGola
+        `;
+        const golResult = await executeQuery(golQuery, {
+          code: searchCode,
+          codeGola: searchCode.startsWith('GOL-') ? searchCode.replace('GOL-', 'GOLA-') : searchCode
+        });
 
-      if (churchId) {
-        applicationQuery += ' AND na.ChurchId = @churchId';
-        applicationParams.churchId = churchId;
+        if (golResult.recordset && golResult.recordset.length > 0) {
+          application = golResult.recordset[0];
+          application.NicheApplicationId = application.ApplicationId; // Map for compatibility
+        }
+      } else {
+        // Default: Niche Application
+        let applicationQuery = `
+          SELECT TOP 1
+            na.NicheApplicationId,
+            na.Code AS ApplicationCode,
+            na.NicheId,
+            na.AppliedDate,
+            na.AgreementDate,
+            na.Status AS ApplicationStatus,
+            na.ApplicantName,
+            na.ApplicantIDNo,
+            na.ApplicantEmailID,
+            na.ApplicantMobileNo,
+            na.ApplicantHomeTelNo,
+            na.ApplicantOfficeTelNo,
+            na.ApplicantIsCatholic,
+            na.ApplicantAddressNo,
+            na.ApplicantAddressLine1,
+            na.ApplicantAddressLine2,
+            na.ApplicantAddressCity,
+            na.ApplicantAddressState,
+            na.ApplicantAddressCountry,
+            na.NomineeName,
+            na.NomineeIDNo,
+            na.NomineeEmailID,
+            na.NomineeMobileNo,
+            na.NomineeHomeTelNo,
+            na.NomineeOfficeTelNo,
+            na.NomineeRelationship,
+            na.NomineeIsCatholic,
+            na.NomineeAddressNo,
+            na.NomineeAddressLine1,
+            na.NomineeAddressLine2,
+            na.NomineeAddressCity,
+            na.NomineeAddressState,
+            na.NomineeAddressCountry,
+            na.NomineeName2,
+            na.NomineeIDNo2,
+            na.Amount AS ApplicationAmount,
+            na.DefaultAmount AS ApplicationDefaultAmount,
+            na.ChurchId,
+            na.UserId,
+            na.Remarks,
+            na.RefDocType
+          FROM NicheApplication na WITH(NOLOCK)
+          WHERE na.Code = @code
+        `;
+
+        const applicationParams = { code: searchCode };
+
+        if (churchId) {
+          applicationQuery += ' AND na.ChurchId = @churchId';
+          applicationParams.churchId = churchId;
+        }
+
+        const applicationResult = await executeQuery(applicationQuery, applicationParams, { timeout: 10000 });
+
+        if (applicationResult.recordset && applicationResult.recordset.length > 0) {
+          application = applicationResult.recordset[0];
+        }
       }
 
-      const applicationResult = await executeQuery(applicationQuery, applicationParams, { timeout: 10000 });
-
-      if (!applicationResult.recordset || applicationResult.recordset.length === 0) {
+      if (!application) {
         logger.info(`No application found for code: ${searchCode}`);
         return null;
       }
-
-      const application = applicationResult.recordset[0];
 
       // Step 2: Get Niche details with Wall, Row, Chapel hierarchy and pricing
       let nicheDetails = null;
@@ -1970,7 +2017,7 @@ class InvoiceRepository extends BaseRepository {
       invoiceRequest.input('payingAmount', sql.Decimal(18, 2), invoice.payingAmount);
       // Convert paymentMode to a valid integer before database insertion
       let paymentModeValue = invoice.paymentMode;
-      
+
       // Handle string values by converting them to appropriate integer codes
       if (typeof paymentModeValue === 'string') {
         const modeMap = {
@@ -1980,7 +2027,7 @@ class InvoiceRepository extends BaseRepository {
           'Credit Card': 4, 'credit card': 4, 'CREDIT CARD': 4, 'CreditCard': 4, 'creditcard': 4,
           'Others': 5, 'others': 5, 'OTHERS': 5
         };
-        
+
         // If it's a known string, convert to number; otherwise default to 1 (Cash)
         paymentModeValue = modeMap[paymentModeValue] || 1;
       } else if (typeof paymentModeValue === 'number') {
@@ -1993,7 +2040,7 @@ class InvoiceRepository extends BaseRepository {
         // For any other type, default to 1 (Cash)
         paymentModeValue = 1;
       }
-      
+
       invoiceRequest.input('paymentMode', sql.Int, paymentModeValue);
       invoiceRequest.input('paymentModeDocNo', sql.NVarChar, invoice.paymentModeDocNo);
       invoiceRequest.input('userId', sql.Int, invoice.userId);

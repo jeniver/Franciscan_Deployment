@@ -272,88 +272,47 @@ class NicheAgreementRepository extends BaseRepository {
    * ENHANCED: Better handling of edge cases and logging
    */
   formatDateOfBirth(dbValue) {
-    logger.debug(`[formatDateOfBirth] Input: ${dbValue}, Type: ${typeof dbValue}`);
+    if (!dbValue) return null;
 
-    if (!dbValue) {
-      logger.debug(`[formatDateOfBirth] Value is null/undefined/empty`);
-      return null;
-    }
-
-    // If it's already a Date object (from DATETIME column)
+    // If it's already a Date object
     if (dbValue instanceof Date) {
-      if (isNaN(dbValue.getTime())) {
-        logger.warn(`[formatDateOfBirth] Invalid Date object: ${dbValue}`);
-        return null;
-      }
-      const isoString = dbValue.toISOString();
-      logger.debug(`[formatDateOfBirth] Date object converted to ISO: ${isoString}`);
-      return isoString;
+      return isNaN(dbValue.getTime()) ? null : dbValue.toISOString();
     }
 
-    // If it's a string (from NVARCHAR column)
     if (typeof dbValue === 'string') {
       const trimmed = dbValue.trim();
-      if (!trimmed || trimmed === 'null' || trimmed === 'NULL' || trimmed === '') {
-        logger.debug(`[formatDateOfBirth] Empty or null string: "${trimmed}"`);
-        return null;
+      if (!trimmed || trimmed.toLowerCase() === 'null') return null;
+
+      // Handle DD-MM-YYYY
+      const dateParts = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+      if (dateParts) {
+        const [, d, m, y] = dateParts;
+        const date = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+        if (!isNaN(date.getTime())) return date.toISOString();
       }
 
-      // Try to parse as date
-      const parsed = new Date(trimmed);
-      if (!isNaN(parsed.getTime())) {
-        const isoString = parsed.toISOString();
-        logger.debug(`[formatDateOfBirth] String "${trimmed}" parsed to ISO: ${isoString}`);
-        return isoString;
-      }
-
-      // Try common date formats
-      // Format: "2012-04-15" (YYYY-MM-DD)
-      const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (ymdMatch) {
-        const [, year, month, day] = ymdMatch;
-        const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
-        if (!isNaN(date.getTime())) {
-          const isoString = date.toISOString();
-          logger.debug(`[formatDateOfBirth] YYYY-MM-DD format "${trimmed}" converted to ISO: ${isoString}`);
-          return isoString;
-        }
-      }
-
-      // Format: "15-Apr-2012" or "15 Apr 2012" (DD-MMM-YYYY)
-      const dmyMatch = trimmed.match(/^(\d{1,2})[\s-](\w{3})[\s-](\d{4})/i);
-      if (dmyMatch) {
-        const [, day, monthName, year] = dmyMatch;
+      // Handle DD-MMM-YYYY (e.g., "16-Feb-2012")
+      const dmmmMatch = trimmed.match(/^(\d{1,2})[\s-](\w{3})[\s-](\d{4})$/i);
+      if (dmmmMatch) {
+        const [, day, monthName, year] = dmmmMatch;
         const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
         const monthIndex = months.indexOf(monthName.toLowerCase());
         if (monthIndex !== -1) {
           const date = new Date(parseInt(year, 10), monthIndex, parseInt(day, 10));
-          if (!isNaN(date.getTime())) {
-            const isoString = date.toISOString();
-            logger.debug(`[formatDateOfBirth] DD-MMM-YYYY format "${trimmed}" converted to ISO: ${isoString}`);
-            return isoString;
-          }
+          if (!isNaN(date.getTime())) return date.toISOString();
         }
       }
 
-      logger.warn(`[formatDateOfBirth] Could not parse date string: "${trimmed}"`);
-      // Return as-is if can't parse (might be formatted string that frontend can handle)
-      return trimmed;
+      const parsed = new Date(trimmed);
+      return isNaN(parsed.getTime()) ? trimmed : parsed.toISOString();
     }
 
-    // Try to convert to Date
     try {
-      const date = new Date(dbValue);
-      if (!isNaN(date.getTime())) {
-        const isoString = date.toISOString();
-        logger.debug(`[formatDateOfBirth] Converted to Date and ISO: ${isoString}`);
-        return isoString;
-      }
+      const d = new Date(dbValue);
+      return isNaN(d.getTime()) ? null : d.toISOString();
     } catch (e) {
-      logger.warn(`[formatDateOfBirth] Error converting to Date:`, e.message);
+      return null;
     }
-
-    logger.warn(`[formatDateOfBirth] Could not format date value: ${dbValue} (type: ${typeof dbValue})`);
-    return null;
   }
 
   /**

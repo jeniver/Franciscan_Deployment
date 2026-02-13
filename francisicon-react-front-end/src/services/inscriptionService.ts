@@ -80,6 +80,7 @@ export interface InscriptionItemsResponse {
       bibleInscriptionText: string;
       additionalInscriptionPhrase: string;
       remarks: string;
+      crossType?: string;
       nicheApplicationCode: string;
       nicheBookingId: number | null;
     };
@@ -442,6 +443,7 @@ const inscriptionService = {
       bibleInscriptionText: string;
       additionalInscriptionPhrase: string;
       remarks: string;
+      crossType?: string;
       nicheApplicationCode: string;
       nicheBookingId: number | null;
     };
@@ -581,6 +583,7 @@ const inscriptionService = {
         bibleInscriptionText: string;
         additionalInscriptionPhrase: string;
         remarks: string;
+        crossType?: string;
       };
     }
   ): Promise<{ code: string; message: string }> {
@@ -705,7 +708,7 @@ const inscriptionService = {
   }): Promise<InscriptionSearchResponse['data']> {
     try {
       const params = new URLSearchParams();
-      
+
       if (filters.searchTerm) {
         params.append('searchTerm', filters.searchTerm);
       }
@@ -724,7 +727,7 @@ const inscriptionService = {
 
       const queryString = params.toString();
       const url = `/api/inscriptions${queryString ? `?${queryString}` : ''}`;
-      
+
       const response = await api.get<InscriptionSearchResponse>(url);
 
       if (!response.data.success) {

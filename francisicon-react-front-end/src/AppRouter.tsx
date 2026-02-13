@@ -1,8 +1,6 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { App } from './App';
 import { LoginPage } from './pages/LoginPage';
-import { ReceiptPage } from './pages/ReceiptPage';
 import { GatesOfLifePage } from './pages/GatesOfLifePage';
 import { WakeRoomPage } from './pages/WakeRoomPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -85,7 +83,17 @@ export function AppRouter() {
             <GatesOfLifePage />
           </ProtectedRoute>
         } />
-        <Route path="/gate-of-life/edit/:applicationCode" element={
+        <Route path="/gates-of-life/new" element={
+          <ProtectedRoute>
+            <GatesOfLifePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/gates-of-life/view/:applicationCode" element={
+          <ProtectedRoute>
+            <GatesOfLifePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/gates-of-life/edit/:applicationCode" element={
           <ProtectedRoute>
             <GatesOfLifePage />
           </ProtectedRoute>
@@ -116,6 +124,11 @@ export function AppRouter() {
           </ProtectedRoute>
         } />
         <Route path="/wake-room" element={
+          <ProtectedRoute>
+            <WakeRoomPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/wake-room/new" element={
           <ProtectedRoute>
             <WakeRoomPage />
           </ProtectedRoute>

@@ -428,33 +428,22 @@ export function BeneficiaryDetails({
           // Create updated beneficiary object
           const updatedBeneficiary = { ...beneficiary };
 
-          // Handle different scenarios
+          // Handle mutual exclusivity: if one field has value, clear the other
           if (dateOfBirth === null && birthYear === null) {
             // Clear both fields
             updatedBeneficiary.dateOfBirth = null;
             updatedBeneficiary.birthYear = null;
             console.log('Cleared both dateOfBirth and birthYear');
           } else if (dateOfBirth !== null) {
-            // Full date provided
+            // Full date provided - clear birthYear to enforce mutual exclusivity
             updatedBeneficiary.dateOfBirth = dateOfBirth;
-
-            if (birthYear !== null && birthYear !== undefined) {
-              // Explicit year provided
-              updatedBeneficiary.birthYear = birthYear;
-              console.log('Set both dateOfBirth and explicit birthYear:', { dateOfBirth, birthYear });
-            } else {
-              // Extract year from date string
-              const extractedYear = extractYearFromDate(dateOfBirth);
-              if (extractedYear !== null) {
-                updatedBeneficiary.birthYear = extractedYear;
-                console.log('Extracted birthYear from dateOfBirth:', extractedYear);
-              }
-            }
+            updatedBeneficiary.birthYear = null;
+            console.log('Set dateOfBirth only, cleared birthYear:', { dateOfBirth });
           } else if (birthYear !== null) {
-            // Year only provided
+            // Year only provided - clear dateOfBirth to enforce mutual exclusivity
             updatedBeneficiary.dateOfBirth = null;
             updatedBeneficiary.birthYear = birthYear;
-            console.log('Set birthYear only:', birthYear);
+            console.log('Set birthYear only, cleared dateOfBirth:', birthYear);
           }
 
           return updatedBeneficiary;
