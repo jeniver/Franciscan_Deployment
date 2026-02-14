@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
-import { EyeIcon, ArrowLeftIcon, PlusIcon, ChevronDownIcon, UserIcon, ChurchIcon, BookOpenIcon, LoaderIcon, PrinterIcon, InfoIcon } from 'lucide-react';
+import { EyeIcon, ArrowLeftIcon, PlusIcon, ChevronDownIcon, UserIcon, ChurchIcon, BookOpenIcon, LoaderIcon, PrinterIcon, InfoIcon, MailIcon } from 'lucide-react';
 import { useInscription } from '../hooks/useInscription';
 import { DateInput } from './common/DateInput';
 import { useToast } from '../contexts/ToastContext';
@@ -10,6 +10,7 @@ import { AddressInput } from './AddressInput';
 import { Beneficiary as BeneficiaryType } from '../services/inscriptionService';
 import { DeceasedDetail } from '../store/inscriptionSlice';
 import { formatDateForInput } from '../utils/dateUtils';
+import { InscriptionMailModal } from './InscriptionMailModal';
 
 
 // Removed unused Beneficiary interface
@@ -18,6 +19,7 @@ import { formatDateForInput } from '../utils/dateUtils';
 
 export function InscriptionRequest() { // Removed props parameter since they were unused
   const navigate = useNavigate();
+  const [isMailModalOpen, setIsMailModalOpen] = useState(false);
 
   const {
     inscriptionRequestNo,
@@ -319,7 +321,16 @@ export function InscriptionRequest() { // Removed props parameter since they wer
                 className="px-5 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <PrinterIcon className="w-4 h-4" />
-                View Inscription 
+                View Inscription
+              </button>
+
+              <button
+                onClick={() => setIsMailModalOpen(true)}
+                disabled={itemsLoading || !nicheApplicationCode.trim()}
+                className="px-5 py-2.5 bg-[#e0f2fe] text-[#0369a1] border border-[#bae6fd] rounded-lg font-semibold hover:bg-[#bae6fd] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <MailIcon className="w-4 h-4" />
+                Email Agreement
               </button>
 
               <button
@@ -763,6 +774,13 @@ ${selected.bibleInscriptionChoiceNoValue}`);
           </div>
         </div>
       </div>
+      <InscriptionMailModal
+        isOpen={isMailModalOpen}
+        onClose={() => setIsMailModalOpen(false)}
+        inscriptionCode={inscriptionRequestNo || ''}
+        recipientEmail={emailId || ''}
+        applicantName={applicantName || ''}
+      />
     </div>
   );
 }

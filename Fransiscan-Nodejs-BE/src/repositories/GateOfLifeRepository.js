@@ -24,11 +24,6 @@ class GateOfLifeRepository {
         params.applicantName = `%${filters.applicantName}%`;
       }
 
-      if (filters.applicantIdNo) {
-        conditions.push('ewa.ApplicantIDNo LIKE @applicantIdNo');
-        params.applicantIdNo = `%${filters.applicantIdNo}%`;
-      }
-
       if (filters.bookedFrom) {
         conditions.push('ewa.BookingDate >= @bookedFrom');
         params.bookedFrom = filters.bookedFrom;
@@ -43,7 +38,6 @@ class GateOfLifeRepository {
         conditions.push(`(
           ewa.Code LIKE @searchTerm
           OR ewa.ApplicantName LIKE @searchTerm
-          OR ewa.ApplicantIDNo LIKE @searchTerm
           OR EXISTS (
             SELECT 1
             FROM EngraveWallApplicationDetail d WITH (NOLOCK)
@@ -200,15 +194,13 @@ class GateOfLifeRepository {
 
       const code = application.code || await this._generateNextCode(transaction, application.churchId);
 
-      const insertRequest = new sql.Request(transaction);
-      insertRequest.input('Code', sql.VarChar(50), code);
-      insertRequest.input('BookingDate', sql.DateTime, application.bookingDate || new Date());
       insertRequest.input('ApplicantName', sql.NVarChar(200), application.applicantName);
-      insertRequest.input('ApplicantIDNo', sql.NVarChar(100), application.applicantIDNo);
+      insertRequest.input('ApplicantIDNo', sql.NVarChar(100), application.applicantIDNo || null);
       insertRequest.input('ApplicantEmailID', sql.NVarChar(200), application.applicantEmailID || null);
       insertRequest.input('ApplicantMobileNo', sql.NVarChar(50), application.applicantMobileNo || null);
       insertRequest.input('ApplicantHomeTelNo', sql.NVarChar(50), application.applicantHomeTelNo || null);
       insertRequest.input('ApplicantOfficeTelNo', sql.NVarChar(50), application.applicantOfficeTelNo || null);
+
       const applicantAddressNo = typeof application.applicantAddressNo === 'string'
         ? application.applicantAddressNo.trim()
         : application.applicantAddressNo;
@@ -218,6 +210,7 @@ class GateOfLifeRepository {
       insertRequest.input('ApplicantAddressCity', sql.NVarChar(100), application.applicantAddressCity || null);
       insertRequest.input('ApplicantAddressState', sql.NVarChar(100), application.applicantAddressState || null);
       insertRequest.input('ApplicantAddressCountry', sql.NVarChar(100), application.applicantAddressCountry || null);
+
       insertRequest.input('DonationAmount', sql.Decimal(18, 2), application.donationAmount || null);
       insertRequest.input('DefaultDonationAmount', sql.Decimal(18, 2), application.defaultDonationAmount || null);
       insertRequest.input('ChurchId', sql.Int, application.churchId);
@@ -305,11 +298,12 @@ class GateOfLifeRepository {
       updateRequest.input('ApplicationId', sql.Int, application.applicationId);
       updateRequest.input('ChurchId', sql.Int, application.churchId);
       updateRequest.input('ApplicantName', sql.NVarChar(200), application.applicantName);
-      updateRequest.input('ApplicantIDNo', sql.NVarChar(100), application.applicantIDNo);
+      updateRequest.input('ApplicantIDNo', sql.NVarChar(100), application.applicantIDNo || null);
       updateRequest.input('ApplicantEmailID', sql.NVarChar(200), application.applicantEmailID || null);
       updateRequest.input('ApplicantMobileNo', sql.NVarChar(50), application.applicantMobileNo || null);
       updateRequest.input('ApplicantHomeTelNo', sql.NVarChar(50), application.applicantHomeTelNo || null);
       updateRequest.input('ApplicantOfficeTelNo', sql.NVarChar(50), application.applicantOfficeTelNo || null);
+
       const applicantAddressNo = typeof application.applicantAddressNo === 'string'
         ? application.applicantAddressNo.trim()
         : application.applicantAddressNo;
@@ -319,6 +313,7 @@ class GateOfLifeRepository {
       updateRequest.input('ApplicantAddressCity', sql.NVarChar(100), application.applicantAddressCity || null);
       updateRequest.input('ApplicantAddressState', sql.NVarChar(100), application.applicantAddressState || null);
       updateRequest.input('ApplicantAddressCountry', sql.NVarChar(100), application.applicantAddressCountry || null);
+
       updateRequest.input('DonationAmount', sql.Decimal(18, 2), application.donationAmount || null);
       updateRequest.input('DefaultDonationAmount', sql.Decimal(18, 2), application.defaultDonationAmount || null);
       updateRequest.input('RequestSameBrick', sql.Bit, application.requestSameBrick || false);
@@ -459,11 +454,7 @@ class GateOfLifeRepository {
 
       const detailsQuery = `
         SELECT
-          NameToEngrave,
-          Remarks,
-          DateOfBirth,
-          DateOfDeath,
-          AdditionalInfo
+          NameToEngrave
         FROM EngraveWallApplicationDetail WITH (NOLOCK)
         WHERE EngraveWallApplicationId = @applicationId
         ORDER BY EngraveWallApplicationDetailId ASC
@@ -576,10 +567,6 @@ class GateOfLifeRepository {
       const detailRequest = new sql.Request(transaction);
       detailRequest.input('ApplicationId', sql.Int, applicationId);
       detailRequest.input('NameToEngrave', sql.NVarChar(200), detail.nameToEngrave);
-      detailRequest.input('Remarks', sql.NVarChar(400), detail.remarks || null);
-      detailRequest.input('DateOfBirth', sql.DateTime, detail.dateOfBirth || null);
-      detailRequest.input('DateOfDeath', sql.DateTime, detail.dateOfDeath || null);
-      detailRequest.input('AdditionalInfo', sql.NVarChar(sql.MAX), detail.additionalInfo || null);
 
       logger.debug(`Inserting EngraveWallApplicationDetail for appId ${applicationId}:`, {
         nameToEngrave: detail.nameToEngrave,
@@ -592,19 +579,11 @@ class GateOfLifeRepository {
       await detailRequest.query(`
         INSERT INTO EngraveWallApplicationDetail (
           EngraveWallApplicationId,
-          NameToEngrave,
-          Remarks,
-          DateOfBirth,
-          DateOfDeath,
-          AdditionalInfo
+          NameToEngrave
         )
         VALUES (
           @ApplicationId,
-          @NameToEngrave,
-          @Remarks,
-          @DateOfBirth,
-          @DateOfDeath,
-          @AdditionalInfo
+          @NameToEngrave
         )
       `);
     }
@@ -619,11 +598,7 @@ class GateOfLifeRepository {
       SELECT
         EngraveWallApplicationDetailId AS detailId,
         EngraveWallApplicationId AS applicationId,
-        NameToEngrave AS nameToEngrave,
-        Remarks AS remarks,
-        DateOfBirth AS dateOfBirth,
-        DateOfDeath AS dateOfDeath,
-        AdditionalInfo AS additionalInfo
+        NameToEngrave AS nameToEngrave
       FROM EngraveWallApplicationDetail WITH (NOLOCK)
       WHERE EngraveWallApplicationId = @applicationId
       ORDER BY EngraveWallApplicationDetailId ASC
@@ -650,11 +625,7 @@ class GateOfLifeRepository {
       SELECT
         EngraveWallApplicationDetailId AS detailId,
         EngraveWallApplicationId AS applicationId,
-        NameToEngrave AS nameToEngrave,
-        Remarks AS remarks,
-        DateOfBirth AS dateOfBirth,
-        DateOfDeath AS dateOfDeath,
-        AdditionalInfo AS additionalInfo
+        NameToEngrave AS nameToEngrave
       FROM EngraveWallApplicationDetail WITH (NOLOCK)
       WHERE EngraveWallApplicationId IN (${placeholders})
       ORDER BY EngraveWallApplicationDetailId ASC

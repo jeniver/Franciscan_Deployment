@@ -339,8 +339,7 @@ export function InvoiceAndReceiptPage() {
     // Details → table items mapping - improved handling
     let invoiceDetails = currentData.details || currentDataAny.Details || [];
 
-    // Wake Room Fallback: If no details are found but this is a wake room booking,
-    // construct a default item from the booking's financial information
+    // Wake Room Fallback
     if (invoiceDetails.length === 0 && (currentDataAny.booking || currentDataAny.wakeRoomId)) {
       invoiceDetails = [{
         itemId: 0,
@@ -357,6 +356,25 @@ export function InvoiceAndReceiptPage() {
         refDocNumber: currentData.applicationCode || currentData.code || '',
         refDocName: 'WAKE',
         refType: 'WAKE'
+      }];
+    }
+    // Gate of Life Fallback
+    else if (invoiceDetails.length === 0 && currentDataAny.code?.startsWith('GOL')) {
+      invoiceDetails = [{
+        itemId: 0,
+        itemName: 'Gate of Life Donation',
+        itemCode: 'GOL',
+        itemPrice: currentDataAny.defaultDonationAmount || 0,
+        quantity: 1,
+        unitAmount: currentDataAny.defaultDonationAmount || 0,
+        payingAmount: currentDataAny.donationAmount || 0,
+        lineTotalAmount: currentDataAny.donationAmount || 0,
+        lineTaxPercent: 0,
+        lineTaxAmount: 0,
+        totalPayingAmount: currentDataAny.donationAmount || 0,
+        refDocNumber: currentDataAny.code || '',
+        refDocName: 'GOL',
+        refType: 'GOL'
       }];
     }
     const mapped: InvoiceItem[] = Array.isArray(invoiceDetails)

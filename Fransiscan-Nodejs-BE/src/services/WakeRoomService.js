@@ -254,6 +254,23 @@ class WakeRoomService {
         }
       }
 
+      // Handle timeOfCremation - if it's time-only (HH:MM), combine with usingDate
+      if (bookingData.timeOfCremation && /^\d{1,2}:\d{2}(:\d{2})?$/.test(bookingData.timeOfCremation.trim())) {
+        const usingDateObj = parseDate(bookingData.usingDate || bookingData.usingTimeFrom);
+        if (usingDateObj) {
+          const [hours, minutes, seconds = '0'] = bookingData.timeOfCremation.trim().split(':');
+          const cremationTimeDate = new Date(usingDateObj);
+          cremationTimeDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), parseInt(seconds, 10), 0);
+          bookingData.timeOfCremation = cremationTimeDate.toISOString();
+        }
+      } else if (bookingData.timeOfCremation) {
+        // Try to parse as full date
+        const cremationTimeDate = parseDate(bookingData.timeOfCremation);
+        if (cremationTimeDate) {
+          bookingData.timeOfCremation = cremationTimeDate.toISOString();
+        }
+      }
+
       // Normalize usingTimeFrom and usingTimeTo to ISO format
       if (usingTimeFromDate && !Number.isNaN(usingTimeFromDate.getTime())) {
         bookingData.usingTimeFrom = usingTimeFromDate.toISOString();

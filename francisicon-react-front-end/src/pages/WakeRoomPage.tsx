@@ -17,6 +17,7 @@ export function WakeRoomPage() {
   const location = useLocation();
   const [viewMode, setViewMode] = useState<'form' | 'table'>('table');
   const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
+  const [newlyCreatedBookingCode, setNewlyCreatedBookingCode] = useState<string | null>(null);
   const { handleGetBookingByCode, selectedBooking } = useWakeRoom();
   const user = useSelector((state: RootState) => state.auth.user);
 
@@ -38,6 +39,8 @@ export function WakeRoomPage() {
 
   const handleBookingCreated = (bookingCode: string) => {
     console.log('Booking created:', bookingCode);
+    // Set the newly created booking code for highlighting
+    setNewlyCreatedBookingCode(bookingCode);
     // Switch to table view to show the created booking
     navigate('/wake-room');
   };
@@ -138,7 +141,7 @@ export function WakeRoomPage() {
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
             {viewMode === 'table' ? (
-              <WakeRoomSearch />
+              <WakeRoomSearch highlightBookingCode={newlyCreatedBookingCode} />
             ) : (
               <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
                 <WakeRoomBookingForm

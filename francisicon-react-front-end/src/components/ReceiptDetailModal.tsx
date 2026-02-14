@@ -413,11 +413,11 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
                 </div>
               </div>
             )}
-            <>{console.log("+++++++++++++++++",receipt)}</>
+            <>{console.log("+++++++++++++++++", receipt)}</>
             <div ref={contentRef}>
               <div data-pdf-page>
                 <ReceiptTemplate
-                  receiptNo={receipt.applicationId != null ? String(receipt.applicationId) : 'N/A'}
+                  receiptNo={receipt.receiptCode || (receipt.applicationId != null ? String(receipt.applicationId) : 'N/A')}
                   date={receipt.receiptDate ? formatDate(receipt.receiptDate) : (receipt.createdAt ? formatDate(receipt.createdAt) : (receipt as any).transactionDate ? formatDate((receipt as any).transactionDate) : formatDate(new Date().toISOString()))}
                   receivedFrom={receipt.customerName || (receipt as any).payeeName || 'N/A'}
                   address={displayAddress}
@@ -426,12 +426,12 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
                   totalAmount={receipt.totalAmount || (receipt as any).payingAmount || 0}
                   dollarsInWords={convertToDollarsInWords(receipt.totalAmount || (receipt as any).payingAmount)}
                   paymentMethod={receipt.paymentMode || (receipt as any).paymentMethod || 'Cash'}
-                  items={(receipt.invoiceDetails || []).map((d) => ({
-                    description: d.description || '',
-                    quantity: d.quantity || 0,
-                    unitPrice: d.unitPrice || 0,
-                    amount: d.amount || 0,
-                  }))}
+                  items={((receipt.invoiceDetails || (receipt as any).details || []).map((d: any) => ({
+                    description: d.description || d.itemName || '',
+                    quantity: d.quantity || 1,
+                    unitPrice: d.unitPrice || d.payingAmount || 0,
+                    amount: d.amount || d.lineTotalAmount || 0,
+                  })))}
                 />
               </div>
             </div>

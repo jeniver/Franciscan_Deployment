@@ -262,8 +262,7 @@ router.post('/bookings',
     body('usingTimeFrom').isISO8601().withMessage('Using time from is required'),
     body('usingTimeTo').isISO8601().withMessage('Using time to is required'),
     body('donationAmount').optional().isFloat({ min: 0 }).withMessage('Donation amount must be a positive number'),
-    body('applicantMobileNo').optional().isMobilePhone().withMessage('Invalid mobile phone number'),
-    body('applicantEmailID').optional().isEmail().withMessage('Invalid email address')
+    body('applicantMobileNo').optional().isMobilePhone().withMessage('Invalid mobile phone number')
   ],
   validate,
   wakeRoomController.createWakeRoomBooking

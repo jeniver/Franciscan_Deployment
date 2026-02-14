@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import {
@@ -6,7 +6,6 @@ import {
   FilterIcon,
   PlusIcon,
   EditIcon,
-  EyeIcon,
   Trash2Icon,
   FileTextIcon,
   LoaderIcon,
@@ -122,7 +121,7 @@ export function InscriptionManagementPage() {
   };
 
   // Action handlers
-  const handleEdit = (id: number, code: string) => {
+  const handleEdit = (_id: number, code: string) => {
     navigate(`/inscriptions/${code}/edit`);
   };
 
@@ -383,7 +382,7 @@ export function InscriptionManagementPage() {
                           </button>
                           <button
                             onClick={() => handleDelete(inscription.id)}
-                            className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-all shadow-sm hover:shadow"
                             title="Delete"
                           >
                             <Trash2Icon className="h-5 w-5" />
@@ -425,8 +424,8 @@ export function InscriptionManagementPage() {
                         key={pageNum}
                         onClick={() => handlePageChange(pageNum)}
                         className={`px-5 py-2 text-sm font-bold border-x border-gray-50 transition-all ${currentPage === pageNum
-                            ? 'bg-[#801818] text-white'
-                            : 'text-gray-500 hover:bg-gray-50'
+                          ? 'bg-[#801818] text-white'
+                          : 'text-gray-500 hover:bg-gray-50'
                           }`}
                       >
                         {pageNum}

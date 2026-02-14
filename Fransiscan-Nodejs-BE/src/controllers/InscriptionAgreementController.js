@@ -14,9 +14,9 @@ class InscriptionAgreementController {
     try {
       const { inscriptionCode } = req.params;
       const churchId = req.user?.churchId;
-      
+
       logger.info(`[InscriptionAgreementController.getAgreementDetails] Request for inscription: ${inscriptionCode}, user: ${req.user?.userId}`);
-      
+
       // Validate input
       if (!inscriptionCode || inscriptionCode.trim().length === 0) {
         return res.status(400).json({
@@ -27,11 +27,11 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       const details = await InscriptionAgreementService.getAgreementDetails(inscriptionCode, churchId);
-      
+
       logger.info(`[InscriptionAgreementController.getAgreementDetails] Successfully retrieved details for inscription: ${inscriptionCode}`);
-      
+
       return res.status(200).json({
         success: true,
         data: details,
@@ -39,7 +39,7 @@ class InscriptionAgreementController {
       });
     } catch (error) {
       logger.error(`[InscriptionAgreementController.getAgreementDetails] Error retrieving details:`, error);
-      
+
       // Handle specific error cases
       if (error.code === 'NOT_FOUND') {
         return res.status(404).json({
@@ -50,7 +50,7 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       return res.status(500).json({
         success: false,
         error: {
@@ -71,9 +71,9 @@ class InscriptionAgreementController {
     try {
       const { inscriptionCode } = req.params;
       const churchId = req.user?.churchId;
-      
+
       logger.info(`[InscriptionAgreementController.getCrystalReportsInfo] Request for Crystal Reports data, inscription: ${inscriptionCode}`);
-      
+
       // Validate input
       if (!inscriptionCode || inscriptionCode.trim().length === 0) {
         return res.status(400).json({
@@ -84,11 +84,11 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       const reportsData = await InscriptionAgreementService.getCrystalReportsInfo(inscriptionCode, churchId);
-      
+
       logger.info(`[InscriptionAgreementController.getCrystalReportsInfo] Successfully prepared Crystal Reports data for inscription: ${inscriptionCode}`);
-      
+
       return res.status(200).json({
         success: true,
         data: reportsData,
@@ -96,7 +96,7 @@ class InscriptionAgreementController {
       });
     } catch (error) {
       logger.error(`[InscriptionAgreementController.getCrystalReportsInfo] Error preparing Crystal Reports data:`, error);
-      
+
       // Handle specific error cases
       if (error.code === 'NOT_FOUND') {
         return res.status(404).json({
@@ -107,7 +107,7 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       return res.status(500).json({
         success: false,
         error: {
@@ -128,16 +128,16 @@ class InscriptionAgreementController {
     try {
       const { inscriptionCode } = req.params;
       const churchId = req.user?.churchId;
-      
+
       logger.info(`[InscriptionAgreementController.getPdfData] Request for PDF data, inscription: ${inscriptionCode}`);
-      
+
       // Set cache control headers to handle frontend cache-busting
       res.set({
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0'
       });
-      
+
       // Validate input
       if (!inscriptionCode || inscriptionCode.trim().length === 0) {
         return res.status(400).json({
@@ -148,11 +148,11 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       const pdfData = await InscriptionAgreementService.getPdfData(inscriptionCode, churchId);
-      
+
       logger.info(`[InscriptionAgreementController.getPdfData] Successfully prepared PDF data for inscription: ${inscriptionCode}`);
-      
+
       return res.status(200).json({
         success: true,
         data: pdfData,
@@ -160,7 +160,7 @@ class InscriptionAgreementController {
       });
     } catch (error) {
       logger.error(`[InscriptionAgreementController.getPdfData] Error preparing PDF data:`, error);
-      
+
       // Handle specific error cases
       if (error.code === 'NOT_FOUND') {
         return res.status(404).json({
@@ -171,7 +171,7 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       return res.status(500).json({
         success: false,
         error: {
@@ -192,9 +192,9 @@ class InscriptionAgreementController {
     try {
       const { inscriptionCode } = req.params;
       const churchId = req.user?.churchId;
-      
+
       logger.info(`[InscriptionAgreementController.validateAgreement] Request for validation, inscription: ${inscriptionCode}`);
-      
+
       // Validate input
       if (!inscriptionCode || inscriptionCode.trim().length === 0) {
         return res.status(400).json({
@@ -205,23 +205,23 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       const validationResult = await InscriptionAgreementService.validateAgreement(inscriptionCode, churchId);
-      
+
       logger.info(`[InscriptionAgreementController.validateAgreement] Validation completed for inscription: ${inscriptionCode}`);
-      
+
       const statusCode = validationResult.isValid ? 200 : 400;
-      
+
       return res.status(statusCode).json({
         success: validationResult.isValid,
         data: validationResult,
-        message: validationResult.isValid 
-          ? 'Inscription agreement is valid for generation' 
+        message: validationResult.isValid
+          ? 'Inscription agreement is valid for generation'
           : 'Inscription agreement validation failed'
       });
     } catch (error) {
       logger.error(`[InscriptionAgreementController.validateAgreement] Error during validation:`, error);
-      
+
       return res.status(500).json({
         success: false,
         error: {
@@ -242,9 +242,9 @@ class InscriptionAgreementController {
     try {
       const { inscriptionCode, format } = req.params;
       const churchId = req.user?.churchId;
-      
+
       logger.info(`[InscriptionAgreementController.getTemplateData] Request for ${format} template data, inscription: ${inscriptionCode}`);
-      
+
       // Validate inputs
       if (!inscriptionCode || inscriptionCode.trim().length === 0) {
         return res.status(400).json({
@@ -255,7 +255,7 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       if (!format || format.trim().length === 0) {
         return res.status(400).json({
           success: false,
@@ -265,11 +265,11 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       const templateData = await InscriptionAgreementService.getTemplateData(inscriptionCode, format, churchId);
-      
+
       logger.info(`[InscriptionAgreementController.getTemplateData] Successfully prepared ${format} template data for inscription: ${inscriptionCode}`);
-      
+
       return res.status(200).json({
         success: true,
         data: templateData,
@@ -277,7 +277,7 @@ class InscriptionAgreementController {
       });
     } catch (error) {
       logger.error(`[InscriptionAgreementController.getTemplateData] Error preparing template data:`, error);
-      
+
       // Handle specific error cases
       if (error.code === 'NOT_FOUND') {
         return res.status(404).json({
@@ -288,7 +288,7 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       if (error.code === 'UNSUPPORTED_FORMAT') {
         return res.status(400).json({
           success: false,
@@ -298,13 +298,61 @@ class InscriptionAgreementController {
           }
         });
       }
-      
+
       return res.status(500).json({
         success: false,
         error: {
           code: 'INTERNAL_ERROR',
           message: 'Failed to prepare template data',
           details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        }
+      });
+    }
+  }
+
+  /**
+   * Send inscription agreement via email
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   */
+  async sendEmail(req, res) {
+    try {
+      const { inscriptionCode } = req.params;
+      const { to, subject, body, attachment } = req.body;
+      const churchId = req.user?.churchId;
+
+      logger.info(`[InscriptionAgreementController.sendEmail] Sending email for inscription: ${inscriptionCode}, to: ${to}`);
+
+      // Validate inputs
+      if (!inscriptionCode) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: 'Inscription code is required' }
+        });
+      }
+
+      if (!to) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: 'Recipient email is required' }
+        });
+      }
+
+      const result = await InscriptionAgreementService.sendEmail(inscriptionCode, { to, subject, body, attachment }, churchId);
+
+      if (!result.success) {
+        return res.status(500).json(result);
+      }
+
+      return res.status(200).json(result);
+    } catch (error) {
+      logger.error(`[InscriptionAgreementController.sendEmail] Error:`, error);
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to send inscription agreement email',
+          details: error.message
         }
       });
     }

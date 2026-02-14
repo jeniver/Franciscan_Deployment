@@ -19,12 +19,6 @@ export class GateOfLifeError extends Error {
 // Types for Gate of Life data
 export interface GateOfLifeApplicant {
   name: string;
-  block: string;
-  blockNo: string;
-  streetName: string;
-  unitNo: string;
-  postalCode: string;
-  country: string;
   mobileNo: string;
   homeTelephone: string;
   officeTelephone: string;
@@ -33,10 +27,6 @@ export interface GateOfLifeApplicant {
 
 export interface GateOfLifeEngraving {
   name: string;
-  relationship: string;
-  dateOfBirth: string;
-  dateOfDeath: string;
-  additionalInfo: string;
 }
 
 export interface GateOfLifeApplication {
@@ -50,7 +40,6 @@ export interface GateOfLifeApplication {
   };
   applicant?: {
     name?: string;
-    idNo?: string | null;
     email?: string | null;
     mobileNo?: string;
     homeTelNo?: string | null;
@@ -80,6 +69,7 @@ export interface GateOfLifeApplication {
   createdAt?: string;
   updatedAt?: string;
   requestSameBrick?: boolean;
+  donationAmount?: number;
 }
 
 export interface GateOfLifeResponse {
@@ -113,7 +103,6 @@ export interface SearchGateOfLifeParams {
   pageSize?: number;
   applicationCode?: string;
   applicantName?: string;
-  applicantIdNo?: string;
   nameToEngrave?: string;
   bookedFrom?: string;
   bookedTo?: string;
@@ -137,10 +126,6 @@ export interface CreateGateOfLifeRequest {
   donationAmount: number;
   details: Array<{
     nameToEngrave: string;
-    remarks?: string;
-    dateOfBirth?: string;
-    dateOfDeath?: string;
-    additionalInfo?: string;
   }>;
 }
 
@@ -161,10 +146,6 @@ export interface UpdateGateOfLifeRequest {
   donationAmount?: number;
   details?: Array<{
     nameToEngrave: string;
-    remarks?: string;
-    dateOfBirth?: string;
-    dateOfDeath?: string;
-    additionalInfo?: string;
   }>;
 }
 
@@ -180,7 +161,6 @@ export const gateOfLifeService = {
         pageSize: params.pageSize ?? 20,
         applicationCode: params.applicationCode,
         applicantName: params.applicantName,
-        applicantIdNo: params.applicantIdNo,
         nameToEngrave: params.nameToEngrave,
         bookedFrom: params.bookedFrom,
         bookedTo: params.bookedTo,

@@ -9,7 +9,7 @@ require('dotenv').config({ path: __dirname + '/../../.env' });
 const useWindowsAuth = !process.env.DB_PASSWORD || process.env.DB_PASSWORD === '';
 
 // Get configuration from environment
-const server = process.env.DB_SERVER || 'localhost';
+const server = process.env.DB_SERVER || '127.0.0.1';
 const instance = process.env.DB_INSTANCE || '';
 const database = process.env.DB_DATABASE || 'FransiscanTest';
 const port = process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 1433;
@@ -28,14 +28,18 @@ if (instance && instance !== '') {
   serverString = server;
 }
 
-// Normalize server string: convert .\INSTANCE to localhost\INSTANCE for Node.js drivers
-// The .\ format works in SSMS but Node.js drivers need localhost\INSTANCE
+// Normalize server string: convert .\INSTANCE to 127.0.0.1\INSTANCE for Node.js drivers
+// The .\ format works in SSMS but Node.js drivers need 127.0.0.1\INSTANCE or localhost\INSTANCE
 if (serverString.startsWith('.\\')) {
-  serverString = 'localhost' + serverString.substring(1); // Replace .\ with localhost\
+  serverString = '127.0.0.1' + serverString.substring(1); // Replace .\ with 127.0.0.1\
   logger.info(`Normalized server string: ${server} -> ${serverString}`);
 } else if (serverString.startsWith('.') && !serverString.includes('\\')) {
   // Handle edge case where server is just '.' without instance
-  serverString = 'localhost';
+  serverString = '127.0.0.1';
+  logger.info(`Normalized server string: ${server} -> ${serverString}`);
+} else if (serverString === 'localhost' || serverString.startsWith('localhost\\')) {
+  // Replace localhost with 127.0.0.1 to avoid DNS lookup issues
+  serverString = serverString.replace('localhost', '127.0.0.1');
   logger.info(`Normalized server string: ${server} -> ${serverString}`);
 }
 
@@ -58,14 +62,14 @@ if (useWindowsAuth) {
 
   // Build connection string for Windows Authentication
   // Note: Connection timeout in connection string is in seconds
-  // For named instances, ensure proper format (e.g., .\SQLEXPRESS or localhost\SQLEXPRESS)
+  // For named instances, ensure proper format (e.g., .\SQLEXPRESS or 127.0.0.1\SQLEXPRESS)
   const connectionTimeoutSeconds = Math.ceil(connectionTimeout / 1000);
-  
+
   // For Windows Auth with msnodesqlv8, if port is specified, use server,port format
   // This bypasses SQL Server Browser and is more reliable
   const hasExplicitPort = process.env.DB_PORT && process.env.DB_PORT !== '';
   const serverHost = serverString.includes('\\') ? serverString.split('\\')[0] : serverString;
-  
+
   let connectionServerString;
   if (hasExplicitPort) {
     // Use server,port format - this is the most reliable for msnodesqlv8
@@ -79,7 +83,7 @@ if (useWindowsAuth) {
       logger.warn('💡 Set DB_PORT in .env to bypass SQL Server Browser');
     }
   }
-  
+
   const connectionString = `Server=${connectionServerString};Database=${database};Trusted_Connection=Yes;Driver={ODBC Driver 17 for SQL Server};Connection Timeout=${connectionTimeoutSeconds};`;
 
   config = {
@@ -93,19 +97,19 @@ if (useWindowsAuth) {
       enableArithAbort: true,
       encrypt: false,
       trustServerCertificate: true,
-      connectionTimeout: connectionTimeout, 
+      connectionTimeout: connectionTimeout,
       requestTimeout: requestTimeout,
-      cancelTimeout: cancelTimeout, 
+      cancelTimeout: cancelTimeout,
       useUTC: false
     },
     pool: {
       max: parseInt(process.env.DB_POOL_MAX) || 20,
       min: parseInt(process.env.DB_POOL_MIN) || 2,
       idleTimeoutMillis: poolIdleTimeout,
-      acquireTimeoutMillis: connectionTimeout 
+      acquireTimeoutMillis: connectionTimeout
     }
   };
-  
+
   // Log connection details for debugging
   logger.info('Windows Auth connection config:', {
     serverString,
@@ -116,7 +120,7 @@ if (useWindowsAuth) {
     port: hasExplicitPort ? process.env.DB_PORT : 'dynamic (SQL Server Browser)',
     connectionTimeout: connectionTimeoutSeconds
   });
-  } else {
+} else {
   // SQL Server Authentication with tedious driver
   logger.info('Using SQL Server Authentication with tedious driver');
 
@@ -128,19 +132,22 @@ if (useWindowsAuth) {
   }
 
   // For named instances with tedious driver, we need to separate server and instance
-  // Named instances can be in format: localhost\SQLEXPRESS, .\SQLEXPRESS, or server\instance
+  // Named instances can be in format: 127.0.0.1\SQLEXPRESS, .\SQLEXPRESS, or server\instance
   let serverHost = server;
   let instanceName = instance;
   let useNamedInstance = false;
-  
-  // Check if server contains instance name (e.g., localhost\SQLEXPRESS)
+
+  // Check if server contains instance name (e.g., 127.0.0.1\SQLEXPRESS)
   if (server.includes('\\')) {
     const parts = server.split('\\');
-    serverHost = parts[0] === '.' || parts[0] === '' ? 'localhost' : parts[0];
+    serverHost = parts[0] === '.' || parts[0] === '' ? '127.0.0.1' : parts[0];
+    if (serverHost === 'localhost') serverHost = '127.0.0.1'; // Force IP
     instanceName = parts[1] || instance;
     useNamedInstance = !!instanceName;
   } else if (server === '.' || server === '') {
-    serverHost = 'localhost';
+    serverHost = '127.0.0.1';
+  } else if (server === 'localhost') {
+    serverHost = '127.0.0.1';
   } else if (instance && instance !== '') {
     instanceName = instance;
     useNamedInstance = true;
@@ -149,7 +156,7 @@ if (useWindowsAuth) {
   // Check if a specific port is provided - if so, don't use instanceName
   // This allows bypassing SQL Server Browser when port is known
   const hasExplicitPort = process.env.DB_PORT && process.env.DB_PORT !== '1433';
-  
+
   if (useNamedInstance && !hasExplicitPort) {
     // For named instances without explicit port, use instanceName (requires SQL Server Browser)
     // CRITICAL: Do NOT include 'port' property when using instanceName
@@ -180,7 +187,7 @@ if (useWindowsAuth) {
         acquireTimeoutMillis: connectionTimeout
       }
     };
-    
+
     // CRITICAL SAFEGUARD: Ensure port is never set when using instanceName
     // The tedious driver will fail if both port and instanceName are set
     if ('port' in config) {
@@ -188,7 +195,7 @@ if (useWindowsAuth) {
       logger.error('⚠️  Removing port property - instanceName requires SQL Server Browser');
       delete config.port;
     }
-    
+
     logger.info('Named instance detected - using instanceName option (SQL Server Browser required)');
     logger.info(`Config: server=${config.server}, instanceName=${config.options.instanceName}, port=${config.port !== undefined ? config.port : 'OMITTED (correct)'}, user=${config.user}`);
     logger.warn('⚠️  If connection fails with ~15-20s timeout, SQL Server Browser service is not running');
@@ -222,14 +229,14 @@ if (useWindowsAuth) {
         acquireTimeoutMillis: connectionTimeout
       }
     };
-    
+
     if (useNamedInstance && hasExplicitPort) {
       logger.info(`Named instance with explicit port: ${serverHost}:${config.port} (bypassing SQL Server Browser), user=${config.user}`);
     } else {
       logger.info(`Default instance connection: ${serverHost}:${config.port}, user=${config.user}`);
     }
   }
-  
+
   // Log connection details for debugging
   logger.info('SQL Auth connection config:', {
     serverHost,
@@ -287,11 +294,11 @@ const validateConnection = async (connectionPool) => {
     const request = connectionPool.request();
     const result = await Promise.race([
       request.query('SELECT 1 AS test'),
-      new Promise((_, reject) => 
+      new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Connection validation timeout')), 5000)
       )
     ]);
-    
+
     return result && result.recordset && result.recordset.length > 0;
   } catch (error) {
     logger.warn('Connection validation failed:', error.message);
@@ -311,14 +318,14 @@ const setupPoolEventHandlers = (connectionPool) => {
       code: err.code,
       name: err.name
     });
-    
+
     // Mark pool as invalid on connection errors
-    if (err.code === 'ECONNRESET' || 
-        err.code === 'ETIMEDOUT' || 
-        err.code === 'ETIMEOUT' ||
-        err.code === 'ESOCKET' ||
-        err.code === 'ENOTFOUND' ||
-        err.message?.includes('Connection is closed')) {
+    if (err.code === 'ECONNRESET' ||
+      err.code === 'ETIMEDOUT' ||
+      err.code === 'ETIMEOUT' ||
+      err.code === 'ESOCKET' ||
+      err.code === 'ENOTFOUND' ||
+      err.message?.includes('Connection is closed')) {
       logger.warn('Connection lost, will attempt to reconnect on next request');
       pool = null;
       lastValidationTime = 0;
@@ -341,7 +348,7 @@ const setupPoolEventHandlers = (connectionPool) => {
 /**
  * Connect to SQL Server database with retry logic
  */
-const connectDatabase = async(retryCount = 0) => {
+const connectDatabase = async (retryCount = 0) => {
   // If already connecting, wait for that connection attempt (but with timeout)
   if (isConnecting && connectionPromise) {
     try {
@@ -349,7 +356,7 @@ const connectDatabase = async(retryCount = 0) => {
       const existingConnectionTimeout = config.options.connectionTimeout || 60000;
       return await Promise.race([
         connectionPromise,
-        new Promise((_, reject) => 
+        new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Previous connection attempt timed out')), existingConnectionTimeout + 5000)
         )
       ]);
@@ -397,7 +404,7 @@ const connectDatabase = async(retryCount = 0) => {
       const timeoutMs = config.options.connectionTimeout || 60000;
       let timeoutId = null;
       let connectionResolved = false;
-      
+
       const connectPromise = sql.connect(config).then(result => {
         connectionResolved = true;
         if (timeoutId) {
@@ -411,7 +418,7 @@ const connectDatabase = async(retryCount = 0) => {
         }
         throw error;
       });
-      
+
       const timeoutPromise = new Promise((_, reject) => {
         timeoutId = setTimeout(() => {
           if (!connectionResolved) {
@@ -420,7 +427,7 @@ const connectDatabase = async(retryCount = 0) => {
           }
         }, timeoutMs);
       });
-      
+
       try {
         pool = await Promise.race([connectPromise, timeoutPromise]);
         if (timeoutId) {
@@ -437,7 +444,7 @@ const connectDatabase = async(retryCount = 0) => {
         // Otherwise it's a connection error from sql.connect()
         throw raceError;
       }
-      
+
       setupPoolEventHandlers(pool);
 
       // Validate the connection immediately
@@ -449,7 +456,7 @@ const connectDatabase = async(retryCount = 0) => {
       lastValidationTime = Date.now();
       logger.info('✅ Connected to SQL Server database successfully');
       connectionRetries = 0;
-      
+
       return pool;
     } catch (error) {
       pool = null;
@@ -469,7 +476,7 @@ const connectDatabase = async(retryCount = 0) => {
     connectionPromise = null;
     pool = null;
     lastValidationTime = 0;
-    
+
     // Enhanced error logging with diagnostic information
     // Use actual config port, not the default port variable
     const actualPort = config.port !== undefined ? config.port : (config.options?.instanceName ? 'dynamic (via SQL Server Browser)' : (port || 1433));
@@ -534,7 +541,7 @@ const connectDatabase = async(retryCount = 0) => {
       const timeoutMatch = error.message?.match(/(\d+)ms/);
       const timeoutMs = timeoutMatch ? parseInt(timeoutMatch[1]) : null;
       const isBrowserTimeout = timeoutMs && timeoutMs >= 14000 && timeoutMs <= 20000; // 15-20s is typical Browser timeout
-      
+
       const diagnostic = {
         possibleCauses: [
           'SQL Server is not running',
@@ -544,7 +551,7 @@ const connectDatabase = async(retryCount = 0) => {
           'SQL Server service is not started'
         ]
       };
-      
+
       if (isNamedInstance || (serverString.includes('\\') && !useWindowsAuth)) {
         diagnostic.possibleCauses.push('SQL Server Browser service is not running (required for named instances)');
         diagnostic.solutions = [
@@ -555,14 +562,14 @@ const connectDatabase = async(retryCount = 0) => {
         ];
         diagnostic.checkServer = `Named instance detected: ${serverString}`;
         diagnostic.checkBrowser = 'Verify SQL Server Browser service is running: sc query SQLBrowser';
-        
+
         if (isBrowserTimeout) {
           diagnostic.note = `The ${timeoutMs}ms timeout indicates SQL Server Browser query failed. Browser service must be running for named instances.`;
         }
       } else {
         diagnostic.checkServer = `Verify SQL Server is running and accessible at ${serverString}:${port || 1433}`;
       }
-      
+
       errorDetails.diagnostic = diagnostic;
     }
 
@@ -578,10 +585,10 @@ const connectDatabase = async(retryCount = 0) => {
       // Add jitter (0-500ms) to prevent thundering herd
       const jitter = Math.floor(Math.random() * 500);
       const delay = baseDelay + jitter;
-      
+
       logger.info(`Retrying connection in ${delay}ms (${baseDelay}ms base + ${jitter}ms jitter)...`);
       await new Promise(resolve => setTimeout(resolve, delay));
-      
+
       // Recursive retry with incremented counter
       return connectDatabase(retryCount + 1);
     }
@@ -598,7 +605,7 @@ const connectDatabase = async(retryCount = 0) => {
     finalError.attempts = MAX_RETRIES + 1;
     finalError.server = serverString;
     finalError.database = database;
-    
+
     throw finalError;
   }
 };
@@ -607,14 +614,14 @@ const connectDatabase = async(retryCount = 0) => {
  * Get database connection pool with auto-reconnect and validation
  * Ensures pool is always available or throws error
  */
-const getPool = async() => {
+const getPool = async () => {
   // If connection is in progress, wait for it (with timeout protection)
   if (isConnecting && connectionPromise) {
     try {
       const waitTimeout = config.options.connectionTimeout || 60000;
       await Promise.race([
         connectionPromise,
-        new Promise((_, reject) => 
+        new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Connection wait timeout')), waitTimeout + 5000)
         )
       ]);
@@ -645,7 +652,7 @@ const getPool = async() => {
           lastValidationTime = 0;
         }
       }
-      
+
       // Otherwise validate it
       if (pool) {
         const isValid = await validateConnection(pool);
@@ -653,7 +660,7 @@ const getPool = async() => {
           lastValidationTime = Date.now();
           return pool;
         }
-        
+
         // Pool is invalid, reset it
         logger.warn('Pool validation failed, reconnecting...');
         pool = null;
@@ -664,14 +671,14 @@ const getPool = async() => {
     // Reconnect if pool doesn't exist or is invalid
     // Ensure we get a valid pool
     await connectDatabase();
-    
+
     // Double-check pool is available
     if (!pool) {
       // Wait a bit and retry once more
       logger.warn('Pool not available after first connection attempt, retrying...');
       await new Promise(resolve => setTimeout(resolve, 1000));
       await connectDatabase();
-      
+
       if (!pool) {
         const error = new Error(
           `Failed to establish database connection after retries. ` +
@@ -682,7 +689,7 @@ const getPool = async() => {
         throw error;
       }
     }
-    
+
     return pool;
   } catch (error) {
     logger.error('Failed to get database pool:', {
@@ -692,13 +699,13 @@ const getPool = async() => {
       database: database,
       port: port || 1433
     });
-    
+
     // Try one more time with delay (last resort)
     try {
       logger.info('Attempting final retry to get database pool...');
       await new Promise(resolve => setTimeout(resolve, 2000));
       await connectDatabase();
-      
+
       if (!pool) {
         const finalError = new Error(
           `Database connection pool is not available after multiple retry attempts. ` +
@@ -710,7 +717,7 @@ const getPool = async() => {
         finalError.originalError = error;
         throw finalError;
       }
-      
+
       return pool;
     } catch (retryError) {
       logger.error('Final retry connection also failed:', {
@@ -718,7 +725,7 @@ const getPool = async() => {
         code: retryError.code,
         originalError: error.message
       });
-      
+
       const finalError = new Error(
         `Database connection pool is not available. ` +
         `Server: ${serverString}, Database: ${database}, Port: ${port || 1433}. ` +
@@ -741,10 +748,10 @@ const getPool = async() => {
  * @param {number} retryCount - Current retry attempt
  * @returns {Promise<Object>} Query result
  */
-const executeQuery = async(query, params = {}, options = {}, retryCount = 0) => {
+const executeQuery = async (query, params = {}, options = {}, retryCount = 0) => {
   try {
     const connectionPool = await getPool();
-    
+
     if (!connectionPool) {
       throw new Error('Database connection pool is not available');
     }
@@ -788,7 +795,7 @@ const executeQuery = async(query, params = {}, options = {}, retryCount = 0) => 
     // Distinguish between connection establishment errors and query timeout errors
     // Connection errors: pool unavailable, can't connect to database
     // Query timeout errors: pool exists, but query execution is slow
-    const isConnectionEstablishmentError = 
+    const isConnectionEstablishmentError =
       error.code === 'ECONNRESET' ||
       error.code === 'ESOCKET' ||
       error.code === 'ENOTFOUND' ||
@@ -798,7 +805,7 @@ const executeQuery = async(query, params = {}, options = {}, retryCount = 0) => 
       error.message?.includes('Database connection pool is not available') ||
       (error.code === 'ETIMEOUT' && error.message?.includes('Failed to connect'));
 
-    const isQueryTimeoutError = 
+    const isQueryTimeoutError =
       (error.code === 'ETIMEOUT' || error.code === 'ETIMEDOUT') &&
       !error.message?.includes('Failed to connect') &&
       !error.message?.includes('Connection') &&
@@ -846,10 +853,10 @@ const executeQuery = async(query, params = {}, options = {}, retryCount = 0) => 
  * @param {number} retryCount - Current retry attempt
  * @returns {Promise<Object>} Procedure result
  */
-const executeProcedure = async(procedureName, params = {}, options = {}, retryCount = 0) => {
+const executeProcedure = async (procedureName, params = {}, options = {}, retryCount = 0) => {
   try {
     const connectionPool = await getPool();
-    
+
     if (!connectionPool) {
       throw new Error('Database connection pool is not available');
     }
@@ -882,13 +889,13 @@ const executeProcedure = async(procedureName, params = {}, options = {}, retryCo
     // Otherwise, when a request times out, the cancel operation itself will timeout.
     // The cancelTimeout is set at pool level (30s by default), so if request timeout > 30s,
     // we must ensure cancelTimeout is increased OR use a wrapper timeout.
-    
+
     // For now, we'll cap the request timeout at cancelTimeout to prevent cancel timeout errors
     // If a procedure needs longer, increase DB_CANCEL_TIMEOUT in environment variables
     const cancelTimeout = config.options.cancelTimeout || 180000;
     // Allow request timeout to be up to cancelTimeout (they should match for stored procedures)
     const effectiveTimeout = options.timeout || undefined;
-    
+
     // If requested timeout exceeds cancelTimeout, log a warning
     if (options.timeout && options.timeout > cancelTimeout) {
       logger.warn(
@@ -897,7 +904,7 @@ const executeProcedure = async(procedureName, params = {}, options = {}, retryCo
         `To support longer timeouts, increase DB_CANCEL_TIMEOUT environment variable.`
       );
     }
-    
+
     if (effectiveTimeout) {
       // For mssql, timeout is set on the request object
       request.timeout = effectiveTimeout;
@@ -910,7 +917,7 @@ const executeProcedure = async(procedureName, params = {}, options = {}, retryCo
     const result = await request.execute(procedureName);
     return result;
   } catch (error) {
-    const isConnectionError = 
+    const isConnectionError =
       error.code === 'ECONNRESET' ||
       error.code === 'ETIMEDOUT' ||
       error.code === 'ETIMEOUT' ||
@@ -921,19 +928,19 @@ const executeProcedure = async(procedureName, params = {}, options = {}, retryCo
       error.message?.includes('RequestError') ||
       error.message?.includes('Failed to connect');
 
-    const isTimeoutError = 
+    const isTimeoutError =
       error.code === 'ETIMEOUT' ||
       error.code === 'ETIMEDOUT' ||
       error.message?.includes('timeout') ||
       error.message?.includes('Timeout');
 
     // Check if error is "procedure not found" - this is expected and will fallback
-    const isProcedureNotFound = 
+    const isProcedureNotFound =
       error.message?.includes('Could not find stored procedure') ||
       (error.message?.includes('stored procedure') && error.message?.includes('not found')) ||
       (error.originalError?.info?.number === 2812) || // SQL Server error 2812 = object not found
       (error.info?.number === 2812);
-    
+
     if (isProcedureNotFound) {
       // Log as debug since this is expected behavior (fallback will be used)
       logger.debug(`Stored procedure ${procedureName} not found (expected, will use fallback)`);
@@ -955,9 +962,9 @@ const executeProcedure = async(procedureName, params = {}, options = {}, retryCo
     if (isConnectionError && !isTimeoutError && retryCount < 2) {
       logger.info(`Retrying procedure (attempt ${retryCount + 2}/3)...`);
       // Only invalidate pool for actual connection issues, not timeouts
-      if (error.code === 'ECONNRESET' || 
-          error.code === 'ESOCKET' || 
-          error.message?.includes('Connection is closed')) {
+      if (error.code === 'ECONNRESET' ||
+        error.code === 'ESOCKET' ||
+        error.message?.includes('Connection is closed')) {
         pool = null; // Force reconnection only for real connection problems
         lastValidationTime = 0;
       }
@@ -980,11 +987,11 @@ const executeProcedure = async(procedureName, params = {}, options = {}, retryCo
 /**
  * Close database connection
  */
-const closeDatabase = async() => {
+const closeDatabase = async () => {
   try {
     isConnecting = false;
     connectionPromise = null;
-    
+
     if (pool) {
       try {
         await pool.close();
@@ -1009,7 +1016,7 @@ const closeDatabase = async() => {
 /**
  * Health check for database connection
  */
-const healthCheck = async() => {
+const healthCheck = async () => {
   try {
     // First check if pool exists
     if (!pool) {
