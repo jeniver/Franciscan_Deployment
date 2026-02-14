@@ -268,10 +268,10 @@ export const nicheAgreementService = {
       });
 
       // Race between API call and timeout
-      const response = await Promise.race([
+      const response = (await Promise.race([
         api.get(`/api/niche-agreements/${applicationNumber.trim()}`),
         timeoutPromise
-      ]);
+      ])) as any;
 
       if (!response.data.success) {
         throw new NicheAgreementError('API returned unsuccessful response', 400);
@@ -469,7 +469,7 @@ export const nicheAgreementService = {
       };
 
       // Retry logic for network errors
-      let response;
+      let response: any;
       let lastError: any = null;
       const maxRetries = 2;
 

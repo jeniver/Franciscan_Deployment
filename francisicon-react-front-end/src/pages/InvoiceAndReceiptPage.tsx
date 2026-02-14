@@ -343,15 +343,20 @@ export function InvoiceAndReceiptPage() {
     // construct a default item from the booking's financial information
     if (invoiceDetails.length === 0 && (currentDataAny.booking || currentDataAny.wakeRoomId)) {
       invoiceDetails = [{
+        itemId: 0,
         itemName: currentDataAny.wakeRoom?.name ? `Wake Room Rental - ${currentDataAny.wakeRoom.name}` : 'Wake Room Rental',
+        itemCode: 'WAKE',
+        itemPrice: currentDataAny.financial?.defaultDonationAmount || (currentDataAny as any).defaultDonationAmount || 0,
         quantity: currentDataAny.booking?.noOfDays || (currentDataAny as any).noOfDays || 1,
         unitAmount: currentDataAny.financial?.defaultDonationAmount || (currentDataAny as any).defaultDonationAmount || 0,
+        payingAmount: currentDataAny.financial?.donationAmount || (currentDataAny as any).donationAmount || 0,
         lineTotalAmount: currentDataAny.financial?.donationAmount || (currentDataAny as any).donationAmount || 0,
         lineTaxPercent: 0,
         lineTaxAmount: 0,
         totalPayingAmount: currentDataAny.financial?.donationAmount || (currentDataAny as any).donationAmount || 0,
         refDocNumber: currentData.applicationCode || currentData.code || '',
-        refDocName: 'WAKE'
+        refDocName: 'WAKE',
+        refType: 'WAKE'
       }];
     }
     const mapped: InvoiceItem[] = Array.isArray(invoiceDetails)
