@@ -52,6 +52,7 @@ export interface Beneficiary {
   relationshipToNominee2: string;
   status: string;
   sex: string;
+  lifeStatus?: string;
 }
 
 export interface Niche {
@@ -271,7 +272,7 @@ export const nicheAgreementService = {
         api.get(`/api/niche-agreements/${applicationNumber.trim()}`),
         timeoutPromise
       ]);
-      
+
       if (!response.data.success) {
         throw new NicheAgreementError('API returned unsuccessful response', 400);
       }
@@ -289,7 +290,7 @@ export const nicheAgreementService = {
         // Server responded with error status
         const status = error.response.status;
         const message = error.response.data?.message || error.response.data?.error || 'Server error';
-        
+
         if (status === 401) {
           throw new NicheAgreementError('Session expired. Please login again.', status, true);
         } else if (status === 403) {
@@ -318,13 +319,13 @@ export const nicheAgreementService = {
     if (!applicationNumber || !applicationNumber.trim()) {
       throw new NicheAgreementError('Application number is required for PDF generation');
     }
-    
+
     // If crystal reports data is available, use the report path
     if (crystalReports?.agreement?.reportPath) {
       const params = new URLSearchParams(crystalReports.agreement.parameters);
       return `${API_BASE}/api/reports/${crystalReports.agreement.reportName}?${params.toString()}`;
     }
-    
+
     // Use the direct endpoint that returns PDF data
     return `${API_BASE}/api/niche-agreements/${applicationNumber.trim()}/pdf`;
   },
@@ -334,13 +335,13 @@ export const nicheAgreementService = {
     if (!applicationNumber || !applicationNumber.trim()) {
       throw new NicheAgreementError('Application number is required for PDF generation');
     }
-    
+
     // If crystal reports data is available, use the report path
     if (crystalReports?.invoiceReceipt?.reportPath) {
       const params = new URLSearchParams(crystalReports.invoiceReceipt.parameters);
       return `${API_BASE}/api/reports/${crystalReports.invoiceReceipt.reportName}?${params.toString()}`;
     }
-    
+
     // Fallback to direct endpoint
     return `${API_BASE}/api/niche-agreements/${applicationNumber.trim()}/invoice-pdf`;
   },
@@ -350,13 +351,13 @@ export const nicheAgreementService = {
     if (!applicationNumber || !applicationNumber.trim()) {
       throw new NicheAgreementError('Application number is required for PDF generation');
     }
-    
+
     // If crystal reports data is available, use the report path
     if (crystalReports?.invoice?.reportPath) {
       const params = new URLSearchParams(crystalReports.invoice.parameters);
       return `${API_BASE}/api/reports/${crystalReports.invoice.reportName}?${params.toString()}`;
     }
-    
+
     // Fallback to direct endpoint
     return `${API_BASE}/api/niche-agreements/${applicationNumber.trim()}/invoice-only`;
   },
@@ -371,17 +372,17 @@ export const nicheAgreementService = {
       }
 
       console.log(`[getSecondNomineeAgreementPdf] Making API call for application: ${applicationNumber}`);
-      
+
       // Make API call with increased timeout (60 seconds) for 2nd nominee agreement
       const response = await api.get<SecondNomineeAgreementResponse>(`/api/niche-agreements/${applicationNumber.trim()}/second-nominee-agreement-pdf`, {
         timeout: 60000 // 60 second timeout (increased from 30s)
       });
-      
+
       console.log(`[getSecondNomineeAgreementPdf] Received response for application: ${applicationNumber}`, {
         success: response.data.success,
         hasData: !!response.data.data
       });
-      
+
       if (!response.data.success) {
         throw new NicheAgreementError('API returned unsuccessful response for 2nd nominee agreement', 400);
       }
@@ -394,7 +395,7 @@ export const nicheAgreementService = {
         status: error.response?.status,
         responseData: error.response?.data
       });
-      
+
       if (error instanceof NicheAgreementError) {
         throw error;
       }
@@ -405,7 +406,7 @@ export const nicheAgreementService = {
         // Server responded with error status
         const status = error.response.status;
         const message = error.response.data?.message || error.response.data?.error || 'Server error';
-        
+
         if (status === 401) {
           throw new NicheAgreementError('Session expired. Please login again.', status, true);
         } else if (status === 403) {
@@ -444,26 +445,26 @@ export const nicheAgreementService = {
         if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.code === 'ETIMEDOUT') {
           return true;
         }
-        
+
         // Check for network error messages
-        if (error.message === 'Network Error' || 
-            error.message?.toLowerCase().includes('timeout') ||
-            error.message?.toLowerCase().includes('network') ||
-            error.message?.toLowerCase().includes('failed to fetch') ||
-            error.message?.toLowerCase().includes('connection')) {
+        if (error.message === 'Network Error' ||
+          error.message?.toLowerCase().includes('timeout') ||
+          error.message?.toLowerCase().includes('network') ||
+          error.message?.toLowerCase().includes('failed to fetch') ||
+          error.message?.toLowerCase().includes('connection')) {
           return true;
         }
-        
+
         // Check if request was made but no response received (network issue)
         if (error.request && !error.response) {
           return true;
         }
-        
+
         // Check if no response at all (likely network issue)
         if (!error.response && !error.request) {
           return true;
         }
-        
+
         return false;
       };
 
@@ -471,7 +472,7 @@ export const nicheAgreementService = {
       let response;
       let lastError: any = null;
       const maxRetries = 2;
-      
+
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
           // Use longer timeout for PDF generation requests (30 seconds)
@@ -484,7 +485,7 @@ export const nicheAgreementService = {
           break; // Success, exit retry loop
         } catch (error: any) {
           lastError = error;
-          
+
           // Log detailed error information for debugging
           console.error(`[openPdfInNewTab] Error on attempt ${attempt + 1}/${maxRetries + 1}:`, {
             message: error.message,
@@ -495,7 +496,7 @@ export const nicheAgreementService = {
             hasRequest: !!error.request,
             isNetworkError: isNetworkError(error)
           });
-          
+
           // If it's a network error and we have retries left, wait and retry
           if (isNetworkError(error) && attempt < maxRetries) {
             const waitTime = (attempt + 1) * 1000; // Exponential backoff: 1s, 2s
@@ -503,18 +504,18 @@ export const nicheAgreementService = {
             await new Promise(resolve => setTimeout(resolve, waitTime));
             continue;
           }
-          
+
           // If it's not a network error, throw immediately (don't retry for 404, 401, etc.)
           if (!isNetworkError(error)) {
             console.error(`[openPdfInNewTab] Non-network error (${error.response?.status || 'unknown'}), not retrying`);
             throw error;
           }
-          
+
           // If we're here, it's a network error but we're out of retries
           // Fall through to throw after the loop
         }
       }
-      
+
       // If we still don't have a response after retries, throw the last error
       if (!response && lastError) {
         console.error(`[openPdfInNewTab] All retry attempts failed. Last error:`, {
@@ -523,20 +524,20 @@ export const nicheAgreementService = {
           status: lastError.response?.status,
           isNetworkError: isNetworkError(lastError)
         });
-        
+
         if (isNetworkError(lastError)) {
           throw new NicheAgreementError('Network error - unable to connect to server after multiple attempts. Please check your internet connection and try again.');
         }
         // Re-throw the original error so it can be handled by the outer catch block
         throw lastError;
       }
-      
+
       // Safety check - should never reach here, but just in case
       if (!response) {
         console.error(`[openPdfInNewTab] No response and no error - unexpected state`);
         throw new NicheAgreementError('Failed to retrieve application data - unexpected error');
       }
-      
+
       if (response.data.success && response.data.data) {
         const data = response.data.data;
 
@@ -546,14 +547,14 @@ export const nicheAgreementService = {
           // Base URL can be used in the template if needed (e.g. logo)
           const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
           const title = `Agreement - ${applicationNumber}`;
-          
+
           // Use provided window or open new one (to avoid popup blocking)
           const targetWindow = newWindow || window.open('', '_blank', 'noopener,noreferrer');
-          
+
           if (!targetWindow) {
             throw new NicheAgreementError('Popup blocked. Please allow popups for this site to view the agreement.', 403);
           }
-          
+
           // Show loading message while generating PDF
           if (!newWindow) {
             targetWindow.document.write(`
@@ -568,7 +569,7 @@ export const nicheAgreementService = {
             `);
             targetWindow.document.close();
           }
-          
+
           console.log(`[openPdfInNewTab] Opening agreement HTML preview using client-side template...`);
           console.log(`[openPdfInNewTab] Data received:`, {
             hasApplicant: !!data.applicant,
@@ -582,7 +583,7 @@ export const nicheAgreementService = {
             hasInvoice: !!data.invoice,
             applicationCode: data.applicationCode
           });
-          
+
           // Validate data before generating preview
           if (!data || !data.applicant || !data.applicant.name) {
             const errorMsg = 'Invalid data: Missing applicant information';
@@ -684,14 +685,14 @@ export const nicheAgreementService = {
         }
 
         console.log(`[openPdfInNewTab] PDF blob generated, opening in window...`);
-        
+
         // Use provided window or open new one (fallback for direct calls)
         const targetWindow = newWindow || window.open('', '_blank', 'noopener,noreferrer');
-        
+
         if (!targetWindow) {
           throw new NicheAgreementError('Popup blocked. Please allow popups for this site to view the invoice.', 403);
         }
-        
+
         // If we just opened the window (not provided), show loading message
         if (!newWindow) {
           targetWindow.document.write(`
@@ -706,13 +707,13 @@ export const nicheAgreementService = {
           `);
           targetWindow.document.close();
         }
-        
+
         // Create blob URL and load PDF
         const pdfUrl = URL.createObjectURL(pdfBlob);
-        
+
         // Load PDF in the window
         targetWindow.location.href = pdfUrl;
-        
+
         // Clean up the URL after a delay
         setTimeout(() => {
           URL.revokeObjectURL(pdfUrl);
@@ -736,26 +737,26 @@ export const nicheAgreementService = {
         hasRequest: !!error.request,
         isNicheAgreementError: error instanceof NicheAgreementError
       });
-      
+
       if (error instanceof NicheAgreementError) {
         throw error;
       }
-      
+
       // Handle network errors specifically (comprehensive check for axios network errors)
-      const isNetworkErr = !error.response || 
-        error.code === 'ECONNABORTED' || 
-        error.code === 'ERR_NETWORK' || 
+      const isNetworkErr = !error.response ||
+        error.code === 'ECONNABORTED' ||
+        error.code === 'ERR_NETWORK' ||
         error.code === 'ETIMEDOUT' ||
         error.message === 'Network Error' ||
         error.message?.includes('timeout') ||
         error.message?.includes('Network') ||
         (error.request && !error.response);
-      
+
       if (isNetworkErr) {
         console.error(`[openPdfInNewTab] Detected as network error`);
         throw new NicheAgreementError('Network error - unable to connect to server. Please check your internet connection and try again.');
       }
-      
+
       // Handle specific HTTP status codes
       if (error.response?.status === 401) {
         throw new NicheAgreementError('Authentication required. Please log in again.');
@@ -766,7 +767,7 @@ export const nicheAgreementService = {
       } else if (error.response?.status >= 500) {
         throw new NicheAgreementError(`Server error (${error.response.status}). Please try again later.`);
       }
-      
+
       // Use error message from response if available
       if (error.response?.data?.message) {
         throw new NicheAgreementError(error.response.data.message);
@@ -786,15 +787,15 @@ export const nicheAgreementService = {
       }
 
       const response = await api.get(`/api/niche-agreements/${applicationNumber.trim()}/pdf`);
-      
+
       if (response.data.success && response.data.data) {
         const pdfData = response.data.data;
-        
+
         // Create a blob from the PDF data
-        const pdfBlob = new Blob([JSON.stringify(pdfData, null, 2)], { 
-          type: 'application/pdf' 
+        const pdfBlob = new Blob([JSON.stringify(pdfData, null, 2)], {
+          type: 'application/pdf'
         });
-        
+
         // Create download link
         const url = window.URL.createObjectURL(pdfBlob);
         const link = document.createElement('a');
@@ -804,7 +805,7 @@ export const nicheAgreementService = {
         link.click();
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
-        
+
         console.log('PDF generated successfully:', pdfData);
       } else {
         throw new NicheAgreementError('Failed to generate PDF');
@@ -813,7 +814,7 @@ export const nicheAgreementService = {
       if (error instanceof NicheAgreementError) {
         throw error;
       }
-      
+
       if (error.response?.data?.message) {
         throw new NicheAgreementError(error.response.data.message);
       } else {

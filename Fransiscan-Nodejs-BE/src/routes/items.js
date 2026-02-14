@@ -14,6 +14,18 @@ router.get('/categories', itemController.getCategories);
 // GET /api/items?category=NICHES
 router.get('/', itemController.listItems);
 
+// GET /api/items/:id
+router.get('/:id', itemController.getItem);
+
+// POST /api/items
+router.post('/', itemController.createItem);
+
+// PUT /api/items/:id
+router.put('/:id', itemController.updateItem);
+
+// DELETE /api/items/:id
+router.delete('/:id', itemController.deleteItem);
+
 module.exports = router;
 
 

@@ -112,7 +112,7 @@ export function NomineeConsentForm({ data }: NomineeConsentFormProps) {
         <div style={styles.title}>Franciscan Columbarium</div>
         <div style={styles.title}>Nominee Consent Form</div>
       </div>
-
+      <>{console.log("nich id ", data)}</>
       {/* Applicant Details Table */}
       <table style={styles.table}>
         <thead>

@@ -1010,7 +1010,7 @@ The application list will be refreshed to show your new application.`);
 
   return <Layout title="Niche Application">
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40 px-6 py-4">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col gap-4 mb-4">
             {isFormView ? (
@@ -1063,7 +1063,7 @@ The application list will be refreshed to show your new application.`);
                       View Inscription
                     </Button>
                   )}
-                                    {applicationNumber && (
+                  {applicationNumber && (
                     <NomineeConsentFormButton applicationNumber={applicationNumber} />)}
                   <Button
                     variant="secondary"
@@ -1337,32 +1337,6 @@ The application list will be refreshed to show your new application.`);
                   >
                     ← Back to Applications
                   </Button>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => handleEditApplicationFromTable(applicationNumber)}
-                      className="bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
-                    >
-                      Edit Application
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={handleGoToInvoiceWithFeedback}
-                      disabled={!applicationNumber.trim()}
-                    >
-                      Go to Invoice & Receipt
-                    </Button>
-                    {applicationNumber && (
-                      <Button
-                        variant="outline"
-                        onClick={() => navigate(`/inscription?applicationCode=${applicationNumber}`)}
-                        className="bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
-                        icon={<PenToolIcon className="w-4 h-4" />}
-                      >
-                        View Inscription
-                      </Button>
-                    )}
-                  </div>
                 </div>
               )}
             </div>

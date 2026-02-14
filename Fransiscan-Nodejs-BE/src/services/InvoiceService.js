@@ -159,12 +159,8 @@ class InvoiceService extends BaseService {
               WHERE Code = @code
             `, { code: refDocNumber });
           } else if (refDocName === 'INCR') {
-            // Inscription Request
-            await executeRawQuery(`
-              UPDATE NicheInscriptionRequest 
-              SET Status = 3 
-              WHERE Code = @code
-            `, { code: refDocNumber });
+            // Inscription Request - Note: NicheInscriptionRequest table does not have a Status column
+            logger.info(`Inscription request ${refDocNumber} payment recorded - status tracked in Invoice`);
           } else if (refDocName === 'WAPP') {
             // Wake Room Booking
             await executeRawQuery(`
@@ -193,7 +189,21 @@ class InvoiceService extends BaseService {
         };
       });
 
-      logger.info(`Payment recorded successfully for invoice: ${code}`);
+      // Invalidate cache for this specific invoice and its reference document
+      try {
+        const cacheKey = cacheManager.buildInvoiceKey(churchId, code);
+        await cacheManager.del(cacheKey);
+
+        // Also invalidate by refDoc if applicable
+        if (result.linkedEntity?.code) {
+          const refCacheKey = cacheManager.buildInvoiceKey(churchId, result.linkedEntity.code);
+          await cacheManager.del(refCacheKey);
+        }
+
+        logger.debug(`Cache invalidated for invoice ${code} and linked entities`);
+      } catch (cacheError) {
+        logger.warn('Non-critical cache invalidation failure:', cacheError.message);
+      }
 
       return {
         success: true,
@@ -390,9 +400,16 @@ class InvoiceService extends BaseService {
         status: invoice.status
       });
 
-      // Invalidate cache for this church's invoices
-      await cacheManager.invalidate(cacheManager.buildInvalidationPattern('invoice', churchId));
-      logger.debug(`Cache invalidated for church ${churchId} invoices`);
+      // Invalidate cache for this specific invoice and its reference document
+      try {
+        await cacheManager.del(cacheManager.buildInvoiceKey(churchId, invoiceCode));
+        if (invoice.refDocNumber) {
+          await cacheManager.del(cacheManager.buildInvoiceKey(churchId, invoice.refDocNumber));
+        }
+        logger.debug(`Cache invalidated for invoice ${invoiceCode} and refDoc ${invoice.refDocNumber}`);
+      } catch (cacheError) {
+        logger.warn('Non-critical cache invalidation failure:', cacheError.message);
+      }
 
       return {
         success: true,
@@ -504,7 +521,7 @@ class InvoiceService extends BaseService {
       }
 
       // Skip reference document validation and duplicate check for standalone invoices
-      
+
       // 2. Generate Invoice Code
       const invoiceCode = await this.repository.generateInvoiceCode();
 
@@ -602,9 +619,16 @@ class InvoiceService extends BaseService {
         status: invoice.status
       });
 
-      // Invalidate cache for this church's invoices
-      await cacheManager.invalidate(cacheManager.buildInvalidationPattern('invoice', churchId));
-      logger.debug(`Cache invalidated for church ${churchId} invoices`);
+      // Invalidate cache for this specific invoice
+      try {
+        await cacheManager.del(cacheManager.buildInvoiceKey(churchId, invoiceCode));
+        if (invoice.refDocNumber) {
+          await cacheManager.del(cacheManager.buildInvoiceKey(churchId, invoice.refDocNumber));
+        }
+        logger.debug(`Cache invalidated for standalone invoice ${invoiceCode}`);
+      } catch (cacheError) {
+        logger.warn('Non-critical cache invalidation failure:', cacheError.message);
+      }
 
       return {
         success: true,

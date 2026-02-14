@@ -20,6 +20,7 @@ import { InscriptionAgreementPage } from './pages/InscriptionAgreementPage';
 import { NichiBookingPage } from './pages/NichiBookingPage';
 import { GlobalSearchTestPage } from './components/GlobalSearchTestPage';
 import { InfiniteLoopTest } from './components/InfiniteLoopTest';
+import PricingManagementPage from './pages/PricingManagementPage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 
 export function AppRouter() {
@@ -68,12 +69,12 @@ export function AppRouter() {
             <InvoiceAndReceiptPage />
           </ProtectedRoute>
         } />
-        <Route path="/1/invoice-receipt" element={
+        <Route path="/:churchId/invoice-receipt" element={
           <ProtectedRoute>
             <InvoiceAndReceiptPage />
           </ProtectedRoute>
         } />
-        <Route path="/1/invoice-receipt/:invoiceCode" element={
+        <Route path="/:churchId/invoice-receipt/:invoiceCode" element={
           <ProtectedRoute>
             <InvoiceAndReceiptPage />
           </ProtectedRoute>
@@ -191,6 +192,11 @@ export function AppRouter() {
         <Route path="/global-search-test" element={
           <ProtectedRoute>
             <GlobalSearchTestPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/pricing" element={
+          <ProtectedRoute>
+            <PricingManagementPage />
           </ProtectedRoute>
         } />
         <Route path="/infinite-loop-test" element={

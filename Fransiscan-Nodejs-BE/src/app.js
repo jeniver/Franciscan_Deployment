@@ -58,6 +58,11 @@ app.use(cors({
 
     const allowedOrigins = [
       process.env.CORS_ORIGIN || 'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:3001',
+      'http://localhost:4173',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000'
     ];
 
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
@@ -68,7 +73,7 @@ app.use(cors({
   },
   credentials: process.env.CORS_CREDENTIALS === 'true',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cache-Control', 'Pragma', 'Expires'],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   maxAge: 86400 // 24 hours
 }));
@@ -249,9 +254,9 @@ const cacheMiddleware = responseCache({
       '/api/login',
       '/api/utils/cache-stats'
     ];
-    return req.method === 'GET' && 
-           res.statusCode === 200 && 
-           !skipCachePaths.some(path => req.path.startsWith(path));
+    return req.method === 'GET' &&
+      res.statusCode === 200 &&
+      !skipCachePaths.some(path => req.path.startsWith(path));
   }
 });
 
@@ -337,14 +342,14 @@ const startServer = async () => {
     try {
       await connectDatabase();
       logger.info('Database connected successfully');
-      
+
       // Warm cache with common queries for improved performance (optional)
       // Only warm if explicitly enabled via environment variable
       const enableCacheWarming = process.env.ENABLE_CACHE_WARMING === 'true';
-      const cacheWarmingChurchIds = process.env.CACHE_WARMING_CHURCH_IDS 
+      const cacheWarmingChurchIds = process.env.CACHE_WARMING_CHURCH_IDS
         ? process.env.CACHE_WARMING_CHURCH_IDS.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
         : [];
-      
+
       if (enableCacheWarming && cacheWarmingChurchIds.length > 0) {
         logger.info(`Cache warming enabled for church IDs: ${cacheWarmingChurchIds.join(', ')}`);
         // Warm cache asynchronously without blocking server startup

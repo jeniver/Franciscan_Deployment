@@ -1,6 +1,10 @@
 const GateOfLifeRepository = require('../repositories/GateOfLifeRepository');
 const GateOfLifeApplication = require('../models/GateOfLifeApplication');
 const logger = require('../utils/logger');
+const NodeCache = require('node-cache');
+
+// Cache for search results (TTL: 5 minutes, cleanup every 10 minutes)
+const searchCache = new NodeCache({ stdTTL: 300, checkperiod: 600 });
 
 const parseDateValue = (value) => {
   if (!value) {
@@ -25,6 +29,21 @@ class GateOfLifeService {
       searchTerm: query.search || query.searchTerm || query.q || null
     };
 
+    // Generate a unique cache key based on churchId and query parameters
+    const cacheKey = `search_${churchId}_${JSON.stringify(query)}`;
+    const cachedResult = searchCache.get(cacheKey);
+
+    if (cachedResult) {
+      logger.debug('Returning cached search results for Gates of Life');
+      return {
+        success: true,
+        data: cachedResult.records,
+        pagination: cachedResult.pagination,
+        filters,
+        fromCache: true
+      };
+    }
+
     const repositoryResult = await GateOfLifeRepository.searchApplications({
       churchId,
       page,
@@ -32,7 +51,7 @@ class GateOfLifeService {
       filters
     });
 
-    return {
+    const responseData = {
       success: true,
       data: repositoryResult.records.map(record => record.toJSON()),
       pagination: {
@@ -45,6 +64,14 @@ class GateOfLifeService {
       },
       filters
     };
+
+    // Cache the successful result
+    searchCache.set(cacheKey, {
+      records: responseData.data,
+      pagination: responseData.pagination
+    });
+
+    return responseData;
   }
 
   async getApplication(code, churchId) {
@@ -91,6 +118,9 @@ class GateOfLifeService {
       }
 
       const saved = await GateOfLifeRepository.create(application);
+
+      // Invalidate search cache when a new application is created
+      this.clearSearchCache();
 
       return {
         success: true,
@@ -153,6 +183,9 @@ class GateOfLifeService {
         };
       }
 
+      // Invalidate search cache on update
+      this.clearSearchCache();
+
       return {
         success: true,
         data: updated.toJSON(),
@@ -176,6 +209,9 @@ class GateOfLifeService {
           }
         };
       }
+
+      // Invalidate search cache on delete
+      this.clearSearchCache();
 
       return {
         success: true,
@@ -214,20 +250,10 @@ class GateOfLifeService {
       const {
         application,
         details = [],
-        invoice,
-        receipt,
-        miscReceipt
+        invoice = null,
+        receipt = null,
+        miscReceipt = null
       } = invoicePayload;
-
-      if (!invoice) {
-        return {
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'No invoice found for this Gate of Life application'
-          }
-        };
-      }
 
       const normalizeNumber = (value) => {
         if (value === null || value === undefined) {
@@ -240,7 +266,10 @@ class GateOfLifeService {
       const engravingEntries = details
         .map(detail => ({
           name: detail.NameToEngrave || detail.nameToEngrave || null,
-          remarks: detail.Remarks || detail.remarks || null
+          remarks: detail.Remarks || detail.remarks || null,
+          dateOfBirth: detail.DateOfBirth || detail.dateOfBirth || null,
+          dateOfDeath: detail.DateOfDeath || detail.dateOfDeath || null,
+          additionalInfo: detail.AdditionalInfo || detail.additionalInfo || null
         }))
         .filter(entry => entry.name);
 
@@ -256,12 +285,16 @@ class GateOfLifeService {
       const subtotal = normalizeNumber(
         application.DonationAmount
         ?? application.DefaultDonationAmount
-        ?? invoice.LineTotalAmount
-        ?? invoice.InvoiceTotalAmount
+        ?? invoice?.LineTotalAmount
+        ?? invoice?.InvoiceTotalAmount
       );
 
-      const taxAmount = normalizeNumber(invoice.LineTaxAmount);
-      const totalAmount = normalizeNumber(invoice.LineTotalAmount ?? invoice.InvoiceTotalAmount ?? subtotal);
+      const taxAmount = normalizeNumber(invoice?.LineTaxAmount || invoice?.TaxAmount);
+      const totalAmount = normalizeNumber(
+        invoice?.InvoiceTotalAmount
+        ?? (normalizeNumber(invoice?.LineTotalAmount) + taxAmount)
+        ?? (subtotal + taxAmount)
+      );
       const paidAmount = normalizeNumber(
         miscReceipt?.TotalPayingAmount
         ?? receipt?.TotalAmount
@@ -282,7 +315,7 @@ class GateOfLifeService {
 
       const pdfData = {
         type: 'invoice',
-        documentTitle: 'Gate of Life Invoice',
+        documentTitle: 'Gate of Life Application',
         generatedAt: new Date().toISOString(),
         application: {
           code: application.Code,
@@ -290,6 +323,7 @@ class GateOfLifeService {
           status: invoice?.InvoiceStatus ?? null,
           donationAmount: normalizeNumber(application.DonationAmount),
           defaultDonationAmount: normalizeNumber(application.DefaultDonationAmount),
+          requestSameBrick: !!application.RequestSameBrick,
           namesToEngrave: engravingEntries.map(entry => entry.name)
         },
         applicant: {
@@ -312,7 +346,7 @@ class GateOfLifeService {
         engraving: {
           entries: engravingEntries
         },
-        invoice: {
+        invoice: invoice ? {
           invoiceNo: invoice.InvoiceNo,
           invoiceDate: invoice.InvoiceDate,
           paymentModeDocNo: invoice.PaymentModeDocNo,
@@ -322,7 +356,7 @@ class GateOfLifeService {
           lineTotalAmount: normalizeNumber(invoice.LineTotalAmount),
           taxAmount,
           refDocNumber: invoice.RefDocNumber
-        },
+        } : null,
         receipt: receipt
           ? {
             receiptNo: receipt.ReceiptNo,
@@ -331,7 +365,7 @@ class GateOfLifeService {
             payingAmount: normalizeNumber(receipt.PayingAmount),
             paymentMode: paymentModeValue,
             paymentModeLabel,
-            paymentModeDocNo: receipt.PaymentModeDocNo || invoice.PaymentModeDocNo || null
+            paymentModeDocNo: receipt.PaymentModeDocNo || invoice?.PaymentModeDocNo || null
           }
           : null,
         payment: {
@@ -344,7 +378,7 @@ class GateOfLifeService {
         },
         metadata: {
           churchId: application.ChurchId,
-          hasInvoice: true,
+          hasInvoice: !!invoice,
           hasReceipt: !!receipt || normalizeNumber(miscReceipt?.TotalPayingAmount) > 0,
           detailCount: engravingEntries.length
         }
@@ -353,7 +387,7 @@ class GateOfLifeService {
       return {
         success: true,
         data: pdfData,
-        message: 'Gate of Life invoice PDF data retrieved successfully'
+        message: 'Gate of Life application data retrieved successfully'
       };
     } catch (error) {
       logger.error('GateOfLifeService: Failed to build invoice PDF data', error);
@@ -365,6 +399,7 @@ class GateOfLifeService {
     const candidate =
       body.details
       || body.EngraveWallApplicationDetailList
+      || body.engravings
       || body.namesToEngrave
       || body.engraveNames
       || body.names
@@ -372,7 +407,17 @@ class GateOfLifeService {
 
     if (Array.isArray(candidate)) {
       return candidate
-        .map(item => (typeof item === 'string' ? { nameToEngrave: item } : item))
+        .map(item => {
+          if (typeof item === 'string') return { nameToEngrave: item };
+          return {
+            nameToEngrave: item.nameToEngrave || item.NameToEngrave || item.name || null,
+            remarks: item.remarks || item.Remarks || item.relationship || null,
+            dateOfBirth: item.dateOfBirth || item.DateOfBirth || null,
+            dateOfDeath: item.dateOfDeath || item.DateOfDeath || null,
+            additionalInfo: item.additionalInfo || item.AdditionalInfo || null,
+            detailId: item.detailId || item.EngraveWallApplicationDetailId || null
+          };
+        })
         .filter(detail => detail && detail.nameToEngrave);
     }
 
@@ -385,6 +430,17 @@ class GateOfLifeService {
     }
 
     return [];
+  }
+
+  /**
+   * Clear the search cache (call after create/update/delete)
+   */
+  clearSearchCache() {
+    const keys = searchCache.keys();
+    if (keys.length > 0) {
+      searchCache.flushAll();
+      logger.info(`Cleared ${keys.length} entries from Gates of Life search cache`);
+    }
   }
 }
 

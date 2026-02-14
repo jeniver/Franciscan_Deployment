@@ -135,8 +135,14 @@ class NicheAgreementService {
       // Convert to JSON format
       const agreementData = nicheAgreement.toJSON();
 
-      // Add consent form status and timestamps
-      agreementData.consentForm = await this.getConsentFormStatus(nicheAgreement.applicationCode);
+      // Add/Update consent form status and timestamps if not already set by repository
+      if (!agreementData.consentForm || !agreementData.consentForm.status || agreementData.consentForm.status === 'pending') {
+        const consentStatus = await this.getConsentFormStatus(nicheAgreement.applicationCode);
+        // Only override if the repository didn't find anything better
+        if (!agreementData.consentForm || !agreementData.consentForm.status) {
+          agreementData.consentForm = consentStatus;
+        }
+      }
 
       // Add agreement status and timestamps
       agreementData.agreement = await this.getAgreementStatus(nicheAgreement.applicationCode);
@@ -193,7 +199,8 @@ class NicheAgreementService {
           status: 'Occupied',
           sex: nicheAgreement.beneIsMale_1 !== null && nicheAgreement.beneIsMale_1 !== undefined
             ? (nicheAgreement.beneIsMale_1 ? 'Male' : 'Female')
-            : null
+            : null,
+          lifeStatus: nicheAgreement.beneLifeStatus_1
         });
       }
 
@@ -230,7 +237,8 @@ class NicheAgreementService {
           status: 'Occupied',
           sex: nicheAgreement.beneIsMale_2 !== null && nicheAgreement.beneIsMale_2 !== undefined
             ? (nicheAgreement.beneIsMale_2 ? 'Male' : 'Female')
-            : null
+            : null,
+          lifeStatus: nicheAgreement.beneLifeStatus_2
         });
       }
 
@@ -292,34 +300,31 @@ class NicheAgreementService {
         }
       }
 
-      // Add inscription data to invoice details if available
-      if (agreementData.invoice && agreementData.inscriptionItems && Array.isArray(agreementData.inscriptionItems)) {
-        // Initialize invoiceDetails array if it doesn't exist
-        if (!agreementData.invoice.invoiceDetails) {
-          agreementData.invoice.invoiceDetails = [];
-        }
-
-        // Add inscription items to invoice details
-        agreementData.invoice.invoiceDetails.push(...agreementData.inscriptionItems);
-      }
+      // ❌ REMOVED DUPLICATE: Inscription items are now added once at the end of this method
 
       // Add print-ready flags
       agreementData.printReady = {
         agreementReady: !!nicheAgreement.agreementDate,
         invoiceReady: !!nicheAgreement.invoiceNo,
         receiptReady: !!nicheAgreement.receiptAmount,
-        consentFormReady: agreementData.consentForm.status === 'completed'
+        consentFormReady: agreementData.consentForm && agreementData.consentForm.status === 'completed'
       };
 
       // Update invoice data to include inscription items if available
       if (agreementData.invoice && agreementData.inscriptionItems && Array.isArray(agreementData.inscriptionItems)) {
-        // Combine niche items with inscription items in the invoice details
         if (!agreementData.invoice.invoiceDetails) {
           agreementData.invoice.invoiceDetails = [];
         }
 
-        // Add inscription items to invoice details
-        agreementData.invoice.invoiceDetails.push(...agreementData.inscriptionItems);
+        // Add inscription items to invoice details if not already present
+        agreementData.inscriptionItems.forEach(item => {
+          const exists = agreementData.invoice.invoiceDetails.some(d => d.itemCode === item.itemCode && d.itemName === item.itemName);
+          if (!exists) {
+            agreementData.invoice.invoiceDetails.push(item);
+          }
+        });
+
+        logger.info(`[processNicheAgreementData] Merged inscription items. Total invoice details: ${agreementData.invoice.invoiceDetails.length}`);
       }
 
       // CRITICAL FIX: Ensure nominee address data is properly formatted in the response

@@ -43,7 +43,7 @@ export const NomineeConsentFormButton: React.FC<NomineeConsentFormButtonProps> =
 
       // Map application data to consent form data
       const mappedData: ConsentFormData = {
-        nicheNo: applicationData.nicheCode || applicationData.niche?.code || '',
+        nicheNo: applicationData.code || applicationData.applicationNumber || '',
         applicantName: applicationData.applicantName || applicationData.applicant?.name || '',
         applicantNRIC: applicationData.applicantIDNo || applicationData.applicant?.idNo || '',
         nominee1: {

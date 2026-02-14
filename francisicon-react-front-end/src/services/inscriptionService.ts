@@ -49,6 +49,7 @@ export interface InscriptionItemsResponse {
   message?: string;
   data: {
     inscriptionRequestNo: string | null; // null when inscription doesn't exist yet
+    nicheInscriptionRequestId: number | null; // added for agreement generation
     items: InscriptionItem[];
     applicant: {
       name: string;

@@ -1,228 +1,203 @@
-import React from 'react'
+import React, { useState } from 'react'
 
-import { PDF_ASSETS } from './../common/FranciscanLogo'
-
-interface BeneficiaryData {
-  name: string
-  nric: string
-  relationshipToNominee1?: string
-  relationshipToNominee2?: string
+interface Beneficiary {
+  name: string;
+  relationship: string;
 }
 
-interface ColumbariumFormData {
-  applicantName: string
-  applicantNric: string
-  nominee1Name: string
-  nominee1Nric: string
-  nominee2Name?: string
-  nominee2Nric?: string
-  chapelName: string
-  nicheNumber: string
-  beneficiaries?: BeneficiaryData[]
+interface Nominee {
+  name: string;
+  nric: string;
 }
 
-interface ColumbariumFormDisceasedProps {
-  data?: ColumbariumFormData
+interface FormData {
+  date?: string;
+  nicheNumber?: string;
+  applicantName?: string;
+  applicantNric?: string;
+  beneficiaries: Beneficiary[];
+  nominees: Nominee[];
 }
 
-const FilledField = ({
-  children,
-  width = 'auto',
-  className = '',
-}: {
-  children: React.ReactNode
-  width?: string
-  className?: string
-}) => (
-  <span
-    className={`inline-block border-b border-black px-1 ${className}`}
-    style={{
-      minWidth: width,
-    }}
-  >
-    {children}
-  </span>
-)
+export function ColumbariumFormDeceased({ formData }: { formData: FormData }) {
+  const [showBothNominees, setShowBothNominees] = useState(false);
 
-export function ColumbariumFormDisceased({ data }: ColumbariumFormDisceasedProps) {
-  // Extract data with defaults
-  const {
-    applicantName = '',
-    applicantNric = '',
-    nominee1Name = '',
-    nominee1Nric = '',
-    nominee2Name = '',
-    nominee2Nric = '',
-    chapelName = '',
-    nicheNumber = '',
-    beneficiaries = []
-  } = data || {}
+  // Default values if no formData is provided
+  const defaultFormData: FormData = {
+    date: '10-Feb-2026',
+    nicheNumber: 'St Agnes 3795',
+    applicantName: 'Gabriella Wong Lye Ying',
+    applicantNric: 'S6811601E',
+    beneficiaries: [
+      { name: 'Monica Pang Oi Moi', relationship: 'NA' }
+    ],
+    nominees: [
+      { name: 'Denis Yu Wen Hui', nric: 'S8524327F' },
+      { name: 'Marcus Leong Jun Wen', nric: 'S9716600E' }
+    ]
+  };
 
-  const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  const data = formData || defaultFormData;
+
+  // Toggle function for showing both nominees
+  const toggleNomineeDetails = () => {
+    setShowBothNominees(!showBothNominees);
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8 font-sans text-black print:bg-white print:py-0">
-      {/* Page 1 */}
-      <div data-pdf-page className="max-w-[210mm] mx-auto bg-white shadow-lg p-[1in] mb-8 min-h-[297mm] print:shadow-none print:mb-0 relative overflow-hidden flex flex-col text-[11pt] leading-relaxed">
-        {/* Date */}
-        <div className="mb-6">
-          <p className="text-[11pt]">{dateStr}</p>
-        </div>
+    <div className="w-full max-w-[210mm] mx-auto bg-white p-12 shadow-lg text-black font-serif text-sm leading-relaxed print:shadow-none print:p-0">
+      {/* Date */}
+      <div className="mb-8 pt-12">{data.date}</div>
 
-        {/* Address Block */}
-        <div className="mb-6 text-[11pt]">
-          <p>The Order of Friars Minor (Singapore) Limited</p>
-          <p>5 Bukit Batok East Ave 2</p>
-          <p>Singapore 659918</p>
-        </div>
+      {/* Address Block */}
+      <div className="mb-8">
+        <p>The Order of Friars Minor (Singapore) Limited</p>
+        <p>5 Bukit Batok East Ave 2</p>
+        <p>Singapore 659918</p>
+      </div>
 
-        <div className="mb-6">
-          <p className="text-[11pt]">Dear Sir</p>
-        </div>
+      {/* Salutation */}
+      <div className="mb-8">Dear Sir</div>
 
-        {/* Title */}
-        <div className="mb-6 font-bold text-[11pt]">
-          <p>AUTHORISATION & CONSENT FOR NICHE NO: {chapelName} {nicheNumber}</p>
-        </div>
+      {/* Subject */}
+      <div className="mb-8 font-bold">
+        AUTHORISATION & CONSENT FOR NICHE NO:{' '}
+        <span className="ml-8">{data.nicheNumber}</span>
+      </div>
 
-        {/* Main Body - First Paragraph */}
-        <div className="mb-4 text-[11pt] leading-relaxed">
-          <p className="mb-0">
-            I/We, <FilledField width="150px">{nominee1Name}</FilledField>, of NRIC No. <FilledField width="120px">{nominee1Nric}</FilledField> and <FilledField width="150px">{nominee2Name || ''}</FilledField>, of NRIC No.
-          </p>
-          <p className="mb-0">
-            <FilledField width="120px">{nominee2Nric || ''}</FilledField> ("Nominees"), agree that <FilledField width="180px">{applicantName}</FilledField>, of NRIC No. <FilledField width="120px">{applicantNric}</FilledField> ("Applicant"),
-          </p>
-          <p className="mb-0">
-            may be the Applicant to a niche at the Franciscan Columbarium for the purpose of interment and storage of
-          </p>
-          <p>the ashes of the beneficiary/beneficiaries,</p>
-        </div>
+      {/* Body Paragraph 1 */}
+      <div className="mb-8 text-justify leading-loose">
+        I/We,{' '}
+        <span className="border-b border-black px-2 inline-block min-w-[150px] text-center">
+          {data.nominees[0]?.name || 'Nominee 1 Name'}
+        </span>
+        , of NRIC No.{' '}
+        <span className="border-b border-black px-2 inline-block min-w-[100px] text-center">
+          {data.nominees[0]?.nric || 'NRIC 1'}
+        </span>{' '}
+        and{' '}
+        <span className="border-b border-black px-2 inline-block min-w-[150px] text-center">
+          {data.nominees[1]?.name || 'Nominee 2 Name'}
+        </span>
+        , of NRIC No.{' '}
+        <span className="border-b border-black px-2 inline-block min-w-[100px] text-center">
+          {data.nominees[1]?.nric || 'NRIC 2'}
+        </span>{' '}
+        ("Nominees"), agree that{' '}
+        <span className="border-b border-black px-2 inline-block min-w-[150px] text-center">
+          {data.applicantName || 'Applicant Name'}
+        </span>
+        , of NRIC No.{' '}
+        <span className="border-b border-black px-2 inline-block min-w-[100px] text-center">
+          {data.applicantNric || 'Applicant NRIC'}
+        </span>{' '}
+        ("Applicant"), may be the Applicant to a niche at the Franciscan
+        Columbarium for the purpose of interment and storage of the ashes of the
+        beneficiary/beneficiaries,
+      </div>
 
-        {/* Nominee 1 Relationships */}
-        <div className="mb-4 text-[11pt] ml-12">
-          <p className="mb-2">
-            <FilledField width="180px">{nominee1Name}</FilledField> 's relationship to beneficiary/beneficiaries
-          </p>
-          {beneficiaries.map((b, idx) => (
-            <div key={idx} className="mb-1">
-              <p className="mb-0">
-                {b.name} ("Beneficiary {idx + 1}") is my
-              </p>
-              <p>{b.relationshipToNominee1 || 'NA'}</p>
-            </div>
-          ))}
-          {beneficiaries.length === 0 && (
-            <>
-              <p className="mb-0">Monica Pang Oi Moi ("Beneficiary 1") is my</p>
-              <p>NA</p>
-            </>
-          )}
-        </div>
-
-        {/* Nominee 2 Relationships */}
-        <div className="mb-4 text-[11pt] ml-12">
-          <p className="mb-2">
-            <FilledField width="180px">{nominee2Name || ''}</FilledField> 's relationship to beneficiary/beneficiaries
-          </p>
-          {beneficiaries.map((b, idx) => (
-            <div key={idx} className="mb-1">
-              <p className="mb-0">
-                {b.name} ("Beneficiary {idx + 1}") is my
-              </p>
-              <p>{b.relationshipToNominee2 || 'NA'}</p>
-            </div>
-          ))}
-          {beneficiaries.length === 0 && (
-            <>
-              <p className="mb-0">Monica Pang Oi Moi ("Beneficiary 1") is my</p>
-              <p>NA</p>
-            </>
-          )}
-        </div>
-
-        {/* Consent Statement */}
-        <div className="mb-4 text-[11pt]">
-          <p>I/We believe that the beneficiary/beneficiaries will have no objections to being interred at the Franciscan Columbarium.</p>
-        </div>
-
-        <div className="mb-4 text-[11pt]">
-          <p>Accordingly, I/we agree that:</p>
-        </div>
-
-        {/* Clauses */}
-        <div className="mb-6 text-[11pt] leading-relaxed ml-12">
-          <div className="mb-4">
-            <p className="mb-1">
-              (a) the Beneficiary upon his/her death, may be interred at the Franciscan Columbarium in accordance with its Conditions and Regulations;
-            </p>
+      {/* Beneficiary Relationships */}
+      <div className="mb-8 space-y-6">
+        {/* Nominee 1 - Clickable area to show both nominees */}
+        <div 
+          className="grid grid-cols-[200px_1fr] gap-4 items-baseline cursor-pointer"
+          onClick={toggleNomineeDetails}
+        >
+          <div className="border-b border-black text-center">
+            {data.nominees[0]?.name || 'Nominee 1 Name'}
           </div>
+          <div>'s relationship to beneficiary/beneficiaries</div>
 
-          <div className="mb-4">
-            <p className="mb-1">
-              (b) the Applicant is fully authorised by us to make any decision regarding the interment and storage of the ashes of the Beneficiary, as well as the manner in which the niche will be used;
-            </p>
+          <div className="border-b border-black text-center">
+            {data.beneficiaries[0]?.name || 'Beneficiary Name'}
           </div>
+          <div>("Beneficiary 1") is my</div>
 
-          <div className="mb-4">
-            <p className="mb-1">
-              (c) if the Applicant is deceased, incapacitated or untraceable as deemed by the columbarium management in its absolute discretion, the management shall have the right but not the obligation to deal with and take instructions from either nominee.
-            </p>
+          <div className="border-b border-black text-center">
+            {data.beneficiaries[0]?.relationship || 'Relationship'}
           </div>
+          <div></div>
         </div>
 
-        {/* Signature Lines */}
-        <div className="mt-auto mb-6">
-          <div className="grid grid-cols-2 gap-8">
-            <div>
-              <div className="border-b border-black pb-1 mb-1">
-                <span className="text-[11pt]">Nominee 1 Name: {nominee1Name}</span>
-              </div>
+        {/* Show second nominee details when clicked */}
+        {showBothNominees && data.nominees.length > 1 && (
+          <div className="grid grid-cols-[200px_1fr] gap-4 items-baseline">
+            <div className="border-b border-black text-center">
+              {data.nominees[1]?.name || 'Nominee 2 Name'}
             </div>
-            <div>
-              <div className="border-b border-black pb-1 mb-1">
-                <span className="text-[11pt]">Nominee 2 Name: {nominee2Name || ''}</span>
-              </div>
+            <div>'s relationship to beneficiary/beneficiaries</div>
+
+            <div className="border-b border-black text-center">
+              {data.beneficiaries[0]?.name || 'Beneficiary Name'}
             </div>
+            <div>("Beneficiary 1") is my</div>
+
+            <div className="border-b border-black text-center">
+              {data.beneficiaries[0]?.relationship || 'Relationship'}
+            </div>
+            <div></div>
+          </div>
+        )}
+      </div>
+
+      {/* Statement */}
+      <div className="mb-4 text-justify">
+        I/We believe that the beneficiary/beneficiaries will have no objections
+        to being interred at the Franciscan Columbarium.
+      </div>
+
+      <div className="mb-6">Accordingly, I/we agree that:</div>
+
+      {/* Agreement List */}
+      <div className="mb-12 space-y-4 pl-4">
+        <div className="flex gap-4">
+          <span>(a)</span>
+          <div className="text-justify">
+            the Beneficiary upon his/her death, may be interred at the
+            Franciscan Columbarium in accordance with its Condtions and
+            Regulations;
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="text-center font-bold text-[11pt] mt-8">
-          <p>[PLEASE TURN OVER FOR THE APPLICANT'S ACKNOWLEDGEMENT]</p>
+        <div className="flex gap-4">
+          <span>(b)</span>
+          <div className="text-justify">
+            the Applicant is fully authorised by us to make any decision
+            regarding the interment and storage of the ashes of the Beneficiary,
+            as well as the manner in which the niche will be used;
+          </div>
+        </div>
+        <div className="flex gap-4">
+          <span>(c)</span>
+          <div className="text-justify">
+            if the Applicant is deceased, incapaciated or untraceable as deemed
+            by the columbarium management in its absolute discretion, the
+            management shall have the right but not the obligation to deal with
+            and take instructions from either nominee.
+          </div>
         </div>
       </div>
 
-      {/* Page 2 */}
-      <div data-pdf-page className="max-w-[210mm] mx-auto bg-white shadow-lg p-[1in] min-h-[297mm] print:shadow-none relative flex flex-col text-[11pt] leading-relaxed">
-        <div className="mb-8">
-          <p className="mb-0">
-            I, <FilledField width="180px">{applicantName}</FilledField>, of NRIC No. <FilledField width="120px">{applicantNric}</FilledField> as the Applicant of a niche at the
-          </p>
-          <p className="mb-0">
-            Franciscan Columbarium ("Columbarium") acting on the wishes of the Beneficiary, and the consent of the
-          </p>
-          <p className="mb-0">
-            family members, agree and hereby instructs the Columbarium that if there is any request from any of the
-          </p>
-          <p className="mb-0">
-            above-named Nominees or any immediate family member of Beneficiary for the return of the Beneficiary's
-          </p>
-          <p className="mb-0">
-            ashes, the Columbarium may disinter the urn containing the ashes and return the same to the requesting
-          </p>
-          <p className="mb-0">
-            Nominee and/or family member. I agree that in this event, the Fee paid to the Columbarium will not be
-          </p>
-          <p>refunded to me, in part or in whole.</p>
-        </div>
-
-        {/* Applicant Signature */}
-        <div className="mt-16">
-          <div className="border-b border-black pb-1 mb-1 inline-block min-w-[300px]">
-            <span className="text-[11pt]">Applicant Name: {applicantName}</span>
+      {/* Signatures */}
+      <div className="grid grid-cols-2 gap-12 mt-16 mb-16">
+        <div>
+          <div className="border-b border-black mb-2"></div>
+          <div className="flex justify-between font-bold text-xs">
+            <span>Nominee 1 Name:</span>
+            <span>{data.nominees[0]?.name || 'Nominee 1 Name'}</span>
           </div>
         </div>
+        <div>
+          <div className="border-b border-black mb-2"></div>
+          <div className="flex justify-between font-bold text-xs">
+            <span>Nominee 2 Name:</span>
+            <span>{data.nominees[1]?.name || 'Nominee 2 Name'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="text-center font-bold text-xs mt-12">
+        [PLEASE TURN OVER FOR THE APPLICANT'S ACKNOWLEDGEMENT]
       </div>
     </div>
   )

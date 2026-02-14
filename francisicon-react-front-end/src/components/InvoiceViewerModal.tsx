@@ -34,282 +34,50 @@ export function InvoiceViewerModal({
     }
   }, [invoiceData, isOpen]);
 
-  // Helper function to generate receipt HTML manually since there's no generateReceiptTemplate method
-  const generateReceiptHtml = (receiptData: any): string => {
-    // Creating a simplified HTML structure similar to the ReceiptTemplate component
-    return `
-      <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif;">
-        <thead>
-          <tr>
-            <th colspan="2" style="text-align: center; padding: 10px; border-bottom: 2px solid black;">
-              <h2>RECEIPT</h2>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="padding: 8px; vertical-align: top; width: 30%;">
-              <strong>Receipt No:</strong><br>
-              <span>${receiptData.receiptNo || 'N/A'}</span>
-            </td>
-            <td style="padding: 8px; vertical-align: top; width: 70%;">
-              <strong>Date:</strong><br>
-              <span>${receiptData.date || 'N/A'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; vertical-align: top;" colspan="2">
-              <strong>Received From:</strong><br>
-              <span>${receiptData.receivedFrom || 'N/A'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; vertical-align: top;" colspan="2">
-              <strong>Address:</strong><br>
-              <span>${receiptData.address || 'N/A'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; vertical-align: top;">
-              <strong>Invoice No:</strong><br>
-              <span>${receiptData.invoiceNo || 'N/A'}</span>
-            </td>
-            <td style="padding: 8px; vertical-align: top;">
-              <strong>Payment Method:</strong><br>
-              <span>${receiptData.paymentMethod || 'N/A'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; vertical-align: top;" colspan="2">
-              <strong>Description:</strong><br>
-              <span>${receiptData.description || 'N/A'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; vertical-align: top;">
-              <strong>Total Amount:</strong><br>
-              <span>$${receiptData.totalAmount ? receiptData.totalAmount.toFixed(2) : '0.00'}</span>
-            </td>
-            <td style="padding: 8px; vertical-align: top;">
-              <strong>In Words:</strong><br>
-              <span>${receiptData.dollarsInWords || 'N/A'}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    `;
-  };
+  // Helper function to convert amount to words
+  const amountToWords = (num: number | string | null | undefined): string => {
+    const n = typeof num === 'string' ? parseFloat(num) : num;
+    if (n === null || n === undefined || isNaN(n) || n === 0) return 'Zero Only';
 
-  const handleDownloadPdf = async () => {
-    try {
-      setIsGeneratingPdf(true);
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+      'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
-      // Create a temporary container to render the template for PDF generation
-      const tempContainer = document.createElement('div');
-      tempContainer.style.position = 'absolute';
-      tempContainer.style.left = '-9999px';
-      tempContainer.style.top = '0';
-      tempContainer.style.width = '210mm'; // A4 width
-      tempContainer.style.minHeight = '297mm'; // A4 height
-      tempContainer.style.padding = '15mm';
-      tempContainer.style.boxSizing = 'border-box';
-      tempContainer.style.fontFamily = 'Inter, Arial, sans-serif';
-      tempContainer.style.fontSize = '12px';
-      tempContainer.style.lineHeight = '1.4';
-      tempContainer.style.backgroundColor = '#ffffff';
+    const convertLessThanThousand = (val: number): string => {
+      if (val === 0) return '';
+      if (val < 20) return ones[val];
+      if (val < 100) return tens[Math.floor(val / 10)] + (val % 10 > 0 ? ' ' + ones[val % 10] : '');
+      return ones[Math.floor(val / 100)] + ' Hundred' + (val % 100 > 0 ? ' ' + convertLessThanThousand(val % 100) : '');
+    };
 
-      // Get the template HTML based on whether it's a receipt or invoice
-      let templateHTML = '';
-      if (invoiceData?.receipt) {
-        // For receipts, we'll use the receipt template component directly
-        const receiptData = mapToReceiptTemplateData(invoiceData);
-        // Since there's no generateReceiptTemplate method, we'll render the ReceiptTemplate component
-        // and get its HTML using a temporary div
-        const tempDiv = document.createElement('div');
-        // Render the receipt template to HTML manually
-        templateHTML = generateReceiptHtml(receiptData);
-      } else {
-        const invoiceTemplateData = mapToInvoiceTemplateData(invoiceData);
-        const invoiceTemplate = invoiceTemplateService.generateInvoiceTemplate(invoiceTemplateData);
-        templateHTML = `<div class="invoice-container" style="width: 100%; height: 100%;">${invoiceTemplate}</div>`;
+    const convert = (val: number): string => {
+      if (val === 0) return '';
+      let res = '';
+      if (val >= 1000000) {
+        res += convertLessThanThousand(Math.floor(val / 1000000)) + ' Million ';
+        val %= 1000000;
       }
-
-      tempContainer.innerHTML = templateHTML;
-      document.body.appendChild(tempContainer);
-
-      // Wait for content to render
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Dynamically import html2canvas and jsPDF
-      const html2canvas = (await import('html2canvas')).default;
-      const { jsPDF } = await import('jspdf');
-
-      const canvas = await html2canvas(tempContainer, {
-        scale: 2, // Higher quality
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        width: tempContainer.scrollWidth,
-        height: tempContainer.scrollHeight,
-        scrollX: 0,
-        scrollY: 0,
-        foreignObjectRendering: true, // Better rendering for complex content
-      });
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.95); // Use higher quality JPEG
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgScaledWidth = imgWidth * ratio;
-      const imgScaledHeight = imgHeight * ratio;
-
-      // Center the image on the page
-      const horizontalOffset = (pdfWidth - imgScaledWidth) / 2;
-      const verticalOffset = (pdfHeight - imgScaledHeight) / 2;
-
-      pdf.addImage(imgData, 'JPEG', horizontalOffset, verticalOffset, imgScaledWidth, imgScaledHeight);
-
-      // Generate filename with timestamp for uniqueness
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      const fileName = invoiceData?.receipt
-        ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'unknown'}-${timestamp}.pdf`
-        : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'unknown'}-${timestamp}.pdf`;
-
-      pdf.save(fileName);
-
-      // Clean up
-      document.body.removeChild(tempContainer);
-      setIsGeneratingPdf(false);
-    } catch (error: any) {
-      console.error('Error generating PDF:', error);
-      setIsGeneratingPdf(false);
-
-      // More specific error handling
-      let errorMessage = 'Failed to generate PDF. Please try again.';
-      if (error.message?.includes('canvas')) {
-        errorMessage = 'Failed to render content. The document may be too large or complex.';
-      } else if (error.name === 'SecurityError') {
-        errorMessage = 'Browser security settings prevented PDF generation. Please check your content settings.';
+      if (val >= 1000) {
+        res += convertLessThanThousand(Math.floor(val / 1000)) + ' Thousand ';
+        val %= 1000;
       }
+      if (val > 0) {
+        res += convertLessThanThousand(Math.floor(val));
+      }
+      return res.trim();
+    };
 
-      alert(errorMessage);
+    const wholePart = Math.floor(n);
+    const decimalPart = Math.round((n - wholePart) * 100);
+    let result = convert(wholePart);
+    if (!result) result = 'Zero';
+
+    if (decimalPart > 0) {
+      result += ' and Cents ' + convertLessThanThousand(decimalPart) + ' Only';
+    } else {
+      result += ' Only';
     }
-  };
-
-  const handleGeneratePDF = async () => {
-    if (!contentRef.current || isGenerating) return
-    setIsGenerating(true)
-    try {
-      // Ensure fonts are loaded
-      await document.fonts.ready;
-
-      // Re-verify ref after await as component might have unmounted or visibility changed
-      if (!contentRef.current) {
-        throw new Error('Capture content no longer available');
-      }
-
-      // Find all page elements
-      const pages = contentRef.current.querySelectorAll('[data-pdf-page]')
-      const targetPages = pages.length > 0 ? (Array.from(pages) as HTMLElement[]) : [contentRef.current];
-
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-        compress: true
-      })
-
-      // Process each page
-      for (let i = 0; i < targetPages.length; i++) {
-        const pageElement = targetPages[i];
-
-        // Temporarily prepare element for high-quality capture
-        const originalBoxShadow = pageElement.style.boxShadow;
-        const originalBorder = pageElement.style.border;
-        const originalWidth = pageElement.style.width;
-        const originalMaxWidth = pageElement.style.maxWidth;
-
-        pageElement.style.boxShadow = 'none';
-        pageElement.style.border = 'none';
-        pageElement.style.width = '794px'; // ~210mm at 96dpi
-        pageElement.style.maxWidth = 'none';
-
-        // Capture the page
-        const canvas = await html2canvas(pageElement, {
-          scale: 4, // Higher scale for "expected level" quality
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-          imageTimeout: 0,
-          windowWidth: pageElement.scrollWidth,
-          windowHeight: pageElement.scrollHeight,
-        })
-
-        // Restore styles
-        pageElement.style.boxShadow = originalBoxShadow;
-        pageElement.style.border = originalBorder;
-        pageElement.style.width = originalWidth;
-        pageElement.style.maxWidth = originalMaxWidth;
-
-        // Add page to PDF (except for the first one which is created by default)
-        if (i > 0) {
-          pdf.addPage()
-        }
-
-        const imgData = canvas.toDataURL('image/jpeg', 0.95)
-        const pdfWidth = pdf.internal.pageSize.getWidth()
-        const pdfHeight = pdf.internal.pageSize.getHeight()
-
-        // Draw image to fill the page
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST')
-      }
-
-      // Generate blob and open in new tab for preview/print
-      const pdfBlob = pdf.output('blob')
-      const blobUrl = URL.createObjectURL(pdfBlob)
-
-      // Attempt to open in new tab
-      const newTab = window.open(blobUrl, '_blank')
-
-      if (!newTab || newTab.closed || typeof newTab.closed === 'undefined') {
-        // Fallback: download if popup blocked or not supported
-        const link = document.createElement('a')
-        link.href = blobUrl
-        const fileName = invoiceData?.receipt
-          ? `Receipt - ${invoiceData?.receipt?.receiptCode || invoiceData?.code || 'Document'}`
-          : `Invoice - ${invoiceData?.code || 'Document'}`;
-        link.download = `${fileName}.pdf`
-        link.click()
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
-      } else {
-        // Successfully opened in new tab. Keeping URL alive for a while so viewer can load it.
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 120000)
-      }
-    } catch (error) {
-      console.error('PDF generation failed:', error)
-      alert('Failed to generate PDF. Please try again.')
-    } finally {
-      setIsGenerating(false)
-    }
-  }
-
-  const handlePrint = () => {
-    handleGeneratePDF();
-  };
-
-  const toggleFullscreen = () => {
-    setIsFullscreen(!isFullscreen);
+    return result;
   };
 
   // Function to map API response to InvoiceTemplateData interface
@@ -328,7 +96,7 @@ export function InvoiceViewerModal({
       part.trim() !== '');
 
     const customerAddress = addressParts.length > 0 ? addressParts.join(', ') : undefined;
-    console.log("Customer Address:++++++++++++++++++++++++++++++++++++++", invoiceData)
+
     // Map details to InvoiceTemplateItem format
     const items = (apiData.details || []).map((detail: any) => ({
       description: detail.itemName || detail.description || detail.ItemName || detail.Description || 'Item',
@@ -341,7 +109,7 @@ export function InvoiceViewerModal({
       invoiceCode: apiData.code || apiData.invoiceCode || apiData.Code || 'N/A',
       invoiceDate: formatDate(apiData.transactionDate || apiData.TransactionDate || apiData.invoiceDate || apiData.InvoiceDate || new Date()),
       customerName: apiData.customerName || apiData.CustomerName || 'N/A',
-      customerAddress: apiData.customerAddress || 'N/A',
+      customerAddress: apiData.customerAddress || customerAddress || 'N/A',
       paymentMode: apiData.paymentMode || apiData.PaymentMode || 'N/A',
       totalAmount: apiData.totalAmount || apiData.TotalAmount || 0,
       taxAmount: apiData.taxAmount || apiData.TaxAmount || 0,
@@ -450,56 +218,6 @@ export function InvoiceViewerModal({
     // Calculate subTotal
     const subTotal = apiData.summary?.subtotal || apiData.subtotal || (apiData.totalAmount || 0) - (apiData.taxAmount || 0);
 
-    // Convert amount to words
-    const amountToWords = (num: number | string | null | undefined): string => {
-      const n = typeof num === 'string' ? parseFloat(num) : num;
-      if (n === null || n === undefined || isNaN(n) || n === 0) return 'Zero Only';
-
-      const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
-        'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-      const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-
-      const convertLessThanThousand = (val: number): string => {
-        if (val === 0) return '';
-        if (val < 20) return ones[val];
-        if (val < 100) return tens[Math.floor(val / 10)] + (val % 10 > 0 ? ' ' + ones[val % 10] : '');
-        return ones[Math.floor(val / 100)] + ' Hundred' + (val % 100 > 0 ? ' ' + convertLessThanThousand(val % 100) : '');
-      };
-
-      const convert = (val: number): string => {
-        if (val === 0) return '';
-        let res = '';
-        if (val >= 1000000) {
-          res += convertLessThanThousand(Math.floor(val / 1000000)) + ' Million ';
-          val %= 1000000;
-        }
-        if (val >= 1000) {
-          res += convertLessThanThousand(Math.floor(val / 1000)) + ' Thousand ';
-          val %= 1000;
-        }
-        if (val > 0) {
-          res += convertLessThanThousand(Math.floor(val));
-        }
-        return res.trim();
-      };
-
-      const wholePart = Math.floor(n);
-      const decimalPart = Math.round((n - wholePart) * 100);
-      let result = convert(wholePart);
-      if (!result) result = 'Zero';
-
-      if (decimalPart > 0) {
-        result += ' and Cents ' + convertLessThanThousand(decimalPart) + ' Only';
-      } else {
-        result += ' Only';
-      }
-      return result;
-    };
-
-    // Debug: Log mapped items
-    console.log('[mapToTaxInvoiceProps] Final mapped items:', items);
-    console.log('[mapToTaxInvoiceProps] Final items length:', items.length);
-
     return {
       invoiceNo: apiData.code || apiData.invoiceCode || apiData.Code || 'N/A',
       date: formatDate(apiData.transactionDate || apiData.TransactionDate || apiData.invoiceDate || apiData.InvoiceDate || new Date()),
@@ -511,6 +229,198 @@ export function InvoiceViewerModal({
       total: apiData.totalAmount || apiData.TotalAmount || 0,
       dollarsInWords: amountToWords(apiData.totalAmount || apiData.TotalAmount || 0),
     };
+  };
+
+  // Helper function to get all computed styles as inline styles
+  const getComputedStylesAsString = (element: Element): string => {
+    const computedStyle = window.getComputedStyle(element)
+    let styleString = ''
+    for (let i = 0; i < computedStyle.length; i++) {
+      const prop = computedStyle[i]
+      styleString += `${prop}:${computedStyle.getPropertyValue(prop)};`
+    }
+    return styleString
+  }
+
+  // Deep clone with computed styles
+  const cloneWithStyles = (element: HTMLElement): HTMLElement => {
+    const clone = element.cloneNode(true) as HTMLElement
+    // Apply computed styles to the clone and all its children
+    const applyStyles = (original: Element, cloned: Element) => {
+      if (original instanceof HTMLElement && cloned instanceof HTMLElement) {
+        cloned.style.cssText = getComputedStylesAsString(original)
+      }
+      const originalChildren = original.children
+      const clonedChildren = cloned.children
+      for (let i = 0; i < originalChildren.length; i++) {
+        if (clonedChildren[i]) {
+          applyStyles(originalChildren[i], clonedChildren[i])
+        }
+      }
+    }
+    applyStyles(element, clone)
+    return clone
+  }
+
+  const handleDownloadPdf = async () => {
+    if (!contentRef.current) return
+    setIsGeneratingPdf(true)
+    try {
+      // Check if html2pdf is already loaded
+      let html2pdf = (window as any).html2pdf
+      if (!html2pdf) {
+        // Dynamically load html2pdf from CDN
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script')
+          script.src =
+            'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
+          script.onload = () => resolve()
+          script.onerror = () => reject(new Error('Failed to load PDF library'))
+          document.head.appendChild(script)
+        })
+        html2pdf = (window as any).html2pdf
+      }
+      // Clone with all computed styles
+      const styledClone = cloneWithStyles(contentRef.current)
+      // Create a container with proper dimensions
+      const container = document.createElement('div')
+      container.style.position = 'absolute'
+      container.style.left = '-9999px'
+      container.style.top = '0'
+      container.style.width = '210mm'
+      container.style.backgroundColor = 'white'
+      container.appendChild(styledClone)
+      document.body.appendChild(container)
+      // Wait a bit for styles to apply
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      const fileName = invoiceData?.receipt
+        ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'Document'}.pdf`
+        : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'Document'}.pdf`;
+
+      // PDF options
+      const opt = {
+        margin: [5, 5, 5, 5],
+        filename: fileName,
+        image: {
+          type: 'jpeg',
+          quality: 0.98,
+        },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          letterRendering: true,
+          allowTaint: true,
+        },
+        jsPDF: {
+          unit: 'mm',
+          format: 'a4',
+          orientation: 'portrait',
+        },
+        pagebreak: {
+          mode: ['avoid-all', 'css', 'legacy'],
+        },
+      }
+      // Generate and save PDF
+      await html2pdf().set(opt).from(container).save()
+      // Cleanup
+      setTimeout(() => {
+        if (document.body.contains(container)) {
+          document.body.removeChild(container)
+        }
+      }, 1000)
+    } catch (error: any) {
+      console.error('Error generating PDF:', error)
+      alert(
+        'PDF generation failed. Please try the Print option and save as PDF.',
+      )
+    } finally {
+      setIsGeneratingPdf(false)
+    }
+  }
+
+  const handleGeneratePDF = async () => {
+    if (!contentRef.current || isGenerating) return
+    setIsGenerating(true)
+    try {
+      // Find all page elements
+      const pages = contentRef.current.querySelectorAll('[data-pdf-page]')
+      // If no marked pages, fallback to contentRef itself (or wrap it) based on logic
+      // The user snippet throws error if 0, but current code handled fallback. 
+      // We will try to be robust. if pages length is 0, treat contentRef as one page if acceptable, 
+      // OR better yet, ensure our template renders [data-pdf-page]
+      const targetPages = pages.length > 0 ? pages : [contentRef.current];
+
+      if (targetPages.length === 0) {
+        throw new Error('No pages found to print')
+      }
+      // Create PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      })
+      // Process each page
+      for (let i = 0; i < targetPages.length; i++) {
+        const pageElement = targetPages[i] as HTMLElement
+        // Temporarily remove shadow for clean capture
+        const originalBoxShadow = pageElement.style.boxShadow
+        pageElement.style.boxShadow = 'none'
+        // Capture the page
+        const canvas = await html2canvas(pageElement, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: pageElement.scrollWidth,
+          windowHeight: pageElement.scrollHeight,
+        })
+        // Restore styles
+        pageElement.style.boxShadow = originalBoxShadow
+        // Add page to PDF (except for the first one which is created by default)
+        if (i > 0) {
+          pdf.addPage()
+        }
+        const imgData = canvas.toDataURL('image/png', 1.0)
+        const pdfWidth = pdf.internal.pageSize.getWidth()
+        const pdfHeight = pdf.internal.pageSize.getHeight()
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+      }
+      // Generate blob and open in new tab
+      const pdfBlob = pdf.output('blob')
+      const blobUrl = URL.createObjectURL(pdfBlob)
+      const newTab = window.open(blobUrl, '_blank')
+
+      const fileName = invoiceData?.receipt
+        ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'Document'}.pdf`
+        : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'Document'}.pdf`;
+
+      if (!newTab) {
+        // Fallback: download the file if popup blocked
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = fileName
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
+      } else {
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+      }
+    } catch (error) {
+      console.error('PDF generation failed:', error)
+      alert('Failed to generate PDF. Please try again.')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const handlePrint = () => {
+    handleGeneratePDF();
+  };
+
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
   };
 
   if (!isOpen) return null;

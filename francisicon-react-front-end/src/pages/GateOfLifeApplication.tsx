@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   EyeIcon,
@@ -8,7 +8,6 @@ import {
   ChevronRightIcon,
   UserIcon,
   FileTextIcon,
-  TableIcon,
   FileEditIcon,
   ReceiptIcon,
   PlusIcon,
@@ -17,16 +16,24 @@ import {
   ArrowLeftIcon,
   PrinterIcon,
   LayoutIcon,
-  InfoIcon
+  InfoIcon,
+  HelpCircleIcon,
+  FileText,
+  MapPinIcon,
+  ChevronDownIcon,
+  LoaderIcon
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { DateInput } from '../components/common/DateInput';
+import { AddressInput } from '../components/AddressInput';
 import { useGateOfLife } from '../hooks/useGateOfLife';
 import { mapApiApplicationToFormData } from '../utils/gateOfLifeMapper';
 import { useToast } from '../contexts/ToastContext';
 import { getTodayDate } from '../utils/dateUtils';
+import { AgreementViewerModal } from '../components/AgreementViewerModal';
+import api from '../services/api';
 
 interface GateOfLifeApplicationProps {
   formData?: any;
@@ -67,6 +74,8 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
     }
   ]);
 
+  const [requestSameBrick, setRequestSameBrick] = useState(false);
+
   const [applicantData, setApplicantData] = useState({
     name: '',
     idNo: '',
@@ -79,10 +88,23 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
     mobileNo: '',
     homeTelephone: '',
     officeTelephone: '',
-    emailAddress: ''
+    emailAddress: '',
+    // Add structured address fields
+    addressNo: '',
+    addressLine1: '',
+    addressLine2: '',
+    addressCity: '',
+    addressState: '',
+    addressCountry: 'Singapore',
+    fullAddress: ''
   });
 
   const [donationAmount, setDonationAmount] = useState(0);
+
+  // Agreement Viewer State
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [viewerData, setViewerData] = useState<any>(null);
+  const [viewerLoading, setViewerLoading] = useState(false);
 
   // Toast notifications
   const { showError, showSuccess } = useToast();
@@ -101,7 +123,6 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
     handleUpdateApplication,
     applicationList,
     applicationListLoading,
-    applicationListError,
     applicationListFilters,
     applicationListPagination,
     updateListFilters,
@@ -110,8 +131,6 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
     isViewMode,
     isEditMode,
     resetApp,
-    clearViewEditMode,
-    handlePrintAgreement,
     handleInvoiceReceipt,
     handleEditApplicationFromTable
   } = useGateOfLife();
@@ -144,7 +163,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
         }
 
         if (mappedData.applicantData) {
-          setApplicantData(mappedData.applicantData);
+          setApplicantData(prev => ({ ...prev, ...mappedData.applicantData }));
         }
 
         if (mappedData.engravings && mappedData.engravings.length > 0) {
@@ -154,6 +173,24 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
         if (mappedData.donationAmount !== undefined) {
           setDonationAmount(mappedData.donationAmount);
         }
+
+        if (reduxFormData.applicant?.address) {
+          const addr = reduxFormData.applicant.address;
+          setApplicantData(prev => ({
+            ...prev,
+            addressNo: addr.no || '',
+            addressLine1: addr.line1 || '',
+            addressLine2: addr.line2 || '',
+            addressCity: addr.city || '',
+            addressState: addr.state || '',
+            addressCountry: addr.country || 'Singapore',
+            fullAddress: [addr.no, addr.line1, addr.line2, addr.city, addr.state, addr.country].filter(Boolean).join(' ')
+          }));
+        }
+
+        if (reduxFormData.requestSameBrick !== undefined) {
+          setRequestSameBrick(!!reduxFormData.requestSameBrick);
+        }
       } catch (error) {
         console.error('Error mapping form data:', error);
       }
@@ -162,6 +199,26 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
 
   // Handle read-only state
   const isReadOnly = (isViewMode || isViewRoute) && !isEditMode && !isEditRoute;
+
+  // Handle address change from AddressInput component
+  const handleAddressChange = useCallback((addressData: any) => {
+    setApplicantData(prev => ({
+      ...prev,
+      block: addressData.block || '',
+      blockNo: addressData.blockNo || '',
+      streetName: addressData.streetName || '',
+      unitNo: addressData.unitNo || '',
+      postalCode: addressData.postalCode || '',
+      country: addressData.country || 'Singapore',
+      // Structured fields
+      addressNo: addressData.addressNo || '',
+      addressLine1: addressData.addressLine1 || '',
+      addressLine2: addressData.addressLine2 || '',
+      addressCity: addressData.addressCity || '',
+      addressState: addressData.addressState || '',
+      addressCountry: addressData.addressCountry || 'Singapore'
+    }));
+  }, []);
 
   // Navigation handlers
   const handleOpenTableView = useCallback(async (overrides: Partial<typeof applicationListFilters> = {}) => {
@@ -193,16 +250,13 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
     if (isReadOnly) return;
 
     // Validate required fields
+    // Validate required fields
     if (!applicantData.name.trim()) {
       showError('Validation Error', 'Applicant Name is required');
       setCurrentStep(2);
       return;
     }
-    if (!applicantData.idNo.trim()) {
-      showError('Validation Error', 'Applicant ID/NRIC/Passport number is required');
-      setCurrentStep(2);
-      return;
-    }
+    // ID validation removed as per user request
 
     const validEngravings = engravings.filter(eng => eng.name.trim() !== '');
     if (validEngravings.length === 0) {
@@ -219,13 +273,14 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
       applicantMobileNo: applicantData.mobileNo,
       applicantHomeTelNo: applicantData.homeTelephone,
       applicantOfficeTelNo: applicantData.officeTelephone,
-      applicantAddressNo: applicantData.block,
-      applicantAddressLine1: applicantData.blockNo,
-      applicantAddressLine2: applicantData.streetName,
-      applicantAddressCity: applicantData.unitNo,
-      applicantAddressState: applicantData.postalCode,
-      applicantAddressCountry: applicantData.country,
+      applicantAddressNo: applicantData.addressNo || applicantData.block,
+      applicantAddressLine1: applicantData.addressLine1 || applicantData.blockNo,
+      applicantAddressLine2: applicantData.addressLine2 || applicantData.streetName,
+      applicantAddressCity: applicantData.addressCity || applicantData.unitNo,
+      applicantAddressState: applicantData.addressState || applicantData.postalCode,
+      applicantAddressCountry: applicantData.addressCountry || applicantData.country,
       donationAmount: donationAmount,
+      requestSameBrick: requestSameBrick,
       details: validEngravings.map(eng => ({
         nameToEngrave: eng.name,
         remarks: eng.relationship,
@@ -276,6 +331,24 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
     );
   };
 
+  const getErrorStyling = () => {
+    switch (lastErrorType) {
+      case 'auth': return 'bg-red-50 border-red-200 text-red-800';
+      case 'validation': return 'bg-amber-50 border-amber-200 text-amber-800';
+      case 'network': return 'bg-blue-50 border-blue-200 text-blue-800';
+      default: return 'bg-red-50 border-red-100 text-red-700';
+    }
+  };
+
+  const getErrorIcon = () => {
+    switch (lastErrorType) {
+      case 'auth': return <AlertCircleIcon className="w-5 h-5 text-red-500" />;
+      case 'validation': return <AlertCircleIcon className="w-5 h-5 text-amber-500" />;
+      case 'network': return <AlertCircleIcon className="w-5 h-5 text-blue-500" />;
+      default: return <AlertCircleIcon className="w-5 h-5 text-red-400" />;
+    }
+  };
+
   // Render Table View
   const renderTableView = () => {
     const hasApplications = applicationList.length > 0;
@@ -312,6 +385,9 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                 onChange={(e) => updateListFilters({ applicantName: e.target.value })}
                 placeholder="Search by name"
                 className="bg-gray-50 border-gray-200 focus:bg-white transition-all shadow-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void searchApplicationList({ pagination: { page: 1 } });
+                }}
               />
             </div>
             <div className="space-y-2">
@@ -407,10 +483,10 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {applicationList.map((app, idx) => {
+                  {applicationList.map((app: any, idx) => {
                     const code = app.code || app.applicationNumber || '—';
                     const name = app.applicant?.name || app.applicantName || '—';
-                    const details = app.details?.map(d => d.nameToEngrave).filter(Boolean).join(', ') || '—';
+                    const details = app.details?.map((d: any) => d.nameToEngrave).filter(Boolean).join(', ') || '—';
                     const date = app.bookingDate ? new Date(app.bookingDate).toLocaleDateString() : '—';
                     const amount = typeof app.donation?.amount === 'number' ? app.donation.amount : (app.donationAmount || 0);
 
@@ -633,6 +709,30 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
         ))}
       </div>
 
+      {requestSameBrick !== undefined && (
+        <div className={`p-6 rounded-2xl border transition-all flex items-start gap-4 ${requestSameBrick ? 'bg-amber-50 border-amber-200 shadow-sm' : 'bg-gray-50 border-gray-200'}`}>
+          <div className="pt-1">
+            <input
+              type="checkbox"
+              id="sameBrick"
+              checked={requestSameBrick}
+              onChange={(e) => setRequestSameBrick(e.target.checked)}
+              disabled={isReadOnly}
+              className="w-5 h-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+            />
+          </div>
+          <div className="space-y-1 cursor-pointer" onClick={() => !isReadOnly && setRequestSameBrick(!requestSameBrick)}>
+            <label htmlFor="sameBrick" className="font-bold text-gray-900 flex items-center gap-2 cursor-pointer text-base">
+              Request Same Brick
+              <HelpCircleIcon className="w-3.5 h-3.5 text-gray-400" />
+            </label>
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Tick if the names are for husband and wife and you'd like them engraved on the same brick. Each brick can hold two (2) names.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Donations Section */}
       <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -682,7 +782,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">ID / NRIC / Passport No. <span className="text-red-500">*</span></label>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">ID / NRIC / Passport No.</label>
               <Input
                 value={applicantData.idNo}
                 onChange={(e) => setApplicantData({ ...applicantData, idNo: e.target.value })}
@@ -745,60 +845,28 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
         {/* Address Details */}
         <div className="md:col-span-2 space-y-6">
           <h4 className="text-xs font-black text-amber-800 uppercase tracking-[0.2em] border-l-4 border-amber-600 pl-3">Residential Address</h4>
-          <div className="grid gap-5 md:grid-cols-6 bg-gray-50/50 p-6 rounded-2xl border border-gray-100 border-dashed">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Block Letter</label>
-              <select
-                value={applicantData.block}
-                onChange={(e) => setApplicantData({ ...applicantData, block: e.target.value })}
-                className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl shadow-sm outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all font-medium text-sm text-gray-700"
-                disabled={isReadOnly}
-              >
-                <option value="">N/A</option>
-                {"ABCDEFGHIJKL".split("").map(l => <option key={l} value={l}>{l}</option>)}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Block No.</label>
-              <Input
-                value={applicantData.blockNo}
-                onChange={(e) => setApplicantData({ ...applicantData, blockNo: e.target.value })}
-                placeholder="e.g. 202"
-                disabled={isReadOnly}
-                className="bg-white border-gray-200 shadow-sm"
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Street Name</label>
-              <Input
-                value={applicantData.streetName}
-                onChange={(e) => setApplicantData({ ...applicantData, streetName: e.target.value })}
-                placeholder="e.g. Bukit Batok St"
-                disabled={isReadOnly}
-                className="bg-white border-gray-200 shadow-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Unit No.</label>
-              <Input
-                value={applicantData.unitNo}
-                onChange={(e) => setApplicantData({ ...applicantData, unitNo: e.target.value })}
-                placeholder="#00-00"
-                disabled={isReadOnly}
-                className="bg-white border-gray-200 shadow-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Postal Code</label>
-              <Input
-                value={applicantData.postalCode}
-                onChange={(e) => setApplicantData({ ...applicantData, postalCode: e.target.value })}
-                placeholder="600000"
-                disabled={isReadOnly}
-                className="bg-white border-gray-200 shadow-sm"
-              />
-            </div>
-          </div>
+          <AddressInput
+            fieldPrefix="applicant"
+            onAddressChange={handleAddressChange}
+            autoSync={false}
+            initialValues={{
+              block: applicantData.block || '',
+              blockNo: applicantData.blockNo || '',
+              streetName: applicantData.streetName || '',
+              unitNo: applicantData.unitNo || '',
+              postalCode: applicantData.postalCode || '',
+              country: applicantData.country || 'Singapore',
+              // Provide backend-style fields for proper conversion
+              addressNo: applicantData.addressNo || '',
+              addressLine1: applicantData.addressLine1 || '',
+              addressLine2: applicantData.addressLine2 || '',
+              addressCity: applicantData.addressCity || '',
+              addressState: applicantData.addressState || '',
+              addressCountry: applicantData.addressCountry || 'Singapore'
+            }}
+            initialAddressString={applicantData.fullAddress || ''}
+            isReadOnly={isReadOnly}
+          />
         </div>
       </div>
     </div>
@@ -806,79 +874,118 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
 
   return (
     <div className="min-h-screen bg-[#faf9f6] text-gray-900 selection:bg-amber-100 selection:text-amber-900 pb-20">
-      {/* Dynamic Header */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 px-6 py-4 transition-all duration-300">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate(-1)}
-              className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-500"
-              title="Go Back"
-            >
-              <ArrowLeftIcon className="w-5 h-5" />
-            </button>
-            <div className="space-y-0.5">
-              <h1 className="text-xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-                Gate of Life
-                <span className="text-amber-600"> Applications</span>
-              </h1>
+      {/* Standardized Header */}
+      <header className="sticky top-0 z-40 bg-white border-b border-gray-200 px-6 py-4">
+        <div className="max-w-7xl mx-auto">
+          {!isTableMode ? (
+            <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
-                {isTableMode ? (
-                  <Badge>All Records</Badge>
-                ) : isNewMode ? (
-                  <Badge variant="success">New Application</Badge>
-                ) : isEditRoute ? (
-                  <Badge variant="warning">Edit Mode: {routeAppCode}</Badge>
-                ) : (
-                  <Badge variant="default">View Mode: {routeAppCode}</Badge>
+                <p className="text-sm font-medium text-gray-700">
+                  Application Number:
+                </p>
+                <Input
+                  type="text"
+                  value={reduxApplicationCode}
+                  onChange={() => {
+                    // Update the code in Redux or local state if needed
+                    // In GateOfLife, it's primarily managed by the hook
+                  }}
+                  className="text-lg font-bold text-gray-900 w-32 md:w-40 py-2 px-3 border border-gray-300 rounded-md"
+                  placeholder="Enter application code"
+                  readOnly={true} // For now, keep it read-only as navigate handles the change
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="primary"
+                  icon={loading ? <LoadingSpinner size="sm" text="" /> : <EyeIcon className="w-4 h-4" />}
+                  onClick={() => handleViewApplication(reduxApplicationCode)}
+                  disabled={loading || !reduxApplicationCode}
+                >
+                  {loading ? 'Loading...' : 'View'}
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  icon={<PrinterIcon className="w-4 h-4" />}
+                  onClick={async () => {
+                    setViewerLoading(true);
+                    setIsViewerOpen(true);
+                    try {
+                      const response = await api.get(`/api/gates-of-life/${reduxApplicationCode}/pdf-data`);
+                      if (response.data.success) {
+                        setViewerData(response.data.data);
+                      } else {
+                        showError('Error', 'Failed to fetch agreement data');
+                      }
+                    } catch (err: any) {
+                      showError('Error', err.message || 'Failed to fetch agreement data');
+                    } finally {
+                      setViewerLoading(false);
+                    }
+                  }}
+                  disabled={!reduxApplicationCode}
+                >
+                  View Gate of Life Application
+                </Button>
+
+                <Button
+                  variant="primary"
+                  icon={<ReceiptIcon className="w-4 h-4" />}
+                  onClick={() => handleInvoiceReceipt(reduxApplicationCode)}
+                  disabled={!reduxApplicationCode}
+                >
+                  Invoice & Receipt
+                </Button>
+
+                {isViewRoute && (
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate(`/gates-of-life/edit/${reduxApplicationCode}`)}
+                    className="bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                    icon={<FileEditIcon className="w-4 h-4" />}
+                  >
+                    Edit Application
+                  </Button>
                 )}
+
+                <Button
+                  variant="secondary"
+                  icon={<LayoutIcon className="w-4 h-4" />}
+                  onClick={() => handleOpenTableView()}
+                >
+                  View Applications
+                </Button>
               </div>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {!isTableMode ? (
-              <Button
-                variant="outline"
-                onClick={() => handleOpenTableView()}
-                className="border-gray-300 text-gray-600 hover:bg-gray-50"
-              >
-                Exit to List
-              </Button>
-            ) : null}
-
-            {!isTableMode && !isNewMode && (
-              <>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Gate of Life Applications</h2>
+                <p className="text-sm text-gray-600">
+                  Manage and search through all Gate of Life engraving applications.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => handlePrintAgreement(routeAppCode)}
-                  className="border-gray-300 text-gray-600"
-                  icon={<PrinterIcon className="w-4 h-4" />}
+                  onClick={() => void searchApplicationList({ pagination: { page: 1 } })}
+                  disabled={applicationListLoading}
                 >
-                  Agreement
+                  {applicationListLoading ? 'Refreshing...' : 'Refresh'}
                 </Button>
                 <Button
-                  variant="outline"
-                  onClick={() => handleInvoiceReceipt(routeAppCode)}
-                  className="border-gray-300 text-gray-600"
-                  icon={<ReceiptIcon className="w-4 h-4" />}
+                  variant="primary"
+                  icon={<PlusIcon className="w-4 h-4" />}
+                  onClick={() => navigate('/gates-of-life/new')}
+                  className="bg-amber-700 hover:bg-amber-800 text-white border-amber-700"
                 >
-                  Invoice/Receipt
+                  Create New Application
                 </Button>
-              </>
-            )}
-
-            {isViewRoute && (
-              <Button
-                variant="primary"
-                onClick={() => navigate(`/gates-of-life/edit/${routeAppCode}`)}
-                className="bg-amber-700 hover:bg-amber-800 text-white shadow-lg"
-                icon={<FileEditIcon className="w-4 h-4" />}
-              >
-                Edit Instead
-              </Button>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -926,7 +1033,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                       <Button
                         variant="primary"
                         onClick={handleNext}
-                        loading={loading}
+                        isLoading={loading}
                         className={`py-6 px-10 rounded-2xl shadow-xl transition-all transform hover:-translate-y-1 active:scale-95 text-base font-bold text-white bg-gradient-to-r ${steps[currentStep - 1].color}`}
                         iconPosition="right"
                         icon={currentStep === steps.length ? <CheckIcon className="w-5 h-5" /> : <ChevronRightIcon className="w-5 h-5" />}
@@ -1020,6 +1127,17 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
           </div>
         </div>
       )}
+
+      {/* Agreement Viewer */}
+      <AgreementViewerModal
+        isOpen={isViewerOpen}
+        onClose={() => setIsViewerOpen(false)}
+        agreementData={viewerData}
+        secoundNomineeAgreement={null}
+        applicationNumber={routeAppCode || ''}
+        loading={viewerLoading}
+        templateType="gateOfLife"
+      />
     </div>
   );
 }

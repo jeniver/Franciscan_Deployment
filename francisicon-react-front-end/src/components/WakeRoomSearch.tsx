@@ -205,18 +205,23 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                 Wake room
               </label>
-              <select
-                value={searchCriteria.wakeRoomId}
-                onChange={(e) => setSearchCriteria({ ...searchCriteria, wakeRoomId: parseInt(e.target.value) })}
-                className="w-full h-11 px-4 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8b2222] focus:border-transparent bg-gray-50 text-sm appearance-none transition-all"
-              >
-                <option value={0}>All Rooms</option>
-                {Array.isArray(wakeRooms) && wakeRooms.map(room => (
-                  <option key={room.wakeRoomId} value={room.wakeRoomId}>
-                    {room.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={searchCriteria.wakeRoomId}
+                  onChange={(e) => setSearchCriteria({ ...searchCriteria, wakeRoomId: parseInt(e.target.value) })}
+                  className="w-full h-11 px-4 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent bg-gray-50 text-sm appearance-none transition-all pr-10"
+                >
+                  <option value={0}>All Rooms</option>
+                  {Array.isArray(wakeRooms) && wakeRooms.map(room => (
+                    <option key={room.wakeRoomId} value={room.wakeRoomId}>
+                      {room.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                  <ClockIcon className="w-4 h-4 text-gray-400" />
+                </div>
+              </div>
             </div>
 
             <div className="flex h-11">
@@ -224,7 +229,7 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
                 type="button"
                 onClick={handleSearch}
                 disabled={loading}
-                className="w-full bg-[#8b2222] text-white hover:bg-[#6d1b1b] rounded-xl flex items-center justify-center gap-2 text-sm font-bold shadow-sm transition-all disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-[#8b5a2b] to-[#6d4420] text-white hover:opacity-90 rounded-xl flex items-center justify-center gap-2 text-sm font-bold shadow-md shadow-[#8b5a2b]/20 transition-all disabled:opacity-50"
               >
                 {loading ? <LoadingSpinner size="sm" text="" /> : <SearchIcon className="w-4 h-4" />}
                 <span>{loading ? 'Searching...' : 'Search'}</span>
@@ -378,7 +383,7 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
                     key={i}
                     onClick={() => handlePageChange(i + 1)}
                     className={`w-7 h-7 rounded-md text-[11px] font-black transition-all ${currentPage === i + 1
-                      ? 'bg-[#8b2222] text-white shadow-md'
+                      ? 'bg-[#8b5a2b] text-white shadow-md'
                       : 'text-gray-400 hover:bg-white hover:text-gray-800'
                       }`}
                   >

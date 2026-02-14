@@ -12,6 +12,8 @@ interface DateInputProps {
   className?: string;
   disabled?: boolean;
   required?: boolean;
+  id?: string;
+  name?: string;
   label?: string;
   error?: string;
 }
@@ -26,6 +28,8 @@ export const DateInput: React.FC<DateInputProps> = ({
   className = '',
   disabled = false,
   required = false,
+  id,
+  name,
   label,
   error
 }) => {
@@ -33,8 +37,10 @@ export const DateInput: React.FC<DateInputProps> = ({
   const textInputRef = useRef<HTMLInputElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const uniqueId = useRef(id || `date-input-${Math.random().toString(36).substr(2, 9)}`);
 
-  // Sync display value when value prop changes
+  const inputId = id || uniqueId.current;
+  const inputName = name || inputId;
   useEffect(() => {
     if (mode === 'year') {
       const year = (value || '').toString().slice(0, 4);
@@ -101,7 +107,7 @@ export const DateInput: React.FC<DateInputProps> = ({
       selectEl?.focus();
       return;
     }
-    
+
     // Trigger the date picker by clicking the hidden date input
     // Use a small delay to ensure the input is ready
     setTimeout(() => {
@@ -125,7 +131,7 @@ export const DateInput: React.FC<DateInputProps> = ({
   const baseClasses = 'w-full rounded-xl border bg-white px-4 py-2.5 text-sm transition-all duration-200 focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50 placeholder:text-gray-400';
   const defaultClasses = 'border-gray-300 focus:border-[#8b2828] focus:ring-[#8b2828]/20 hover:border-gray-400';
   const errorClasses = 'border-red-400 focus:border-red-500 focus:ring-red-500/20 bg-red-50/50';
-  
+
   const inputClasses = `${baseClasses} ${error ? errorClasses : defaultClasses} ${className} pr-10`;
 
   const yearOptions = Array.from({ length: maxYear - minYear + 1 }, (_, idx) => maxYear - idx);
@@ -133,13 +139,18 @@ export const DateInput: React.FC<DateInputProps> = ({
   return (
     <div className="w-full space-y-1.5" ref={containerRef}>
       {label && (
-        <label className="block text-sm font-medium text-gray-700 leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+        <label
+          htmlFor={inputId}
+          className="block text-sm font-medium text-gray-700 leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+        >
           {label}
         </label>
       )}
       <div className="relative">
         {mode === 'year' ? (
           <select
+            id={inputId}
+            name={inputName}
             value={displayValue || ''}
             onChange={(e) => {
               const v = e.target.value;
@@ -160,6 +171,8 @@ export const DateInput: React.FC<DateInputProps> = ({
         ) : (
           /* Text input for dd/mm/yyyy display */
           <input
+            id={inputId}
+            name={inputName}
             ref={textInputRef}
             type="text"
             value={displayValue}
@@ -172,7 +185,7 @@ export const DateInput: React.FC<DateInputProps> = ({
             maxLength={10}
           />
         )}
-        
+
         {/* Calendar icon button */}
         <button
           type="button"
@@ -216,4 +229,3 @@ export const DateInput: React.FC<DateInputProps> = ({
     </div>
   );
 };
-

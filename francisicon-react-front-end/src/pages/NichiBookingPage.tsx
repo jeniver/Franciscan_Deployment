@@ -129,13 +129,32 @@ export function NichiBookingPage() {
   };
 
   const handleUpdateBeneficiary = (index: number, field: keyof DeceasedDetail, value: string) => {
+    const updatedValue: Partial<DeceasedDetail> = { [field]: value };
+
+    // Auto calculate storage periods when internment date is updated
+    if (field === 'internmentDate' && value) {
+      updatedValue.storagePeriodFrom = value;
+
+      const internmentDate = new Date(value);
+      if (!isNaN(internmentDate.getTime())) {
+        const storageToDate = new Date(internmentDate);
+        storageToDate.setFullYear(internmentDate.getFullYear() + 30);
+
+        // Format as YYYY-MM-DD
+        const year = storageToDate.getFullYear();
+        const month = String(storageToDate.getMonth() + 1).padStart(2, '0');
+        const day = String(storageToDate.getDate()).padStart(2, '0');
+        updatedValue.storagePeriodTo = `${year}-${month}-${day}`;
+      }
+    }
+
     // If this is the first beneficiary and it's still in local state (not in Redux yet)
     if (deceasedDetails.length === 0 && beneficiaries.length === 1) {
       // Update the local beneficiary and sync to Redux
-      const updated = [{ ...beneficiaries[0], [field]: value }];
+      const updated = [{ ...beneficiaries[0], ...updatedValue }];
       updateDeceasedDetails(updated);
     } else {
-      updateDeceased(index, { [field]: value });
+      updateDeceased(index, updatedValue);
     }
   };
 
@@ -201,7 +220,7 @@ export function NichiBookingPage() {
       // Reset niche-related fields when switching to a different application
       // This prevents showing the previous application's niche selection
       console.log(`Application number changed from ${previousRefDocNumber} to ${currentRefDocNumber}, resetting niche state`);
-      
+
       // Note: The actual reset happens in handleViewNichiApplication
       // This effect is just for manual refDocNumber changes
     }
@@ -280,7 +299,7 @@ export function NichiBookingPage() {
         {/* Invoice Form Section */}
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Nichi Booking Invoice</h2>
-          
+
           <div className="space-y-6">
             {/* Invoice Number and Payment Mode */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -472,6 +491,7 @@ export function NichiBookingPage() {
                           />
                         </div>
                       </td>
+
                       <td className="py-4 px-4">
                         <input
                           type="text"
@@ -547,7 +567,7 @@ export function NichiBookingPage() {
                     </div>
                   )}
                   {selectedBibleChoiceId && (
-                    <button 
+                    <button
                       onClick={() => {
                         const selected = bibleChoices.find(c => c.bibleInscriptionChoiceId === selectedBibleChoiceId);
                         if (selected) {
@@ -609,46 +629,46 @@ export function NichiBookingPage() {
 
         {/* Action Buttons */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        {/* Success Message */}
-        {(createdApplication || createdInvoice) && (
-          <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 rounded-lg">
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0">
-                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">✓</span>
+          {/* Success Message */}
+          {(createdApplication || createdInvoice) && (
+            <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                    <span className="text-white font-bold text-lg">✓</span>
+                  </div>
                 </div>
-              </div>
-              <div className="flex-1">
-                <div className="text-base font-semibold text-green-800">
-                  {createdApplication ? 'Application Created Successfully!' : 'Invoice Created Successfully!'}
-                </div>
-                <div className="text-sm text-green-700 mt-1">
-                  {createdApplication ? (
-                    <>
-                      Application Code: <span className="font-mono font-bold">{createdApplication.applicationCode}</span>
-                      {createdApplication.invoice && (
-                        <div className="mt-1">
-                          Invoice No: <span className="font-mono font-bold">{createdApplication.invoice.invoiceNo}</span>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      Invoice Code: <span className="font-mono font-bold">{createdInvoice?.invoiceCode || createdInvoice?.invoiceNumber}</span>
-                    </>
-                  )}
+                <div className="flex-1">
+                  <div className="text-base font-semibold text-green-800">
+                    {createdApplication ? 'Application Created Successfully!' : 'Invoice Created Successfully!'}
+                  </div>
+                  <div className="text-sm text-green-700 mt-1">
+                    {createdApplication ? (
+                      <>
+                        Application Code: <span className="font-mono font-bold">{createdApplication.applicationCode}</span>
+                        {createdApplication.invoice && (
+                          <div className="mt-1">
+                            Invoice No: <span className="font-mono font-bold">{createdApplication.invoice.invoiceNo}</span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        Invoice Code: <span className="font-mono font-bold">{createdInvoice?.invoiceCode || createdInvoice?.invoiceNumber}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Error Message */}
-        {(applicationError || invoiceError) && (
-          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg">
-            <div className="text-sm font-semibold text-red-800">{applicationError || invoiceError}</div>
-          </div>
-        )}
+          {/* Error Message */}
+          {(applicationError || invoiceError) && (
+            <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg">
+              <div className="text-sm font-semibold text-red-800">{applicationError || invoiceError}</div>
+            </div>
+          )}
 
           {/* Button Groups */}
           <div className="flex flex-wrap gap-3 justify-between items-center">

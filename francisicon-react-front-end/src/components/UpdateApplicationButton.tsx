@@ -20,7 +20,7 @@ export function UpdateApplicationButton({
   size = 'md',
   variant = 'primary'
 }: UpdateApplicationButtonProps) {
-  const { applicationNumber } = useApplication();
+  const { applicationNumber, isEditMode } = useApplication();
   const { isDirty, saveChanges, isUpdating } = useBatchedUpdates({
     applicationCode: applicationNumber,
     isEnabled: !isReadOnly
@@ -43,7 +43,7 @@ export function UpdateApplicationButton({
       // Save all changes with the complete form data
       // Even if there are no pending changes, we still want to save the complete form
       const result = await saveChanges(formData);
-      
+
       if (result.success) {
         showSuccessMessage('Application updated successfully!');
       } else {
@@ -55,9 +55,9 @@ export function UpdateApplicationButton({
     }
   }, [isReadOnly, applicationNumber, formData, saveChanges, showSuccessMessage, showErrorMessage]);
 
-  // Show button in read-only mode or when there are no changes
-  // This allows saving complete form data even without pending changes
-  if (isReadOnly) {
+  // Show button ONLY in edit mode
+  // This ensures it's hidden on /niche/new route
+  if (isReadOnly || !isEditMode) {
     return null;
   }
 

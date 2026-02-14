@@ -64,10 +64,20 @@ class InvoiceController extends BaseController {
         if (appResult.recordset && appResult.recordset.length > 0) {
           applicationData = appResult.recordset[0];
           isApplication = true;
+        } else if (/^\d+-\d+$/.test(normalizedCode)) {
+          // Fallback for Wake Room Booking with format like 001-758
+          const wakeResult = await executeQuery(
+            'SELECT TOP 1 WakeRoomBookingId, Code, ApplicantName, Status, ChurchId FROM WakeRoomBooking WITH(NOLOCK) WHERE Code = @code',
+            { code }
+          )
+          if (wakeResult.recordset && wakeResult.recordset.length > 0) {
+            applicationData = wakeResult.recordset[0]
+            isApplication = true
+          }
         }
       } else if (normalizedCode.startsWith('GOL-') || normalizedCode.startsWith('GOLA-')) {
         const appResult = await executeQuery(
-          'SELECT TOP 1 EngraveWallApplicationId, Code, ApplicantName, Status, ChurchId FROM EngraveWallApplication WITH(NOLOCK) WHERE Code = @code OR Code = @codeGola',
+          'SELECT TOP 1 EngraveWallApplicationId, Code, ApplicantName, ChurchId FROM EngraveWallApplication WITH(NOLOCK) WHERE Code = @code OR Code = @codeGola',
           {
             code,
             codeGola: normalizedCode.startsWith('GOL-') ? normalizedCode.replace('GOL-', 'GOLA-') : code
@@ -272,7 +282,64 @@ class InvoiceController extends BaseController {
             return this.sendError(res, 'Access denied - Church ID mismatch', 403);
           }
         } else {
-          return this.sendError(res, `Niche application not found for code: ${code}`, 404);
+          // If not found in Niche Application, check Wake Room Booking before returning 404
+          if (/^\d+-\d+$/.test(normalizedCode)) {
+            const wakeRoomQuery = `
+              SELECT TOP 1
+                WakeRoomBookingId,
+                Code,
+                ApplicantName,
+                ApplicantAddressNo,
+                ApplicantAddressLine1,
+                ApplicantAddressLine2,
+                ApplicantAddressCity,
+                ApplicantAddressState,
+                ApplicantAddressCountry,
+                ApplicantMobileNo,
+                ApplicantEmailID,
+                NameOfDeceased,
+                UsingDate,
+                UsingTimeFrom,
+                UsingTimeTo,
+                DonationAmount,
+                DefaultDonationAmount,
+                NoOfDays,
+                ChurchId,
+                Status
+              FROM WakeRoomBooking WITH(NOLOCK)
+              WHERE Code = @code
+            `;
+
+            const wakeRoomResult = await executeQuery(wakeRoomQuery, { code });
+
+            if (wakeRoomResult.recordset && wakeRoomResult.recordset.length > 0) {
+              // Found in Wake Room!
+              refDocName = 'WAPP';
+              application = wakeRoomResult.recordset[0];
+              customerName = application.ApplicantName || 'Unknown Applicant';
+
+              // Check church access
+              if (application.ChurchId !== churchId) {
+                return this.sendError(res, 'Access denied - Church ID mismatch', 403);
+              }
+
+              // Set application amount from donation amount
+              application.Amount = application.DonationAmount || application.DefaultDonationAmount || 0;
+
+              // Populate address details
+              if (application.ApplicantAddressLine1) {
+                application.ApplicantAddressNo = application.ApplicantAddressNo || '';
+                application.ApplicantAddressLine2 = application.ApplicantAddressLine2 || '';
+                application.ApplicantAddressCity = application.ApplicantAddressCity || '';
+                application.ApplicantAddressState = application.ApplicantAddressState || '';
+                application.ApplicantAddressCountry = application.ApplicantAddressCountry || '';
+              }
+            } else {
+              return this.sendError(res, `Niche application or Wake Room booking not found for code: ${code}`, 404);
+            }
+          } else {
+            return this.sendError(res, `Niche application not found for code: ${code}`, 404);
+          }
         }
       } else if (normalizedCode.startsWith('INCR-') ||
         (normalizedCode.startsWith('I-') &&
@@ -924,18 +991,45 @@ class InvoiceController extends BaseController {
       // If application code is provided, try to get application data
       if (applicationCode) {
         const { executeQuery } = require('../config/database');
-        const appResult = await executeQuery(
-          'SELECT TOP 1 NicheApplicationId, Code, ApplicantName, Amount, Status, ChurchId FROM NicheApplication WITH(NOLOCK) WHERE Code = @code AND ChurchId = @churchId',
-          { code: applicationCode, churchId: user.churchId }
-        );
+        const normalizedCode = applicationCode.trim().toUpperCase();
 
-        if (!appResult.recordset || appResult.recordset.length === 0) {
-          return this.sendError(res, 'Application not found', 404);
+        if (normalizedCode.startsWith('GOL-') || normalizedCode.startsWith('GOLA-')) {
+          // Gate of Life Application
+          resolvedRefDocName = 'GOLA';
+          const appResult = await executeQuery(
+            'SELECT TOP 1 EngraveWallApplicationId, Code, ApplicantName, DonationAmount, DefaultDonationAmount, ChurchId FROM EngraveWallApplication WITH(NOLOCK) WHERE (Code = @code OR Code = @codeGola) AND ChurchId = @churchId',
+            {
+              code: applicationCode,
+              codeGola: normalizedCode.startsWith('GOL-') ? normalizedCode.replace('GOL-', 'GOLA-') : applicationCode,
+              churchId: user.churchId
+            }
+          );
+
+          if (!appResult.recordset || appResult.recordset.length === 0) {
+            return this.sendError(res, 'Gate of Life application not found', 404);
+          }
+
+          application = appResult.recordset[0];
+          resolvedCustomerName = customerName || application.ApplicantName;
+          resolvedNicheApplicationId = application.EngraveWallApplicationId;
+          // Note: In individual invoice, nicheApplicationId field in Invoice table 
+          // might be repurposed for other application types if needed, 
+          // but for now we follow the existing pattern.
+        } else {
+          // Niche Application (Default)
+          const appResult = await executeQuery(
+            'SELECT TOP 1 NicheApplicationId, Code, ApplicantName, Amount, ChurchId FROM NicheApplication WITH(NOLOCK) WHERE Code = @code AND ChurchId = @churchId',
+            { code: applicationCode, churchId: user.churchId }
+          );
+
+          if (!appResult.recordset || appResult.recordset.length === 0) {
+            return this.sendError(res, 'Application not found', 404);
+          }
+
+          application = appResult.recordset[0];
+          resolvedCustomerName = customerName || application.ApplicantName;
+          resolvedNicheApplicationId = application.NicheApplicationId;
         }
-
-        application = appResult.recordset[0];
-        resolvedCustomerName = customerName || application.ApplicantName;
-        resolvedNicheApplicationId = application.NicheApplicationId;
       }
 
       // Calculate total tax amount
@@ -993,12 +1087,12 @@ class InvoiceController extends BaseController {
             payingAmount: detail.payingAmount !== undefined ? detail.payingAmount : unitAmount,
             totalPayingAmount: totalPayingAmount,
             refDocNumber: detail.refDocNumber || resolvedApplicationCode || '',
-            refDocName: detail.refDocName || 'NAPP',
+            refDocName: detail.refDocName || resolvedRefDocName || 'NAPP',
             lineTotalAmount: lineTotalAmount,
             lineTaxPercent: lineTaxPercent,
             lineTaxAmount: lineTaxAmount,
             outstandingAmount: detail.outstandingAmount || 0,
-            refType: detail.refType || 'NAPP'
+            refType: detail.refType || resolvedRefDocName || 'NAPP'
           };
         });
       } else {
@@ -1015,12 +1109,12 @@ class InvoiceController extends BaseController {
           payingAmount: invoiceData.payingAmount,
           totalPayingAmount: totalPayingAmount,
           refDocNumber: resolvedApplicationCode || '',
-          refDocName: 'NAPP',
+          refDocName: resolvedRefDocName || 'NAPP',
           lineTotalAmount: lineTotalAmount,
           lineTaxPercent: lineTaxPercent,
           lineTaxAmount: lineTaxAmount,
           outstandingAmount: 0,
-          refType: 'NAPP'
+          refType: resolvedRefDocName || 'NAPP'
         }];
       }
 
@@ -1041,9 +1135,10 @@ class InvoiceController extends BaseController {
         try {
           const { executeQuery } = require('../config/database');
           const receiptQuery = `
-            SELECT TOP 1 ReceiptId 
-            FROM Receipt WITH(NOLOCK) 
-            WHERE RefDocNumber = @refDocNumber AND ChurchId = @churchId
+            SELECT TOP 1 r.ReceiptId 
+            FROM Receipt r WITH(NOLOCK) 
+            INNER JOIN MisalaniousReceiptDetail rd WITH(NOLOCK) ON r.ReceiptId = rd.ReceiptId
+            WHERE rd.RefDocNumber = @refDocNumber AND r.ChurchId = @churchId
           `;
           const receiptResult = await executeQuery(receiptQuery, {
             refDocNumber: applicationCode,
@@ -1302,9 +1397,62 @@ class InvoiceController extends BaseController {
    * Get gate of life application data
    */
   async getGateOfLifeApplicationData(code, churchId) {
-    // TODO: Implement Gate of Life Application data retrieval
-    logger.warn('Gate of Life Application data retrieval not yet implemented');
-    return null;
+    try {
+      const GateOfLifeRepository = require('../repositories/GateOfLifeRepository');
+      const data = await GateOfLifeRepository.getInvoiceDetails(code, churchId);
+
+      if (!data || !data.application) {
+        return null;
+      }
+
+      // Map GOL items
+      const items = [{
+        itemId: 10, // Default item ID for GOL (should be mapped to real Item table)
+        itemName: 'Gate of Life Application',
+        itemCode: 'GOL',
+        itemPrice: data.application.DonationAmount || data.application.DefaultDonationAmount || 0,
+        quantity: 1,
+        unitAmount: data.application.DonationAmount || data.application.DefaultDonationAmount || 0,
+        lineTotalAmount: data.application.DonationAmount || data.application.DefaultDonationAmount || 0,
+        lineTaxPercent: 9,
+        lineTaxAmount: (data.application.DonationAmount || data.application.DefaultDonationAmount || 0) * 0.09,
+        totalPayingAmount: (data.application.DonationAmount || data.application.DefaultDonationAmount || 0) * 1.09,
+        refDocNumber: data.application.Code,
+        refDocName: 'GOLA',
+        refType: 'GOLA',
+        description: 'Gate of Life Application Donation',
+        category: 'Gate of Life',
+        customerName: data.application.ApplicantName || 'Unknown Applicant',
+        address: data.application.ApplicantAddressLine1 || '',
+        address2: data.application.ApplicantAddressLine2 || '',
+        addressCity: data.application.ApplicantAddressCity || '',
+        addressNo: data.application.ApplicantAddressNo || ''
+      }];
+
+      return {
+        type: 'GOLA',
+        application: data.application,
+        items: items,
+        customerName: data.application.ApplicantName,
+        address: {
+          addressNo: data.application.ApplicantAddressNo,
+          addressLine1: data.application.ApplicantAddressLine1,
+          addressLine2: data.application.ApplicantAddressLine2,
+          addressCity: data.application.ApplicantAddressCity,
+          addressState: data.application.ApplicantAddressState,
+          addressCountry: data.application.ApplicantAddressCountry
+        },
+        contact: {
+          mobile: data.application.ApplicantMobileNo,
+          email: data.application.ApplicantEmailID,
+          homeTel: data.application.ApplicantHomeTelNo,
+          officeTel: data.application.ApplicantOfficeTelNo
+        }
+      };
+    } catch (error) {
+      logger.error('Error getting gate of life application data:', error);
+      return null;
+    }
   }
 
   /**
@@ -1915,6 +2063,7 @@ class InvoiceController extends BaseController {
       const { code } = req.params;
       const churchId = req.user?.churchId;
       const applicationCode = req.query.applicationCode || null;
+      const normalizedCode = code.trim().toUpperCase();
 
       if (!code) {
         return this.sendError(res, 'Invoice code is required', 400);
@@ -1923,13 +2072,13 @@ class InvoiceController extends BaseController {
       const invoice = await this.invoiceRepository.getInvoiceByCode(code, churchId, applicationCode);
 
       if (!invoice) {
-        // Check if it's an inscription code
-        const normalizedCode = code.trim().toUpperCase();
-
         // If it looks like an inscription code (starts with 'I-' followed by digits only, or I-NAPP- format)
-        // Exclude wake room booking codes which follow I-XXXX-X pattern (second hyphen)
-        if (normalizedCode.startsWith('I-') &&
-          (normalizedCode.match(/^I-\d+$/) || normalizedCode.startsWith('I-NAPP-'))) {
+        // Supported formats: I-XXXX, I-XXXX-X, I-NAPP-XXXX, INCR-XXXX
+        if (normalizedCode.startsWith('INCR-') ||
+          (normalizedCode.startsWith('I-') &&
+            (normalizedCode.match(/^I-\d+$/) ||
+              normalizedCode.match(/^I-\d+-\d+$/) ||
+              normalizedCode.startsWith('I-NAPP-')))) {
           try {
             // Get inscription items for this code using the service
             const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
@@ -1977,6 +2126,113 @@ class InvoiceController extends BaseController {
             }
           } catch (inscriptionError) {
             logger.warn('Failed to get inscription items from service:', inscriptionError.message);
+          }
+        }
+
+        // If it looks like a Gate of Life code (GOL- or GOLA-)
+        if (normalizedCode.startsWith('GOL-') || normalizedCode.startsWith('GOLA-')) {
+          try {
+            const golData = await this.getGateOfLifeApplicationData(normalizedCode, churchId);
+            if (golData) {
+              const applicationResponse = {
+                isApplicationData: true,
+                isInvoice: false,
+                hasInvoice: false,
+                canCreateInvoice: true,
+                applicationCode: normalizedCode,
+                customerName: golData.customerName || '',
+                totalAmount: golData.items.reduce((sum, item) => sum + (item.unitAmount || 0), 0),
+                payingAmount: golData.items.reduce((sum, item) => sum + (item.unitAmount || 0), 0),
+                taxAmount: golData.items.reduce((sum, item) => sum + (item.lineTaxAmount || 0), 0),
+                details: golData.items,
+                summary: {
+                  totalItems: golData.items.length,
+                  subtotal: golData.items.reduce((sum, item) => sum + (item.lineTotalAmount || 0), 0),
+                  totalTax: golData.items.reduce((sum, item) => sum + (item.lineTaxAmount || 0), 0),
+                  grandTotal: golData.items.reduce((sum, item) => sum + (item.totalPayingAmount || 0), 0)
+                },
+                // Add address and contact info for UI population
+                addressNo: golData.address?.addressNo,
+                address: golData.address?.addressLine1,
+                address2: golData.address?.addressLine2,
+                addressCity: golData.address?.addressCity,
+                country: golData.address?.addressCountry,
+                applicantMobile: golData.contact?.mobile,
+                applicantEmail: golData.contact?.email
+              };
+
+              return this.sendSuccess(res, applicationResponse, 'Gate of Life application data retrieved successfully - no invoice exists yet');
+            }
+          } catch (golError) {
+            logger.warn('Failed to get Gate of Life application data:', golError.message);
+          }
+        }
+
+        // Check for Wake Room codes
+        // Support standard formats (WRB-, WR-) and flexible formats (001-758)
+        if (normalizedCode.startsWith('WR') ||
+          normalizedCode.startsWith('WAKE') ||
+          /^[A-Z0-9]+-\d+$/.test(normalizedCode) ||
+          /^\d+-\d+$/.test(normalizedCode)) {
+          try {
+            const wakeData = await this.getWakeRoomApplicationData(normalizedCode, churchId);
+            if (wakeData) {
+              // Determine amount to pay
+              const amount = wakeData.application.DonationAmount || wakeData.application.DefaultDonationAmount || 0;
+
+              // Find appropriate item for wake room
+              let item = null;
+              if (wakeData.items && wakeData.items.length > 0) {
+                item = wakeData.items[0];
+              }
+
+              const itemPrice = item ? item.Price : 0;
+              const finalAmount = amount > 0 ? amount : itemPrice;
+
+              const applicationResponse = {
+                isApplicationData: true,
+                isInvoice: false,
+                hasInvoice: false,
+                canCreateInvoice: true,
+                applicationCode: normalizedCode,
+                customerName: wakeData.customerName || '',
+                totalAmount: finalAmount * 1.09, // Including Tax
+                payingAmount: finalAmount * 1.09,
+                taxAmount: finalAmount * 0.09,
+                details: [{
+                  itemId: item ? item.ItemId : 0,
+                  itemName: item ? item.Name : 'Wake Room Service',
+                  itemCode: item ? item.Code : 'WAKE',
+                  unitAmount: finalAmount,
+                  quantity: 1,
+                  lineTotalAmount: finalAmount,
+                  lineTaxAmount: finalAmount * 0.09,
+                  totalPayingAmount: finalAmount * 1.09,
+                  refDocNumber: wakeData.application.Code,
+                  refDocName: 'WAPP',
+                  refType: 'WAPP',
+                  description: `Wake Room Booking: ${wakeData.application.NameOfDeceased || ''}`
+                }],
+                summary: {
+                  totalItems: 1,
+                  subtotal: finalAmount,
+                  totalTax: finalAmount * 0.09,
+                  grandTotal: finalAmount * 1.09
+                },
+                // Add contact info for UI population
+                addressNo: wakeData.address?.addressNo,
+                address: wakeData.address?.addressLine1,
+                address2: wakeData.address?.addressLine2,
+                addressCity: wakeData.address?.addressCity,
+                country: wakeData.address?.addressCountry,
+                applicantMobile: wakeData.contact?.mobile,
+                applicantEmail: wakeData.contact?.email
+              };
+
+              return this.sendSuccess(res, applicationResponse, 'Wake room application data retrieved successfully - no invoice exists yet');
+            }
+          } catch (wakeError) {
+            logger.warn('Failed to get Wake Room application data:', wakeError.message);
           }
         }
 
@@ -2153,6 +2409,8 @@ class InvoiceController extends BaseController {
         // Handle inscription format: I-XXXX-X
         appType = 'INCR';
         baseCode = normalizedCode; // Keep full code for inscription lookup
+      } else if (normalizedCode.startsWith('GOL-') || normalizedCode.startsWith('GOLA-')) {
+        appType = 'GOLA';
       } else {
         throw new Error(`Unsupported application code format: ${applicationCode}`);
       }
@@ -2165,6 +2423,12 @@ class InvoiceController extends BaseController {
       } else if (appType === 'INCR') {
         // Get inscription items
         items = await this.getInscriptionItems(baseCode, churchId);
+      } else if (appType === 'GOLA') {
+        // Get Gate of Life application data
+        const golData = await this.getGateOfLifeApplicationData(normalizedCode, churchId);
+        if (golData && golData.items) {
+          items = golData.items;
+        }
       }
 
       return items;

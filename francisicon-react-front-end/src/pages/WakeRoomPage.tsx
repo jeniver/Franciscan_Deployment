@@ -3,18 +3,21 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { WakeRoomBookingForm } from '../components/WakeRoomBookingForm';
 import { WakeRoomSearch } from '../components/WakeRoomSearch';
-import { TableIcon, FileEditIcon } from 'lucide-react';
+import { TableIcon, PlusIcon, EyeIcon, PrinterIcon } from 'lucide-react';
 import { Button } from '../components/common/Button';
+import { Input } from '../components/common/Input';
 import { useWakeRoom } from '../hooks/useWakeRoom';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import { WakeRoomAgreementModal } from '../components/WakeRoomAgreementModal';
 
 export function WakeRoomPage() {
   const { bookingCode } = useParams<{ bookingCode?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const [viewMode, setViewMode] = useState<'form' | 'table'>('table');
-  const { handleGetBookingByCode } = useWakeRoom();
+  const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
+  const { handleGetBookingByCode, selectedBooking } = useWakeRoom();
   const user = useSelector((state: RootState) => state.auth.user);
 
   // Effect to sync view mode with route
@@ -47,64 +50,112 @@ export function WakeRoomPage() {
 
   return (
     <Layout title="Wake Room Management">
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-          {/* Page header with view mode toggle */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200/70 px-4 sm:px-6 py-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-[#8b5a2b] to-[#6d4420] rounded-xl flex items-center justify-center shadow-md">
-                  {viewMode === 'table' ? (
-                    <TableIcon className="w-6 h-6 text-white" />
-                  ) : (
-                    <FileEditIcon className="w-6 h-6 text-white" />
-                  )}
+      <div className="min-h-screen bg-[#fcfcfc]">
+        {/* Standardized Header */}
+        <div className="bg-white border-b border-gray-200 sticky top-0 z-40 px-6 py-4">
+          <div className="max-w-7xl mx-auto">
+            {viewMode === 'form' ? (
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-gray-700">
+                    Application Number:
+                  </p>
+                  <Input
+                    type="text"
+                    value={bookingCode || ''}
+                    readOnly
+                    className="text-lg font-bold text-gray-900 w-32 md:w-40 py-2 px-3 border border-gray-300 rounded-md"
+                    placeholder="Enter booking code"
+                  />
                 </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="primary"
+                    icon={<EyeIcon className="w-4 h-4" />}
+                    onClick={() => handleGetBookingByCode(bookingCode!, user?.churchId || 1)}
+                    disabled={!bookingCode}
+                  >
+                    View
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    icon={<PrinterIcon className="w-4 h-4" />}
+                    onClick={() => setIsAgreementModalOpen(true)}
+                    disabled={!bookingCode}
+                  >
+                    View Wake Room Application
+                  </Button>
+
+                  <Button
+                    variant="primary"
+                    icon={<PrinterIcon className="w-4 h-4" />}
+                    onClick={() => navigate(`/invoice-receipt/${bookingCode}`)}
+                    disabled={!bookingCode}
+                  >
+                    Invoice & Receipt
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    icon={<TableIcon className="w-4 h-4" />}
+                    onClick={() => navigate('/wake-room')}
+                  >
+                    View Applications
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">
-                    {viewMode === 'table' ? 'Wake Room Bookings' : 'Wake Room Booking Form'}
-                  </h2>
+                  <h2 className="text-2xl font-bold text-gray-900">Wake Room Bookings</h2>
                   <p className="text-sm text-gray-600">
-                    {viewMode === 'form'
-                      ? 'Create or edit a wake room booking using the guided steps.'
-                      : 'View and manage existing wake room bookings.'}
+                    Manage and search through all wake room reservation records.
                   </p>
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => window.location.reload()}
+                  >
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="primary"
+                    icon={<PlusIcon className="w-4 h-4" />}
+                    onClick={() => navigate('/wake-room/new')}
+                    className="bg-[#8b5a2b] text-white border-[#8b5a2b]"
+                  >
+                    Create New Booking
+                  </Button>
+                </div>
               </div>
-
-              {/* View Mode Toggle */}
-              <div className="flex gap-2">
-                <Button
-                  variant={viewMode === 'form' ? 'primary' : 'outline'}
-                  icon={<FileEditIcon className="w-4 h-4" />}
-                  onClick={() => navigate('/wake-room/new')}
-                >
-                  Form View
-                </Button>
-                <Button
-                  variant={viewMode === 'table' ? 'primary' : 'outline'}
-                  icon={<TableIcon className="w-4 h-4" />}
-                  onClick={() => navigate('/wake-room')}
-                >
-                  Table View
-                </Button>
-              </div>
-            </div>
+            )}
           </div>
+        </div>
 
-          {/* View Content */}
-          <div className="flex-1">
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
             {viewMode === 'table' ? (
               <WakeRoomSearch />
             ) : (
-              <WakeRoomBookingForm
-                onBookingCreated={handleBookingCreated}
-                onBookingUpdated={handleBookingUpdated}
-              />
+              <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
+                <WakeRoomBookingForm
+                  onBookingCreated={handleBookingCreated}
+                  onBookingUpdated={handleBookingUpdated}
+                />
+              </div>
             )}
           </div>
         </div>
       </div>
-    </Layout>
+      {/* Agreement Modal */}
+      <WakeRoomAgreementModal
+        isOpen={isAgreementModalOpen}
+        onClose={() => setIsAgreementModalOpen(false)}
+        booking={selectedBooking}
+      />
+    </Layout >
   );
 }

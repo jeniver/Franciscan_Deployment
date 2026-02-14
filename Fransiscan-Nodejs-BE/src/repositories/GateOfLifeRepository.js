@@ -46,7 +46,7 @@ class GateOfLifeRepository {
           OR ewa.ApplicantIDNo LIKE @searchTerm
           OR EXISTS (
             SELECT 1
-          FROM EngraveWallApplicationDetail d
+            FROM EngraveWallApplicationDetail d WITH (NOLOCK)
             WHERE d.EngraveWallApplicationId = ewa.EngraveWallApplicationId
               AND d.NameToEngrave LIKE @searchTerm
           )
@@ -57,7 +57,7 @@ class GateOfLifeRepository {
       if (filters.nameToEngrave) {
         conditions.push(`EXISTS (
           SELECT 1
-          FROM EngraveWallApplicationDetail d
+          FROM EngraveWallApplicationDetail d WITH (NOLOCK)
           WHERE d.EngraveWallApplicationId = ewa.EngraveWallApplicationId
             AND d.NameToEngrave LIKE @nameToEngrave
         )`);
@@ -70,7 +70,7 @@ class GateOfLifeRepository {
 
       const countQuery = `
         SELECT COUNT(1) AS Total
-        FROM EngraveWallApplication ewa
+        FROM EngraveWallApplication ewa WITH (NOLOCK)
         ${whereClause}
       `;
 
@@ -90,7 +90,7 @@ class GateOfLifeRepository {
           SELECT
             ewa.*,
             ROW_NUMBER() OVER (ORDER BY ewa.BookingDate DESC, ewa.EngraveWallApplicationId DESC) AS RowNum
-          FROM EngraveWallApplication ewa
+          FROM EngraveWallApplication ewa WITH (NOLOCK)
           ${whereClause}
         )
         SELECT *
@@ -139,7 +139,7 @@ class GateOfLifeRepository {
     try {
       const query = `
         SELECT TOP 1 *
-        FROM EngraveWallApplication
+        FROM EngraveWallApplication WITH (NOLOCK)
         WHERE Code = @code
           AND ChurchId = @churchId
       `;
@@ -167,7 +167,7 @@ class GateOfLifeRepository {
     try {
       const query = `
         SELECT TOP 1 *
-        FROM EngraveWallApplication
+        FROM EngraveWallApplication WITH (NOLOCK)
         WHERE EngraveWallApplicationId = @applicationId
           AND ChurchId = @churchId
       `;
@@ -222,6 +222,7 @@ class GateOfLifeRepository {
       insertRequest.input('DefaultDonationAmount', sql.Decimal(18, 2), application.defaultDonationAmount || null);
       insertRequest.input('ChurchId', sql.Int, application.churchId);
       insertRequest.input('UserId', sql.Int, application.userId || null);
+      insertRequest.input('RequestSameBrick', sql.Bit, application.requestSameBrick || false);
       insertRequest.input('RefDocType', sql.VarChar(10), application.refDocType || 'GOLA');
 
       const insertQuery = `
@@ -244,6 +245,7 @@ class GateOfLifeRepository {
           DefaultDonationAmount,
           ChurchId,
           UserId,
+          RequestSameBrick,
           RefDocType
         )
         VALUES (
@@ -265,6 +267,7 @@ class GateOfLifeRepository {
           @DefaultDonationAmount,
           @ChurchId,
           @UserId,
+          @RequestSameBrick,
           @RefDocType
         );
         SELECT SCOPE_IDENTITY() AS EngraveWallApplicationId;
@@ -318,6 +321,7 @@ class GateOfLifeRepository {
       updateRequest.input('ApplicantAddressCountry', sql.NVarChar(100), application.applicantAddressCountry || null);
       updateRequest.input('DonationAmount', sql.Decimal(18, 2), application.donationAmount || null);
       updateRequest.input('DefaultDonationAmount', sql.Decimal(18, 2), application.defaultDonationAmount || null);
+      updateRequest.input('RequestSameBrick', sql.Bit, application.requestSameBrick || false);
       updateRequest.input('BookingDate', sql.DateTime, application.bookingDate || new Date());
 
       const updateQuery = `
@@ -337,6 +341,7 @@ class GateOfLifeRepository {
           ApplicantAddressCountry = @ApplicantAddressCountry,
           DonationAmount = @DonationAmount,
           DefaultDonationAmount = @DefaultDonationAmount,
+          RequestSameBrick = @RequestSameBrick,
           BookingDate = @BookingDate
         WHERE EngraveWallApplicationId = @ApplicationId
           AND ChurchId = @ChurchId
@@ -437,6 +442,7 @@ class GateOfLifeRepository {
           ewa.ApplicantAddressCountry,
           ewa.DonationAmount,
           ewa.DefaultDonationAmount,
+          ewa.RequestSameBrick,
           ewa.ChurchId,
           ewa.UserId
         FROM EngraveWallApplication ewa WITH (NOLOCK)
@@ -454,7 +460,10 @@ class GateOfLifeRepository {
       const detailsQuery = `
         SELECT
           NameToEngrave,
-          Remarks
+          Remarks,
+          DateOfBirth,
+          DateOfDeath,
+          AdditionalInfo
         FROM EngraveWallApplicationDetail WITH (NOLOCK)
         WHERE EngraveWallApplicationId = @applicationId
         ORDER BY EngraveWallApplicationDetailId ASC
@@ -568,16 +577,34 @@ class GateOfLifeRepository {
       detailRequest.input('ApplicationId', sql.Int, applicationId);
       detailRequest.input('NameToEngrave', sql.NVarChar(200), detail.nameToEngrave);
       detailRequest.input('Remarks', sql.NVarChar(400), detail.remarks || null);
+      detailRequest.input('DateOfBirth', sql.DateTime, detail.dateOfBirth || null);
+      detailRequest.input('DateOfDeath', sql.DateTime, detail.dateOfDeath || null);
+      detailRequest.input('AdditionalInfo', sql.NVarChar(sql.MAX), detail.additionalInfo || null);
+
+      logger.debug(`Inserting EngraveWallApplicationDetail for appId ${applicationId}:`, {
+        nameToEngrave: detail.nameToEngrave,
+        remarks: detail.remarks,
+        dateOfBirth: detail.dateOfBirth,
+        dateOfDeath: detail.dateOfDeath,
+        additionalInfo: detail.additionalInfo
+      });
+
       await detailRequest.query(`
         INSERT INTO EngraveWallApplicationDetail (
           EngraveWallApplicationId,
           NameToEngrave,
-          Remarks
+          Remarks,
+          DateOfBirth,
+          DateOfDeath,
+          AdditionalInfo
         )
         VALUES (
           @ApplicationId,
           @NameToEngrave,
-          @Remarks
+          @Remarks,
+          @DateOfBirth,
+          @DateOfDeath,
+          @AdditionalInfo
         )
       `);
     }
@@ -590,11 +617,14 @@ class GateOfLifeRepository {
 
     const query = `
       SELECT
-        EngraveWallApplicationDetailId,
-        EngraveWallApplicationId,
-        NameToEngrave,
-        Remarks
-      FROM EngraveWallApplicationDetail
+        EngraveWallApplicationDetailId AS detailId,
+        EngraveWallApplicationId AS applicationId,
+        NameToEngrave AS nameToEngrave,
+        Remarks AS remarks,
+        DateOfBirth AS dateOfBirth,
+        DateOfDeath AS dateOfDeath,
+        AdditionalInfo AS additionalInfo
+      FROM EngraveWallApplicationDetail WITH (NOLOCK)
       WHERE EngraveWallApplicationId = @applicationId
       ORDER BY EngraveWallApplicationDetailId ASC
     `;
@@ -618,11 +648,14 @@ class GateOfLifeRepository {
 
     const query = `
       SELECT
-        EngraveWallApplicationDetailId,
-        EngraveWallApplicationId,
-        NameToEngrave,
-        Remarks
-      FROM EngraveWallApplicationDetail
+        EngraveWallApplicationDetailId AS detailId,
+        EngraveWallApplicationId AS applicationId,
+        NameToEngrave AS nameToEngrave,
+        Remarks AS remarks,
+        DateOfBirth AS dateOfBirth,
+        DateOfDeath AS dateOfDeath,
+        AdditionalInfo AS additionalInfo
+      FROM EngraveWallApplicationDetail WITH (NOLOCK)
       WHERE EngraveWallApplicationId IN (${placeholders})
       ORDER BY EngraveWallApplicationDetailId ASC
     `;
