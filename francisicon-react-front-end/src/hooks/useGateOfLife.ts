@@ -122,12 +122,12 @@ export function useGateOfLife() {
         setTimeout(() => reject(new Error('Request timeout')), 30000);
       });
 
-      const action = await Promise.race([
+      const action = (await Promise.race([
         loadApplication(codeToLoad.trim()),
         timeoutPromise
-      ]);
+      ])) as any;
 
-      if (action.type.endsWith('/fulfilled')) {
+      if (action?.type?.endsWith('/fulfilled')) {
         console.log('Gate of Life application data loaded successfully for viewing');
       } else if (action.type.endsWith('/rejected')) {
         const errorData = action.payload as { message: string; type: string; statusCode: number };

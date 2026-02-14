@@ -319,7 +319,7 @@ export function InscriptionRequest() { // Removed props parameter since they wer
                 className="px-5 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <PrinterIcon className="w-4 h-4" />
-                View Inscription
+                View Inscription 
               </button>
 
               <button
