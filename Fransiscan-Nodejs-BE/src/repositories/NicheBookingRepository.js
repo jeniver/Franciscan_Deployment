@@ -296,7 +296,10 @@ class NicheBookingRepository {
           IsCatholic = @isCatholic,
           IsMale = @isMale,
           RelationshipToApplicant = @relationshipToApplicant,
-          DateOfBirth = @dateOfBirth
+          RelationshipToNominee1 = @relationshipToNominee1,
+          RelationshipToNominee2 = @relationshipToNominee2,
+          DateOfBirth = @dateOfBirth,
+          BirthYear = @birthYear
         WHERE NicheBookingBeneficiaryId = @beneficiaryId
       `;
 
@@ -307,12 +310,49 @@ class NicheBookingRepository {
         isCatholic: beneficiary.isCatholic,
         isMale: beneficiary.isMale,
         relationshipToApplicant: beneficiary.relationshipToApplicant,
-        dateOfBirth: beneficiary.dateOfBirth
+        relationshipToNominee1: beneficiary.relationshipToNominee1 || null,
+        relationshipToNominee2: beneficiary.relationshipToNominee2 || null,
+        dateOfBirth: beneficiary.dateOfBirth,
+        birthYear: beneficiary.birthYear || null
       });
 
       return true;
     } catch (error) {
       logger.error('Failed to update beneficiary:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update niche booking metadata (remarks, dates, etc.)
+   * @param {Object} booking - Booking data
+   * @returns {Promise<boolean>} Success status
+   */
+  async updateBooking(booking) {
+    try {
+      const query = `
+        UPDATE NicheBooking
+        SET 
+          BookedDate = @bookedDate,
+          Remarks = @remarks,
+          NomineeId2 = @nomineeId2,
+          ContactPersonId = @contactPersonId,
+          NomineeId = @nomineeId
+        WHERE NicheBookingId = @bookingId
+      `;
+
+      await executeQuery(query, {
+        bookingId: booking.nicheBookingId,
+        bookedDate: booking.bookedDate,
+        remarks: booking.remarks || null,
+        nomineeId2: booking.nomineeId2 || null,
+        contactPersonId: booking.contactPersonId,
+        nomineeId: booking.nomineeId
+      });
+
+      return true;
+    } catch (error) {
+      logger.error('Failed to update niche booking:', error);
       throw error;
     }
   }

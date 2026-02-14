@@ -413,7 +413,8 @@ class NicheApplicationController {
   }
 
   /**
-   * Remove empty/null/undefined values from object recursively
+   * Remove null/undefined values from object recursively
+   * NOTE: Empty strings are preserved to allow clearing fields in PUT requests
    */
   removeEmptyValues(obj) {
     if (obj === null || obj === undefined) return undefined;
@@ -426,7 +427,8 @@ class NicheApplicationController {
     const result = {};
     for (const [key, value] of Object.entries(obj)) {
       const cleanedValue = this.removeEmptyValues(value);
-      if (cleanedValue !== undefined && cleanedValue !== null && cleanedValue !== '') {
+      // Preserve empty strings, but remove null/undefined
+      if (cleanedValue !== undefined && cleanedValue !== null) {
         result[key] = cleanedValue;
       }
     }

@@ -35,6 +35,9 @@ class NicheAgreementRepository extends BaseRepository {
       const useIndexHints = process.env.USE_INDEX_HINTS === 'true';
       const indexHint = useIndexHints ? 'WITH (NOLOCK, INDEX(IX_NicheApplication_Code))' : 'WITH (NOLOCK)';
 
+      // BYPASS CACHE FOR DEBUGGING
+      const bypassCache = true;
+
       const applicationQuery = `
         SELECT TOP 1 na.*
         FROM NicheApplication na ${indexHint}
@@ -283,28 +286,25 @@ class NicheAgreementRepository extends BaseRepository {
       const trimmed = dbValue.trim();
       if (!trimmed || trimmed.toLowerCase() === 'null') return null;
 
-      // Handle DD-MM-YYYY
+      // Handle DD-MM-YYYY (Primary format for storage now)
       const dateParts = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
       if (dateParts) {
-        const [, d, m, y] = dateParts;
-        const date = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
-        if (!isNaN(date.getTime())) return date.toISOString();
+        return trimmed; // Already in desired string format
       }
 
-      // Handle DD-MMM-YYYY (e.g., "16-Feb-2012")
-      const dmmmMatch = trimmed.match(/^(\d{1,2})[\s-](\w{3})[\s-](\d{4})$/i);
-      if (dmmmMatch) {
-        const [, day, monthName, year] = dmmmMatch;
-        const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-        const monthIndex = months.indexOf(monthName.toLowerCase());
-        if (monthIndex !== -1) {
-          const date = new Date(parseInt(year, 10), monthIndex, parseInt(day, 10));
-          if (!isNaN(date.getTime())) return date.toISOString();
-        }
-      }
-
+      // Handle ISO strings or other parseable formats
       const parsed = new Date(trimmed);
-      return isNaN(parsed.getTime()) ? trimmed : parsed.toISOString();
+      if (!isNaN(parsed.getTime())) {
+        // Stop 4-digit years from becoming Jan 1st
+        if (/^\d{4}$/.test(trimmed)) return null;
+
+        const day = String(parsed.getDate()).padStart(2, '0');
+        const month = String(parsed.getMonth() + 1).padStart(2, '0');
+        const year = parsed.getFullYear();
+        return `${day}-${month}-${year}`;
+      }
+
+      return trimmed;
     }
 
     try {
@@ -399,11 +399,20 @@ class NicheAgreementRepository extends BaseRepository {
           RelationshipToNominee2: bene1.RelationshipToNominee2
         });
 
+        // ✅ TRACE: Log raw DB value for dateOfBirth
+        logger.info(`[TRACE-REPO] Application ${nicheAgreement.applicationCode} Bene 1 Raw:`, {
+          DateOfBirth: bene1.DateOfBirth,
+          BirthYear: bene1.BirthYear,
+          Type: typeof bene1.DateOfBirth
+        });
+
         nicheAgreement.beneName_1 = bene1.Name;
         nicheAgreement.beneIDNo_1 = bene1.IDNo;
         nicheAgreement.beneIsCatholic_1 = bene1.IsCatholic;
         nicheAgreement.beneIsMale_1 = bene1.IsMale;
         nicheAgreement.beneRelationshipToApplicant_1 = bene1.RelationshipToApplicant;
+        nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1;
+        nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2;
 
         // ✅ FIX: Format DateOfBirth properly (handles NVARCHAR string)
         nicheAgreement.beneDateOfBirth_1 = this.formatDateOfBirth(bene1.DateOfBirth);
@@ -415,22 +424,22 @@ class NicheAgreementRepository extends BaseRepository {
           dateOfBirth: nicheAgreement.beneDateOfBirth_1,
           birthYear: nicheAgreement.beneBirthYear_1
         });
-
-        // ✅ Set nominee relationships from the query result (will be null if columns don't exist)
-        nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1 || null;
-        nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2 || null;
       }
 
       if (primaryResult.recordset.length > 1) {
         const bene2 = primaryResult.recordset[1];
-        logger.info(`[addBeneficiaries] Beneficiary 2 raw data:`, {
-          Name: bene2.Name,
+
+        logger.debug(`[addBeneficiaries] Primary Beneficiary 2 raw data:`, {
+          name: bene2.Name,
+          dateOfBirth: bene2.DateOfBirth,
+          birthYear: bene2.BirthYear
+        });
+
+        // ✅ TRACE: Log raw DB value for dateOfBirth 2
+        logger.info(`[TRACE-REPO] Application ${nicheAgreement.applicationCode} Bene 2 Raw:`, {
           DateOfBirth: bene2.DateOfBirth,
-          DateOfBirthType: typeof bene2.DateOfBirth,
           BirthYear: bene2.BirthYear,
-          BirthYearType: typeof bene2.BirthYear,
-          RelationshipToNominee1: bene2.RelationshipToNominee1,
-          RelationshipToNominee2: bene2.RelationshipToNominee2
+          Type: typeof bene2.DateOfBirth
         });
 
         nicheAgreement.beneName_2 = bene2.Name;
@@ -438,6 +447,8 @@ class NicheAgreementRepository extends BaseRepository {
         nicheAgreement.beneIsCatholic_2 = bene2.IsCatholic;
         nicheAgreement.beneIsMale_2 = bene2.IsMale;
         nicheAgreement.beneRelationshipToApplicant_2 = bene2.RelationshipToApplicant;
+        nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1;
+        nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2;
 
         // ✅ FIX: Format DateOfBirth properly
         nicheAgreement.beneDateOfBirth_2 = this.formatDateOfBirth(bene2.DateOfBirth);
@@ -449,10 +460,6 @@ class NicheAgreementRepository extends BaseRepository {
           dateOfBirth: nicheAgreement.beneDateOfBirth_2,
           birthYear: nicheAgreement.beneBirthYear_2
         });
-
-        // ✅ Set nominee relationships from the query result (will be null if columns don't exist)
-        nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1 || null;
-        nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2 || null;
       }
 
       // FALLBACK: If no data found, try NicheBookingBeneficiary (legacy/booking data)

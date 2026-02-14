@@ -10,6 +10,17 @@ router.post(
 );
 
 /**
+ * @route   PUT /api/niche-bookings/:id
+ * @desc    Update niche booking metadata (remarks, dated, etc.)
+ * @access  Private (JWT required)
+ */
+router.put(
+  '/:id',
+  authenticateToken,
+  (req, res) => NicheBookingController.updateBooking(req, res)
+);
+
+/**
  * @route   GET /api/niche-bookings/:code
  * @desc    Get niche booking by application code
  * @access  Private (JWT required)

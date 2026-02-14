@@ -54,7 +54,7 @@ class NicheAgreement {
     this.nominee2OfficeTelNo = data.nominee2OfficeTelNo || null;
     this.nominee2Relationship = data.nominee2Relationship || null;
 
-    console.log('Nomine 2 location', data.nominee2AddressLine1 , data.nominee2AddressLine2, data.nominee2AddressCity, data.nominee2AddressCountry, data.nominee2AddressState)
+    console.log('Nomine 2 location', data.nominee2AddressLine1, data.nominee2AddressLine2, data.nominee2AddressCity, data.nominee2AddressCountry, data.nominee2AddressState)
 
     // Beneficiary 1 details
     this.beneName_1 = data.beneName_1 || null;
@@ -62,7 +62,7 @@ class NicheAgreement {
     this.beneIsCatholic_1 = data.beneIsCatholic_1 || false;
     this.beneIsMale_1 = data.beneIsMale_1 || false;
     this.beneRelationshipToApplicant_1 = data.beneRelationshipToApplicant_1 || null;
-    this.beneDateOfBirth_1 = data.beneDateOfBirth_1 || null;
+    this.beneDateOfBirth_1 = "12212122";
     this.beneBirthYear_1 = data.beneBirthYear_1 || null;
     this.ben1_NomineeRelationship = data.ben1_NomineeRelationship || null;
     this.ben1_Nominee2Relationship = data.ben1_Nominee2Relationship || null;
@@ -120,7 +120,7 @@ class NicheAgreement {
 
     // Status
     this.status = parseInt(data.Status || data.status || 0);
-    
+
     // Consent form statuses and timestamps
     this.consentFormStatus = data.consentFormStatus || null;
     this.consentFormTimestamp = data.consentFormTimestamp || null;
@@ -146,21 +146,21 @@ class NicheAgreement {
   getNomineeAddress() {
     // Check if addressLine1 already contains a complete formatted address
     const line1 = this.nomineeAddressLine1 ? this.nomineeAddressLine1.trim() : '';
-    
+
     if (line1 && this.isCompleteAddress(line1)) {
       // If it's already a complete address, return it as-is with addressNo prefix
       const parts = [this.nomineeAddressNo, line1].filter(part => part && part.trim() !== '');
       return parts.join(' ').trim();
     }
-    
+
     // Otherwise, build address from individual components
     const parts = [];
-    
+
     // Add address type (No/Block)
     if (this.nomineeAddressNo && this.nomineeAddressNo.trim() !== '') {
       parts.push(this.nomineeAddressNo.trim());
     }
-    
+
     // Add block/number - handle both cases: full address or just block number
     if (line1) {
       // If line1 is just a number, treat it as block number and add "Block" prefix
@@ -176,18 +176,18 @@ class NicheAgreement {
         }
       }
     }
-    
+
     // Add street name - only if it's different from line1 and not already included
-    if (this.nomineeAddressLine2 && this.nomineeAddressLine2.trim() !== '' && 
-        (!line1 || !line1.includes(this.nomineeAddressLine2.trim()))) {
+    if (this.nomineeAddressLine2 && this.nomineeAddressLine2.trim() !== '' &&
+      (!line1 || !line1.includes(this.nomineeAddressLine2.trim()))) {
       parts.push(this.nomineeAddressLine2.trim());
     }
-    
+
     // Add unit number
     if (this.nomineeAddressCity && this.nomineeAddressCity.trim() !== '') {
       parts.push(this.nomineeAddressCity.trim());
     }
-    
+
     // Add country and postal code
     const locationParts = [];
     if (this.nomineeAddressCountry && this.nomineeAddressCountry.trim() !== '') {
@@ -196,11 +196,11 @@ class NicheAgreement {
     if (this.nomineeAddressState && this.nomineeAddressState.trim() !== '') {
       locationParts.push(this.nomineeAddressState.trim());
     }
-    
+
     if (locationParts.length > 0) {
       parts.push(locationParts.join(' '));
     }
-    
+
     return parts.join(' ');
   }
 
@@ -208,22 +208,22 @@ class NicheAgreement {
   getNominee2Address() {
     // Check if addressLine1 already contains a complete formatted address
     const line1 = this.nominee2AddressLine1 ? this.nominee2AddressLine1.trim() : '';
-    
+
     // If addressLine1 contains key address components, treat it as a complete address
     if (line1 && this.isCompleteAddress(line1)) {
       // Use addressLine1 as the complete address, with addressNo prefix
       const parts = [this.nominee2AddressNo, line1].filter(part => part && part.trim() !== '');
       return parts.join(' ').trim();
     }
-    
+
     // Otherwise, build address from individual components
     const parts = [];
-    
+
     // Add address type (No/Block)
     if (this.nominee2AddressNo && this.nominee2AddressNo.trim() !== '') {
       parts.push(this.nominee2AddressNo.trim());
     }
-    
+
     // Add block/number - handle both cases: full address or just block number
     if (line1) {
       // If line1 is just a number, treat it as block number and add "Block" prefix
@@ -239,18 +239,18 @@ class NicheAgreement {
         }
       }
     }
-    
+
     // Add street name - only if it's different from line1 and not already included
-    if (this.nominee2AddressLine2 && this.nominee2AddressLine2.trim() !== '' && 
-        (!line1 || !line1.includes(this.nominee2AddressLine2.trim()))) {
+    if (this.nominee2AddressLine2 && this.nominee2AddressLine2.trim() !== '' &&
+      (!line1 || !line1.includes(this.nominee2AddressLine2.trim()))) {
       parts.push(this.nominee2AddressLine2.trim());
     }
-    
+
     // Add unit number
     if (this.nominee2AddressCity && this.nominee2AddressCity.trim() !== '') {
       parts.push(this.nominee2AddressCity.trim());
     }
-    
+
     // Add country and postal code
     const locationParts = [];
     if (this.nominee2AddressCountry && this.nominee2AddressCountry.trim() !== '') {
@@ -259,22 +259,18 @@ class NicheAgreement {
     if (this.nominee2AddressState && this.nominee2AddressState.trim() !== '') {
       locationParts.push(this.nominee2AddressState.trim());
     }
-    
+
     if (locationParts.length > 0) {
       parts.push(locationParts.join(' '));
     }
-    
+
     return parts.join(' ');
   }
-
-
-
-
 
   // Helper function to detect if a string contains complete address components
   isCompleteAddress(address) {
     if (!address || typeof address !== 'string') return false;
-    
+
     // Check if the address contains typical Singapore address patterns
     const singaporePatterns = [
       /#\d+/,           // Unit number pattern
@@ -282,28 +278,28 @@ class NicheAgreement {
       /,\s*Singapore/,   // Comma followed by Singapore
       /\d{6}\s*Singapore/  // Postal code followed by Singapore
     ];
-    
+
     return singaporePatterns.some(pattern => pattern.test(address));
   }
 
   // Helper function to extract block number from a full address string
   extractBlockNumber(fullAddress) {
     if (!fullAddress || typeof fullAddress !== 'string') return null;
-    
+
     // Extract block number (typically at the beginning) with better edge case handling
     const blockPatterns = [
       /Bl\[iao]?[sc(kv]?\s+(\d+[A-Z]*)/i,  // Block/Blk/Bik/Blc variations followed by number
       /^(\d+[A-Z]*)\s+/i,                  // Number at the beginning followed by space
       /(?:^|\s)(\d+[A-Z]*)(?:\s|$)/i       // Number with word boundaries
     ];
-    
+
     for (const pattern of blockPatterns) {
       const match = fullAddress.match(pattern);
       if (match && match[1]) {
         return match[1];
       }
     }
-    
+
     return null;
   }
 
@@ -323,7 +319,7 @@ class NicheAgreement {
 
   // Convert to JSON (remove sensitive data if needed)
   toJSON() {
-    return {
+    const jsonOutput = {
       applicationCode: this.applicationCode,
       appliedDate: this.appliedDate,
       agreementDate: this.agreementDate,
@@ -505,13 +501,13 @@ class NicheAgreement {
         additionalInscriptionPhrase: this.inscription.additionalInscriptionPhrase,
         createdDate: this.inscription.createdDate
       };
-      
+
       // Add inscription items if available
       if (this.inscriptionItems && Array.isArray(this.inscriptionItems)) {
         jsonOutput.inscriptionItems = this.inscriptionItems;
       }
     }
-    
+
     return jsonOutput;
   }
 
@@ -526,13 +522,13 @@ class NicheAgreement {
         additionalInscriptionPhrase: inscriptionData.additionalInscriptionPhrase,
         createdDate: inscriptionData.createdDate
       };
-      
+
       // Add inscription items if available
       if (inscriptionItems && Array.isArray(inscriptionItems)) {
         jsonOutput.inscriptionItems = inscriptionItems;
       }
     }
-    
+
     return jsonOutput;
   }
 }
