@@ -381,6 +381,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 </ValueCell>
               </div>
               <div className="flex border-b border-black h-[26px]">
+                <>{console.log("++++++++++++++++++++++++++++++++++++",applicantAddressLines)}</>
                 <ValueCell className="flex-1">
                   {applicantAddressLines[1]}
                 </ValueCell>
