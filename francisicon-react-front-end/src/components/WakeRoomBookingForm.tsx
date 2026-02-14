@@ -1,15 +1,29 @@
-import { useState, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { EyeIcon, RefreshCwIcon, CheckIcon, AlertCircleIcon, ChevronLeftIcon, ChevronRightIcon, UserIcon, CalendarIcon, ClockIcon, XIcon, FileTextIcon } from 'lucide-react';
+import {
+  CheckIcon,
+  AlertCircleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  UserIcon,
+  CalendarIcon,
+  ClockIcon,
+  XIcon,
+  FileTextIcon,
+  PrinterIcon,
+  MapPinIcon
+} from 'lucide-react';
 import { WakeRoomAgreementModal } from './WakeRoomAgreementModal';
 import { Button } from './common/Button';
 import { Input } from './common/Input';
 import { DateInput } from './common/DateInput';
-import { LoadingSpinner } from './common/LoadingSpinner';
 import { Card } from './common/Card';
+import { AddressInput } from './AddressInput';
 import { useWakeRoom } from '../hooks/useWakeRoom';
 import { createBooking as createBookingAction } from '../store/wakeRoomSlice';
 import { AppDispatch, RootState } from '../store';
+import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import wakeRoomService from '../services/wakeRoomService';
 
 interface WakeRoomBookingFormProps {
   onBookingCreated?: (bookingCode: string) => void;
@@ -41,6 +55,7 @@ const steps = [
 
 export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBookingUpdated }: WakeRoomBookingFormProps) {
   const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
   const [bookingCode, setBookingCode] = useState('');
   const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
@@ -66,7 +81,6 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     handleClearError,
     getWakeRoomById,
     formatDateForAPI,
-    calculateBookingDuration,
     createCompleteBookingData
   } = useWakeRoom();
 
@@ -85,6 +99,13 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     mobileNo: '',
     homeTelNo: '',
     officeTelNo: '',
+    // Supporting AddressInput
+    block: '',
+    blockNo: '',
+    streetName: '',
+    unitNo: '',
+    postalCode: '',
+    country: 'Singapore',
     addressDetails: {
       no: '',
       line1: '',
@@ -100,14 +121,41 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     wakeRoomId: 0,
     nameOfDeceased: '',
     purpose: 'Wake Service',
-    usingDate: '',
-    usingTimeFrom: '',
-    usingTimeTo: '',
+    usingDate: '', // Used as start date (API usingDate)
+    usingDateTo: '', // Used as end date
+    usingTimeFrom: '', // API usingTimeFrom (datetime)
+    usingTimeTo: '',   // API usingTimeTo (datetime)
     noOfDays: 1,
     donationAmount: 0,
     defaultDonationAmount: 0,
     remarks: ''
   });
+
+  // Calculate days and amount whenever dates or default amount changes
+  useEffect(() => {
+    if (bookingData.usingDate && bookingData.usingDateTo) {
+      const from = new Date(bookingData.usingDate);
+      const to = new Date(bookingData.usingDateTo);
+
+      // Normalize to midnight for accurate day calculation
+      from.setHours(0, 0, 0, 0);
+      to.setHours(0, 0, 0, 0);
+
+      const diffTime = to.getTime() - from.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      const days = diffDays > 0 ? diffDays : 1;
+      const amount = days * bookingData.defaultDonationAmount;
+
+      // Only update if values actually changed to avoid infinite loops
+      if (days !== bookingData.noOfDays || amount !== bookingData.donationAmount) {
+        setBookingData(prev => ({
+          ...prev,
+          noOfDays: days,
+          donationAmount: amount
+        }));
+      }
+    }
+  }, [bookingData.usingDate, bookingData.usingDateTo, bookingData.defaultDonationAmount, bookingData.noOfDays, bookingData.donationAmount]);
 
   // Service Details State
   const [serviceData, setServiceData] = useState({
@@ -117,6 +165,27 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     timeOfCremation: '',
     massTime: ''
   });
+
+  // Handle address change from AddressInput component
+  const handleAddressChange = useCallback((addressData: any) => {
+    setContactData(prev => ({
+      ...prev,
+      block: addressData.block || '',
+      blockNo: addressData.blockNo || '',
+      streetName: addressData.streetName || '',
+      unitNo: addressData.unitNo || '',
+      postalCode: addressData.postalCode || '',
+      country: addressData.country || 'Singapore',
+      addressDetails: {
+        no: addressData.addressNo || addressData.block || '',
+        line1: addressData.addressLine1 || addressData.blockNo || '',
+        line2: addressData.addressLine2 || addressData.streetName || '',
+        city: addressData.addressCity || addressData.unitNo || 'Singapore',
+        state: addressData.addressState || addressData.postalCode || 'Central',
+        country: addressData.addressCountry || addressData.country || 'Singapore'
+      }
+    }));
+  }, []);
 
   // Helper function to safely parse dates for datetime-local input
   const safeParseDate = (dateString: string | undefined): string => {
@@ -151,19 +220,6 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     }
   };
 
-  // Helper function to parse datetime to time format (HH:mm)
-  const safeParseTime = (dateString: string | undefined): string => {
-    if (!dateString) return '';
-    try {
-      const date = new Date(dateString);
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      return `${hours}:${minutes}`;
-    } catch (error) {
-      console.error('Error parsing time:', dateString, error);
-      return '';
-    }
-  };
 
   // Populate form when selectedBooking changes
   useEffect(() => {
@@ -183,12 +239,18 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
         };
 
         const newContactData = {
-          name: safeString(applicant.name || applicant.applicantName),
-          idNo: safeString(applicant.idNo || applicant.applicantIDNo),
-          email: safeString(applicant.email || applicant.applicantEmailID),
+          name: safeString(applicant.name),
+          idNo: safeString(applicant.idNo),
+          email: safeString(applicant.email),
           mobileNo: safeString(applicant.mobileNo),
           homeTelNo: safeString(applicant.homeTelNo),
           officeTelNo: safeString(applicant.officeTelNo),
+          block: safeString(addressDetails.no),
+          blockNo: safeString(addressDetails.line1),
+          streetName: safeString(addressDetails.line2),
+          unitNo: safeString(addressDetails.city),
+          postalCode: safeString(addressDetails.state),
+          country: safeString(addressDetails.country) || 'Singapore',
           addressDetails: {
             no: safeString(addressDetails.no),
             line1: safeString(addressDetails.line1),
@@ -220,6 +282,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
           nameOfDeceased: selectedBooking.booking.nameOfDeceased || '',
           purpose: selectedBooking.booking.purpose || 'Wake Service',
           usingDate: safeParseDateOnly(selectedBooking.booking.usingDate),
+          usingDateTo: safeParseDateOnly(selectedBooking.booking.usingTimeTo),
           usingTimeFrom: safeParseDate(selectedBooking.booking.usingTimeFrom),
           usingTimeTo: safeParseDate(selectedBooking.booking.usingTimeTo),
           noOfDays: selectedBooking.booking.noOfDays || 1,
@@ -229,14 +292,16 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
         });
       }
 
-      // Populate service data - correctly map all service fields
-      setServiceData({
-        serviceby: selectedBooking.service?.serviceby || selectedBooking.serviceby || '',
-        casketCompany: selectedBooking.service?.casketCompany || selectedBooking.casketCompany || '',
-        hallNo: selectedBooking.service?.hallNo || selectedBooking.hallNo || '',
-        timeOfCremation: (selectedBooking.service?.timeOfCremation || selectedBooking.timeOfCremation) ? safeParseDate(selectedBooking.service?.timeOfCremation || selectedBooking.timeOfCremation) : '',
-        massTime: (selectedBooking.booking?.massTime || selectedBooking.massTime) ? safeParseTime(selectedBooking.booking?.massTime || selectedBooking.massTime) : ''
-      });
+      // Populate service details
+      if (selectedBooking.service) {
+        setServiceData({
+          serviceby: selectedBooking.service.serviceby || '',
+          casketCompany: selectedBooking.service.casketCompany || '',
+          hallNo: selectedBooking.service.hallNo || '',
+          timeOfCremation: safeParseDate(selectedBooking.service.timeOfCremation),
+          massTime: safeParseDate(selectedBooking.booking?.massTime)
+        });
+      }
 
       // Set the booking code
       setBookingCode(selectedBooking.code || '');
@@ -260,75 +325,35 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     }
   }, [bookingData.wakeRoomId, selectedBooking, getWakeRoomById, handleSetSelectedWakeRoom]);
 
-  // Calculate booking duration when times change
-  useEffect(() => {
-    if (bookingData.usingTimeFrom && bookingData.usingTimeTo) {
-      const duration = calculateBookingDuration(bookingData.usingTimeFrom, bookingData.usingTimeTo);
-      setBookingData(prev => ({
-        ...prev,
-        noOfDays: duration
-      }));
-    }
-  }, [bookingData.usingTimeFrom, bookingData.usingTimeTo, calculateBookingDuration]);
+  // Donation amount is handled in direct input changes for noOfDays and defaultDonationAmount
 
-  const handleViewBooking = async () => {
-    if (!bookingCode.trim()) {
-      return;
-    }
-    // Use user's default churchId
-    const churchId = defaultChurchId;
-    await handleGetBookingByCode(bookingCode.trim(), churchId);
-  };
-
-  const checkAvailability = async () => {
-    if (!bookingData.wakeRoomId || !bookingData.usingTimeFrom || !bookingData.usingTimeTo) {
-      alert('Please select wake room and time slot');
-      return;
-    }
-
-    await handleCheckAvailability(
-      bookingData.wakeRoomId,
-      formatDateForAPI(new Date(bookingData.usingTimeFrom)),
-      formatDateForAPI(new Date(bookingData.usingTimeTo))
-    );
-  };
 
   const createBooking = async () => {
     // Validate required fields
-    if (!bookingData.wakeRoomId || !contactData.name || !bookingData.nameOfDeceased || !contactData.email || !contactData.mobileNo) {
-      alert('Please fill in all required fields (Name, Email, Mobile No, Wake Room, Name of Deceased)');
-      return;
-    }
-
-    if (!bookingData.usingDate || !bookingData.usingTimeFrom || !bookingData.usingTimeTo) {
-      alert('Please select date and time for the booking');
+    if (!bookingData.wakeRoomId || !contactData.name || !bookingData.nameOfDeceased || !contactData.mobileNo) {
+      alert('Please fill in all required fields (Name, Mobile No, Wake Room, Name of Deceased)');
       return;
     }
 
     const completeBookingData = createCompleteBookingData(contactData, {
       ...bookingData,
       ...serviceData,
+      usingTimeFrom: bookingData.usingDate ? `${bookingData.usingDate}T00:00:00` : '',
+      usingTimeTo: bookingData.usingDateTo ? `${bookingData.usingDateTo}T23:59:59` : '',
       churchId: defaultChurchId
     });
 
     try {
-      const result = await dispatch(createBookingAction(completeBookingData));
-      if (createBookingAction.fulfilled.match(result)) {
-        const bookingResult = result.payload;
-        if (bookingResult && bookingResult.code) {
-          alert(`Booking created successfully! Code: ${bookingResult.code}`);
-          onBookingCreated?.(bookingResult.code);
-          // Clear form after successful creation
-          handleClear();
-        } else if (bookingResult && bookingResult.isDuplicate) {
-          alert(`Duplicate booking detected: ${bookingResult.existingCode}`);
-        }
-      } else {
-        // Error is already handled by Redux state
-        console.error('Failed to create booking');
+      const response = await dispatch(createBookingAction(completeBookingData)).unwrap();
+      if (response.success) {
+        alert('Booking created successfully!');
+        setBookingCode(response.data.code);
+        onBookingCreated?.(response.data.code);
+        setCurrentStep(4);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating booking:', error);
+      alert('Error creating booking: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -341,6 +366,8 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     const completeBookingData = createCompleteBookingData(contactData, {
       ...bookingData,
       ...serviceData,
+      usingTimeFrom: bookingData.usingDate ? `${bookingData.usingDate}T00:00:00` : '',
+      usingTimeTo: bookingData.usingDateTo ? `${bookingData.usingDateTo}T23:59:59` : '',
       churchId: defaultChurchId
     });
 
@@ -362,6 +389,12 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
       mobileNo: '',
       homeTelNo: '',
       officeTelNo: '',
+      block: '',
+      blockNo: '',
+      streetName: '',
+      unitNo: '',
+      postalCode: '',
+      country: 'Singapore',
       addressDetails: {
         no: '',
         line1: '',
@@ -376,6 +409,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
       nameOfDeceased: '',
       purpose: 'Wake Service',
       usingDate: '',
+      usingDateTo: '',
       usingTimeFrom: '',
       usingTimeTo: '',
       noOfDays: 1,
@@ -505,12 +539,12 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
               <p className="text-gray-900 font-medium">{bookingData.noOfDays} Day(s)</p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">From</p>
-              <p className="text-gray-900 font-medium">{bookingData.usingTimeFrom ? new Date(bookingData.usingTimeFrom).toLocaleString() : '—'}</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Booking from</p>
+              <p className="text-gray-900 font-medium">{bookingData.usingDate ? new Date(bookingData.usingDate).toLocaleDateString() : '—'}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">To</p>
-              <p className="text-gray-900 font-medium">{bookingData.usingTimeTo ? new Date(bookingData.usingTimeTo).toLocaleString() : '—'}</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Booking to</p>
+              <p className="text-gray-900 font-medium">{bookingData.usingDateTo ? new Date(bookingData.usingDateTo).toLocaleDateString() : '—'}</p>
             </div>
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Donation</p>
@@ -555,15 +589,35 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
           </Button>
           <div className="flex gap-2">
             {selectedBooking && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="bg-gray-100 text-gray-700 hover:bg-gray-200"
-                icon={<FileTextIcon className="w-4 h-4" />}
-                onClick={() => setIsAgreementModalOpen(true)}
-              >
-                View Agreement
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100"
+                  icon={<FileTextIcon className="w-4 h-4" />}
+                  onClick={() => setIsAgreementModalOpen(true)}
+                >
+                  View Agreement
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100"
+                  icon={<PrinterIcon className="w-4 h-4" />}
+                  onClick={() => navigate(`/invoice-receipt/${selectedBooking.code}`)}
+                >
+                  Invoice
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100"
+                  icon={<PrinterIcon className="w-4 h-4" />}
+                  onClick={() => wakeRoomService.generateWakeRoomPDF(selectedBooking.code, 'receipt')}
+                >
+                  Receipt
+                </Button>
+              </div>
             )}
             <Button
               variant="primary"
@@ -625,7 +679,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
               {/* Email */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email: <span className="text-red-500">*</span>
+                  Email:
                 </label>
                 <Input
                   type="email"
@@ -633,7 +687,6 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                   onChange={(e) => setContactData({ ...contactData, email: e.target.value })}
                   className="w-full"
                   placeholder="Enter email address"
-                  required
                 />
               </div>
 
@@ -682,78 +735,24 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
             </div>
 
             {/* Address */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Address
-              </label>
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                <div>
-                  <Input
-                    type="text"
-                    value={contactData.addressDetails.no}
-                    onChange={(e) => setContactData({
-                      ...contactData,
-                      addressDetails: { ...contactData.addressDetails, no: e.target.value }
-                    })}
-                    placeholder="House / Block no."
-                  />
-                </div>
-                <div>
-                  <Input
-                    type="text"
-                    value={contactData.addressDetails.line1}
-                    onChange={(e) => setContactData({
-                      ...contactData,
-                      addressDetails: { ...contactData.addressDetails, line1: e.target.value }
-                    })}
-                    placeholder="Street name"
-                  />
-                </div>
-                <div>
-                  <Input
-                    type="text"
-                    value={contactData.addressDetails.line2}
-                    onChange={(e) => setContactData({
-                      ...contactData,
-                      addressDetails: { ...contactData.addressDetails, line2: e.target.value }
-                    })}
-                    placeholder="Unit / Floor"
-                  />
-                </div>
-                <div>
-                  <Input
-                    type="text"
-                    value={contactData.addressDetails.city}
-                    onChange={(e) => setContactData({
-                      ...contactData,
-                      addressDetails: { ...contactData.addressDetails, city: e.target.value }
-                    })}
-                    placeholder="City"
-                  />
-                </div>
-                <div>
-                  <Input
-                    type="text"
-                    value={contactData.addressDetails.state}
-                    onChange={(e) => setContactData({
-                      ...contactData,
-                      addressDetails: { ...contactData.addressDetails, state: e.target.value }
-                    })}
-                    placeholder="State"
-                  />
-                </div>
-                <div>
-                  <Input
-                    type="text"
-                    value={contactData.addressDetails.country}
-                    onChange={(e) => setContactData({
-                      ...contactData,
-                      addressDetails: { ...contactData.addressDetails, country: e.target.value }
-                    })}
-                    placeholder="Country"
-                  />
-                </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <MapPinIcon className="w-4 h-4 text-[#8b5a2b]" />
+                <label className="text-sm font-bold text-gray-700 uppercase tracking-wider">
+                  Residential Address
+                </label>
               </div>
+              <AddressInput
+                onAddressChange={handleAddressChange}
+                initialValues={{
+                  block: contactData.block,
+                  blockNo: contactData.blockNo,
+                  streetName: contactData.streetName,
+                  unitNo: contactData.unitNo,
+                  postalCode: contactData.postalCode,
+                  country: contactData.country,
+                }}
+              />
             </div>
 
             {/* Step navigation - bottom for step 1 */}
@@ -791,11 +790,15 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                     const wakeRoom = getWakeRoomById(wakeRoomId);
                     if (wakeRoom) {
                       handleSetSelectedWakeRoom(wakeRoom as any);
-                      setBookingData(prev => ({
-                        ...prev,
-                        wakeRoomId,
-                        defaultDonationAmount: wakeRoom.rentingAmount
-                      }));
+                      setBookingData(prev => {
+                        const amount = prev.noOfDays * wakeRoom.rentingAmount;
+                        return {
+                          ...prev,
+                          wakeRoomId,
+                          defaultDonationAmount: wakeRoom.rentingAmount,
+                          donationAmount: amount
+                        };
+                      });
                     }
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]"
@@ -841,49 +844,37 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 />
               </div>
 
-              {/* Using Date */}
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Using Date: <span className="text-red-500">*</span>
-                </label>
-                <DateInput
-                  value={bookingData.usingDate}
-                  onChange={(apiDate) => setBookingData({ ...bookingData, usingDate: apiDate })}
-                  className="w-full"
-                  required
-                  placeholder="dd/mm/yyyy"
-                />
+              {/* Using Date From and To in one row */}
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Using Date From */}
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Using Date from: <span className="text-red-500">*</span>
+                  </label>
+                  <DateInput
+                    value={bookingData.usingDate}
+                    onChange={(apiDate) => setBookingData(prev => ({ ...prev, usingDate: apiDate }))}
+                    className="w-full"
+                    required
+                    placeholder="dd/mm/yyyy"
+                  />
+                </div>
+
+                {/* Using Date To */}
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Using Date to: <span className="text-red-500">*</span>
+                  </label>
+                  <DateInput
+                    value={bookingData.usingDateTo}
+                    onChange={(apiDate) => setBookingData(prev => ({ ...prev, usingDateTo: apiDate }))}
+                    className="w-full"
+                    required
+                    placeholder="dd/mm/yyyy"
+                  />
+                </div>
               </div>
 
-              {/* Time From */}
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Using Time From: <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={bookingData.usingTimeFrom}
-                  onChange={(e) => setBookingData({ ...bookingData, usingTimeFrom: e.target.value })}
-                  className="w-full"
-                  required
-                />
-              </div>
-
-              {/* Time To */}
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Using Time To: <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={bookingData.usingTimeTo}
-                  onChange={(e) => setBookingData({ ...bookingData, usingTimeTo: e.target.value })}
-                  className="w-full"
-                  required
-                />
-              </div>
-
-              {/* Number of Days */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Number of Days:
@@ -891,29 +882,42 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <Input
                   type="number"
                   value={bookingData.noOfDays}
-                  readOnly
-                  className="w-full bg-gray-100"
+                  onChange={(e) => {
+                    const noOfDays = parseInt(e.target.value) || 0;
+                    setBookingData(prev => ({
+                      ...prev,
+                      noOfDays
+                    }));
+                  }}
+                  className="w-full"
                 />
               </div>
 
-              {/* Default Donation Amount */}
+              {/* Default Donation Amount (Rate per Day) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Default Donation Amount:
+                  Rate per Day:
                 </label>
                 <Input
                   type="number"
                   step="0.01"
                   value={bookingData.defaultDonationAmount}
-                  readOnly
-                  className="w-full bg-gray-100"
+                  onChange={(e) => {
+                    const rate = parseFloat(e.target.value) || 0;
+                    setBookingData(prev => ({
+                      ...prev,
+                      defaultDonationAmount: rate,
+                      donationAmount: prev.noOfDays * rate
+                    }));
+                  }}
+                  className="w-full"
                 />
               </div>
 
-              {/* Donation Amount */}
+              {/* Donation Amount (Total) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Donation Amount:
+                  Total Donation Amount:
                 </label>
                 <Input
                   type="number"
@@ -940,12 +944,15 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
               </div>
             </div>
 
-            {/* Availability Check */}
-            {bookingData.wakeRoomId && bookingData.usingTimeFrom && bookingData.usingTimeTo && (
+            {(bookingData.wakeRoomId && bookingData.usingDate && bookingData.usingDateTo) && (
               <div className="mt-6">
                 <Button
                   type="button"
-                  onClick={checkAvailability}
+                  onClick={() => {
+                    const fromTime = `${bookingData.usingDate}T00:00:00`;
+                    const toTime = `${bookingData.usingDateTo}T23:59:59`;
+                    handleCheckAvailability(bookingData.wakeRoomId, fromTime, toTime);
+                  }}
                   disabled={loading}
                   className="bg-blue-600 text-white hover:bg-blue-700"
                 >

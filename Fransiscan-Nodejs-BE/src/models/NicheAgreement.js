@@ -62,7 +62,7 @@ class NicheAgreement {
     this.beneIsCatholic_1 = data.beneIsCatholic_1 || false;
     this.beneIsMale_1 = data.beneIsMale_1 || false;
     this.beneRelationshipToApplicant_1 = data.beneRelationshipToApplicant_1 || null;
-    this.beneDateOfBirth_1 = "12212122";
+    this.beneDateOfBirth_1 = data.beneDateOfBirth_1 || null;
     this.beneBirthYear_1 = data.beneBirthYear_1 || null;
     this.ben1_NomineeRelationship = data.ben1_NomineeRelationship || null;
     this.ben1_Nominee2Relationship = data.ben1_Nominee2Relationship || null;
@@ -77,6 +77,8 @@ class NicheAgreement {
     this.beneBirthYear_2 = data.beneBirthYear_2 || null;
     this.ben2_NomineeRelationship = data.ben2_NomineeRelationship || null;
     this.ben2_Nominee2Relationship = data.ben2_Nominee2Relationship || null;
+    this.beneLifeStatus_1 = data.beneLifeStatus_1 || null;
+    this.beneLifeStatus_2 = data.beneLifeStatus_2 || null;
 
     // Niche details
     this.nicheNumber = data.nicheNumber || null;
@@ -126,6 +128,7 @@ class NicheAgreement {
     this.consentFormTimestamp = data.consentFormTimestamp || null;
     this.agreementStatus = data.agreementStatus || null;
     this.agreementTimestamp = data.agreementTimestamp || null;
+    this.invoiceDetails = data.invoiceDetails || [];
   }
 
   // Get formatted applicant address
@@ -393,7 +396,8 @@ class NicheAgreement {
           dateOfBirth: this.beneDateOfBirth_1,
           birthYear: this.beneBirthYear_1,
           relationshipToNominee: this.ben1_NomineeRelationship,
-          relationshipToNominee2: this.ben1_Nominee2Relationship
+          relationshipToNominee2: this.ben1_Nominee2Relationship,
+          lifeStatus: this.beneLifeStatus_1
         },
         {
           name: this.beneName_2,
@@ -404,7 +408,8 @@ class NicheAgreement {
           dateOfBirth: this.beneDateOfBirth_2,
           birthYear: this.beneBirthYear_2,
           relationshipToNominee: this.ben2_NomineeRelationship,
-          relationshipToNominee2: this.ben2_Nominee2Relationship
+          relationshipToNominee2: this.ben2_Nominee2Relationship,
+          lifeStatus: this.beneLifeStatus_2
         }
       ].filter(bene => bene.name), // Only include beneficiaries with names
 
@@ -454,7 +459,8 @@ class NicheAgreement {
         totalAmount: this.totalAmount,
         paymentMode: this.paymentMode,
         paymentModeDocNo: this.paymentModeDocNo,
-        refDocNumber: this.refDocNumber
+        refDocNumber: this.refDocNumber,
+        invoiceDetails: this.invoiceDetails
       },
 
       // Deceased information

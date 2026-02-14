@@ -41,6 +41,7 @@ export function useInscription() {
 
   // Select state from Redux
   const inscriptionRequestNo = useSelector((state: RootState) => state.inscription.inscriptionRequestNo);
+  const nicheInscriptionRequestId = useSelector((state: RootState) => state.inscription.nicheInscriptionRequestId);
   const nicheApplicationCode = useSelector((state: RootState) => state.inscription.nicheApplicationCode);
   const applicantName = useSelector((state: RootState) => state.inscription.applicantName);
   const nricPassportNo = useSelector((state: RootState) => state.inscription.nricPassportNo);
@@ -342,6 +343,7 @@ export function useInscription() {
   return {
     // State
     inscriptionRequestNo,
+    nicheInscriptionRequestId,
     nicheApplicationCode,
     applicantName,
     nricPassportNo,

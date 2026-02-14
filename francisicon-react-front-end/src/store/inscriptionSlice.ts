@@ -13,15 +13,19 @@ export interface DeceasedDetail {
   nameOfDeceased: string;
   dateBorn: string;
   dateOfBirth?: string;  // Added for compatibility with service Beneficiary type
+  birthYear?: string;    // Added to handle year-only dates
   dateDied: string;
   internmentDate: string;
   internmentTime: string;
   deathCertNo: string;
+  storagePeriodFrom?: string;
+  storagePeriodTo?: string;
 }
 
 export interface InscriptionState {
   // Form state
   inscriptionRequestNo: string;
+  nicheInscriptionRequestId: number | null;
   nicheApplicationCode: string;
 
   // Create/Update inscription state
@@ -78,6 +82,7 @@ export interface InscriptionState {
 
 const initialState: InscriptionState = {
   inscriptionRequestNo: '',
+  nicheInscriptionRequestId: null,
   nicheApplicationCode: '',
   applicantName: '',
   nricPassportNo: '',
@@ -445,7 +450,7 @@ const inscriptionSlice = createSlice({
     },
 
     // Reset form
-    resetForm: (state) => {
+    resetForm: () => {
       return { ...initialState };
     }
   },
@@ -463,9 +468,12 @@ const inscriptionSlice = createSlice({
         // Map items
         state.inscriptionItems = data.items || [];
 
-        // Map inscription request number
+        // Map inscription request number and ID
         if (data.inscriptionRequestNo) {
           state.inscriptionRequestNo = data.inscriptionRequestNo;
+        }
+        if (data.nicheInscriptionRequestId) {
+          state.nicheInscriptionRequestId = data.nicheInscriptionRequestId;
         }
 
         // Map applicant details
@@ -548,7 +556,8 @@ const inscriptionSlice = createSlice({
             return {
               selectBeneficiary: '',
               nameOfDeceased: deceased.name || '',
-              dateBorn: parseDate(deceased.dateOfBirth || ''),
+              dateBorn: parseDate(deceased.dateOfBirth || deceased.birthYear || ''),
+              birthYear: deceased.birthYear || '',
               dateDied: parseDate(deceased.dateOfDeath || ''),
               internmentDate: internmentDate,
               internmentTime: internmentTime,

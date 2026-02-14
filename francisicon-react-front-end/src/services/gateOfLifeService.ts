@@ -79,6 +79,7 @@ export interface GateOfLifeApplication {
   };
   createdAt?: string;
   updatedAt?: string;
+  requestSameBrick?: boolean;
 }
 
 export interface GateOfLifeResponse {

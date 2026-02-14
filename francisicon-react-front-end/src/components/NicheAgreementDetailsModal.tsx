@@ -147,8 +147,8 @@ export function NicheAgreementDetailsModal({
                 <button
                   onClick={() => setActiveTab('general')}
                   className={`px-6 py-4 font-semibold transition-colors border-b-3 ${activeTab === 'general'
-                      ? 'text-[#802429] border-b-[#802429]'
-                      : 'text-gray-600 border-transparent hover:text-[#802429]'
+                    ? 'text-[#802429] border-b-[#802429]'
+                    : 'text-gray-600 border-transparent hover:text-[#802429]'
                     }`}
                   style={{ borderBottomWidth: activeTab === 'general' ? '3px' : '0' }}
                 >
@@ -157,8 +157,8 @@ export function NicheAgreementDetailsModal({
                 <button
                   onClick={() => setActiveTab('financial')}
                   className={`px-6 py-4 font-semibold transition-colors border-b-3 ${activeTab === 'financial'
-                      ? 'text-[#802429] border-b-[#802429]'
-                      : 'text-gray-600 border-transparent hover:text-[#802429]'
+                    ? 'text-[#802429] border-b-[#802429]'
+                    : 'text-gray-600 border-transparent hover:text-[#802429]'
                     }`}
                   style={{ borderBottomWidth: activeTab === 'financial' ? '3px' : '0' }}
                 >
@@ -167,8 +167,8 @@ export function NicheAgreementDetailsModal({
                 <button
                   onClick={() => setActiveTab('attachments')}
                   className={`px-6 py-4 font-semibold transition-colors border-b-3 ${activeTab === 'attachments'
-                      ? 'text-[#802429] border-b-[#802429]'
-                      : 'text-gray-600 border-transparent hover:text-[#802429]'
+                    ? 'text-[#802429] border-b-[#802429]'
+                    : 'text-gray-600 border-transparent hover:text-[#802429]'
                     }`}
                   style={{ borderBottomWidth: activeTab === 'attachments' ? '3px' : '0' }}
                 >
@@ -288,8 +288,8 @@ export function NicheAgreementDetailsModal({
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Status</span>
-                                  <span className="font-semibold text-sm">
-                                    {beneficiary.status || 'N/A'}
+                                  <span className="font-semibold text-sm capitalize">
+                                    {beneficiary.lifeStatus || beneficiary.status || 'N/A'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">

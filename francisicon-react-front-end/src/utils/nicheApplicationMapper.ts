@@ -107,6 +107,8 @@ export function mapNichiBookingToApplicationRequest(formData: {
         ? formatDateForAPI(formData.deceasedDetails[0].internmentDate)
         : null,
       deathCertificateNo: formData.deceasedDetails[0].deathCertNo || null,
+      storagePeriodFrom: formData.deceasedDetails[0].storagePeriodFrom || null,
+      storagePeriodTo: formData.deceasedDetails[0].storagePeriodTo || null,
     }
     : {
       name: null,
@@ -125,6 +127,8 @@ export function mapNichiBookingToApplicationRequest(formData: {
         ? formatDateForAPI(formData.deceasedDetails[1].internmentDate)
         : null,
       deathCertificateNo: formData.deceasedDetails[1].deathCertNo || null,
+      storagePeriodFrom: formData.deceasedDetails[1].storagePeriodFrom || null,
+      storagePeriodTo: formData.deceasedDetails[1].storagePeriodTo || null,
     }
     : undefined;
 
@@ -527,6 +531,8 @@ export function mapNichiApplicationToFormData(
             : '12:00')
           : '12:00',
         deathCertNo: applicationData.deceased.deceased1.deathCertificateNo || '',
+        storagePeriodFrom: applicationData.deceased.deceased1.storagePeriodFrom || '',
+        storagePeriodTo: applicationData.deceased.deceased1.storagePeriodTo || '',
       });
     }
 
@@ -547,6 +553,8 @@ export function mapNichiApplicationToFormData(
             : '12:00')
           : '12:00',
         deathCertNo: applicationData.deceased.deceased2.deathCertificateNo || '',
+        storagePeriodFrom: applicationData.deceased.deceased2.storagePeriodFrom || '',
+        storagePeriodTo: applicationData.deceased.deceased2.storagePeriodTo || '',
       });
     }
   }

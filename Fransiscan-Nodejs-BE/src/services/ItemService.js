@@ -67,6 +67,51 @@ class ItemService {
       'OTHERS'
     ];
   }
+
+  /**
+   * Get an item by ID.
+   * @param {number} itemId
+   * @param {number} churchId
+   * @returns {Promise<Object|null>}
+   */
+  async getItemById(itemId, churchId) {
+    return this.repository.getItemById(itemId, churchId);
+  }
+
+  /**
+   * Create a new item.
+   * @param {Object} item - Item data
+   * @param {number} churchId - Church ID
+   * @returns {Promise<Object>}
+   */
+  async createItem(item, churchId) {
+    if (!churchId) throw new Error('ChurchId is required');
+    if (!item.name) throw new Error('Item name is required');
+    return this.repository.create(item, churchId);
+  }
+
+  /**
+   * Update an existing item.
+   * @param {number} itemId
+   * @param {Object} item
+   * @param {number} churchId
+   * @returns {Promise<Object|null>}
+   */
+  async updateItem(itemId, item, churchId) {
+    if (!churchId) throw new Error('ChurchId is required');
+    return this.repository.update(itemId, item, churchId);
+  }
+
+  /**
+   * Delete an item.
+   * @param {number} itemId
+   * @param {number} churchId
+   * @returns {Promise<boolean>}
+   */
+  async deleteItem(itemId, churchId) {
+    if (!churchId) throw new Error('ChurchId is required');
+    return this.repository.delete(itemId, churchId);
+  }
 }
 
 module.exports = ItemService;

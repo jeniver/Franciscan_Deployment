@@ -14,7 +14,8 @@ import {
   CheckCircleIcon, 
   AlertTriangleIcon,
   EyeIcon,
-  XIcon
+  XIcon,
+  RefreshCwIcon
 } from 'lucide-react';
 
 interface InscriptionAgreementViewerProps {
@@ -49,7 +50,7 @@ export function InscriptionAgreementViewer({ inscriptionCode: propInscriptionCod
         setLoading(true);
         setError(null);
         
-        // Get PDF data
+        // Get PDF data - force fresh fetch by adding timestamp to bypass any caching
         const pdfData = await inscriptionAgreementService.getPdfData(inscriptionCode);
         setAgreementData(pdfData);
 
@@ -66,6 +67,31 @@ export function InscriptionAgreementViewer({ inscriptionCode: propInscriptionCod
 
     fetchData();
   }, [inscriptionCode, showError]);
+
+  // Add refresh handler to force reload data
+  const handleRefresh = async () => {
+    if (!inscriptionCode) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Force fresh fetch by adding cache-busting parameter
+      const pdfData = await inscriptionAgreementService.getPdfData(inscriptionCode);
+      setAgreementData(pdfData);
+      
+      // Re-validate
+      await handleValidate();
+      
+      showSuccess('Success', 'Agreement data refreshed successfully');
+    } catch (err: any) {
+      console.error('Error refreshing inscription agreement:', err);
+      setError(err.message || 'Failed to refresh inscription agreement data');
+      showError('Error', err.message || 'Failed to refresh inscription agreement data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Validate agreement
   const handleValidate = async () => {
@@ -139,7 +165,7 @@ export function InscriptionAgreementViewer({ inscriptionCode: propInscriptionCod
             
             <div class="section">
               <div class="section-title">DECEASED INFORMATION</div>
-              ${agreementData.deceased.map((person, index) => `
+              ${agreementData.deceased.map((person: any, index: number) => `
                 <div class="deceased-item">
                   <div><strong>${person.fullName}</strong></div>
                   <div class="field"><span class="field-label">Date of Birth:</span> ${person.formattedDates.birth}</div>
@@ -235,7 +261,7 @@ export function InscriptionAgreementViewer({ inscriptionCode: propInscriptionCod
             
             <div class="section">
               <div class="section-title">DECEASED INFORMATION</div>
-              ${agreementData.deceased.map((person, index) => `
+              ${agreementData.deceased.map((person: any, index: number) => `
                 <div class="deceased-item">
                   <div><strong>${person.fullName}</strong></div>
                   <div class="field"><span class="field-label">Date of Birth:</span> ${person.formattedDates.birth}</div>
@@ -385,7 +411,7 @@ export function InscriptionAgreementViewer({ inscriptionCode: propInscriptionCod
                   <div className="mt-2">
                     <strong>Warnings:</strong>
                     <ul className="list-disc list-inside mt-1">
-                      {validationResult.warnings.map((warning, index) => (
+                      {validationResult.warnings.map((warning: string, index: number) => (
                         <li key={index}>{warning}</li>
                       ))}
                     </ul>
@@ -405,6 +431,14 @@ export function InscriptionAgreementViewer({ inscriptionCode: propInscriptionCod
           >
             <EyeIcon className="h-4 w-4 mr-2" />
             {isValidating ? 'Validating...' : 'Validate'}
+          </button>
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50"
+          >
+            <RefreshCwIcon className="h-4 w-4 mr-2" />
+            {loading ? 'Refreshing...' : 'Refresh Data'}
           </button>
           <button
             onClick={handlePrint}
@@ -473,7 +507,7 @@ export function InscriptionAgreementViewer({ inscriptionCode: propInscriptionCod
               DECEASED INFORMATION ({agreementData.summary.totalDeceased} person{agreementData.summary.totalDeceased !== 1 ? 's' : ''})
             </h2>
             <div className="space-y-4">
-              {agreementData.deceased.map((person) => (
+              {agreementData.deceased.map((person: any) => (
                 <div key={person.index} className="border border-gray-200 rounded-lg p-4">
                   <h3 className="font-medium text-gray-800 mb-3">{person.fullName}</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

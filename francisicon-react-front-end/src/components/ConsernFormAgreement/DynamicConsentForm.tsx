@@ -1,4 +1,5 @@
-import { ColumbariumFormDisceased } from './ColumbariumFormDisceased';
+import React from 'react';
+import { ColumbariumFormDeceased } from './ColumbariumFormDisceased';
 import { ColumbariumFormLiving } from './ColumbariumFormLiving';
 import { ColumbariumFormLostCapacity } from './ColumbariumFormLostCapacity';
 
@@ -30,12 +31,62 @@ export function DynamicConsentForm({ formData }: { formData: FormData }) {
 
   switch (formType) {
     case 'deceased':
-      return <ColumbariumFormDisceased data={formData} />;
+      return <ColumbariumFormDeceased formData={{
+        date: new Date().toLocaleDateString('en-GB'),
+        nicheNumber: formData.nicheNumber,
+        applicantName: formData.applicantName,
+        applicantNric: formData.applicantNric,
+        beneficiaries: [
+          {
+            name: formData.beneficiary1.name,
+            relationship: formData.beneficiary1.relationship || 'NA'
+          },
+          ...(formData.beneficiary2 ? [{
+            name: formData.beneficiary2.name,
+            relationship: formData.beneficiary2.relationship || 'NA'
+          }] : [])
+        ],
+        nominees: [
+          {
+            name: formData.nominee1Name,
+            nric: formData.nominee1Nric
+          },
+          ...(formData.nominee2Name && formData.nominee2Nric ? [{
+            name: formData.nominee2Name,
+            nric: formData.nominee2Nric
+          }] : [])
+        ]
+      }} />;
     case 'living':
       return <ColumbariumFormLiving data={formData} />; // No props needed
     case 'lostCapacity':
       return <ColumbariumFormLostCapacity data={formData} />;
     default:
-      return <ColumbariumFormDisceased data={formData} />; // default to deceased form
+      return <ColumbariumFormDeceased formData={{
+        date: new Date().toLocaleDateString('en-GB'),
+        nicheNumber: formData.nicheNumber,
+        applicantName: formData.applicantName,
+        applicantNric: formData.applicantNric,
+        beneficiaries: [
+          {
+            name: formData.beneficiary1.name,
+            relationship: formData.beneficiary1.relationship || 'NA'
+          },
+          ...(formData.beneficiary2 ? [{
+            name: formData.beneficiary2.name,
+            relationship: formData.beneficiary2.relationship || 'NA'
+          }] : [])
+        ],
+        nominees: [
+          {
+            name: formData.nominee1Name,
+            nric: formData.nominee1Nric
+          },
+          ...(formData.nominee2Name && formData.nominee2Nric ? [{
+            name: formData.nominee2Name,
+            nric: formData.nominee2Nric
+          }] : [])
+        ]
+      }} />; // default to deceased form
   }
 }

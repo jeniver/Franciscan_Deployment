@@ -1478,7 +1478,7 @@ class InvoiceRepository extends BaseRepository {
 
       // Get related receipt for PayeeName and additional address info
       let receipt = null;
-      const receiptQuery = `
+      let receiptQuery = `
         SELECT TOP 1
           ReceiptId,
           Code AS ReceiptCode,
@@ -1502,9 +1502,41 @@ class InvoiceRepository extends BaseRepository {
         ORDER BY ReceiptId DESC
       `;
 
-      const receiptResult = await executeQuery(receiptQuery, { invoiceId: invoice.InvoiceId }, { timeout: 10000 });
+      let receiptResult = await executeQuery(receiptQuery, { invoiceId: invoice.InvoiceId }, { timeout: 10000 });
       if (receiptResult.recordset.length > 0) {
         receipt = receiptResult.recordset[0];
+      } else if (invoice.RefDocNumber) {
+        // Fallback: Check MisalaniousReceiptDetail for receipt linked to this application
+        const miscReceiptQuery = `
+          SELECT TOP 1
+            r.ReceiptId,
+            r.Code AS ReceiptCode,
+            r.TransactionDate AS ReceiptDate,
+            r.PayeeName,
+            r.AddressNo AS ReceiptAddressNo,
+            r.Address AS ReceiptAddress,
+            r.Address2 AS ReceiptAddress2,
+            r.AddressCity AS ReceiptAddressCity,
+            r.DistrictCode AS ReceiptDistrictCode,
+            r.Country AS ReceiptCountry,
+            mrd.TotalPayingAmount AS ReceiptTotalAmount,
+            mrd.PayingAmount AS ReceiptPayingAmount,
+            r.PaymentMode AS ReceiptPaymentMode,
+            r.PaymentModeDocNo AS ReceiptPaymentModeDocNo,
+            r.Status AS ReceiptStatus,
+            r.ChurchId AS ReceiptChurchId,
+            r.UserId AS ReceiptUserId
+          FROM MisalaniousReceiptDetail mrd WITH(NOLOCK)
+          INNER JOIN Receipt r WITH(NOLOCK) ON mrd.ReceiptId = r.ReceiptId
+          WHERE mrd.RefDocNumber = @refDocNumber
+          ORDER BY mrd.ReceiptDetailId DESC
+        `;
+
+        const miscReceiptResult = await executeQuery(miscReceiptQuery, { refDocNumber: invoice.RefDocNumber }, { timeout: 10000 });
+        if (miscReceiptResult.recordset.length > 0) {
+          receipt = miscReceiptResult.recordset[0];
+          logger.info(`Found receipt via MisalaniousReceiptDetail for invoice ${invoice.Code} (RefDoc: ${invoice.RefDocNumber})`);
+        }
       }
 
       // Build comprehensive invoice response with all fields
@@ -1518,7 +1550,9 @@ class InvoiceRepository extends BaseRepository {
         isApplicationData: false,       // This is an actual invoice, NOT application data
         isInvoice: true,                // Explicitly mark as invoice
         hasInvoice: true,               // Invoice exists
+        hasReceipt: !!receipt,          // Receipt existence
         canCreateInvoice: false,        // No need to create invoice - already exists
+        canCreateReceipt: !receipt,     // Can create receipt only if it doesn't exist yet
 
         // Invoice header fields
         invoiceId: invoice.InvoiceId,

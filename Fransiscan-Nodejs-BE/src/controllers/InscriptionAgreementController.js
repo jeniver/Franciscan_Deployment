@@ -131,6 +131,13 @@ class InscriptionAgreementController {
       
       logger.info(`[InscriptionAgreementController.getPdfData] Request for PDF data, inscription: ${inscriptionCode}`);
       
+      // Set cache control headers to handle frontend cache-busting
+      res.set({
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
+      
       // Validate input
       if (!inscriptionCode || inscriptionCode.trim().length === 0) {
         return res.status(400).json({

@@ -48,7 +48,10 @@ class GateOfLifeApplication {
 
     this.churchId = data.churchId || data.ChurchId || null;
     this.userId = data.userId || data.UserId || null;
+    this.requestSameBrick = !!(data.requestSameBrick || data.RequestSameBrick || data.isHusbandWife || data.IsHusbandWife);
     this.refDocType = data.refDocType || data.RefDocType || 'GOLA';
+
+    this.remarks = data.remarks || data.Remarks || null;
 
     const rawDetails = data.details
       || data.detailList
@@ -74,10 +77,6 @@ class GateOfLifeApplication {
 
     if (!this.applicantName || !this.applicantName.trim()) {
       errors.push('Applicant name is required');
-    }
-
-    if (!this.applicantIDNo || !this.applicantIDNo.trim()) {
-      errors.push('Applicant ID/NRIC/Passport number is required');
     }
 
     if (!this.details.length) {
@@ -122,6 +121,7 @@ class GateOfLifeApplication {
         }
       },
       details: this.details.map(detail => detail.toJSON()),
+      requestSameBrick: this.requestSameBrick,
       metadata: {
         churchId: this.churchId,
         userId: this.userId,

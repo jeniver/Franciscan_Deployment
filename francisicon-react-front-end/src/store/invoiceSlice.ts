@@ -6,24 +6,12 @@ export interface InvoiceFlags {
   isApplicationData: boolean;
   isInvoice: boolean;
   hasInvoice: boolean;
-  canCreateInvoice: boolean;
-}
-
-// Creation Status Interface
-export interface CreationStatus {
-  code: string;
-  hasInvoice: boolean;
   hasReceipt: boolean;
-  isApplication: boolean;
-  isExistingRecord: boolean;
   canCreateInvoice: boolean;
   canCreateReceipt: boolean;
-  invoiceCode: string | null;
-  receiptCode: string | null;
-  invoiceId: number | null;
-  receiptId: number | null;
-  applicationData: any | null;
 }
+
+
 
 export interface InvoiceDetail {
   invoiceDetailId?: number | null;
@@ -44,6 +32,17 @@ export interface InvoiceDetail {
   lineTotalAmount: number;
   lineTaxPercent: number;
   lineTaxAmount: number;
+  UnitAmount?: number;
+  Quantity?: number;
+  LineTotalAmount?: number;
+  LineTaxPercent?: number;
+  LineTaxAmount?: number;
+  TotalPayingAmount?: number;
+  RefDocNumber?: string;
+  ItemId?: number;
+  ItemName?: string;
+  ItemPrice?: number;
+  PayingAmount?: number;
 }
 
 export interface NicheInfo {
@@ -78,13 +77,13 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
   code: string | null;
   applicationCode?: string;
   nicheApplicationId?: number;
-  
+
   // Customer Info
   customerName: string;
   applicantIDNo?: string;
   applicantEmail?: string;
   applicantMobile?: string;
-  
+
   // Address
   addressNo?: string;
   address?: string;
@@ -92,7 +91,7 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
   addressCity?: string;
   districtCode?: string;
   country?: string;
-  
+
   // Financial
   totalAmount: number;
   payingAmount: number;
@@ -100,7 +99,7 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
   taxPercentage: number;
   taxCode: string | null;
   paymentMode?: string | null;
-  
+
   // System
   userId: number;
   churchId: number;
@@ -108,16 +107,23 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
   transactionDate: string;
   refDocNumber?: string;
   refDocName?: string;
-  
+  payeeName?: string;
+  paymentModeDocNo?: string;
+  PaymentMode?: string;
+  PaymentModeDocNo?: string;
+  InvoiceCode?: string;
+  invoiceCode?: string;
+  receipt?: any;
+
   // Niche Info (only in application data)
   niche?: NicheInfo | null;
-  
+
   // Booking Info (only in application data)
   booking?: BookingInfo | null;
-  
+
   // Details
   details: InvoiceDetail[];
-  
+
   // Summary
   summary: {
     totalItems: number;
@@ -187,7 +193,6 @@ export interface CreateInvoicePayload {
 
 interface InvoiceState {
   currentData: InvoiceOrApplicationData | null;
-  creationStatus: CreationStatus | null;
   loading: boolean;
   error: string | null;
   creatingInvoice: boolean;
@@ -202,7 +207,6 @@ interface InvoiceState {
 
 const initialState: InvoiceState = {
   currentData: null,
-  creationStatus: null,
   loading: false,
   error: null,
   creatingInvoice: false,
@@ -261,11 +265,11 @@ export const createInvoice = createAsyncThunk<
     try {
       // Backend route: POST /api/invoices  (expects { invoice, invoiceDetails, createReceipt })
       const response = await api.post('/api/invoices', payload);
-      
+
       if (response.data.success === false) {
         return rejectWithValue(response.data.message || 'Failed to create invoice');
       }
-      
+
       return {
         invoiceId: response.data.data?.invoiceId || response.data.invoiceId,
         invoiceCode: response.data.data?.invoiceCode || response.data.invoiceCode,
@@ -281,22 +285,7 @@ export const createInvoice = createAsyncThunk<
   }
 );
 
-// Fetch creation status
-export const fetchCreationStatus = createAsyncThunk<
-  CreationStatus,
-  string,
-  { rejectValue: string }
->(
-  'invoice/fetchCreationStatus',
-  async (code: string, { rejectWithValue }) => {
-    try {
-      const response = await api.get(`/api/invoices/status/${code.trim()}`);
-      return response.data.data || response.data;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch creation status');
-    }
-  }
-);
+
 
 // Create individual invoice from application
 export interface IndividualInvoiceResponse {
@@ -319,11 +308,11 @@ export const createIndividualInvoice = createAsyncThunk<
     try {
       // Backend route: POST /api/invoices/individual
       const response = await api.post('/api/invoices/individual', payload);
-      
+
       if (response.data.success === false) {
         return rejectWithValue(response.data.message || 'Failed to create individual invoice');
       }
-      
+
       return {
         invoiceCode: response.data.data?.invoiceCode || response.data.invoiceCode,
         receiptCreated: response.data.receiptCreated,
@@ -350,11 +339,11 @@ export const createIndividualReceipt = createAsyncThunk<
     try {
       // Backend route: POST /api/receipts/individual
       const response = await api.post('/api/receipts/individual', payload);
-      
+
       if (response.data.success === false) {
         return rejectWithValue(response.data.message || 'Failed to create individual receipt');
       }
-      
+
       return {
         receiptCode: response.data.code || response.data.receiptCode,
         receiptCreated: response.data.receiptCreated,
@@ -372,7 +361,6 @@ const invoiceSlice = createSlice({
   reducers: {
     clearCurrentData: (state) => {
       state.currentData = null;
-      state.creationStatus = null;
       state.error = null;
       state.createInvoiceSuccess = false;
       state.createReceiptSuccess = false;
@@ -381,9 +369,7 @@ const invoiceSlice = createSlice({
       state.canCreateInvoice = true;
       state.canCreateReceipt = true;
     },
-    clearCreationStatus: (state) => {
-      state.creationStatus = null;
-    },
+
     clearError: (state) => {
       state.error = null;
     },
@@ -397,22 +383,8 @@ const invoiceSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
-    // Fetch creation status
-    builder.addCase(fetchCreationStatus.pending, (state) => {
-      state.loading = true;
-      state.error = null;
-    });
-    builder.addCase(fetchCreationStatus.fulfilled, (state, action) => {
-      state.loading = false;
-      state.creationStatus = action.payload;
-      state.error = null;
-    });
-    builder.addCase(fetchCreationStatus.rejected, (state, action) => {
-      state.loading = false;
-      state.error = action.payload || 'Failed to fetch creation status';
-      state.creationStatus = null;
-    });
-    
+
+
     // Fetch invoice or application
     builder.addCase(fetchInvoiceOrApplication.pending, (state) => {
       state.loading = true;
@@ -429,7 +401,7 @@ const invoiceSlice = createSlice({
       state.error = action.payload || 'Failed to fetch data';
       state.currentData = null;
     });
-    
+
     // Create invoice
     builder.addCase(createInvoice.pending, (state) => {
       state.creatingInvoice = true;
@@ -444,6 +416,20 @@ const invoiceSlice = createSlice({
         state.lastCreatedReceiptCode = action.payload.receiptCode;
         state.createReceiptSuccess = true;
       }
+
+      // Update currentData flags
+      if (state.currentData) {
+        state.currentData.hasInvoice = true;
+        state.currentData.canCreateInvoice = false;
+        state.currentData.code = action.payload.invoiceCode;
+
+        if (action.payload.receiptCreated || action.payload.receiptCode) {
+          state.currentData.hasReceipt = true;
+          state.currentData.canCreateReceipt = false;
+          // Note: code in currentData specifically refers to invoice code, but can wrap receipt info
+        }
+      }
+
       state.error = null;
     });
     builder.addCase(createInvoice.rejected, (state, action) => {
@@ -451,7 +437,7 @@ const invoiceSlice = createSlice({
       state.createInvoiceSuccess = false;
       state.error = action.payload || 'Failed to create invoice';
     });
-    
+
     // Create individual invoice
     builder.addCase(createIndividualInvoice.pending, (state) => {
       state.creatingInvoice = true;
@@ -469,6 +455,16 @@ const invoiceSlice = createSlice({
       // Update button control flags
       state.canCreateInvoice = action.payload.canCreateInvoice;
       state.canCreateReceipt = action.payload.canCreateReceipt;
+
+      // Update currentData flags
+      if (state.currentData) {
+        state.currentData.hasInvoice = action.payload.hasInvoice;
+        state.currentData.hasReceipt = action.payload.hasReceipt;
+        state.currentData.canCreateInvoice = action.payload.canCreateInvoice;
+        state.currentData.canCreateReceipt = action.payload.canCreateReceipt;
+        state.currentData.code = action.payload.invoiceCode;
+      }
+
       state.error = null;
     });
     builder.addCase(createIndividualInvoice.rejected, (state, action) => {
@@ -476,7 +472,7 @@ const invoiceSlice = createSlice({
       state.createInvoiceSuccess = false;
       state.error = action.payload || 'Failed to create individual invoice';
     });
-    
+
     // Create individual receipt
     builder.addCase(createIndividualReceipt.pending, (state) => {
       state.creatingReceipt = true;
@@ -490,6 +486,16 @@ const invoiceSlice = createSlice({
       if (action.payload.receiptCreated) {
         state.createReceiptSuccess = true;
       }
+
+      // Update creationStatus flags
+      state.canCreateReceipt = false;
+      // Update currentData flags
+      state.canCreateReceipt = false;
+      if (state.currentData) {
+        state.currentData.hasReceipt = true;
+        state.currentData.canCreateReceipt = false;
+      }
+
       state.error = null;
     });
     builder.addCase(createIndividualReceipt.rejected, (state, action) => {
@@ -497,11 +503,11 @@ const invoiceSlice = createSlice({
       state.createReceiptSuccess = false;
       state.error = action.payload || 'Failed to create individual receipt';
     });
-    
+
     // Receipt is created together with invoice when createReceipt=true on createInvoice
   },
 });
 
-export const { clearCurrentData, clearCreationStatus, clearError, resetCreateStatus } = invoiceSlice.actions;
+export const { clearCurrentData, clearError, resetCreateStatus } = invoiceSlice.actions;
 export default invoiceSlice.reducer;
 

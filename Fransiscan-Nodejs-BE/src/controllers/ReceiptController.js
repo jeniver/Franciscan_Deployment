@@ -210,7 +210,7 @@ class ReceiptController {
       // Get application data if applicationCode is provided
       if (applicationCode) {
         const { executeQuery } = require('../config/database');
-        
+
         // Check for duplicate receipt first
         // Since Receipt table doesn't have RefDocNumber column, we check in MisalaniousReceiptDetail table
         const duplicateCheckQuery = `
@@ -221,12 +221,12 @@ class ReceiptController {
           AND r.ChurchId = @churchId
           AND r.Status > 0
         `;
-        
-        const duplicateResult = await executeQuery(duplicateCheckQuery, { 
-          refDocNumber: applicationCode, 
-          churchId: user.churchId 
+
+        const duplicateResult = await executeQuery(duplicateCheckQuery, {
+          refDocNumber: applicationCode,
+          churchId: user.churchId
         });
-        
+
         if (duplicateResult.recordset && duplicateResult.recordset.length > 0) {
           return res.status(409).json({
             success: false,
@@ -239,18 +239,52 @@ class ReceiptController {
             }
           });
         }
-        
-        const appResult = await executeQuery(
-          'SELECT TOP 1 NicheApplicationId, Code, ApplicantName, Amount, Status, ChurchId FROM NicheApplication WITH(NOLOCK) WHERE Code = @code AND ChurchId = @churchId',
-          { code: applicationCode, churchId: user.churchId }
-        );
+
+        let appResult;
+        let tableUsed = '';
+
+        // Determine which table to query based on applicationCode prefix
+        if (applicationCode.startsWith('WAPP')) {
+          logger.info(`Detected Wake Room booking code: ${applicationCode}`);
+          appResult = await executeQuery(
+            'SELECT TOP 1 WakeRoomBookingId, Code, ApplicantName, DonationAmount as Amount, \'WAPP\' as RefDocType, ChurchId FROM WakeRoomBooking WITH(NOLOCK) WHERE Code = @code AND ChurchId = @churchId',
+            { code: applicationCode, churchId: user.churchId }
+          );
+          tableUsed = 'WakeRoomBooking';
+          resolvedRefDocName = 'WAPP';
+        } else if (applicationCode.startsWith('GOL-')) {
+          logger.info(`Detected Gate of Life code: ${applicationCode}`);
+          appResult = await executeQuery(
+            'SELECT TOP 1 EngraveWallApplicationId, Code, ApplicantName, DonationAmount as Amount, \'GOLA\' as RefDocType, ChurchId FROM EngraveWallApplication WITH(NOLOCK) WHERE Code = @code AND ChurchId = @churchId',
+            { code: applicationCode, churchId: user.churchId }
+          );
+          tableUsed = 'EngraveWallApplication';
+          resolvedRefDocName = 'GOLA';
+        } else if (applicationCode.startsWith('INCR-') || applicationCode.startsWith('I-')) {
+          logger.info(`Detected Inscription code: ${applicationCode}`);
+          appResult = await executeQuery(
+            'SELECT TOP 1 NicheInscriptionRequestId, Code, ApplicantName, \'INCR\' as RefDocType FROM NicheInscriptionRequest WITH(NOLOCK) WHERE Code = @code',
+            { code: applicationCode }
+          );
+          tableUsed = 'NicheInscriptionRequest';
+          resolvedRefDocName = 'INCR';
+        } else {
+          logger.info(`Detected Niche Application code: ${applicationCode}`);
+          appResult = await executeQuery(
+            'SELECT TOP 1 NicheApplicationId, Code, ApplicantName, Amount, RefDocType, ChurchId FROM NicheApplication WITH(NOLOCK) WHERE Code = @code AND ChurchId = @churchId',
+            { code: applicationCode, churchId: user.churchId }
+          );
+          tableUsed = 'NicheApplication';
+          resolvedRefDocName = 'NAPP'; // Default
+        }
 
         if (!appResult.recordset || appResult.recordset.length === 0) {
+          logger.warn(`Application not found for code: ${applicationCode} in ${tableUsed} for church: ${user.churchId}`);
           return res.status(404).json({
             success: false,
             error: {
               code: 'APPLICATION_NOT_FOUND',
-              message: 'Application not found'
+              message: `Application or Booking with code ${applicationCode} not found`
             }
           });
         }
@@ -258,18 +292,21 @@ class ReceiptController {
         application = appResult.recordset[0];
         resolvedCustomerName = customerName || application.ApplicantName;
         resolvedAmount = payingAmount || application.Amount || 0;
-        // Set resolvedRefDocName based on application RefDocType
-        resolvedRefDocName = application.RefDocType || 'NAPP';
+
+        // Set resolvedRefDocName based on application data if available, otherwise keep the detected one
+        if (application.RefDocType) {
+          resolvedRefDocName = application.RefDocType;
+        }
       } else {
         // When no application code, use provided payingAmount or default to 0
         resolvedAmount = payingAmount || 0;
-              
+
         // For standalone receipts without application code, set defaults
         if (!applicationCode) {
           hasInvoice = false;
         }
       }
-      
+
       // Use resolved values for receipt creation
       const receipt = new Receipt({
         invoiceId: null, // No invoice for individual receipt
@@ -292,7 +329,7 @@ class ReceiptController {
         country: country || null,
         outstandingAmount: 0
       });
-      
+
       // Create receipt details with reference document information
       const receiptDetails = [];
       if (applicationCode) {
@@ -318,7 +355,7 @@ class ReceiptController {
           refDocName: 'OTHERS'
         });
       }
-      
+
       // Add details to receipt object
       receipt.details = receiptDetails;
 
@@ -351,9 +388,9 @@ class ReceiptController {
             FROM Invoice WITH(NOLOCK) 
             WHERE RefDocNumber = @refDocNumber AND ChurchId = @churchId
           `;
-          const invoiceResult = await executeQuery(invoiceQuery, { 
-            refDocNumber: applicationCode, 
-            churchId: user.churchId 
+          const invoiceResult = await executeQuery(invoiceQuery, {
+            refDocNumber: applicationCode,
+            churchId: user.churchId
           });
           hasInvoice = invoiceResult.recordset && invoiceResult.recordset.length > 0;
         } catch (invoiceCheckError) {
@@ -361,10 +398,10 @@ class ReceiptController {
           hasInvoice = false;
         }
       }
-      
+
       // Check if receipt exists for this application (should be true since we just created it)
       let hasReceipt = true;
-      
+
       return res.status(201).json({
         success: true,
         code: result.data.code,

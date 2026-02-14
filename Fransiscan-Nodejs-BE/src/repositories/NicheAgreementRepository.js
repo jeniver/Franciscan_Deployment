@@ -2,6 +2,7 @@ const BaseRepository = require('./BaseRepository');
 const { executeQuery } = require('../config/database');
 const logger = require('../utils/logger');
 const NicheAgreement = require('../models/NicheAgreement');
+const NicheConcentForm = require('../models/NicheConcentForm');
 
 /**
  * Niche Agreement repository - ULTRA SIMPLIFIED VERSION
@@ -120,34 +121,6 @@ class NicheAgreementRepository extends BaseRepository {
 
       logger.info(`Found application: ${mergedData.Code} in Chapel: ${mergedData.ChapelCode || 'N/A'}, Wall: ${mergedData.WallCode || 'N/A'}`);
       console.log("Adresss finder", mergedData)
-      // Helper function to extract street address from full address
-      const extractStreetAddress = (fullAddress) => {
-        if (!fullAddress || typeof fullAddress !== 'string') {
-          return fullAddress;
-        }
-
-        // Remove "Block" prefix if present
-        let cleanedAddress = fullAddress.replace(/^\s*Block\s+\d+\s*,?\s*/i, '');
-
-        // Look for unit number patterns like "#floor-unit" or "-floor-unit"
-        const unitPattern = /[#\-]\d+[\-\/]\d+/;
-        const unitMatch = cleanedAddress.match(unitPattern);
-
-        if (unitMatch) {
-          // Split by the unit number and take the first part (street address)
-          const parts = cleanedAddress.split(unitMatch[0]);
-          cleanedAddress = parts[0].trim();
-        }
-
-        // Remove postal code if it exists at the end (usually 6 digits)
-        cleanedAddress = cleanedAddress.replace(/\s+\d{6}\s*$/, '').trim();
-
-        // Remove city name if it ends with "Singapore"
-        cleanedAddress = cleanedAddress.replace(/\s*,?\s*Singapore\s*$/i, '').trim();
-
-        return cleanedAddress;
-      };
-
       // Build the niche agreement object using data from NicheApplication
       const nicheAgreement = new NicheAgreement({
         Status: mergedData.Status,
@@ -158,7 +131,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Applicant (all data is in NicheApplication table)
         applicantName: mergedData.ApplicantName,
         applicantAddressNo: mergedData.ApplicantAddressNo,
-        applicantAddressLine1: mergedData.ApplicantAddressLine1,
+        applicantAddressLine1: this.extractStreetAddress(mergedData.ApplicantAddressLine1),
         applicantAddressLine2: mergedData.ApplicantAddressLine2,
         applicantAddressCity: mergedData.ApplicantAddressCity,
         applicantAddressCountry: mergedData.ApplicantAddressCountry,
@@ -173,7 +146,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Nominee (all data is in NicheApplication table)
         nomineeName: mergedData.NomineeName,
         nomineeAddressNo: mergedData.NomineeAddressNo,
-        nomineeAddressLine1: mergedData.NomineeAddressLine1,
+        nomineeAddressLine1: this.extractStreetAddress(mergedData.NomineeAddressLine1),
         nomineeAddressLine2: mergedData.NomineeAddressLine2,
         nomineeAddressCity: mergedData.NomineeAddressCity,
         nomineeAddressCountry: mergedData.NomineeAddressCountry,
@@ -188,7 +161,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Second Nominee (all data is in NicheApplication table)
         nominee2Name: mergedData.NomineeName2,
         nominee2AddressNo: mergedData.NomineeAddressNo2,
-        nominee2AddressLine1: extractStreetAddress(mergedData.NomineeAddressLine12),
+        nominee2AddressLine1: this.extractStreetAddress(mergedData.NomineeAddressLine12),
         nominee2AddressLine2: mergedData.NomineeAddressLine22,
         nominee2AddressCity: mergedData.NomineeAddressCity2,
         nominee2AddressCountry: mergedData.NomineeAddressCountry2,
@@ -236,12 +209,14 @@ class NicheAgreementRepository extends BaseRepository {
 
       // CRITICAL OPTIMIZATION: Execute all independent queries in parallel
       // This reduces total time from sum of all queries to max of all queries
-      const [beneficiariesResult, nomineeResult, deceasedResult, invoiceResult, inscriptionResult] = await Promise.allSettled([
+      const [beneficiariesResult, nomineeResult, deceasedResult, invoiceResult, inscriptionResult, consentResult, receiptInfoResult] = await Promise.allSettled([
         this.addBeneficiaries(mergedData.NicheApplicationId, nicheAgreement),
         this.addNomineeInfo(mergedData.NicheApplicationId, nicheAgreement),
         this.addDeceasedAndStorageInfo(mergedData.NicheApplicationId, nicheAgreement),
         this.addInvoiceInfo(applicationCode, nicheAgreement),
-        this.addInscriptionInfo(applicationCode, mergedData.NicheApplicationId, nicheAgreement)
+        this.addInscriptionInfo(applicationCode, mergedData.NicheApplicationId, nicheAgreement),
+        this.addConsentFormInfo(applicationCode, nicheAgreement),
+        this.addReceiptInfo(applicationCode, nicheAgreement)
       ]);
 
       // Log any failures (non-critical, as these are optional data)
@@ -260,8 +235,26 @@ class NicheAgreementRepository extends BaseRepository {
       if (inscriptionResult.status === 'rejected') {
         logger.warn('Failed to fetch inscription info:', inscriptionResult.reason?.message);
       }
+      if (consentResult.status === 'rejected') {
+        logger.warn('Failed to fetch consent form info:', consentResult.reason?.message);
+      }
+      if (receiptInfoResult.status === 'rejected') {
+        logger.warn('Failed to fetch standalone receipt info:', receiptInfoResult.reason?.message);
+      }
 
       logger.info(`Successfully retrieved agreement for: ${applicationCode}`);
+
+      // Final fallback for storage dates: if still null, use receipt date or invoice date
+      if (!nicheAgreement.storageFrom) {
+        if (nicheAgreement.receiptDate) {
+          nicheAgreement.storageFrom = nicheAgreement.receiptDate;
+          logger.info(`[getNicheAgreementDetailsCopy] Fallback: Set storageFrom to receiptDate for ${applicationCode}`);
+        } else if (nicheAgreement.invoiceDate) {
+          nicheAgreement.storageFrom = nicheAgreement.invoiceDate;
+          logger.info(`[getNicheAgreementDetailsCopy] Fallback: Set storageFrom to invoiceDate for ${applicationCode}`);
+        }
+      }
+
       return nicheAgreement;
     } catch (error) {
       logger.error(`Error getting niche agreement for ${applicationCode}:`, error.message);
@@ -639,7 +632,7 @@ class NicheAgreementRepository extends BaseRepository {
         if (row.ApplicantName) {
           nicheAgreement.applicantName = row.ApplicantName;
           nicheAgreement.applicantAddressNo = row.ApplicantAddressNo;
-          nicheAgreement.applicantAddressLine1 = extractStreetAddress(row.ApplicantAddressLine1);
+          nicheAgreement.applicantAddressLine1 = this.extractStreetAddress(row.ApplicantAddressLine1);
           nicheAgreement.applicantAddressLine2 = row.ApplicantAddressLine2;
           nicheAgreement.applicantAddressCity = row.ApplicantAddressCity;
           nicheAgreement.applicantAddressState = row.ApplicantAddressState;
@@ -656,7 +649,7 @@ class NicheAgreementRepository extends BaseRepository {
         if (row.NomineeName) {
           nicheAgreement.nomineeName = row.NomineeName;
           nicheAgreement.nomineeAddressNo = row.NomineeAddressNo;
-          nicheAgreement.nomineeAddressLine1 = extractStreetAddress(row.NomineeAddressLine1);
+          nicheAgreement.nomineeAddressLine1 = this.extractStreetAddress(row.NomineeAddressLine1);
           // CRITICAL FIX: Ensure that if Person table has nominee address data, it overrides the NicheApplication data
           nicheAgreement.nomineeAddressLine2 = row.NomineeAddressLine2 !== null ? row.NomineeAddressLine2 : nicheAgreement.nomineeAddressLine2;
           nicheAgreement.nomineeAddressCity = row.NomineeAddressCity !== null ? row.NomineeAddressCity : nicheAgreement.nomineeAddressCity;
@@ -674,7 +667,7 @@ class NicheAgreementRepository extends BaseRepository {
         if (row.Nominee2Name) {
           nicheAgreement.nominee2Name = row.Nominee2Name;
           nicheAgreement.nominee2AddressNo = row.Nominee2AddressNo;
-          nicheAgreement.nominee2AddressLine1 = extractStreetAddress(row.Nominee2AddressLine1);
+          nicheAgreement.nominee2AddressLine1 = this.extractStreetAddress(row.Nominee2AddressLine1);
           // CRITICAL FIX: Ensure that if Person table has nominee2 address data, it overrides the NicheApplication data
           nicheAgreement.nominee2AddressLine2 = row.Nominee2AddressLine2 !== null ? row.Nominee2AddressLine2 : nicheAgreement.nominee2AddressLine2;
           nicheAgreement.nominee2AddressCity = row.Nominee2AddressCity !== null ? row.Nominee2AddressCity : nicheAgreement.nominee2AddressCity;
@@ -699,23 +692,19 @@ class NicheAgreementRepository extends BaseRepository {
 
   /**
    * Add deceased information and storage period from NicheInscriptionRequest
-   * OPTIMIZED: Combined queries to reduce round trips
+   * OPTIMIZED: Robust query strategy
    */
   async addDeceasedAndStorageInfo(nicheApplicationId, nicheAgreement) {
     try {
-      // CRITICAL OPTIMIZATION: Split into two queries to avoid CTE scanning entire table
-      // Step 1: Get booking and inscription info first (fast lookup)
+      // Step 1: Get booking info first (Foundational)
       const bookingQuery = `
         SELECT TOP 1
-          nb.NicheBookingId,
-          nir.StorageFrom,
-          nir.StorageTo,
-          nir.NicheInscriptionRequestId
-        FROM NicheBooking nb WITH (NOLOCK)
-        LEFT JOIN NicheInscriptionRequest nir WITH (NOLOCK) 
-          ON nb.NicheBookingId = nir.NicheBookingId
-        WHERE nb.NicheApplicationId = @nicheApplicationId
-        ORDER BY nir.NicheInscriptionRequestId DESC
+          NicheBookingId,
+          StorageFrom,
+          StorageTo
+        FROM NicheBooking WITH (NOLOCK)
+        WHERE NicheApplicationId = @nicheApplicationId
+        ORDER BY NicheBookingId DESC
       `;
 
       const bookingResult = await executeQuery(bookingQuery, { nicheApplicationId }, { timeout: 10000 });
@@ -726,17 +715,54 @@ class NicheAgreementRepository extends BaseRepository {
       }
 
       const bookingRow = bookingResult.recordset[0];
-      const inscriptionRequestId = bookingRow.NicheInscriptionRequestId;
+      const nicheBookingId = bookingRow.NicheBookingId;
 
-      // Set storage info if available
       if (bookingRow.StorageFrom) {
         nicheAgreement.storageFrom = bookingRow.StorageFrom;
+        logger.info(`[addDeceasedAndStorageInfo] Found StorageFrom in NicheBooking: ${bookingRow.StorageFrom}`);
       }
       if (bookingRow.StorageTo) {
         nicheAgreement.storageTo = bookingRow.StorageTo;
+        logger.info(`[addDeceasedAndStorageInfo] Found StorageTo in NicheBooking: ${bookingRow.StorageTo}`);
       }
 
-      // Step 2: Get deceased details separately (only if inscription exists)
+      // Step 2: Get Inscription Request info
+      const inscriptionQuery = `
+        SELECT TOP 1
+          NicheInscriptionRequestId,
+          StorageFrom,
+          StorageTo,
+          CreatedDate
+        FROM NicheInscriptionRequest WITH (NOLOCK)
+        WHERE NicheBookingId = @nicheBookingId
+        ORDER BY NicheInscriptionRequestId DESC
+      `;
+
+      const inscriptionResult = await executeQuery(inscriptionQuery, { nicheBookingId }, { timeout: 10000 });
+      let inscriptionRequestId = null;
+
+      if (inscriptionResult.recordset.length > 0) {
+        const insRow = inscriptionResult.recordset[0];
+        inscriptionRequestId = insRow.NicheInscriptionRequestId;
+
+        // Override/Set storage from Inscription if available (it's arguably more recent/specific)
+        if (insRow.StorageFrom) {
+          nicheAgreement.storageFrom = insRow.StorageFrom;
+          logger.info(`[addDeceasedAndStorageInfo] Found StorageFrom in NicheInscriptionRequest: ${insRow.StorageFrom}`);
+        }
+        if (insRow.StorageTo) {
+          nicheAgreement.storageTo = insRow.StorageTo;
+          logger.info(`[addDeceasedAndStorageInfo] Found StorageTo in NicheInscriptionRequest: ${insRow.StorageTo}`);
+        }
+
+        // If still no StorageFrom, use CreatedDate of inscription as a last-resort fallback for FROM
+        if (!nicheAgreement.storageFrom && insRow.CreatedDate) {
+          nicheAgreement.storageFrom = insRow.CreatedDate;
+          logger.info(`[addDeceasedAndStorageInfo] Using Inscription CreatedDate as fallback for StorageFrom: ${insRow.CreatedDate}`);
+        }
+      }
+
+      // Step 3: Get deceased details (only if inscription exists)
       if (inscriptionRequestId) {
         try {
           const deceasedQuery = `
@@ -773,12 +799,10 @@ class NicheAgreementRepository extends BaseRepository {
           }
         } catch (deceasedError) {
           logger.warn(`Could not fetch deceased details for inscription ${inscriptionRequestId}:`, deceasedError.message);
-          // Continue without deceased details - they're optional
         }
       }
     } catch (error) {
       logger.warn('Could not fetch deceased and storage info:', error.message);
-      // Don't throw - deceased info is optional
     }
   }
 
@@ -788,132 +812,174 @@ class NicheAgreementRepository extends BaseRepository {
    */
   async addInvoiceInfo(applicationCode, nicheAgreement) {
     try {
-      // Simplified query - split into two queries to avoid timeout
-      // First, get invoice details with InvoiceDetails
-      const invoiceQuery = `
+      logger.info(`[addInvoiceInfo] Fetching invoice for application: ${applicationCode}`);
+
+      // Step 1: Find the main invoice linked to this application code
+      // We look for InvoiceDetail entries that reference this application
+      const invoiceHeaderQuery = `
         SELECT TOP 1
+          inv.InvoiceId,
           inv.Code as InvoiceNo,
           inv.TransactionDate as InvoiceDate,
-          inv.TaxAmount,
+          inv.TaxAmount as InvoiceTaxAmount,
+          inv.TotalAmount as InvoiceTotalAmount,
           inv.PayingAmount as InvoicePayingAmount,
-          inv.InvoiceId,
-          invdls.TotalPayingAmount as NicheLineAmount,
-          invdls.LineTaxAmount,
-          invdls.PayingAmount as InvoiceDetailPayingAmount
-        FROM InvoiceDetail invdls WITH(NOLOCK)
-        INNER JOIN Invoice inv WITH(NOLOCK) ON invdls.InvoiceId = inv.InvoiceId
-        WHERE invdls.RefDocNumber = @applicationCode
-          AND inv.Status = 1
-          AND invdls.ItemId <= 7
+          inv.PaymentMode,
+          inv.PaymentModeDocNo,
+          inv.Status
+        FROM Invoice inv WITH(NOLOCK)
+        INNER JOIN InvoiceDetail idl WITH(NOLOCK) ON inv.InvoiceId = idl.InvoiceId
+        WHERE idl.RefDocNumber = @applicationCode
         ORDER BY inv.TransactionDate DESC
       `;
 
-      // Reduced timeout - should complete in < 2s with proper index on InvoiceDetail.RefDocNumber
-      const invoiceResult = await executeQuery(invoiceQuery, { applicationCode }, { timeout: 10000 });
+      const headerResult = await executeQuery(invoiceHeaderQuery, { applicationCode }, { timeout: 10000 });
 
-      let inv = null;
-      let invoiceId = null;
-
-      if (invoiceResult.recordset.length === 0) {
-        // Try without status filter (for unpaid applications)
-        const invoiceQueryNoStatus = `
-          SELECT TOP 1
-            inv.Code as InvoiceNo,
-            inv.TransactionDate as InvoiceDate,
-            inv.TaxAmount,
-            inv.PayingAmount as InvoicePayingAmount,
-            inv.InvoiceId,
-            invdls.TotalPayingAmount as NicheLineAmount,
-            invdls.LineTaxAmount,
-            invdls.PayingAmount as InvoiceDetailPayingAmount
-          FROM InvoiceDetail invdls WITH(NOLOCK)
-          LEFT JOIN Invoice inv WITH(NOLOCK) ON invdls.InvoiceId = inv.InvoiceId
-          WHERE invdls.RefDocNumber = @applicationCode
-          ORDER BY inv.TransactionDate DESC
-        `;
-        const invoiceResultNoStatus = await executeQuery(invoiceQueryNoStatus, { applicationCode }, { timeout: 10000 });
-
-        if (invoiceResultNoStatus.recordset.length === 0) {
-          logger.info(`No invoice found for application: ${applicationCode}`);
-          return;
-        }
-
-        inv = invoiceResultNoStatus.recordset[0];
-        invoiceId = inv.InvoiceId;
-      } else {
-        inv = invoiceResult.recordset[0];
-        invoiceId = inv.InvoiceId;
+      if (headerResult.recordset.length === 0) {
+        logger.info(`[addInvoiceInfo] No invoice found for application: ${applicationCode}`);
+        return;
       }
 
-      // Set invoice information
+      const inv = headerResult.recordset[0];
+      const invoiceId = inv.InvoiceId;
+
+      // Set header info
       nicheAgreement.invoiceNo = inv.InvoiceNo;
       nicheAgreement.invoiceDate = inv.InvoiceDate;
-      nicheAgreement.taxAmount = inv.LineTaxAmount || inv.TaxAmount || 0;
-      nicheAgreement.invoicePayingAmount = inv.InvoiceDetailPayingAmount || inv.InvoicePayingAmount || 0;
-      nicheAgreement.nicheLineAmount = inv.NicheLineAmount || 0;
-      nicheAgreement.totalAmount = inv.NicheLineAmount || 0;
+      nicheAgreement.taxAmount = inv.InvoiceTaxAmount || 0;
+      nicheAgreement.totalAmount = inv.InvoiceTotalAmount || 0;
+      nicheAgreement.invoicePayingAmount = inv.InvoicePayingAmount || 0;
+      nicheAgreement.paymentMode = inv.PaymentMode;
+      nicheAgreement.paymentModeDocNo = inv.PaymentModeDocNo;
 
-      // Get receipt information separately (optional - won't fail if timeout)
-      try {
-        if (invoiceId) {
-          const receiptQuery = `
-            SELECT TOP 1
-              TotalAmount as ReceiptAmount,
-              Code as ReceiptNo,
-              TransactionDate as ReceiptDate,
-              PaymentMode,
-              PaymentModeDocNo,
-              PayingAmount as ReceiptPayingAmount
-            FROM Receipt WITH(NOLOCK)
-            WHERE InvoiceId = @invoiceId
-            ORDER BY ReceiptId DESC
-          `;
+      // Step 2: Fetch ALL details for this invoice
+      const detailsQuery = `
+        SELECT 
+          idl.InvoiceDetailId,
+          idl.ItemId,
+          idl.Description,
+          idl.Quantity,
+          idl.UnitPrice,
+          idl.LineTaxAmount,
+          idl.TotalPayingAmount as LineTotal,
+          idl.PayingAmount as LineNet,
+          i.Name as ItemName,
+          i.Code as ItemCode
+        FROM InvoiceDetail idl WITH(NOLOCK)
+        LEFT JOIN Item i WITH(NOLOCK) ON idl.ItemId = i.ItemId
+        WHERE idl.InvoiceId = @invoiceId
+      `;
 
-          const receiptResult = await executeQuery(receiptQuery, { invoiceId }, { timeout: 10000 });
+      const detailsResult = await executeQuery(detailsQuery, { invoiceId }, { timeout: 10000 });
 
-          if (receiptResult.recordset.length > 0) {
-            const rec = receiptResult.recordset[0];
-            nicheAgreement.receiptNo = rec.ReceiptNo;
-            nicheAgreement.receiptDate = rec.ReceiptDate;
-            nicheAgreement.receiptAmount = rec.ReceiptAmount || 0;
-            nicheAgreement.receiptPayingAmount = rec.ReceiptPayingAmount || rec.ReceiptAmount || 0;
-            nicheAgreement.paymentMode = rec.PaymentMode;
-            nicheAgreement.paymentModeDocNo = rec.PaymentModeDocNo;
-          }
+      if (detailsResult.recordset.length > 0) {
+        nicheAgreement.invoiceDetails = detailsResult.recordset.map(detail => ({
+          itemId: detail.ItemId,
+          itemName: detail.ItemName || detail.Description || 'Service Item',
+          itemCode: detail.ItemCode,
+          description: detail.Description,
+          quantity: detail.Quantity || 1,
+          unitPrice: detail.UnitPrice || 0,
+          taxAmount: detail.LineTaxAmount || 0,
+          lineTotal: detail.LineTotal || 0,
+          lineNet: detail.LineNet || 0
+        }));
+
+        // Set nicheLineAmount from the niche item (usually ItemId <= 7)
+        const nicheItem = nicheAgreement.invoiceDetails.find(d => d.itemId <= 7);
+        if (nicheItem) {
+          nicheAgreement.nicheLineAmount = nicheItem.lineNet;
+        } else {
+          nicheAgreement.nicheLineAmount = nicheAgreement.invoiceDetails[0].lineNet;
         }
-      } catch (receiptError) {
-        logger.warn(`Could not fetch receipt info: `, receiptError.message);
-        // Continue without receipt info
       }
 
-      // Get MisalaniousReceiptDetail (priority over Receipt table)
+      // Step 3: Get receipt information
       try {
-        const miscReceiptQuery = `
+        const receiptQuery = `
           SELECT TOP 1
-            TotalPayingAmount as ReceiptAmount,
-            PayingAmount as ReceiptPayingAmount
-          FROM MisalaniousReceiptDetail WITH(NOLOCK)
-          WHERE RefDocNumber = @applicationCode
-          ORDER BY ReceiptDetailId DESC
+            Code as ReceiptNo,
+            TransactionDate as ReceiptDate,
+            TotalAmount as ReceiptAmount,
+            PayingAmount as ReceiptPayingAmount,
+            PaymentMode,
+            PaymentModeDocNo
+          FROM Receipt WITH(NOLOCK)
+          WHERE InvoiceId = @invoiceId
+          ORDER BY ReceiptId DESC
         `;
 
-        const miscReceiptResult = await executeQuery(miscReceiptQuery, { applicationCode }, { timeout: 10000 });
+        const receiptResult = await executeQuery(receiptQuery, { invoiceId }, { timeout: 10000 });
 
-        if (miscReceiptResult.recordset.length > 0) {
-          const miscRec = miscReceiptResult.recordset[0];
-          // Override receipt amount with miscellaneous receipt (priority)
-          nicheAgreement.receiptAmount = miscRec.ReceiptAmount || nicheAgreement.receiptAmount || 0;
-          nicheAgreement.receiptPayingAmount = miscRec.ReceiptPayingAmount || nicheAgreement.receiptPayingAmount || 0;
+        if (receiptResult.recordset.length > 0) {
+          const rec = receiptResult.recordset[0];
+          nicheAgreement.receiptNo = rec.ReceiptNo;
+          nicheAgreement.receiptDate = rec.ReceiptDate;
+          nicheAgreement.receiptAmount = rec.ReceiptAmount || 0;
+          nicheAgreement.receiptPayingAmount = rec.ReceiptPayingAmount || rec.ReceiptAmount || 0;
+
+          // Override payment mode from receipt if available
+          if (rec.PaymentMode) nicheAgreement.paymentMode = rec.PaymentMode;
+          if (rec.PaymentModeDocNo) nicheAgreement.paymentModeDocNo = rec.PaymentModeDocNo;
         }
-      } catch (miscReceiptError) {
-        logger.warn(`Could not fetch miscellaneous receipt info: `, miscReceiptError.message);
-        // Continue without miscellaneous receipt info
+      } catch (receiptError) {
+        logger.warn(`Could not fetch receipt info for invoice ${invoiceId}:`, receiptError.message);
       }
 
-      logger.info(`Invoice info added for ${applicationCode}: ${nicheAgreement.invoiceNo || 'N/A'}`);
+      logger.info(`[addInvoiceInfo] Successfully added invoice ${inv.InvoiceNo} with ${nicheAgreement.invoiceDetails?.length || 0} items`);
     } catch (error) {
-      logger.warn('Could not fetch invoice info:', error.message);
-      // Don't throw - invoice is optional
+      logger.warn(`[addInvoiceInfo] Error fetching invoice info:`, error.message);
+    }
+  }
+
+  /**
+   * Add receipt information (standalone fallback)
+   * This fetches receipts linked via MisalaniousReceiptDetail for individual receipts
+   */
+  async addReceiptInfo(applicationCode, nicheAgreement) {
+    try {
+      // Search for standalone receipt linked via Application Code in MisalaniousReceiptDetail
+      // This handles cases where no invoice exists or individual receipts (without InvoiceId)
+      const receiptQuery = `
+        SELECT TOP 1
+          r.Code as ReceiptNo,
+          r.TransactionDate as ReceiptDate,
+          r.TotalAmount as ReceiptAmount,
+          r.PayingAmount as ReceiptPayingAmount,
+          r.PaymentMode,
+          r.PaymentModeDocNo
+        FROM Receipt r WITH(NOLOCK)
+        INNER JOIN MisalaniousReceiptDetail rd WITH(NOLOCK) ON r.ReceiptId = rd.ReceiptId
+        WHERE rd.RefDocNumber = @applicationCode
+        AND r.Status > 0
+        ORDER BY r.ReceiptId DESC
+      `;
+
+      const result = await executeQuery(receiptQuery, { applicationCode }, { timeout: 10000 });
+
+      if (result.recordset.length > 0) {
+        const rec = result.recordset[0];
+        // Only set if not already set by addInvoiceInfo (to avoid duplicates/conflicts)
+        if (!nicheAgreement.receiptNo) {
+          logger.info(`[addReceiptInfo] Found standalone receipt ${rec.ReceiptNo} for application ${applicationCode}`);
+          nicheAgreement.receiptNo = rec.ReceiptNo;
+          nicheAgreement.receiptDate = rec.ReceiptDate;
+          nicheAgreement.receiptAmount = rec.ReceiptAmount || 0;
+          nicheAgreement.receiptPayingAmount = rec.ReceiptPayingAmount || rec.ReceiptAmount || 0;
+
+          // Use receipt payment mode if not already set
+          if (rec.PaymentMode && !nicheAgreement.paymentMode) {
+            nicheAgreement.paymentMode = rec.PaymentMode;
+          }
+          if (rec.PaymentModeDocNo && !nicheAgreement.paymentModeDocNo) {
+            nicheAgreement.paymentModeDocNo = rec.PaymentModeDocNo;
+          }
+        } else {
+          logger.info(`[addReceiptInfo] Receipt already populated for ${applicationCode}, skipping standalone check`);
+        }
+      }
+    } catch (error) {
+      logger.warn(`[addReceiptInfo] Error fetching standalone receipt info for ${applicationCode}:`, error.message);
     }
   }
 
@@ -1030,9 +1096,73 @@ class NicheAgreementRepository extends BaseRepository {
         logger.info(`[addInscriptionInfo] No inscription found for application: ${applicationCode}`);
       }
     } catch (error) {
-      logger.warn('Could not fetch inscription info:', error.message);
-      // Don't throw - inscription info is optional
+      logger.warn(`[addInscriptionInfo] Error:`, error.message);
     }
+  }
+
+  /**
+   * Add consent form information and beneficiary life status
+   */
+  async addConsentFormInfo(applicationCode, nicheAgreement) {
+    try {
+      const query = `
+        SELECT TOP 1 Status, AgreementDate, AppliedDate
+        FROM NicheConcentForm WITH (NOLOCK)
+        WHERE Code = @applicationCode
+        ORDER BY NicheConcentFormId DESC
+      `;
+
+      const result = await executeQuery(query, { applicationCode }, { timeout: 10000 });
+
+      if (result.recordset && result.recordset.length > 0) {
+        const row = result.recordset[0];
+        const status = row.Status;
+
+        // Decode status using NicheConcentForm helper
+        // This helper decodes the bitmask-like status into individual statuses
+        const decoded = NicheConcentForm.decodeConsentSelections(status);
+
+        nicheAgreement.beneLifeStatus_1 = decoded.firstBeneficiary;
+        nicheAgreement.beneLifeStatus_2 = decoded.secondBeneficiary;
+
+        nicheAgreement.consentFormStatus = status;
+        nicheAgreement.consentFormTimestamp = row.AgreementDate || row.AppliedDate || null;
+
+        logger.info(`Added consent form status for ${applicationCode}: ${status} (Bene1: ${decoded.firstBeneficiary}, Bene2: ${decoded.secondBeneficiary})`);
+      }
+    } catch (error) {
+      logger.warn(`[addConsentFormInfo] Error:`, error.message);
+    }
+  }
+
+  /**
+   * Helper function to extract street address from full address
+   */
+  extractStreetAddress(fullAddress) {
+    if (!fullAddress || typeof fullAddress !== 'string') {
+      return fullAddress;
+    }
+
+    // Remove "Block" prefix if present
+    let cleanedAddress = fullAddress.replace(/^\s*Block\s+\d+\s*,?\s*/i, '');
+
+    // Look for unit number patterns like "#floor-unit" or "-floor-unit"
+    const unitPattern = /[#\-]\d+[\-\/]\d+/;
+    const unitMatch = cleanedAddress.match(unitPattern);
+
+    if (unitMatch) {
+      // Split by the unit number and take the first part (street address)
+      const parts = cleanedAddress.split(unitMatch[0]);
+      cleanedAddress = parts[0].trim();
+    }
+
+    // Remove postal code if it exists at the end (usually 6 digits)
+    cleanedAddress = cleanedAddress.replace(/\s+\d{6}\s*$/, '').trim();
+
+    // Remove city name if it ends with "Singapore"
+    cleanedAddress = cleanedAddress.replace(/\s*,?\s*Singapore\s*$/i, '').trim();
+
+    return cleanedAddress;
   }
 }
 

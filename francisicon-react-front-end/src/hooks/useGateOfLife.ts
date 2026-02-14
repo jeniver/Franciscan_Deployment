@@ -106,32 +106,32 @@ export function useGateOfLife() {
       dispatch(clearError());
       return;
     }
-    
+
     if (requestInProgressRef.current) {
       return;
     }
-    
+
     requestInProgressRef.current = true;
-    
+
     try {
       dispatch(setApplicationCode(codeToLoad.trim()));
       dispatch(setViewModeAction(true));
       dispatch(setEditMode(false)); // Explicitly set edit mode to false when viewing
-      
+
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Request timeout')), 30000);
       });
-      
+
       const action = await Promise.race([
         loadApplication(codeToLoad.trim()),
         timeoutPromise
       ]);
-      
+
       if (action.type.endsWith('/fulfilled')) {
         console.log('Gate of Life application data loaded successfully for viewing');
       } else if (action.type.endsWith('/rejected')) {
         const errorData = action.payload as { message: string; type: string; statusCode: number };
-        
+
         if (errorData.type === 'auth') {
           navigate('/login', { replace: true });
           return;
@@ -157,20 +157,20 @@ export function useGateOfLife() {
     if (!appCode.trim()) {
       return;
     }
-    
+
     if (requestInProgressRef.current) {
       return;
     }
-    
+
     requestInProgressRef.current = true;
-    
+
     try {
       dispatch(setApplicationCode(appCode));
       dispatch(setViewModeAction(true));
       dispatch(setEditMode(false));
-      
+
       const action = await loadApplication(appCode.trim());
-      
+
       if (action.type.endsWith('/fulfilled')) {
         console.log('Application loaded for viewing');
       }
@@ -187,20 +187,20 @@ export function useGateOfLife() {
     if (!appCode.trim()) {
       return;
     }
-    
+
     if (requestInProgressRef.current) {
       return;
     }
-    
+
     requestInProgressRef.current = true;
-    
+
     try {
       dispatch(setApplicationCode(appCode));
       dispatch(setEditMode(true));
       dispatch(setViewModeAction(false));
-      
+
       const action = await loadApplication(appCode.trim());
-      
+
       if (action.type.endsWith('/fulfilled')) {
         console.log('Application loaded for editing');
       }
@@ -217,20 +217,20 @@ export function useGateOfLife() {
     if (!appCode.trim()) {
       return { success: false, error: 'Application code is required' };
     }
-    
+
     try {
       const result = await dispatch(updateGateOfLifeApplication({
         applicationCode: appCode.trim(),
         applicationData
       }));
-      
+
       if (result.type.endsWith('/fulfilled')) {
         return { success: true, data: result.payload };
       } else {
         // Parse error response
         const errorPayload = result.payload as any;
         let errorMessage = 'Failed to update application';
-        
+
         if (errorPayload?.error?.message) {
           errorMessage = errorPayload.error.message;
         } else if (errorPayload?.message) {
@@ -240,12 +240,12 @@ export function useGateOfLife() {
         } else if (typeof errorPayload === 'string') {
           errorMessage = errorPayload;
         }
-        
+
         return { success: false, error: errorMessage };
       }
     } catch (error: any) {
       console.error('Error updating application:', error);
-      
+
       // Parse error response
       let errorMessage = 'Failed to update application';
       if (error?.response?.data?.error?.message) {
@@ -257,7 +257,7 @@ export function useGateOfLife() {
       } else if (error?.message) {
         errorMessage = error.message;
       }
-      
+
       return { success: false, error: errorMessage };
     }
   }, [dispatch]);
@@ -268,14 +268,14 @@ export function useGateOfLife() {
       showError('Error', 'Application code is required');
       return;
     }
-    
+
     if (!window.confirm(`Are you sure you want to delete application ${appCode}? This action cannot be undone.`)) {
       return;
     }
-    
+
     try {
       const result = await dispatch(deleteGateOfLifeApplication(appCode.trim()));
-      
+
       if (result.type.endsWith('/fulfilled')) {
         console.log('Application deleted successfully');
         showSuccess('Success', `Application ${appCode} has been deleted successfully`);
@@ -299,7 +299,7 @@ export function useGateOfLife() {
       console.warn('No application code provided for PDF generation');
       return;
     }
-    
+
     try {
       await gateOfLifeService.generateGateOfLifePDF(codeToUse.trim(), 'agreement');
     } catch (error: any) {
@@ -315,22 +315,14 @@ export function useGateOfLife() {
   // Handle Invoice Receipt
   const handleInvoiceReceipt = useCallback(async (appCode?: string) => {
     const codeToUse = appCode || applicationCode;
-    if (!codeToUse.trim()) {
-      console.warn('No application code provided for invoice PDF generation');
+    if (!codeToUse || !codeToUse.trim()) {
+      console.warn('No application code provided for navigation');
       return;
     }
-    
-    try {
-      await gateOfLifeService.generateGateOfLifePDF(codeToUse.trim(), 'invoice');
-    } catch (error: any) {
-      if (error instanceof GateOfLifeError) {
-        console.error('Invoice PDF generation error:', error.message);
-        dispatch(clearError());
-      } else {
-        console.error('Unexpected invoice PDF error:', error);
-      }
-    }
-  }, [applicationCode, dispatch]);
+
+    // Navigate to the invoice-receipt page with the application code
+    navigate(`/invoice-receipt/${codeToUse.trim()}`);
+  }, [applicationCode, navigate]);
 
   // Handle Invoice Only
   const handleInvoiceOnly = useCallback(async (appCode?: string) => {
@@ -339,7 +331,7 @@ export function useGateOfLife() {
       console.warn('No application code provided for invoice only PDF generation');
       return;
     }
-    
+
     try {
       await gateOfLifeService.generateGateOfLifePDF(codeToUse.trim(), 'invoice');
     } catch (error: any) {
@@ -359,7 +351,7 @@ export function useGateOfLife() {
       console.warn('No application code provided for receipt PDF generation');
       return;
     }
-    
+
     try {
       await gateOfLifeService.generateGateOfLifePDF(codeToUse.trim(), 'receipt');
     } catch (error: any) {
@@ -397,14 +389,14 @@ export function useGateOfLife() {
   const handleSaveApplication = useCallback(async (applicationData: any) => {
     try {
       const result = await createApplication(applicationData as CreateGateOfLifeRequest);
-      
+
       if (result.type.endsWith('/fulfilled')) {
         return { success: true, data: result.payload };
       } else {
         // Parse error response
         const errorPayload = result.payload as any;
         let errorMessage = 'Failed to create application';
-        
+
         if (errorPayload?.error?.message) {
           errorMessage = errorPayload.error.message;
         } else if (errorPayload?.message) {
@@ -414,12 +406,12 @@ export function useGateOfLife() {
         } else if (typeof errorPayload === 'string') {
           errorMessage = errorPayload;
         }
-        
+
         return { success: false, error: errorMessage };
       }
     } catch (error: any) {
       console.error('Error creating application:', error);
-      
+
       // Parse error response
       let errorMessage = 'Failed to create application';
       if (error?.response?.data?.error?.message) {
@@ -431,7 +423,7 @@ export function useGateOfLife() {
       } else if (error?.message) {
         errorMessage = error.message;
       }
-      
+
       return { success: false, error: errorMessage };
     }
   }, [createApplication]);
@@ -454,7 +446,7 @@ export function useGateOfLife() {
     applicationListPagination,
     isViewMode,
     isEditMode,
-    
+
     // Actions
     updateForm,
     setAppCode,

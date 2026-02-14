@@ -434,7 +434,7 @@ export function InvoiceAndReceiptManagementPage() {
             {receipts.map((receipt) => (
               <tr key={receipt.receiptId || receipt.receiptCode} className="hover:bg-gray-50">
                 <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {receipt.receiptCode || 'N/A'}
+                  {receipt.applicationId || 'N/A'}
                 </td>
                 <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">
                   {formatDate(receipt.receiptDate || receipt.createdAt)}
