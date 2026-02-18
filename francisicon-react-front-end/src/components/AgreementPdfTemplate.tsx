@@ -617,7 +617,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
 
         {/* Signatures */}
         <div className="border border-black p-3 mt-auto text-xs">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 ">
             <div>
               <p className="mb-8 font-medium">The Applicant Personally :</p>
               <div className="border-b border-black mb-2"></div>

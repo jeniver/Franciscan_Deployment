@@ -139,9 +139,9 @@ class InvoiceRepository extends BaseRepository {
       // This ensures exclusive access while generating the next code
       // Matches document recommendation from ASP.NET analysis
       const maxQuery = `
-        SELECT MAX(CAST(Code AS INT)) AS MaxCode
+        SELECT MAX(TRY_CAST(Code AS INT)) AS MaxCode
         FROM Invoice WITH(UPDLOCK, HOLDLOCK)
-        WHERE ISNUMERIC(Code) = 1
+        WHERE TRY_CAST(Code AS INT) IS NOT NULL
           AND Status > 0
       `;
 

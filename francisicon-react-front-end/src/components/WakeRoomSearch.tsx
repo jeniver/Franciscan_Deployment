@@ -20,9 +20,10 @@ interface SearchCriteria {
 interface WakeRoomSearchProps {
   onBookingSelected?: (booking: any) => void;
   onBookingEdit?: (booking: any) => void;
+  highlightBookingCode?: string | null;
 }
 
-export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSearchProps) {
+export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBookingCode }: WakeRoomSearchProps) {
   const navigate = useNavigate();
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({
     wakeRoomId: 0,
@@ -273,7 +274,13 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit }: WakeRoomSea
               </thead>
               <tbody className="bg-white divide-y divide-gray-50">
                 {paginatedResults.map((booking) => (
-                  <tr key={booking.wakeRoomBookingId} className="hover:bg-[#fcfcfc] transition-colors group">
+                  <tr
+                    key={booking.wakeRoomBookingId}
+                    className={`transition-colors group ${highlightBookingCode === booking.code
+                        ? 'bg-yellow-50 border-l-4 border-l-yellow-400 animate-pulse'
+                        : 'hover:bg-[#fcfcfc]'
+                      }`}
+                  >
                     <td className="px-4 py-4 whitespace-nowrap align-top">
                       <div className="text-xs font-bold text-gray-900 tracking-tight">
                         {booking.code}

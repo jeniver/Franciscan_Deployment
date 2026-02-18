@@ -339,8 +339,7 @@ export function InvoiceAndReceiptPage() {
     // Details → table items mapping - improved handling
     let invoiceDetails = currentData.details || currentDataAny.Details || [];
 
-    // Wake Room Fallback: If no details are found but this is a wake room booking,
-    // construct a default item from the booking's financial information
+    // Wake Room Fallback
     if (invoiceDetails.length === 0 && (currentDataAny.booking || currentDataAny.wakeRoomId)) {
       invoiceDetails = [{
         itemId: 0,
@@ -357,6 +356,25 @@ export function InvoiceAndReceiptPage() {
         refDocNumber: currentData.applicationCode || currentData.code || '',
         refDocName: 'WAKE',
         refType: 'WAKE'
+      }];
+    }
+    // Gate of Life Fallback
+    else if (invoiceDetails.length === 0 && currentDataAny.code?.startsWith('GOL')) {
+      invoiceDetails = [{
+        itemId: 0,
+        itemName: 'Gate of Life Donation',
+        itemCode: 'GOL',
+        itemPrice: currentDataAny.defaultDonationAmount || 0,
+        quantity: 1,
+        unitAmount: currentDataAny.defaultDonationAmount || 0,
+        payingAmount: currentDataAny.donationAmount || 0,
+        lineTotalAmount: currentDataAny.donationAmount || 0,
+        lineTaxPercent: 0,
+        lineTaxAmount: 0,
+        totalPayingAmount: currentDataAny.donationAmount || 0,
+        refDocNumber: currentDataAny.code || '',
+        refDocName: 'GOL',
+        refType: 'GOL'
       }];
     }
     const mapped: InvoiceItem[] = Array.isArray(invoiceDetails)
@@ -1312,11 +1330,7 @@ export function InvoiceAndReceiptPage() {
                     </button>
                     <button
                       onClick={handlePrintReceipt}
-                      disabled={
-                        (!receiptCode.trim() && !currentData?.receipt?.receiptCode) ||
-                        viewingReceiptCode !== null ||
-                        currentData?.hasReceipt === false
-                      }
+                     
                       className="px-6 py-2.5 bg-gradient-to-r from-[#a52a2a] to-[#c93535] text-white rounded-lg font-semibold hover:from-[#c93535] hover:to-[#a52a2a] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       title="Print Receipt PDF"
                     >

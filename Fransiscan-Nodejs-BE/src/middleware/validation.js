@@ -11,10 +11,20 @@ const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     logger.warn('Validation errors:', errors.array());
+    
+    // Format errors for better client understanding
+    const formattedErrors = errors.array().map(error => ({
+      field: error.param,
+      message: error.msg,
+      value: error.value,
+      location: error.location
+    }));
+    
     return res.status(400).json({
       success: false,
       error: 'Validation failed',
-      details: errors.array()
+      message: 'Please check the following fields:',
+      details: formattedErrors
     });
   }
   next();

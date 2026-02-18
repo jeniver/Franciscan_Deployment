@@ -58,8 +58,7 @@ router.post('/',
     body('usingTimeFrom').isISO8601().withMessage('Using time from is required'),
     body('usingTimeTo').isISO8601().withMessage('Using time to is required'),
     body('donationAmount').optional().isFloat({ min: 0 }).withMessage('Donation amount must be a positive number'),
-    body('applicantMobileNo').optional().isMobilePhone().withMessage('Invalid mobile phone number'),
-    body('applicantEmailID').optional().isEmail().withMessage('Invalid email address')
+    body('applicantMobileNo').optional().isMobilePhone().withMessage('Invalid mobile phone number')
   ],
   validate,
   wakeRoomController.createWakeRoomBooking
@@ -78,7 +77,8 @@ router.put('/:id',
     body('applicantName').notEmpty().withMessage('Applicant name is required'),
     body('nameOfDeceased').notEmpty().withMessage('Name of deceased is required'),
     body('usingTimeFrom').isISO8601().withMessage('Using time from is required'),
-    body('usingTimeTo').isISO8601().withMessage('Using time to is required')
+    body('usingTimeTo').isISO8601().withMessage('Using time to is required'),
+    body('applicantMobileNo').optional().isMobilePhone().withMessage('Invalid mobile phone number')
   ],
   validate,
   wakeRoomController.updateWakeRoomBooking

@@ -220,12 +220,54 @@ class WakeRoomController extends BaseController {
     const userId = req.user?.userId;
 
     try {
+      // Log incoming request data for debugging
+      logger.info('Incoming booking data:', {
+        wakeRoomId: bookingData.wakeRoomId,
+        applicantName: bookingData.applicantName,
+        nameOfDeceased: bookingData.nameOfDeceased,
+        usingTimeFrom: bookingData.usingTimeFrom,
+        usingTimeTo: bookingData.usingTimeTo,
+        churchId: bookingData.churchId,
+        userId: userId
+      });
+
       if (!userId) {
         return this.sendError(res, 'User authentication required', 401);
       }
 
       if (!bookingData.churchId) {
         bookingData.churchId = req.user.churchId;
+      }
+
+      // Validate required fields before processing
+      const requiredFields = ['wakeRoomId', 'applicantName', 'nameOfDeceased', 'usingTimeFrom', 'usingTimeTo'];
+      const missingFields = requiredFields.filter(field => {
+        const value = bookingData[field];
+        return value === undefined || value === null || value === '' || (typeof value === 'string' && value.trim() === '');
+      });
+
+      if (missingFields.length > 0) {
+        return this.sendError(res, `Missing required fields: ${missingFields.join(', ')}`, 400);
+      }
+
+      // Validate data types
+      if (!Number.isInteger(bookingData.wakeRoomId)) {
+        return this.sendError(res, 'wakeRoomId must be an integer', 400);
+      }
+
+      if (isNaN(new Date(bookingData.usingTimeFrom).getTime())) {
+        return this.sendError(res, 'usingTimeFrom must be a valid date', 400);
+      }
+
+      if (isNaN(new Date(bookingData.usingTimeTo).getTime())) {
+        return this.sendError(res, 'usingTimeTo must be a valid date', 400);
+      }
+
+      // Ensure usingTimeTo is after usingTimeFrom
+      const fromTime = new Date(bookingData.usingTimeFrom);
+      const toTime = new Date(bookingData.usingTimeTo);
+      if (toTime <= fromTime) {
+        return this.sendError(res, 'usingTimeTo must be after usingTimeFrom', 400);
       }
 
       const result = await this.wakeRoomService.saveWakeRoomBooking(bookingData, userId);
