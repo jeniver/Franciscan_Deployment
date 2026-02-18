@@ -53,12 +53,7 @@ router.post('/',
   authenticateToken,
   [
     body('wakeRoomId').isInt().withMessage('Wake Room ID is required'),
-    body('applicantName').notEmpty().withMessage('Applicant name is required'),
-    body('nameOfDeceased').notEmpty().withMessage('Name of deceased is required'),
-    body('usingTimeFrom').isISO8601().withMessage('Using time from is required'),
-    body('usingTimeTo').isISO8601().withMessage('Using time to is required'),
-    body('donationAmount').optional().isFloat({ min: 0 }).withMessage('Donation amount must be a positive number'),
-    body('applicantMobileNo').optional().isMobilePhone().withMessage('Invalid mobile phone number')
+    body('applicantName').notEmpty().withMessage('Applicant name is required')
   ],
   validate,
   wakeRoomController.createWakeRoomBooking

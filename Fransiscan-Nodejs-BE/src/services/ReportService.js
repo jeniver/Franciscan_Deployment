@@ -66,7 +66,7 @@ class ReportService {
   async generatePdfFromHtml(html, options = {}) {
     let browser;
     let page;
-    
+
     // Validate HTML input
     if (!html || typeof html !== 'string') {
       throw new Error('Invalid HTML content provided for PDF generation');
@@ -74,7 +74,7 @@ class ReportService {
 
     try {
       logger.info('Launching Puppeteer browser for PDF generation...');
-      
+
       browser = await puppeteer.launch({
         headless: 'new',
         args: [
@@ -89,14 +89,14 @@ class ReportService {
 
       logger.info('Creating new page...');
       page = await browser.newPage();
-      
+
       // Set a reasonable timeout for page operations
       page.setDefaultTimeout(60000);
-      
+
       logger.info('Setting HTML content...', { htmlLength: html.length });
-      
+
       // Use 'load' instead of 'networkidle0' for better reliability with static HTML
-      await page.setContent(html, { 
+      await page.setContent(html, {
         waitUntil: 'load', // Changed from 'networkidle0' - more reliable for static HTML
         timeout: 60000
       });
@@ -121,7 +121,7 @@ class ReportService {
       }
 
       logger.info('Generating PDF...');
-      
+
       // Remove invalid 'timeout' option from page.pdf() - it doesn't support it
       // Also ensure we're explicitly waiting for the PDF generation to complete
       let pdfBuffer;
@@ -146,7 +146,7 @@ class ReportService {
         throw pdfError;
       }
 
-      logger.info('PDF generated, validating buffer...', { 
+      logger.info('PDF generated, validating buffer...', {
         hasBuffer: !!pdfBuffer,
         isBuffer: Buffer.isBuffer(pdfBuffer),
         bufferType: typeof pdfBuffer,
@@ -193,7 +193,7 @@ class ReportService {
         stack: error.stack,
         name: error.name
       });
-      
+
       // Provide more detailed error messages
       if (error.message.includes('Navigation timeout') || error.message.includes('Timeout')) {
         throw new Error(`PDF generation timed out: ${error.message}`);
@@ -202,7 +202,7 @@ class ReportService {
       } else if (error.message.includes('Protocol error')) {
         throw new Error(`Puppeteer protocol error: ${error.message}`);
       }
-      
+
       throw new Error(`Failed to generate PDF: ${error.message}`);
     } finally {
       if (page) {
@@ -212,7 +212,7 @@ class ReportService {
           logger.warn('Error closing page:', closeError);
         }
       }
-      
+
       if (browser) {
         try {
           await browser.close();
@@ -262,7 +262,7 @@ class ReportService {
   async generateReceiptReport(invoiceCode, address = '', districtCode = '') {
     try {
       const cacheKey = `receipt_report_${invoiceCode}_${address}_${districtCode}`;
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) {
@@ -307,7 +307,7 @@ class ReportService {
   async generateMonthlyReceiptReport(fromDate, toDate) {
     try {
       const cacheKey = `monthly_receipt_${fromDate}_${toDate}`;
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -713,7 +713,7 @@ class ReportService {
   async generateInscriptionReport(insCode) {
     try {
       const cacheKey = `inscription_report_${insCode}`;
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -751,7 +751,7 @@ class ReportService {
   async generateMonthlyInscriptionReport(fromDate, toDate) {
     try {
       const cacheKey = `monthly_inscription_${fromDate}_${toDate}`;
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -759,13 +759,13 @@ class ReportService {
 
       const data = await reportRepository.getInscriptionMonthlyList(fromDate, toDate);
       const html = this.buildMonthlyInscriptionReportHtml(data, fromDate, toDate);
-      
+
       // Validate HTML before generating PDF
       if (!html || typeof html !== 'string' || html.trim().length === 0) {
         logger.error('Invalid or empty HTML generated for monthly inscription report');
         throw new Error('Failed to generate HTML content for report');
       }
-      
+
       logger.info(`Generated HTML for monthly inscription report: ${html.length} characters`);
       const pdfBuffer = await this.generatePdfFromHtml(html);
 
@@ -792,7 +792,7 @@ class ReportService {
   async generateMonthlyWakeRoomReport(fromDate, toDate) {
     try {
       const cacheKey = `monthly_wakeroom_${fromDate}_${toDate}`;
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -825,7 +825,7 @@ class ReportService {
   async generateGOAMonthlyReport(fromDate, toDate) {
     try {
       const cacheKey = `goa_monthly_${fromDate}_${toDate}`;
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -858,7 +858,7 @@ class ReportService {
   async generateGSTReport(fromDate, toDate) {
     try {
       const cacheKey = `gst_report_${fromDate}_${toDate}`;
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -891,7 +891,7 @@ class ReportService {
   async generateNichesSoldToBothReport() {
     try {
       const cacheKey = 'niches_sold_both';
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -924,7 +924,7 @@ class ReportService {
   async generateNichesSoldToCatholicReport() {
     try {
       const cacheKey = 'niches_sold_catholic';
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -957,7 +957,7 @@ class ReportService {
   async generateNichesSoldToNonCatholicReport() {
     try {
       const cacheKey = 'niches_sold_noncatholic';
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -990,7 +990,7 @@ class ReportService {
   async generateRenewalNichesReport() {
     try {
       const cacheKey = 'renewal_niches';
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -1023,7 +1023,7 @@ class ReportService {
   async generateSameAddressNichesReport() {
     try {
       const cacheKey = 'same_address_niches';
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -1056,7 +1056,7 @@ class ReportService {
   async generateChapelLevelReport(chapel, level) {
     try {
       const cacheKey = `chapel_level_${chapel}_${level}`;
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -1089,7 +1089,7 @@ class ReportService {
   async generateChapelMonthReport(chapel, month) {
     try {
       const cacheKey = `chapel_month_${chapel}_${month}`;
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -1122,7 +1122,7 @@ class ReportService {
   async generateVacancyChapelReport(chapel = null) {
     try {
       const cacheKey = `vacancy_chapel_${chapel || 'all'}`;
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -1155,7 +1155,7 @@ class ReportService {
   async generateBeneficiaryListReport() {
     try {
       const cacheKey = 'beneficiary_list';
-      
+
       if (this.cacheEnabled) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
@@ -1183,12 +1183,12 @@ class ReportService {
   }
 
   // HTML Template Builders (continuing in next part due to length...)
-  
+
   buildReceiptReportHtml(receipt, details) {
     // Build detailed receipt report HTML
     const receiptData = receipt || {};
     const detailRows = Array.isArray(details) ? details : [];
-    
+
     const detailTableRows = detailRows.map((row, index) => {
       return `
         <tr>
@@ -1309,9 +1309,9 @@ class ReportService {
     // Build detailed monthly receipt report
     const totalAmount = Array.isArray(data) ? data.reduce((sum, row) => sum + (Number(row.TotalAmount || row.PayingAmount || 0)), 0) : 0;
     const totalCount = Array.isArray(data) ? data.length : 0;
-    
-    return this.buildGenericReportHtml('Monthly Receipt Report', data, { 
-      fromDate, 
+
+    return this.buildGenericReportHtml('Monthly Receipt Report', data, {
+      fromDate,
       toDate,
       summary: {
         totalAmount: this.formatCurrency(totalAmount),
@@ -1515,15 +1515,15 @@ class ReportService {
   buildGenericReportHtml(title, data, metadata = {}) {
     const isArray = Array.isArray(data);
     const rows = isArray ? data : [data];
-    
+
     // Limit rows for very large datasets to prevent memory issues
     const maxRows = 10000;
     const displayRows = rows.length > maxRows ? rows.slice(0, maxRows) : rows;
     const hasMoreRows = rows.length > maxRows;
-    
+
     // Get column names from first row
     const columns = displayRows.length > 0 ? Object.keys(displayRows[0]) : [];
-    
+
     const tableRows = displayRows.map((row, index) => {
       const cells = columns.map(col => {
         const value = row[col];
@@ -1874,6 +1874,119 @@ class ReportService {
     }
 
     return 0;
+  }
+
+  /**
+   * Get Receipt Register Data Payload
+   */
+  async getReceiptRegisterData(fromDate, toDate) {
+    try {
+      const rows = await reportRepository.getReceiptRegister(fromDate, toDate);
+
+      // Group rows by ReceiptNo
+      const grouped = new Map();
+
+      rows.forEach(row => {
+        if (!grouped.has(row.ReceiptNo)) {
+          grouped.set(row.ReceiptNo, {
+            Date: this.formatDate(row.ReceiptDate),
+            InvoiceNo: row.InvoiceNo || '-',
+            ReceiptNo: row.ReceiptNo,
+            Applicant: row.Applicant || '-',
+            // Categories
+            Niche: 0,
+            Inscription: 0,
+            Urn: 0,
+            WakeRoom: 0,
+            GOL: 0,
+            Wreaths: 0,
+            Interment: 0,
+            Sealing: 0,
+            Table: 0,
+            Others: 0,
+            GST: 0,
+            Maint: 0,
+            SubTotal: 0,
+            Total: 0,
+            // Payment method categorization (DBS vs Cash/Chq/TT)
+            DBS: 0,
+            CashChqTT: 0,
+            PaymentMode: row.PaymentMode,
+            Chapel: row.ChapelName || '-',
+            NicheNo: row.NicheCode || row.RefDocNumber || '-'
+          });
+        }
+
+        const r = grouped.get(row.ReceiptNo);
+        const amount = Number(row.ItemAmount) || 0;
+        const gst = Number(row.ItemGST) || 0;
+        const maint = Number(row.MaintenanceAmount) || 0;
+        const discount = Number(row.DiscountAmount) || 0;
+
+        const itemNet = amount - discount;
+
+        // Categorize by Item
+        const category = this.categorizeRegisterItem(row.ItemCode, row.ItemName, row.ItemDocType);
+        r[category] = (r[category] || 0) + itemNet;
+        r.GST += gst;
+        r.Maint += maint;
+        r.SubTotal += itemNet;
+        r.Total += (itemNet + gst + maint);
+
+        // Payment mode split
+        const pMode = String(row.PaymentMode || '').toUpperCase();
+        const isDBS = pMode.includes('DBS') || pMode.includes('NETS') || pMode.includes('CREDIT') || pMode.includes('CARD');
+
+        if (isDBS) {
+          r.DBS = r.Total;
+          r.CashChqTT = 0;
+        } else {
+          r.CashChqTT = r.Total;
+          r.DBS = 0;
+        }
+      });
+
+      const transactions = Array.from(grouped.values());
+
+      return this.buildDatasetPayload(transactions, {
+        report: 'receipt-register',
+        period: this.buildPeriodMetadata(fromDate, toDate),
+        summary: {
+          totalAmount: transactions.reduce((sum, t) => sum + t.Total, 0),
+          totalRecords: transactions.length,
+          categoryTotals: transactions.reduce((acc, t) => {
+            ['Niche', 'Inscription', 'Urn', 'WakeRoom', 'GOL', 'Wreaths', 'Interment', 'Sealing', 'Table', 'Others', 'GST', 'Maint'].forEach(cat => {
+              acc[cat] = (acc[cat] || 0) + (t[cat] || 0);
+            });
+            return acc;
+          }, {})
+        }
+      });
+    } catch (error) {
+      logger.error('Error generating receipt register data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Categorize items for the register report
+   */
+  categorizeRegisterItem(code, name, docType) {
+    const c = (code || '').toUpperCase();
+    const n = (name || '').toUpperCase();
+    const d = (docType || '').toUpperCase();
+
+    if (d === 'NAPP' || c.startsWith('NICH') || n.includes('NICHE')) return 'Niche';
+    if (d === 'INCR' || c.startsWith('INSC') || c.startsWith('PLAQ') || n.includes('INSCRIPTION')) return 'Inscription';
+    if (d === 'URN' || c.startsWith('URN') || n.includes('URN')) return 'Urn';
+    if (d === 'WAPP' || c.startsWith('ROOM') || c.startsWith('WAKE') || n.includes('WAKE') || n.includes('ROOM')) return 'WakeRoom';
+    if (d === 'GOLA' || c.startsWith('GOL') || n.includes('GATE OF LIFE')) return 'GOL';
+    if (c.includes('CLEAR') || c.includes('WREATH') || n.includes('WREATH') || n.includes('CLEARING')) return 'Wreaths';
+    if (c.includes('INT') || c.includes('ANN') || n.includes('INTERMENT') || n.includes('ANNIVERSARY')) return 'Interment';
+    if (c.includes('SEAL') || n.includes('SEALING')) return 'Sealing';
+    if (c.includes('SET') || c.includes('TABLE') || n.includes('SETTING')) return 'Table';
+
+    return 'Others';
   }
 }
 

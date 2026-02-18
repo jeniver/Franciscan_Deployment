@@ -16,9 +16,9 @@ class TaskItemMappingRepository {
     this.mappingTable = 'TaskItemMapping';
     this.itemTable = 'Item';
   }
-
   /**
    * Get concrete Item rows for a task based on parameter descriptors.
+   * Optimized to use a single query with JOINs.
    *
    * @param {number} taskId
    * @param {Array<{ name: string, value: string }>} parameters
@@ -31,62 +31,51 @@ class TaskItemMappingRepository {
     }
 
     try {
-      const items = [];
+      // Build filters for the parameters dynamically
+      // We want rows where (Name = p1 AND Value = v1) OR (Name = p2 AND Value = v2) ...
+      const paramConditions = parameters
+        .map((_, index) => `(tim.TaskParameterName = @name${index} AND tim.TaskParameterValue = @value${index})`)
+        .join(' OR ');
 
-      // Fetch mappings per parameter, then resolve Item rows.
-      for (const param of parameters) {
-        const { name, value } = param;
-        const mappingQuery = `
-          SELECT
-            TaskItemMappingId,
-            TaskId,
-            TaskParameterName,
-            TaskParameterValue,
-            ItemId,
-            Remarks
-          FROM ${this.mappingTable} WITH (NOLOCK)
-          WHERE TaskId = @taskId
-            AND TaskParameterName = @taskParameterName
-            AND TaskParameterValue = @taskParameterValue
-        `;
-
-        const mappingResult = await executeQuery(mappingQuery, {
-          taskId,
-          taskParameterName: name,
-          taskParameterValue: value
-        });
-
-        if (!mappingResult.recordset || mappingResult.recordset.length === 0) {
-          continue;
-        }
-
-        for (const mapping of mappingResult.recordset) {
-          const itemQuery = `
-            SELECT
-              ItemId,
-              Name,
-              Code,
-              Price,
-              ChurchId,
-              IsRefType,
-              DocType
-            FROM ${this.itemTable} WITH (NOLOCK)
-            WHERE ItemId = @itemId
-              AND ChurchId = @churchId
-          `;
-
-          const itemResult = await executeQuery(itemQuery, {
-            itemId: mapping.ItemId,
-            churchId
-          });
-
-          if (itemResult.recordset && itemResult.recordset[0]) {
-            items.push(itemResult.recordset[0]);
-          }
-        }
+      if (!paramConditions) {
+        return [];
       }
 
-      return items;
+      const query = `
+        SELECT DISTINCT
+          i.ItemId,
+          i.Name,
+          i.Code,
+          i.Price,
+          i.ChurchId,
+          i.IsRefType,
+          i.DocType,
+          tim.Remarks
+        FROM ${this.mappingTable} tim WITH (NOLOCK)
+        INNER JOIN ${this.itemTable} i WITH (NOLOCK) ON tim.ItemId = i.ItemId
+        WHERE tim.TaskId = @taskId
+          AND i.ChurchId = @churchId
+          AND (${paramConditions})
+      `;
+
+      const queryParams = {
+        taskId,
+        churchId
+      };
+
+      // Add dynamic parameters
+      parameters.forEach((param, index) => {
+        queryParams[`name${index}`] = param.name;
+        queryParams[`value${index}`] = param.value;
+      });
+
+      const result = await executeQuery(query, queryParams);
+
+      if (result.recordset) {
+        return result.recordset;
+      }
+
+      return [];
     } catch (error) {
       logger.error('TaskItemMappingRepository: Error getting items for task', {
         taskId,

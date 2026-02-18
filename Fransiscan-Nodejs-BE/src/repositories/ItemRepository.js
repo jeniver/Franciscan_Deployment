@@ -68,7 +68,7 @@ class ItemRepository {
           DocType
         FROM ${this.tableName} WITH(NOLOCK)
         WHERE ChurchId = @churchId
-        ORDER BY ItemId DESC
+        ORDER BY LEN(Code), Code
       `;
 
       const result = await executeQuery(query, { churchId: parseInt(churchId) });
@@ -153,7 +153,7 @@ class ItemRepository {
           DocType
         FROM ${this.tableName} WITH(NOLOCK)
         WHERE ${where}
-        ORDER BY ItemId DESC
+        ORDER BY LEN(Code), Code
       `;
 
       const result = await executeQuery(query, params);

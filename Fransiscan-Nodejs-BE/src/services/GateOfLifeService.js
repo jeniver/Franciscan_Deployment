@@ -15,7 +15,37 @@ const parseDateValue = (value) => {
 };
 
 class GateOfLifeService {
+  _getCodeCandidates(code) {
+    const normalized = (code || '').trim();
+    if (!normalized) return [];
+
+    const candidates = [normalized];
+    if (normalized.startsWith('GOL-')) {
+      candidates.push(normalized.replace(/^GOL-/, 'GOLA-'));
+    } else if (normalized.startsWith('GOLA-')) {
+      candidates.push(normalized.replace(/^GOLA-/, 'GOL-'));
+    }
+    return [...new Set(candidates)];
+  }
+
+  async _findApplicationByCode(code, churchId) {
+    const candidates = this._getCodeCandidates(code);
+    for (const candidate of candidates) {
+      const app = await GateOfLifeRepository.getByCode(candidate, churchId);
+      if (app) {
+        return app;
+      }
+    }
+    return null;
+  }
+
   async searchApplications(query = {}, churchId) {
+    const bypassCache =
+      query.bypassCache === true
+      || query.bypassCache === 'true'
+      || query.refresh === true
+      || query.refresh === 'true'
+      || query._t !== undefined;
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(query.pageSize, 10) || 20, 1), 100);
 
@@ -31,7 +61,7 @@ class GateOfLifeService {
 
     // Generate a unique cache key based on churchId and query parameters
     const cacheKey = `search_${churchId}_${JSON.stringify(query)}`;
-    const cachedResult = searchCache.get(cacheKey);
+    const cachedResult = bypassCache ? null : searchCache.get(cacheKey);
 
     if (cachedResult) {
       logger.debug('Returning cached search results for Gates of Life');
@@ -65,17 +95,19 @@ class GateOfLifeService {
       filters
     };
 
-    // Cache the successful result
-    searchCache.set(cacheKey, {
-      records: responseData.data,
-      pagination: responseData.pagination
-    });
+    // Cache the successful result only for non-forced-refresh requests
+    if (!bypassCache) {
+      searchCache.set(cacheKey, {
+        records: responseData.data,
+        pagination: responseData.pagination
+      });
+    }
 
     return responseData;
   }
 
   async getApplication(code, churchId) {
-    const application = await GateOfLifeRepository.getByCode(code, churchId);
+    const application = await this._findApplicationByCode(code, churchId);
     if (!application) {
       return {
         success: false,
@@ -135,7 +167,7 @@ class GateOfLifeService {
 
   async updateApplication(code, body, churchId) {
     try {
-      const existing = await GateOfLifeRepository.getByCode(code, churchId);
+      const existing = await this._findApplicationByCode(code, churchId);
       if (!existing) {
         return {
           success: false,
@@ -148,11 +180,22 @@ class GateOfLifeService {
 
       const normalizedDetails = this._normalizeDetailsInput(body);
       const fallbackDetails = existing.details?.map(detail => detail.toJSON ? detail.toJSON() : detail) || [];
+      const hasExplicitDetailsInput =
+        Object.prototype.hasOwnProperty.call(body || {}, 'details')
+        || Object.prototype.hasOwnProperty.call(body || {}, 'EngraveWallApplicationDetailList')
+        || Object.prototype.hasOwnProperty.call(body || {}, 'engravings')
+        || Object.prototype.hasOwnProperty.call(body || {}, 'namesToEngrave')
+        || Object.prototype.hasOwnProperty.call(body || {}, 'engraveNames')
+        || Object.prototype.hasOwnProperty.call(body || {}, 'names');
       const merged = new GateOfLifeApplication({
         ...existing,
         ...body,
         code: existing.code,
-        details: normalizedDetails.length ? normalizedDetails : fallbackDetails,
+        // Respect explicit payload intent; if client sends details (even empty),
+        // don't silently keep old names from the existing record.
+        details: hasExplicitDetailsInput
+          ? normalizedDetails
+          : (normalizedDetails.length ? normalizedDetails : fallbackDetails),
         applicationId: existing.applicationId,
         churchId,
         userId: body.userId || existing.userId,
@@ -199,7 +242,12 @@ class GateOfLifeService {
 
   async deleteApplication(code, churchId) {
     try {
-      const deleted = await GateOfLifeRepository.delete(code, churchId);
+      let deleted = false;
+      const candidates = this._getCodeCandidates(code);
+      for (const candidate of candidates) {
+        deleted = await GateOfLifeRepository.delete(candidate, churchId);
+        if (deleted) break;
+      }
       if (!deleted) {
         return {
           success: false,

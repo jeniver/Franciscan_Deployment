@@ -43,6 +43,9 @@ export interface InvoiceDetail {
   ItemName?: string;
   ItemPrice?: number;
   PayingAmount?: number;
+  unitPrice?: number;
+  amount?: number;
+  taxPercent?: number;
 }
 
 export interface NicheInfo {
@@ -143,14 +146,6 @@ export interface CreateIndividualInvoiceRequest {
   paymentModeDocNo?: string;
 }
 
-export interface CreateIndividualReceiptRequest {
-  applicationCode: string;
-  customerName: string;
-  payingAmount: number;
-  paymentMode: string;
-  paymentModeDocNo?: string;
-}
-
 // Create Invoice Request Type
 export interface CreateInvoicePayload {
   invoice: {
@@ -196,7 +191,6 @@ interface InvoiceState {
   loading: boolean;
   error: string | null;
   creatingInvoice: boolean;
-  creatingReceipt: boolean;
   createInvoiceSuccess: boolean;
   createReceiptSuccess: boolean;
   lastCreatedInvoiceCode: string | null;
@@ -210,7 +204,6 @@ const initialState: InvoiceState = {
   loading: false,
   error: null,
   creatingInvoice: false,
-  creatingReceipt: false,
   createInvoiceSuccess: false,
   createReceiptSuccess: false,
   lastCreatedInvoiceCode: null,
@@ -224,32 +217,37 @@ const initialState: InvoiceState = {
 // Fetch invoice or application by code
 export const fetchInvoiceOrApplication = createAsyncThunk<
   InvoiceOrApplicationData,
-  string,
+  string | { code: string; type?: string },
   { rejectValue: string }
 >(
   'invoice/fetchInvoiceOrApplication',
-  async (code: string, { rejectWithValue }) => {
+  async (arg, { rejectWithValue }) => {
     try {
-      const response = await api.get(`/api/invoices/${code.trim()}`);
+      let code: string;
+      let type: string | undefined;
 
-      // Backend can return either:
-      // 1) { success: true, message: "...", data: { ...InvoiceOrApplicationData } }
-      // 2) { ...InvoiceOrApplicationData } (direct)
-      const body = response.data;
-      if (body && typeof body === 'object' && 'success' in body && 'data' in body) {
-        const wrapped: any = body;
-        if (wrapped.success === true && wrapped.data) {
-          return wrapped.data as InvoiceOrApplicationData;
-        }
-        return rejectWithValue(wrapped.message || 'Failed to fetch data');
+      if (typeof arg === 'string') {
+        code = arg;
+      } else {
+        code = arg.code;
+        type = arg.type;
       }
 
-      return body as InvoiceOrApplicationData;
+      // Use invoiceService instead of direct API call to consistency utilize the updated service method
+      // which handles the type parameter correctly
+      try {
+        const invoiceService = (await import('../services/invoiceService')).default;
+        const data = await invoiceService.getInvoiceByCode(code.trim(), type);
+        return data as InvoiceOrApplicationData;
+      } catch (serviceError: any) {
+        // Fallback or rethrow service error
+        throw serviceError;
+      }
     } catch (error: any) {
-      if (error.response?.status === 404) {
+      if (error.statusCode === 404 || error.response?.status === 404) {
         return rejectWithValue('Invoice or application not found');
       }
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch data');
+      return rejectWithValue(error.message || error.response?.data?.message || 'Failed to fetch data');
     }
   }
 );
@@ -328,31 +326,6 @@ export const createIndividualInvoice = createAsyncThunk<
   }
 );
 
-// Create individual receipt from application
-export const createIndividualReceipt = createAsyncThunk<
-  { receiptCode: string; receiptCreated?: boolean },
-  CreateIndividualReceiptRequest,
-  { rejectValue: string }
->(
-  'invoice/createIndividualReceipt',
-  async (payload: CreateIndividualReceiptRequest, { rejectWithValue }) => {
-    try {
-      // Backend route: POST /api/receipts/individual
-      const response = await api.post('/api/receipts/individual', payload);
-
-      if (response.data.success === false) {
-        return rejectWithValue(response.data.message || 'Failed to create individual receipt');
-      }
-
-      return {
-        receiptCode: response.data.code || response.data.receiptCode,
-        receiptCreated: response.data.receiptCreated,
-      };
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to create individual receipt');
-    }
-  }
-);
 
 // Invoice slice
 const invoiceSlice = createSlice({
@@ -471,37 +444,6 @@ const invoiceSlice = createSlice({
       state.creatingInvoice = false;
       state.createInvoiceSuccess = false;
       state.error = action.payload || 'Failed to create individual invoice';
-    });
-
-    // Create individual receipt
-    builder.addCase(createIndividualReceipt.pending, (state) => {
-      state.creatingReceipt = true;
-      state.error = null;
-      state.createReceiptSuccess = false;
-    });
-    builder.addCase(createIndividualReceipt.fulfilled, (state, action) => {
-      state.creatingReceipt = false;
-      state.createReceiptSuccess = true;
-      state.lastCreatedReceiptCode = action.payload.receiptCode;
-      if (action.payload.receiptCreated) {
-        state.createReceiptSuccess = true;
-      }
-
-      // Update creationStatus flags
-      state.canCreateReceipt = false;
-      // Update currentData flags
-      state.canCreateReceipt = false;
-      if (state.currentData) {
-        state.currentData.hasReceipt = true;
-        state.currentData.canCreateReceipt = false;
-      }
-
-      state.error = null;
-    });
-    builder.addCase(createIndividualReceipt.rejected, (state, action) => {
-      state.creatingReceipt = false;
-      state.createReceiptSuccess = false;
-      state.error = action.payload || 'Failed to create individual receipt';
     });
 
     // Receipt is created together with invoice when createReceipt=true on createInvoice

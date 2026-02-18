@@ -89,9 +89,9 @@ const initialState: WakeRoomState = {
 // Async thunk to load all wake rooms (no church filter)
 export const loadAllWakeRooms = createAsyncThunk(
   'wakeRoom/loadAllWakeRooms',
-  async (_, { rejectWithValue }) => {
+  async (bypassCache: boolean = false, { rejectWithValue }) => {
     try {
-      const response = await wakeRoomService.getAllWakeRooms();
+      const response = await wakeRoomService.getAllWakeRooms(bypassCache);
       return response.data;
     } catch (error: any) {
       if (error instanceof WakeRoomError) {
@@ -131,7 +131,7 @@ export const loadWakeRoomsByChurch = createAsyncThunk(
       }
 
       console.log(`Loading wake rooms for church ${churchId}`);
-      const response = await wakeRoomService.getWakeRoomsByChurch(churchId);
+      const response = await wakeRoomService.getWakeRoomsByChurch(churchId, (getState() as any).wakeRoom?.bypassCache || false);
       return { ...response.data, churchId };
     } catch (error: any) {
       if (error instanceof WakeRoomError) {
@@ -273,7 +273,7 @@ export const searchBookings = createAsyncThunk(
       if (!searchCriteria.page) searchCriteria.page = 1;
       if (!searchCriteria.pageSize) searchCriteria.pageSize = 10;
 
-      const response = await wakeRoomService.searchBookings(searchCriteria);
+      const response = await wakeRoomService.searchBookings(searchCriteria, searchCriteria.bypassCache);
       // The updated service returns { bookings, total, page, pageSize, totalPages }
       // But we need to handle legacy response (array) just in case
       let results: any = response.data || response;
@@ -476,13 +476,13 @@ export const wakeRoomSlice = createSlice({
         state.isRequestInProgress = false;
 
         // Check if this was a skipped request
-        if (action.payload.skip) {
-          console.log(`Skipped loading wake rooms for church ${action.payload.churchId}`);
+        if ((action.payload as any).skip) {
+          console.log(`Skipped loading wake rooms for church ${(action.payload as any).churchId}`);
           return;
         }
 
-        state.wakeRooms = action.payload.data || [];
-        state.lastLoadedChurchId = action.payload.churchId;
+        state.wakeRooms = (action.payload as any).data || [];
+        state.lastLoadedChurchId = (action.payload as any).churchId;
         state.isDataLoaded = true;
         state.error = null;
         state.lastErrorType = null;

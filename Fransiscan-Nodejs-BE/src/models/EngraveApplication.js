@@ -50,6 +50,10 @@ class EngraveApplication {
     this.userId = data.userId || data.UserId || null;
     this.remarks = data.remarks || data.Remarks || null;
     this.crossType = data.crossType || data.CrossType || 'Crucifix'; // Default to Crucifix
+
+    // Storage period
+    this.storageFrom = data.storageFrom || (data.storage && data.storage.storageFrom) || data.StorageFrom || null;
+    this.storageTo = data.storageTo || (data.storage && data.storage.storageTo) || data.StorageTo || null;
   }
 
   /**
@@ -118,7 +122,13 @@ class EngraveApplication {
       // Administrative
       churchId: this.churchId,
       userId: this.userId,
-      remarks: this.remarks
+      remarks: this.remarks,
+
+      // Storage period
+      storage: {
+        storageFrom: this.storageFrom,
+        storageTo: this.storageTo
+      }
     };
   }
 
@@ -187,7 +197,7 @@ class EngraveApplicationDetail {
     this.name = data.name || data.Name || null;
     this.dateOfDeath = data.dateOfDeath || data.DateOfDeath || data.DateDied || null;
     this.dateOfBirth = data.dateOfBirth || data.DateOfBirth || null;
-    this.internmentDate = data.internmentDate || data.InternmentDate || null;
+    this.internmentDate = data.internmentDate || data.intermentDate || data.InternmentDate || data.IntermentDate || null;
     this.deathCertificateNo = data.deathCertificateNo || data.DeathCertificateNo || null;
     this.birthYear = data.birthYear || data.BirthYear || null;
     this.inscriptionText = data.inscriptionText || data.InscriptionText || null;
@@ -200,6 +210,10 @@ class EngraveApplicationDetail {
       nicheInscriptionRequestId: this.nicheInscriptionRequestId,
       name: this.name,
       dateOfDeath: this.dateOfDeath,
+      dateOfBirth: this.dateOfBirth,
+      internmentDate: this.internmentDate,
+      deathCertificateNo: this.deathCertificateNo,
+      birthYear: this.birthYear,
       inscriptionText: this.inscriptionText,
       sequence: this.sequence
     };

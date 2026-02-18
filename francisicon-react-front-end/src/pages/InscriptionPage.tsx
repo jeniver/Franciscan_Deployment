@@ -37,10 +37,12 @@ export function InscriptionPage() {
     // If we're on the new inscription route, reset the form
     if (isNewRoute) {
       handleResetForm();
+      loadedApplicationCodeRef.current = null;
     }
     
-    // Only load if we have an application code and haven't loaded it yet
+    // Reset stale state whenever switching to a different application code.
     if (applicationCode && loadedApplicationCodeRef.current !== applicationCode) {
+      handleResetForm();
       loadedApplicationCodeRef.current = applicationCode;
       
       // Set the application code in Redux
@@ -54,6 +56,10 @@ export function InscriptionPage() {
           // Reset ref on error so user can retry
           loadedApplicationCodeRef.current = null;
         });
+    } else if (!applicationCode && !isNewRoute) {
+      // No target code means clear the previous inscription view state.
+      handleResetForm();
+      loadedApplicationCodeRef.current = null;
     }
   }, [searchParams, id, location.pathname, updateNicheApplicationCode, handleFetchInscriptionItems, handleResetForm]);
 

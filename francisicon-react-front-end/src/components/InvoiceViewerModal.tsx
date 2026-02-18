@@ -84,11 +84,12 @@ export function InvoiceViewerModal({
   const mapToInvoiceTemplateData = (apiData: any): InvoiceTemplateData => {
     // Calculate address string from available address fields
     const addressParts = [
-      apiData.addressNo,
-      apiData.address,
-      apiData.address2,
-      apiData.addressCity,
-      apiData.country
+      apiData.addressNo || apiData.AddressNo,
+      apiData.address || apiData.Address || apiData.addressLine1,
+      apiData.address2 || apiData.Address2 || apiData.addressLine2,
+      apiData.addressCity || apiData.AddressCity || apiData.city,
+      apiData.districtCode || apiData.DistrictCode || apiData.state || apiData.addressState,
+      apiData.country || apiData.Country
     ].filter(part => part &&
       part !== 'undefined' &&
       part !== 'null' &&
@@ -108,10 +109,10 @@ export function InvoiceViewerModal({
     return {
       invoiceCode: apiData.code || apiData.invoiceCode || apiData.Code || 'N/A',
       invoiceDate: formatDate(apiData.transactionDate || apiData.TransactionDate || apiData.invoiceDate || apiData.InvoiceDate || new Date()),
-      customerName: apiData.customerName || apiData.CustomerName || 'N/A',
+      customerName: apiData.customerName || apiData.CustomerName || apiData.payeeName || 'N/A',
       customerAddress: apiData.customerAddress || customerAddress || 'N/A',
       paymentMode: apiData.paymentMode || apiData.PaymentMode || 'N/A',
-      totalAmount: apiData.totalAmount || apiData.TotalAmount || 0,
+      totalAmount: apiData.totalAmount || apiData.TotalAmount || apiData.payingAmount || 0,
       taxAmount: apiData.taxAmount || apiData.TaxAmount || 0,
       items: items,
     };
@@ -139,29 +140,30 @@ export function InvoiceViewerModal({
     const getAddress = () => {
       if (!apiData) return 'N/A';
 
-      const address = apiData.customerAddress ||
+      const existingAddress = apiData.customerAddress ||
         apiData.address ||
-        apiData.customer?.address ||
         apiData.receipt?.address ||
-        apiData.receipt?.payeeAddress ||
-        '';
+        apiData.receipt?.payeeAddress;
 
-      if (address && address !== 'N/A' && address !== 'null') return address;
-
-      // Calculate address string from available address fields
+      // If it's a multi-part address or we don't have a single string, construct it
       const addressParts = [
-        apiData.addressNo || apiData.receipt?.addressNo,
-        apiData.address || apiData.addressLine1 || apiData.receipt?.address || apiData.receipt?.addressLine1,
-        apiData.address2 || apiData.addressLine2 || apiData.receipt?.address2 || apiData.receipt?.addressLine2,
-        apiData.addressCity || apiData.receipt?.addressCity,
-        apiData.country || apiData.receipt?.country
+        apiData.addressNo || apiData.receipt?.addressNo || apiData.receipt?.AddressNo,
+        apiData.address || apiData.addressLine1 || apiData.receipt?.address || apiData.receipt?.Address || apiData.receipt?.AddressLine1,
+        apiData.address2 || apiData.addressLine2 || apiData.receipt?.address2 || apiData.receipt?.Address2 || apiData.receipt?.AddressLine2,
+        apiData.addressCity || apiData.receipt?.addressCity || apiData.receipt?.AddressCity,
+        apiData.districtCode || apiData.receipt?.districtCode || apiData.receipt?.DistrictCode || apiData.receipt?.AddressState,
+        apiData.country || apiData.receipt?.country || apiData.receipt?.Country
       ].filter(part => part &&
         part !== 'undefined' &&
         part !== 'null' &&
         typeof part === 'string' &&
         part.trim() !== '');
 
-      return addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+      if (addressParts.length > 1) {
+        return addressParts.join(', ');
+      }
+
+      return (existingAddress && existingAddress !== 'N/A' && existingAddress !== 'null') ? existingAddress : (addressParts[0] || 'N/A');
     };
 
     const customerAddress = getAddress();
@@ -172,16 +174,26 @@ export function InvoiceViewerModal({
       .filter((desc: string) => desc && desc.trim() !== '')
       .join(', ');
 
+    // Handle receipt totals with broad compatibility
+    const totalAmount = apiData.receipt?.totalAmount ||
+      apiData.receipt?.ReceiptTotalAmount ||
+      apiData.receipt?.payingAmount ||
+      apiData.receipt?.PayingAmount ||
+      apiData.totalAmount ||
+      apiData.TotalAmount ||
+      apiData.payingAmount ||
+      0;
+
     return {
-      receiptNo: apiData.receipt?.receiptCode || apiData.receipt?.ReceiptCode || apiData.code || apiData.receiptCode || 'N/A',
-      date: formatDate(apiData.receipt?.receiptDate || apiData.receipt?.ReceiptDate || apiData.transactionDate || apiData.transactionDate || apiData.receiptDate || new Date()),
+      receiptNo: apiData.receipt?.receiptCode || apiData.receipt?.ReceiptCode || apiData.receiptCode || apiData.code || apiData.Code || 'N/A',
+      date: formatDate(apiData.receipt?.receiptDate || apiData.receipt?.ReceiptDate || apiData.transactionDate || apiData.TransactionDate || apiData.receiptDate || new Date()),
       receivedFrom: apiData.receipt?.payeeName || apiData.receipt?.PayeeName || apiData.customerName || apiData.CustomerName || apiData.payeeName || 'N/A',
       address: customerAddress,
       invoiceNo: apiData.code || apiData.invoiceCode || apiData.Code || apiData.invoiceNo || 'N/A',
       description: description || 'Services Rendered',
-      totalAmount: apiData.totalAmount || apiData.TotalAmount || apiData.receipt?.totalAmount || apiData.payingAmount || 0,
-      dollarsInWords: amountToWords(apiData.totalAmount || apiData.TotalAmount || apiData.receipt?.totalAmount || apiData.payingAmount || 0),
-      paymentMethod: apiData.paymentMode || apiData.PaymentMode || apiData.receipt?.paymentMode || apiData.paymentMethod || 'Cash',
+      totalAmount: totalAmount,
+      dollarsInWords: amountToWords(totalAmount),
+      paymentMethod: apiData.receipt?.paymentMode || apiData.receipt?.PaymentMode || apiData.paymentMode || apiData.PaymentMode || 'Cash',
     };
   };
 

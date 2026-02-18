@@ -706,6 +706,7 @@ const inscriptionService = {
     toDate?: string;
     page?: number;
     pageSize?: number;
+    bypassCache?: boolean;
   }): Promise<InscriptionSearchResponse['data']> {
     try {
       const params = new URLSearchParams();
@@ -725,11 +726,21 @@ const inscriptionService = {
       if (filters.pageSize) {
         params.append('pageSize', filters.pageSize.toString());
       }
+      if (filters.bypassCache) {
+        params.append('_t', Date.now().toString());
+      }
 
       const queryString = params.toString();
       const url = `/api/inscriptions${queryString ? `?${queryString}` : ''}`;
 
-      const response = await api.get<InscriptionSearchResponse>(url);
+      const response = await api.get<InscriptionSearchResponse>(url, {
+        ...(filters.bypassCache ? {
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          }
+        } : {})
+      });
 
       if (!response.data.success) {
         throw new InscriptionError(

@@ -69,7 +69,7 @@ class ReceiptService extends BaseService {
       }
 
       logger.info(`Getting receipt by code: ${code}, churchId: ${churchId}, allowFallback: ${allowFallback}${applicationCode ? `, applicationCode: ${applicationCode}` : ''}`);
-      const receipt = await this.repository.getReceiptWithDetails(code, churchId, allowFallback, applicationCode);
+      const receipt = await this.repository.getReceiptWithInvoiceAndDetails(code, churchId, allowFallback, applicationCode);
       if (!receipt) {
         logger.warn(`Receipt not found: code=${code}, churchId=${churchId}`);
         return {
@@ -173,15 +173,15 @@ class ReceiptService extends BaseService {
         if (!Number.isNaN(n)) receipt.paymentMode = n;
       }
 
-      // Validate final receipt object
-      const errors = receipt.validate();
-      if (errors.length > 0) {
+      // Validate final receipt object (header + details)
+      const validation = receipt.validateWithDetails();
+      if (!validation.isValid) {
         return {
           success: false,
           error: {
             code: 'VALIDATION_ERROR',
-            message: 'Validation failed',
-            details: errors
+            message: 'Receipt validation failed',
+            details: validation.errors
           }
         };
       }
@@ -198,10 +198,10 @@ class ReceiptService extends BaseService {
           }
         };
       }
-      
+
       // Get the receipt ID for linking details
       const receiptId = await this.repository.getReceiptIdByCode(receiptCode);
-      
+
       // Save receipt details if provided
       if (receipt.details && receipt.details.length > 0) {
         await this.repository.saveReceiptDetails(receiptId, receipt.details);
@@ -261,6 +261,21 @@ class ReceiptService extends BaseService {
         };
       }
 
+      // Check if a receipt already exists for this invoice - DISABLED per user request for flexibility
+      /*
+      const existingReceipt = await this.repository.findByInvoiceId(invoice.InvoiceId, churchId);
+      if (existingReceipt && existingReceipt.status > 0) {
+        return {
+          success: false,
+          error: {
+            code: 'RECEIPT_ALREADY_EXISTS',
+            message: 'A receipt has already been created for this invoice.',
+            receiptCode: existingReceipt.Code || existingReceipt.code
+          }
+        };
+      }
+      */
+
       // Create receipt from invoice data
       const receipt = new Receipt({
         invoiceId: invoice.InvoiceId,
@@ -304,7 +319,9 @@ class ReceiptService extends BaseService {
           invoiceId: invoice.InvoiceId,
           refDocName: detail.refDocName || null,
           refDocNumber: detail.refDocNumber || null,
-          refType: detail.refType || null
+          refType: detail.refType || null,
+          itemName: detail.itemName || detail.description || null,
+          description: detail.description || detail.itemName || null
         }));
 
         await this.repository.saveReceiptDetails(receiptId, receiptDetails);
@@ -319,7 +336,9 @@ class ReceiptService extends BaseService {
           invoiceId: invoice.InvoiceId,
           refDocName: detail.refDocName || null,
           refDocNumber: detail.refDocNumber || null,
-          refType: detail.refType || null
+          refType: detail.refType || null,
+          itemName: detail.itemName || detail.description || null,
+          description: detail.description || detail.itemName || null
         }));
 
         await this.repository.saveReceiptDetails(receiptId, receiptDetails);
@@ -439,6 +458,47 @@ class ReceiptService extends BaseService {
       }
 
       let items = Array.isArray(report.data) ? [...report.data] : [];
+
+      // Map PaymentMode to labels, build full CustomerAddress, and ensure Receipt No
+      items = items.map(item => {
+        // Map Payment Mode to Label (1=Cash, 2=Cheque, 3=TT, 4=Others)
+        const rawMode = item.PaymentMode || item.paymentMode;
+        const modeLabel = Receipt.paymentModeToString(rawMode);
+
+        // Build Full Customer Address from components if available
+        const addrNo = item.AddressNo || item.addressNo || '';
+        const addr1 = item.Address || item.address || '';
+        const addr2 = item.Address2 || item.address2 || '';
+        const city = item.AddressCity || item.addressCity || '';
+        const dist = item.DistrictCode || item.districtCode || '';
+        const country = item.Country || item.country || '';
+
+        const addressParts = [addrNo, addr1, addr2, city, dist, country]
+          .map(p => String(p || '').trim())
+          .filter(p => p && p !== 'null' && p !== 'undefined');
+
+        const fullAddress = addressParts.length > 0
+          ? addressParts.join(', ')
+          : (item.CustomerAddress || item.customerAddress || item.address || 'N/A');
+
+        // Robust Receipt No handling
+        const receiptNo = item.Code || item.code || item.ReceiptCode || item.receiptCode || item.ReceiptNo || item.receiptNo || 'N/A';
+
+        return {
+          ...item,
+          Code: receiptNo,
+          code: receiptNo,
+          ReceiptCode: receiptNo,
+          receiptCode: receiptNo,
+          ReceiptNo: receiptNo,
+          receiptNo: receiptNo,
+          PaymentMode: modeLabel,
+          paymentMode: modeLabel,
+          CustomerAddress: fullAddress,
+          customerAddress: fullAddress,
+          address: fullAddress
+        };
+      });
 
       // Deduplicate items based on unique identifier (Code or ReceiptId)
       // The stored procedure might return duplicates due to JOINs
@@ -658,6 +718,34 @@ class ReceiptService extends BaseService {
     }
   }
 
+  /**
+   * Get invoice by ID
+   * @param {number} invoiceId - Invoice ID
+   * @returns {Promise<Object>} Invoice with details
+   */
+  async getInvoiceById(invoiceId) {
+    try {
+      const invoice = await this.repository.getInvoiceById(invoiceId);
+      if (!invoice) {
+        return {
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Invoice not found'
+          }
+        };
+      }
+
+      return {
+        success: true,
+        data: invoice
+      };
+    } catch (error) {
+      logger.error('Error getting invoice by ID:', error);
+      throw error;
+    }
+  }
+
   buildReportCacheKey(fromDate, toDate) {
     const fromKey = fromDate ? new Date(fromDate).toISOString().split('T')[0] : 'null';
     const toKey = toDate ? new Date(toDate).toISOString().split('T')[0] : 'null';
@@ -681,7 +769,7 @@ class ReceiptService extends BaseService {
 
       // Get receipt with invoice and details (using JOIN query)
       // Pass applicationCode to filter by RefDocName if provided
-      const receipt = await this.repository.getReceiptWithDetails(code, churchId, allowFallback, applicationCode);
+      const receipt = await this.repository.getReceiptWithInvoiceAndDetails(code, churchId, allowFallback, applicationCode);
       if (!receipt) {
         logger.warn(`Receipt not found: code=${code}, churchId=${churchId}`);
         return {

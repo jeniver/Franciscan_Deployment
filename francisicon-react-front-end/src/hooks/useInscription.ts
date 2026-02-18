@@ -1,6 +1,5 @@
 import { useSelector, useDispatch } from 'react-redux';
 import { useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { RootState, AppDispatch } from '../store';
 import {
   setInscriptionRequestNo,
@@ -36,7 +35,6 @@ import { useToast } from '../contexts/ToastContext';
 
 export function useInscription() {
   const dispatch: AppDispatch = useDispatch();
-  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
 
   // Select state from Redux
@@ -78,6 +76,7 @@ export function useInscription() {
   const creatingInscription = useSelector((state: RootState) => state.inscription.creatingInscription);
   const updatingInscription = useSelector((state: RootState) => state.inscription.updatingInscription);
   const inscriptionError = useSelector((state: RootState) => state.inscription.inscriptionError);
+  const normalizeNicheCode = useCallback((code: string) => (code || '').trim().replace(/^I-/i, ''), []);
 
   // Form field setters
   const updateInscriptionRequestNo = useCallback((value: string) => {
@@ -217,10 +216,10 @@ export function useInscription() {
         name: d.nameOfDeceased || '',
         dateOfDeath: d.dateDied || '',
         dateOfBirth: d.dateBorn || '',
-        internmentDate: d.internmentDate ? `${d.internmentDate} ${d.internmentTime || '12:00'}` : '',
+        internmentDate: d.internmentDate || '',
         deathCertificateNo: d.deathCertNo || '',
         birthYear: d.dateBorn ? d.dateBorn.split('-')[0] : '',
-        inscriptionText: ''
+        inscriptionText: d.inscriptionText || phraseOfChoice || ''
       }));
 
       const data = {
@@ -246,7 +245,7 @@ export function useInscription() {
           additionalInscriptionPhrase: phraseOfChoice,
           remarks: '',
           crossType: crossType,
-          nicheApplicationCode: nicheApplicationCode,
+          nicheApplicationCode: normalizeNicheCode(nicheApplicationCode),
           nicheBookingId: null // Can be null when no booking exists
         }
       };
@@ -255,15 +254,10 @@ export function useInscription() {
       showSuccess('Success', `Inscription created successfully: ${result.code}`);
 
       // Refresh inscription items to get the new inscription data
-      if (nicheApplicationCode) {
-        await dispatch(fetchInscriptionItems(nicheApplicationCode));
-      }
-
-      // ✅ FIX: Navigate to invoice-receipt page after successful inscription creation
-      if (nicheApplicationCode) {
-        navigate('/inscriptions', {
-          state: { applicationNumber: nicheApplicationCode }
-        });
+      if (result?.code) {
+        await dispatch(fetchInscriptionItems(result.code));
+      } else if (nicheApplicationCode) {
+        await dispatch(fetchInscriptionItems(normalizeNicheCode(nicheApplicationCode)));
       }
 
       return result;
@@ -272,7 +266,7 @@ export function useInscription() {
       showError('Error', errorMessage);
       throw error;
     }
-  }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, crossType, nicheApplicationCode]);
+  }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, crossType, nicheApplicationCode, normalizeNicheCode]);
 
   // Update inscription
   const handleUpdateInscription = useCallback(async (code: string) => {
@@ -282,10 +276,10 @@ export function useInscription() {
         name: d.nameOfDeceased || '',
         dateOfDeath: d.dateDied || '',
         dateOfBirth: d.dateBorn || '',
-        internmentDate: d.internmentDate ? `${d.internmentDate} ${d.internmentTime || '12:00'}` : '',
+        internmentDate: d.internmentDate || '',
         deathCertificateNo: d.deathCertNo || '',
         birthYear: d.dateBorn ? d.dateBorn.split('-')[0] : '',
-        inscriptionText: ''
+        inscriptionText: d.inscriptionText || phraseOfChoice || ''
       }));
 
       const data = {
@@ -319,8 +313,10 @@ export function useInscription() {
       showSuccess('Success', `Inscription updated successfully: ${result.code}`);
 
       // Refresh inscription items to get the updated inscription data
-      if (nicheApplicationCode) {
-        await dispatch(fetchInscriptionItems(nicheApplicationCode));
+      if (result?.code) {
+        await dispatch(fetchInscriptionItems(result.code));
+      } else if (nicheApplicationCode) {
+        await dispatch(fetchInscriptionItems(normalizeNicheCode(nicheApplicationCode)));
       }
 
       return result;
@@ -329,7 +325,7 @@ export function useInscription() {
       showError('Error', errorMessage);
       throw error;
     }
-  }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, crossType, nicheApplicationCode]);
+  }, [dispatch, showSuccess, showError, deceasedDetails, applicantName, nricPassportNo, block, street, unitNo, postalCode, mobile, homeTel, emailId, selectedBibleChoiceId, phraseOfChoice, crossType, nicheApplicationCode, normalizeNicheCode]);
 
   // Auto-fetch bible choices on mount
   useEffect(() => {

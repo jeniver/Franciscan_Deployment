@@ -47,7 +47,7 @@ export function InscriptionManagementPage() {
   const [quickViewCode, setQuickViewCode] = useState('');
 
   // Fetch inscriptions
-  const fetchInscriptions = useCallback(async () => {
+  const fetchInscriptions = useCallback(async (options?: { bypassCache?: boolean }) => {
     setLoading(true);
 
     try {
@@ -56,7 +56,8 @@ export function InscriptionManagementPage() {
         fromDate: startDate,
         toDate: endDate,
         page: currentPage,
-        pageSize: recordsPerPage
+        pageSize: recordsPerPage,
+        bypassCache: options?.bypassCache || false,
       });
 
       const mappedInscriptions = result.records.map((record: any) => ({
@@ -139,8 +140,8 @@ export function InscriptionManagementPage() {
         const result = await inscriptionService.deleteInscription(inscription.inscriptionCode);
         if (result.success) {
           showSuccess('Success', result.message);
-          // Refresh the list
-          fetchInscriptions();
+          // Refresh the list with cache bypass to ensure deleted record is gone
+          fetchInscriptions({ bypassCache: true });
         }
       } catch (error: any) {
         showError('Error', error.message || 'Failed to delete inscription');

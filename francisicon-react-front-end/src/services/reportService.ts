@@ -195,7 +195,7 @@ export const reportService = {
     }
   },
 
-  // Monthly Reports - Get PDF Blob (for backward compatibility)
+  // Monthly Reports - Get PDF Blob
   getMonthlyReceiptsReport: async (params: MonthlyReportParams): Promise<Blob> => {
     try {
       if (!params.fromDate || !params.toDate) {
@@ -227,6 +227,49 @@ export const reportService = {
         } else {
           throw new ReportError(
             error.response.data?.message || 'Failed to generate monthly receipts report',
+            'server',
+            status
+          );
+        }
+      } else if (error.request) {
+        throw new ReportError('Network error: Unable to connect to server', 'network');
+      } else {
+        throw new ReportError(error.message || 'An unexpected error occurred', 'server');
+      }
+    }
+  },
+
+  // Receipt Register - JSON Data
+  getReceiptRegisterData: async (params: MonthlyReportParams): Promise<any> => {
+    try {
+      if (!params.fromDate || !params.toDate) {
+        throw new ReportError('From date and to date are required', 'validation');
+      }
+
+      const response = await api.get('/api/reports/monthly/receipt-register', {
+        params: {
+          fromDate: params.fromDate,
+          toDate: params.toDate,
+        },
+      });
+
+      return response.data;
+    } catch (error: any) {
+      if (error.response) {
+        const status = error.response.status;
+        if (status === 401 || status === 403) {
+          throw new ReportError('Unauthorized access', 'auth', status);
+        } else if (status === 400) {
+          throw new ReportError(
+            error.response.data?.message || 'Invalid date range',
+            'validation',
+            status
+          );
+        } else if (status >= 500) {
+          throw new ReportError('Server error occurred', 'server', status);
+        } else {
+          throw new ReportError(
+            error.response.data?.message || 'Failed to fetch receipt register report',
             'server',
             status
           );
@@ -368,7 +411,6 @@ export const reportService = {
     }
   },
 
-  // Monthly Wake Rooms - JSON analytics data
   getMonthlyWakeRoomsReportData: async (params: MonthlyReportParams): Promise<any> => {
     try {
       if (!params.fromDate || !params.toDate) {
@@ -866,8 +908,7 @@ export const reportService = {
         throw new ReportError('Chapel code is required', 'validation');
       }
 
-      const response = await api.get('/api/reports/chapel/vacancy', {
-        params: { chapel },
+      const response = await api.get(`/api/reports/chapel/vacancy/${chapel}`, {
         responseType: 'blob',
       });
 
@@ -877,12 +918,8 @@ export const reportService = {
         const status = error.response.status;
         if (status === 401 || status === 403) {
           throw new ReportError('Unauthorized access', 'auth', status);
-        } else if (status === 400) {
-          throw new ReportError(
-            error.response.data?.message || 'Invalid chapel code',
-            'validation',
-            status
-          );
+        } else if (status === 404) {
+          throw new ReportError('Chapel not found', 'validation', status);
         } else if (status >= 500) {
           throw new ReportError('Server error occurred', 'server', status);
         } else {
@@ -900,10 +937,10 @@ export const reportService = {
     }
   },
 
-  // Other Reports
+  // Others
   getBeneficiariesListReport: async (): Promise<Blob> => {
     try {
-      const response = await api.get('/api/reports/beneficiaries/list', {
+      const response = await api.get('/api/reports/beneficiaries', {
         responseType: 'blob',
       });
 
@@ -936,7 +973,7 @@ export const reportService = {
         throw new ReportError('From date and to date are required', 'validation');
       }
 
-      const response = await api.get('/api/reports/gst/report', {
+      const response = await api.get('/api/reports/gst', {
         params: {
           fromDate: params.fromDate,
           toDate: params.toDate,
@@ -978,7 +1015,7 @@ export const reportService = {
         throw new ReportError('From date and to date are required', 'validation');
       }
 
-      const response = await api.get('/api/reports/gst/report', {
+      const response = await api.get('/api/reports/gst', {
         params: {
           fromDate: params.fromDate,
           toDate: params.toDate,
@@ -1015,16 +1052,14 @@ export const reportService = {
     }
   },
 
-  // Helper function to create PDF URL for viewing (returns blob URL)
+  // Helper methodologies for PDF viewing
   createPdfUrl: (blob: Blob): string => {
     return URL.createObjectURL(blob);
   },
 
-  // Helper function to revoke PDF URL (cleanup)
   revokePdfUrl: (url: string): void => {
     URL.revokeObjectURL(url);
   },
 };
 
 export default reportService;
-

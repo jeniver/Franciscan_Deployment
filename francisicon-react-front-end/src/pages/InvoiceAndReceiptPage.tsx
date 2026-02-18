@@ -22,7 +22,8 @@ import {
   resetCreateStatus,
   createInvoice
 } from '../store/invoiceSlice';
-import { createIndividualInvoice, createIndividualReceipt } from '../store/invoiceSlice';
+import { createIndividualInvoice } from '../store/invoiceSlice';
+import { createIndividualReceipt } from '../store/receiptSlice';
 
 interface InvoiceItem {
   id: string;
@@ -77,12 +78,13 @@ export function InvoiceAndReceiptPage() {
     loading: invoiceLoading,
     error: invoiceError,
     creatingInvoice,
-    creatingReceipt,
     createInvoiceSuccess,
     createReceiptSuccess,
     lastCreatedInvoiceCode,
     lastCreatedReceiptCode,
   } = useSelector((state: RootState) => state.invoice);
+
+  const { isCreating: creatingReceipt } = useSelector((state: RootState) => state.receipt);
 
   const { user } = useSelector((state: RootState) => state.auth);
   const churchId = user?.churchId || 1;
@@ -258,23 +260,39 @@ export function InvoiceAndReceiptPage() {
       'Cash';
 
     // Convert backend payment modes to frontend values
+    // Backend can return: string names ("Cash", "Cheque", "TT"), or numeric values (1, 2, 3, 4) as number or string
     let frontendPaymentMode = 'Cash'; // default
     if (paymentModeValue) {
-      const normalizedMode = paymentModeValue.trim().toLowerCase();
-      if (normalizedMode === 'cash') {
-        frontendPaymentMode = 'Cash';
-      } else if (normalizedMode === 'cheque') {
-        frontendPaymentMode = 'Cheque';
-      } else if (normalizedMode === 'tt' || normalizedMode === 'bank transfer') {
-        frontendPaymentMode = 'Bank Transfer';
-      } else if (normalizedMode === 'credit card') {
-        frontendPaymentMode = 'Credit Card';
-      } else if (normalizedMode === 'others' || normalizedMode === 'other') {
-        frontendPaymentMode = 'Other';
+      // First, check if it's a numeric value (number type or numeric string like "3")
+      const numericMode = typeof paymentModeValue === 'number' ? paymentModeValue : parseInt(String(paymentModeValue), 10);
+      if (!isNaN(numericMode) && String(numericMode) === String(paymentModeValue).trim()) {
+        // Numeric payment mode mapping: 1=Cash, 2=Cheque, 3=Bank Transfer, 4=Credit Card, 5=Other
+        const numericModeMap: Record<number, string> = {
+          1: 'Cash',
+          2: 'Cheque',
+          3: 'Bank Transfer',
+          4: 'Credit Card',
+          5: 'Other',
+        };
+        frontendPaymentMode = numericModeMap[numericMode] || 'Cash';
       } else {
-        // Use the original value if it matches our options
-        if (PAYMENT_MODES.includes(paymentModeValue)) {
-          frontendPaymentMode = paymentModeValue;
+        // String-based payment mode normalization
+        const normalizedMode = String(paymentModeValue).trim().toLowerCase();
+        if (normalizedMode === 'cash') {
+          frontendPaymentMode = 'Cash';
+        } else if (normalizedMode === 'cheque') {
+          frontendPaymentMode = 'Cheque';
+        } else if (normalizedMode === 'tt' || normalizedMode === 'bank transfer') {
+          frontendPaymentMode = 'Bank Transfer';
+        } else if (normalizedMode === 'credit card') {
+          frontendPaymentMode = 'Credit Card';
+        } else if (normalizedMode === 'others' || normalizedMode === 'other') {
+          frontendPaymentMode = 'Other';
+        } else {
+          // Use the original value if it matches our options
+          if (PAYMENT_MODES.includes(String(paymentModeValue))) {
+            frontendPaymentMode = String(paymentModeValue);
+          }
         }
       }
     }
@@ -324,6 +342,9 @@ export function InvoiceAndReceiptPage() {
       }
       if (currentData.addressCity) {
         setAddressPostalCode(currentData.addressCity);
+      }
+      if (currentData.districtCode) {
+        // District code is usually mapped to the state/area field if needed
       }
       if (currentData.country) {
         setAddressCountry(currentData.country);
@@ -430,36 +451,41 @@ export function InvoiceAndReceiptPage() {
       showSuccess('Success', `Invoice created: ${lastCreatedInvoiceCode}`);
       dispatch(resetCreateStatus());
 
-      // Refresh the main API data
-      dispatch(fetchInvoiceOrApplication(lastCreatedInvoiceCode));
+      // Re-fetch using the ORIGINAL application number so receipt can be created
+      // This is critical - we must keep the application number to allow receipt creation
+      const codeToRefetch = applicationNumber || lastCreatedInvoiceCode;
+      dispatch(fetchInvoiceOrApplication(codeToRefetch));
 
-      // Reset the form as requested by user
+      // Set the invoice number to the created invoice code
+      setInvoiceNumber(lastCreatedInvoiceCode);
+
+      // DO NOT clear applicationNumber - it's needed for receipt creation
+      // Only clear the form fields
       clearFormFields();
-      setApplicationNumber('');
-      setInvoiceNumber('');
-      setReceiptCode('');
     }
-  }, [createInvoiceSuccess, lastCreatedInvoiceCode, dispatch, showSuccess, clearFormFields]);
+  }, [createInvoiceSuccess, lastCreatedInvoiceCode, dispatch, showSuccess, clearFormFields, applicationNumber]);
 
   useEffect(() => {
     if (createReceiptSuccess && lastCreatedReceiptCode) {
       showSuccess('Success', `Receipt created: ${lastCreatedReceiptCode}`);
       dispatch(resetCreateStatus());
 
-      // Refresh data
-      if (applicationNumber) {
-        dispatch(fetchInvoiceOrApplication(applicationNumber));
-      } else if (lastCreatedInvoiceCode) {
-        dispatch(fetchInvoiceOrApplication(lastCreatedInvoiceCode));
-      }
+      // Refresh data using the application number if available
+      const codeToRefetch = applicationNumber || lastCreatedInvoiceCode || lastCreatedReceiptCode;
+      dispatch(fetchInvoiceOrApplication(codeToRefetch));
 
-      // Reset the form
+      // Clear form fields
       clearFormFields();
-      setApplicationNumber('');
-      setInvoiceNumber('');
-      setReceiptCode('');
+
+      // Only clear application number if both invoice and receipt now exist
+      // This allows for potential additional operations
+      if (currentData?.hasInvoice && currentData?.hasReceipt) {
+        setApplicationNumber('');
+        setInvoiceNumber('');
+        setReceiptCode('');
+      }
     }
-  }, [createReceiptSuccess, lastCreatedReceiptCode, lastCreatedInvoiceCode, dispatch, showSuccess, applicationNumber, clearFormFields]);
+  }, [createReceiptSuccess, lastCreatedReceiptCode, lastCreatedInvoiceCode, dispatch, showSuccess, applicationNumber, clearFormFields, currentData]);
 
   useEffect(() => {
     if (invoiceError) {
@@ -528,12 +554,12 @@ export function InvoiceAndReceiptPage() {
           unitAmount: item.amountPaying,
           payingAmount: item.amountPaying,
           totalPayingAmount: item.totalAmount,
-          refDocNumber: item.reference || '',
-          refDocName: 'NAPP',
+          refDocNumber: item.reference || applicationNumber || '',
+          refDocName: applicationNumber ? 'NAPP' : 'OTHERS',
           lineTotalAmount: item.totalNoTax,
           lineTaxPercent: item.taxPercent,
           lineTaxAmount: item.taxAmount,
-          refType: 'NAPP',
+          refType: applicationNumber ? 'NAPP' : 'OTHERS',
           outstandingAmount: 0,
         };
       });
@@ -558,6 +584,8 @@ export function InvoiceAndReceiptPage() {
 
       await dispatch(createIndividualInvoice(createData)).unwrap();
       showSuccess('Success', 'Invoice created successfully');
+      // Refresh view with newly created invoice
+      if (applicationNumber) handleViewInvoice();
 
 
     } catch (error: any) {
@@ -586,12 +614,12 @@ export function InvoiceAndReceiptPage() {
           unitAmount: item.amountPaying,
           payingAmount: item.amountPaying,
           totalPayingAmount: item.totalAmount,
-          refDocNumber: item.reference || '',
-          refDocName: 'NAPP',
+          refDocNumber: item.reference || applicationNumber || '',
+          refDocName: applicationNumber ? 'NAPP' : 'OTHERS',
           lineTotalAmount: item.totalNoTax,
           lineTaxPercent: item.taxPercent,
           lineTaxAmount: item.taxAmount,
-          refType: 'NAPP',
+          refType: applicationNumber ? 'NAPP' : 'OTHERS',
           outstandingAmount: 0,
         };
       });
@@ -615,6 +643,8 @@ export function InvoiceAndReceiptPage() {
 
       await dispatch(createIndividualReceipt(createData)).unwrap();
       showSuccess('Success', 'Receipt created successfully');
+      // Refresh view with newly created receipt
+      if (applicationNumber) handleViewInvoice();
 
 
     } catch (error: any) {
@@ -1110,6 +1140,7 @@ export function InvoiceAndReceiptPage() {
           address: addressStreet || currentData?.address || undefined,
           address2: addressUnit || currentData?.address2 || undefined,
           addressCity: addressPostalCode || currentData?.addressCity || undefined,
+          districtCode: addressPostalCode || currentData?.districtCode || undefined,
           country: addressCountry || currentData?.country || 'Singapore',
         };
       }
@@ -1142,7 +1173,7 @@ export function InvoiceAndReceiptPage() {
               <div className="bg-white rounded-lg p-4 shadow-md space-y-4">
                 {/* Application Number */}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <label className="w-full sm:w-[140px] font-semibold text-gray-700 text-sm">Niche Number:</label>
+                  <label className="w-full sm:w-[140px] font-semibold text-gray-700 text-sm">code:</label>
                   <div className="flex-1 flex items-center gap-2">
                     <input
                       type="text"
@@ -1311,7 +1342,7 @@ export function InvoiceAndReceiptPage() {
                       disabled={
                         (!invoiceNumber.trim() && !currentData?.code) ||
                         viewingInvoiceCode !== null ||
-                        currentData?.hasInvoice === false
+                        (currentData && currentData.hasInvoice === false && !isNewRoute)
                       }
                       className="px-6 py-2.5 bg-gradient-to-r from-[#a52a2a] to-[#c93535] text-white rounded-lg font-semibold hover:from-[#c93535] hover:to-[#a52a2a] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       title="Print Invoice PDF"
@@ -1333,7 +1364,7 @@ export function InvoiceAndReceiptPage() {
                       disabled={
                         (!receiptCode.trim() && !currentData?.receipt?.receiptCode) ||
                         viewingReceiptCode !== null ||
-                        currentData?.hasReceipt === false
+                        (currentData && currentData.hasReceipt === false && !isNewRoute)
                       }
                       className="px-6 py-2.5 bg-gradient-to-r from-[#a52a2a] to-[#c93535] text-white rounded-lg font-semibold hover:from-[#c93535] hover:to-[#a52a2a] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       title="Print Receipt PDF"
@@ -1362,9 +1393,8 @@ export function InvoiceAndReceiptPage() {
                         onClick={handleCreateInvoice}
                         disabled={
                           creatingInvoice ||
-                          (!isNewRoute && !applicationNumber.trim()) ||
                           (currentData?.hasInvoice === true) ||
-                          (currentData?.canCreateInvoice === false && !isNewRoute)
+                          (currentData?.canCreateInvoice === false && !isNewRoute && !!applicationNumber)
                         }
                         className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
@@ -1381,10 +1411,12 @@ export function InvoiceAndReceiptPage() {
                         )}
                       </button>
 
-                      {/* Individual Receipt Creation Button */}
                       <button
                         onClick={handleCreateReceipt}
-
+                        disabled={
+                          creatingReceipt ||
+                          (currentData?.hasReceipt === true && !isNewRoute)
+                        }
                         className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {creatingReceipt ? (
@@ -1532,17 +1564,30 @@ export function InvoiceAndReceiptPage() {
                           <input
                             type="number"
                             step="0.01"
-                            value={item.amountPaying}
-                            onChange={(e) => updateItemCalculation(item.id, 'amountPaying', parseFloat(e.target.value) || 0)}
+                            value={item.amountPaying === 0 ? '' : item.amountPaying}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '') {
+                                updateItemCalculation(item.id, 'amountPaying', 0);
+                              } else {
+                                updateItemCalculation(item.id, 'amountPaying', parseFloat(val) || 0);
+                              }
+                            }}
                             className="w-full px-2 py-1.5 border-2 border-gray-300 rounded-md bg-[#f9f2e7] focus:border-[#4b3621] focus:outline-none focus:ring-2 focus:ring-[#4b3621]/20 transition-all text-sm text-right"
+                            placeholder="0.00"
                           />
                         </td>
                         <td className="border border-[#bbaaaa] px-2 py-2">
                           <input
-                            type="number"
-                            min="1"
+                            type="text"
+                            inputMode="numeric"
                             value={item.quantity}
-                            onChange={(e) => updateItemCalculation(item.id, 'quantity', parseInt(e.target.value) || 1)}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '' || /^\d+$/.test(val)) {
+                                updateItemCalculation(item.id, 'quantity', parseInt(val) || 0);
+                              }
+                            }}
                             className="w-full px-2 py-1.5 border-2 border-gray-300 rounded-md bg-[#f9f2e7] focus:border-[#4b3621] focus:outline-none focus:ring-2 focus:ring-[#4b3621]/20 transition-all text-sm text-center"
                           />
                         </td>
@@ -1591,12 +1636,7 @@ export function InvoiceAndReceiptPage() {
             <div className="p-4 bg-gray-50 border-t border-gray-200">
               <button
                 onClick={handleAddItem}
-                disabled={
-                  // ✅ FIX: Disable Add Item button for existing invoices
-                  // New invoice (isApplicationData: true, isInvoice: false, canCreateInvoice: true) → enabled
-                  // Existing invoice (isApplicationData: false, isInvoice: true, canCreateInvoice: false) → disabled
-                  currentData?.isInvoice === true && currentData?.isApplicationData === false && currentData?.canCreateInvoice === false
-                }
+                disabled={false}
                 className="w-full px-6 py-3 bg-gradient-to-r from-[#4b3621] to-[#5a4730] text-white rounded-lg font-semibold hover:from-[#5a4730] hover:to-[#4b3621] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-[#4b3621] disabled:hover:to-[#5a4730]"
               >
                 + Add Item

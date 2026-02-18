@@ -516,7 +516,7 @@ class WakeRoomRepository extends BaseRepository {
         FROM WakeRoomBooking wrb WITH (NOLOCK)
         LEFT JOIN WakeRoom wr WITH (NOLOCK) ON wrb.WakeRoomId = wr.WakeRoomId
         WHERE ${baseWhere}
-        ORDER BY wrb.UsingTimeFrom DESC
+        ORDER BY wrb.WakeRoomBookingId DESC
         OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
       `;
 
@@ -731,6 +731,34 @@ class WakeRoomRepository extends BaseRepository {
       return booking.wakeRoomBookingId;
     } catch (error) {
       logger.error('Error updating wake room booking:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get last booking code matching a prefix
+   * @param {string} prefix - Prefix to search for
+   * @param {number} churchId - Church ID
+   * @returns {Promise<string|null>} Last code or null
+   */
+  async getLastBookingCodeByPrefix(prefix, churchId) {
+    try {
+      const query = `
+        SELECT TOP 1 Code
+        FROM WakeRoomBooking WITH (NOLOCK)
+        WHERE ChurchId = @churchId
+        AND Code LIKE @prefixPattern
+        ORDER BY LEN(Code) DESC, Code DESC
+      `;
+
+      const result = await executeQuery(query, {
+        churchId,
+        prefixPattern: prefix + '%'
+      });
+
+      return result.recordset.length > 0 ? result.recordset[0].Code : null;
+    } catch (error) {
+      logger.error('Error getting last booking code by prefix:', error.message);
       throw error;
     }
   }

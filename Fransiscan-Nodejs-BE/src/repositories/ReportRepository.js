@@ -415,6 +415,57 @@ class ReportRepository {
       throw error;
     }
   }
+  /**
+   * Get Receipt Register Data
+   * @param {Date} fromDate - Start date
+   * @param {Date} toDate - End date
+   * @returns {Promise<Array>} Receipt register data
+   */
+  async getReceiptRegister(fromDate, toDate) {
+    try {
+      const query = `
+        SELECT 
+          r.TransactionDate as ReceiptDate,
+          r.Code as ReceiptNo,
+          i.Code as InvoiceNo,
+          r.CustomerName as Applicant,
+          r.PaymentMode,
+          r.PayingAmount as TotalReceiptAmount,
+          id.TotalAmount as ItemAmount,
+          id.TaxAmount as ItemGST,
+          id.DiscountAmount,
+          id.MaintenanceAmount,
+          item.Name as ItemName,
+          item.Code as ItemCode,
+          item.DocType as ItemDocType,
+          id.RefDocNumber,
+          ch.Description as ChapelName,
+          n.Code as NicheCode
+        FROM Receipt r WITH(NOLOCK)
+        LEFT JOIN Invoice i WITH(NOLOCK) ON r.InvoiceId = i.InvoiceId
+        LEFT JOIN MisalaniousReceiptDetail id WITH(NOLOCK) ON r.ReceiptId = id.ReceiptId
+        LEFT JOIN Item item WITH(NOLOCK) ON id.ItemId = item.ItemId
+        -- Attempt to find niche info if linked to an application
+        LEFT JOIN NicheApplication na WITH(NOLOCK) ON na.Code = id.RefDocNumber
+        LEFT JOIN Niche n WITH(NOLOCK) ON n.NicheId = na.NicheId
+        LEFT JOIN NicheRow nr WITH(NOLOCK) ON nr.NicheRowlId = n.NicheRowlId
+        LEFT JOIN NicheWall nw WITH(NOLOCK) ON nw.NicheWallId = nr.NicheWallId
+        LEFT JOIN Chapel ch WITH(NOLOCK) ON ch.ChapelId = nw.ChapelId AND ch.ChurchId = nw.ChurchId
+        WHERE r.TransactionDate >= @fromDate AND r.TransactionDate <= @toDate
+        ORDER BY r.TransactionDate, r.Code, id.MisalaniousReceiptDetailId
+      `;
+
+      const result = await executeQuery(query, {
+        fromDate: fromDate || new Date('1900-01-01'),
+        toDate: toDate || new Date()
+      });
+
+      return result.recordset || [];
+    } catch (error) {
+      logger.error('Error getting receipt register:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new ReportRepository();

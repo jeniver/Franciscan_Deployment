@@ -15,6 +15,9 @@ import {
 import { FormSelect } from '../components/FormSelect'
 import { EnhancedBeneficiaryDatePicker } from '../components/EnhancedBeneficiaryDatePicker'
 import { UpdateApplicationButton } from '../components/UpdateApplicationButton'
+import { usePersonLookup } from '../hooks/usePersonLookup'
+import { PersonData } from '../services/personService'
+import { Loader2, SearchIcon, CheckCircle2, X } from 'lucide-react'
 interface BeneficiaryDetailsProps {
   formData: any
   setFormData: (data: any) => void
@@ -114,6 +117,10 @@ export function BeneficiaryDetails({
     [key: string]: any
   }>({})
   const currentBeneficiariesRef = useRef<Beneficiary[]>([])
+
+  const { searchPerson, searchResults, isSearching, clearResults } = usePersonLookup()
+  const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null)
+  const [showSearchResults, setShowSearchResults] = useState(false)
 
 
 
@@ -238,7 +245,7 @@ export function BeneficiaryDetails({
           const parts = dateOfBirth.split('-')
           if (parts.length === 3) birthYear = parts[2]
         }
-        
+
         console.log(`Setting beneficiary${i}BirthYear to:`, typeof birthYear === 'number' ? birthYear.toString() : birthYear);
 
         allBeneficiaryData[`beneficiary${i}Name`] = beneficiary.name || ''
@@ -399,7 +406,7 @@ export function BeneficiaryDetails({
   const handleEnhancedDateChange = useCallback(
     (dateOfBirth: string | null, birthYear: number | null, beneficiaryId?: number | string) => {
       console.log('handleEnhancedDateChange called with:', { dateOfBirth, birthYear, beneficiaryId });
-      
+
       // Early return checks
       if (isUpdatingFromComponent.current || beneficiaryId === undefined) {
         console.log('Early return in handleEnhancedDateChange');
@@ -416,7 +423,7 @@ export function BeneficiaryDetails({
           console.warn(`Beneficiary with id ${id} not found`);
           return prevBeneficiaries; // Return unchanged if beneficiary doesn't exist
         }
-        
+
         console.log('Found beneficiary, updating...');
 
         const updatedBeneficiaries = prevBeneficiaries.map(beneficiary => {
@@ -488,6 +495,35 @@ export function BeneficiaryDetails({
       return null;
     }
   };
+
+  const handleSelectPerson = useCallback((person: PersonData, index: number) => {
+    const updatedBeneficiary: Partial<Beneficiary> = {
+      name: person.name,
+      fullName: person.name,
+      idNo: person.idNo || '',
+      nric: person.idNo || '',
+      isCatholic: person.isCatholic ?? false,
+      religion: person.isCatholic ? 'Catholic' : 'Non Catholic',
+      isMale: true, // Default, not available in PersonData
+      sex: 'Male',
+      gender: 'Male',
+      // map other fields if they exist in PersonData and Beneficiary type
+    };
+
+    const beneficiaryToUpdate = beneficiaries[index];
+    if (beneficiaryToUpdate) {
+      const updatedBeneficiaries = beneficiaries.map((b, i) =>
+        i === index ? { ...b, ...updatedBeneficiary } : b
+      );
+      setBeneficiaries(updatedBeneficiaries);
+      updateFormDataWithBeneficiaries(updatedBeneficiaries);
+    }
+
+    setShowSearchResults(false);
+    setActiveSearchIndex(null);
+    clearResults();
+  }, [beneficiaries, updateFormDataWithBeneficiaries, clearResults]);
+
   const inputBaseClass = `
     w-full px-4 py-2.5 
     border border-gray-300 rounded-lg 
@@ -568,24 +604,61 @@ export function BeneficiaryDetails({
               <div className="p-6 space-y-5">
                 {/* Row 1: Name & NRIC */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
+                  <div className="relative">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Full Name
                     </label>
-                    <input
-                      type="text"
-                      value={beneficiary.name || beneficiary.fullName || ''}
-                      onChange={(e) =>
-                        handleUpdateBeneficiary(
-                          beneficiary.id,
-                          'name',
-                          e.target.value,
-                        )
-                      }
-                      placeholder="Enter full name"
-                      disabled={isReadOnly}
-                      className={`${inputBaseClass} ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={beneficiary.name || beneficiary.fullName || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          handleUpdateBeneficiary(beneficiary.id, 'name', val);
+                          if (val.length >= 3) {
+                            searchPerson(val);
+                            setActiveSearchIndex(index);
+                            setShowSearchResults(true);
+                          } else if (activeSearchIndex === index) {
+                            setShowSearchResults(false);
+                          }
+                        }}
+                        placeholder="Enter full name"
+                        disabled={isReadOnly}
+                        className={`${inputBaseClass} ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+                      />
+                      {!isReadOnly && isSearching && activeSearchIndex === index && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                        </div>
+                      )}
+                    </div>
+
+                    {showSearchResults && activeSearchIndex === index && searchResults.length > 0 && !isReadOnly && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                        <div className="p-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-500 flex items-center justify-between">
+                          <span>MATCHES FOUND</span>
+                          <button onClick={() => setShowSearchResults(false)} className="text-gray-400 hover:text-gray-600">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        {searchResults.map((person) => (
+                          <div
+                            key={person.personId}
+                            className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors group"
+                            onClick={() => handleSelectPerson(person, index)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <span className="font-medium text-gray-900 group-hover:text-blue-700">{person.name}</span>
+                                <span className="text-xs text-gray-500">{person.idNo} • {person.emailID}</span>
+                              </div>
+                              <CheckCircle2 className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">

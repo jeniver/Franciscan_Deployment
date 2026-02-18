@@ -15,7 +15,7 @@ router.use(authenticateToken);
 
 // Get all persons
 router.get('/',
-  personController.asyncHandler(async(req, res) => {
+  personController.asyncHandler(async (req, res) => {
     personController.logRequest(req, 'Get All Persons');
 
     const pagination = personController.getPaginationParams(req);
@@ -34,7 +34,7 @@ router.get('/',
 
 // Get persons with church information
 router.get('/with-church',
-  personController.asyncHandler(async(req, res) => {
+  personController.asyncHandler(async (req, res) => {
     personController.logRequest(req, 'Get Persons with Church');
 
     const pagination = personController.getPaginationParams(req);
@@ -50,7 +50,7 @@ router.get('/with-church',
 
 // Search persons by name
 router.get('/search',
-  personController.asyncHandler(async(req, res) => {
+  personController.asyncHandler(async (req, res) => {
     personController.logRequest(req, 'Search Persons');
 
     if (!req.query.q) {
@@ -72,7 +72,7 @@ router.get('/search',
 router.get('/church/:churchId',
   commonValidations.id,
   validate,
-  personController.asyncHandler(async(req, res) => {
+  personController.asyncHandler(async (req, res) => {
     personController.logRequest(req, 'Get Persons by Church');
 
     const pagination = personController.getPaginationParams(req);
@@ -88,7 +88,7 @@ router.get('/church/:churchId',
 
 // Search customer-related persons (Contact Persons, Beneficiaries, Nominees)
 router.get('/customers/search',
-  personController.asyncHandler(async(req, res) => {
+  personController.asyncHandler(async (req, res) => {
     personController.logRequest(req, 'Search Customer-related Persons');
 
     const pagination = personController.getPaginationParams(req);
@@ -108,7 +108,7 @@ router.get('/customers/search',
 router.get('/customers/:id',
   commonValidations.id,
   validate,
-  personController.asyncHandler(async(req, res) => {
+  personController.asyncHandler(async (req, res) => {
     personController.logRequest(req, 'Get Customer-related Person by ID');
 
     try {
@@ -124,11 +124,31 @@ router.get('/customers/:id',
   })
 );
 
+// Get person profile with all related records
+router.get('/:id/profile',
+  commonValidations.id,
+  validate,
+  personController.asyncHandler(async (req, res) => {
+    personController.logRequest(req, 'Get Person Profile');
+
+    try {
+      const profile = await personService.getPersonProfile(req.params.id);
+      if (!profile) {
+        return personController.sendError(res, 'Person not found', 404);
+      }
+
+      personController.sendSuccess(res, profile, 'Person profile retrieved successfully');
+    } catch (error) {
+      personController.sendError(res, 'Failed to retrieve person profile', 500);
+    }
+  })
+);
+
 // Get person by ID
 router.get('/:id',
   commonValidations.id,
   validate,
-  personController.asyncHandler(async(req, res) => {
+  personController.asyncHandler(async (req, res) => {
     personController.logRequest(req, 'Get Person by ID');
 
     try {
@@ -148,7 +168,7 @@ router.get('/:id',
 router.post('/',
   commonValidations.person.create,
   validate,
-  personController.asyncHandler(async(req, res) => {
+  personController.asyncHandler(async (req, res) => {
     personController.logRequest(req, 'Create Person');
 
     try {
@@ -165,7 +185,7 @@ router.put('/:id',
   commonValidations.id,
   commonValidations.person.update,
   validate,
-  personController.asyncHandler(async(req, res) => {
+  personController.asyncHandler(async (req, res) => {
     personController.logRequest(req, 'Update Person');
 
     try {
@@ -186,7 +206,7 @@ router.delete('/:id',
   authorize(['admin']),
   commonValidations.id,
   validate,
-  personController.asyncHandler(async(req, res) => {
+  personController.asyncHandler(async (req, res) => {
     personController.logRequest(req, 'Delete Person');
 
     try {

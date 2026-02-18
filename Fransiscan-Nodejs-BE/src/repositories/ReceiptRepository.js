@@ -26,15 +26,15 @@ class ReceiptRepository extends BaseRepository {
    */
   normalizeReceiptCode(code) {
     if (!code) return code;
-    
+
     // If it's already a string with leading zeros, return as is if it's 6 digits
     const codeStr = String(code).trim();
-    
+
     // If it's numeric, pad it to 6 digits
     if (/^\d+$/.test(codeStr)) {
       return codeStr.padStart(6, '0');
     }
-    
+
     // Otherwise return as is (might be non-numeric code)
     return codeStr;
   }
@@ -47,22 +47,22 @@ class ReceiptRepository extends BaseRepository {
   async findSimilarCodes(code) {
     try {
       if (!code) return [];
-      
+
       const normalizedCode = this.normalizeReceiptCode(code);
       const searchPattern = `%${normalizedCode}%`;
-      
+
       const query = `
         SELECT TOP 10 Code, ReceiptId, ChurchId, Status, TransactionDate, CustomerName
         FROM Receipt 
         WHERE Code LIKE @pattern OR Code LIKE @pattern2
         ORDER BY ReceiptId DESC
       `;
-      
-      const result = await executeQuery(query, { 
+
+      const result = await executeQuery(query, {
         pattern: searchPattern,
         pattern2: `%${code.trim()}%`
       });
-      
+
       return result.recordset || [];
     } catch (error) {
       logger.error('Error finding similar codes:', error);
@@ -130,73 +130,6 @@ class ReceiptRepository extends BaseRepository {
   }
 
   /**
-   * Diagnostic method to check exact receipt code in database (with all variations)
-   * @param {string} code - Receipt code to check
-   * @returns {Promise<Object>} Diagnostic information
-   */
-  async diagnoseReceiptCode(code) {
-    try {
-      if (!code) return { exists: false, message: 'No code provided' };
-      
-      const normalizedCode = this.normalizeReceiptCode(code);
-      const originalCode = String(code).trim();
-      
-      // Try exact match
-      let query = `SELECT TOP 1 Code, ReceiptId, ChurchId, Status, TransactionDate FROM Receipt WHERE Code = @code`;
-      let result = await executeQuery(query, { code: normalizedCode });
-      
-      if (result.recordset && result.recordset.length > 0) {
-        return {
-          exists: true,
-          matchType: 'exact_normalized',
-          receipt: result.recordset[0]
-        };
-      }
-      
-      // Try original code
-      if (originalCode !== normalizedCode) {
-        result = await executeQuery(query, { code: originalCode });
-        if (result.recordset && result.recordset.length > 0) {
-          return {
-            exists: true,
-            matchType: 'exact_original',
-            receipt: result.recordset[0]
-          };
-        }
-      }
-      
-      // Try case-insensitive
-      query = `SELECT TOP 1 Code, ReceiptId, ChurchId, Status, TransactionDate FROM Receipt WHERE UPPER(LTRIM(RTRIM(Code))) = UPPER(LTRIM(RTRIM(@code)))`;
-      result = await executeQuery(query, { code: normalizedCode });
-      if (result.recordset && result.recordset.length > 0) {
-        return {
-          exists: true,
-          matchType: 'case_insensitive',
-          receipt: result.recordset[0],
-          note: `Found with different case. Actual code in DB: "${result.recordset[0].Code}"`
-        };
-      }
-      
-      // Check if any receipt with similar code exists
-      const similarCodes = await this.findSimilarCodes(code);
-      
-      return {
-        exists: false,
-        normalizedCode,
-        originalCode,
-        similarCodesFound: similarCodes.length,
-        similarCodes: similarCodes.slice(0, 3)
-      };
-    } catch (error) {
-      logger.error('Error diagnosing receipt code:', error);
-      return {
-        exists: false,
-        error: error.message
-      };
-    }
-  }
-
-  /**
    * Get receipt by code with comprehensive search
    * @param {string} code - Receipt code (will be normalized to 6-digit format)
    * @param {number} churchId - Church ID for access control (optional, will try without if not found)
@@ -212,11 +145,11 @@ class ReceiptRepository extends BaseRepository {
       // Normalize code to 6-digit format (e.g., "53130" -> "053130")
       const normalizedCode = this.normalizeReceiptCode(code);
       const originalCode = String(code).trim();
-      
+
       if (code !== normalizedCode) {
         logger.info(`Receipt code normalized: "${code}" -> "${normalizedCode}"`);
       }
-      
+
       // Try multiple code variations to handle edge cases
       const codeVariations = [normalizedCode];
       if (originalCode !== normalizedCode) {
@@ -227,7 +160,7 @@ class ReceiptRepository extends BaseRepository {
       if (trimmedNormalized !== normalizedCode) {
         codeVariations.push(trimmedNormalized);
       }
-      
+
       // First try with churchId if provided
       if (churchId) {
         for (const codeVar of codeVariations) {
@@ -243,7 +176,7 @@ class ReceiptRepository extends BaseRepository {
             logger.info(`Receipt found with churchId filter (exact match): code=${codeVar}, churchId=${churchId}`);
             return new Receipt(result.recordset[0]);
           }
-          
+
           // Try case-insensitive match with UPPER
           query = `
             SELECT * FROM Receipt 
@@ -255,7 +188,7 @@ class ReceiptRepository extends BaseRepository {
             return new Receipt(result.recordset[0]);
           }
         }
-        
+
         // If not found and fallback allowed, try without churchId
         if (allowFallback) {
           logger.warn(`Receipt not found with churchId=${churchId}, trying without churchId filter for codes: ${codeVariations.join(', ')}`);
@@ -271,7 +204,7 @@ class ReceiptRepository extends BaseRepository {
               logger.warn(`Receipt found without churchId filter (exact match): code=${codeVar}, actual churchId=${receipt.churchId}, requested churchId=${churchId}`);
               return receipt;
             }
-            
+
             // Try case-insensitive match with UPPER
             fallbackQuery = `
               SELECT * FROM Receipt 
@@ -284,7 +217,7 @@ class ReceiptRepository extends BaseRepository {
               return receipt;
             }
           }
-          
+
           // Last resort: try to find similar codes for debugging
           const similarCodes = await this.findSimilarCodes(code);
           if (similarCodes.length > 0) {
@@ -302,7 +235,7 @@ class ReceiptRepository extends BaseRepository {
         // No churchId provided, search without filter
         for (const codeVar of codeVariations) {
           // Try exact match
-      let query = `
+          let query = `
         SELECT * FROM Receipt 
         WHERE Code = @code
       `;
@@ -311,7 +244,7 @@ class ReceiptRepository extends BaseRepository {
             logger.info(`Receipt found without churchId filter (exact match): code=${codeVar}`);
             return new Receipt(result.recordset[0]);
           }
-          
+
           // Try case-insensitive match with UPPER
           query = `
             SELECT * FROM Receipt 
@@ -323,7 +256,7 @@ class ReceiptRepository extends BaseRepository {
             return new Receipt(result.recordset[0]);
           }
         }
-        
+
         // Try to find similar codes for debugging
         const similarCodes = await this.findSimilarCodes(code);
         if (similarCodes.length > 0) {
@@ -334,7 +267,7 @@ class ReceiptRepository extends BaseRepository {
             status: r.Status
           })));
         }
-        
+
         logger.warn(`Receipt not found: codes=${codeVariations.join(', ')} (no churchId filter)`);
       }
 
@@ -413,6 +346,71 @@ class ReceiptRepository extends BaseRepository {
     } catch (error) {
       logger.error('Error getting receipt ID by code:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Check if an active receipt already exists for a given reference document number
+   * @param {string} refDocNumber - Reference document number (application code)
+   * @param {number} churchId - Church ID
+   * @returns {Promise<Object|null>} Receipt info if exists, otherwise null
+   */
+  async existsByRefDocNumber(refDocNumber, churchId) {
+    try {
+      const query = `
+        SELECT TOP 1 r.ReceiptId, r.Code, r.TransactionDate, r.Status
+        FROM Receipt r
+        INNER JOIN MisalaniousReceiptDetail rd ON r.ReceiptId = rd.ReceiptId
+        WHERE rd.RefDocNumber = @refDocNumber
+        AND r.ChurchId = @churchId
+        AND r.Status > 0
+      `;
+      const result = await executeQuery(query, { refDocNumber, churchId });
+      return result.recordset?.[0] || null;
+    } catch (error) {
+      logger.error('Error checking existing receipt by refDocNumber:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Link any existing receipts for an application to a newly created invoice
+   * @param {string} refDocNumber - Application code
+   * @param {number} invoiceId - Invoice ID to link to
+   * @param {number} churchId - Church ID
+   * @returns {Promise<number>} Number of receipts updated
+   */
+  async linkReceiptsToInvoice(refDocNumber, invoiceId, churchId) {
+    try {
+      if (!refDocNumber || !invoiceId) return 0;
+
+      // Update receipts that are linked to this application via details but don't have an invoice yet
+      const query = `
+        UPDATE r
+        SET r.InvoiceId = @invoiceId
+        FROM Receipt r
+        INNER JOIN MisalaniousReceiptDetail rd ON r.ReceiptId = rd.ReceiptId
+        WHERE rd.RefDocNumber = @refDocNumber
+        AND r.ChurchId = @churchId
+        AND (r.InvoiceId IS NULL OR r.InvoiceId = 0 OR r.InvoiceId = '')
+      `;
+
+      const result = await executeQuery(query, {
+        refDocNumber,
+        invoiceId,
+        churchId
+      });
+
+      const rowsAffected = result.rowsAffected?.[0] || 0;
+      if (rowsAffected > 0) {
+        logger.info(`Linked ${rowsAffected} receipt(s) to invoice ${invoiceId} for application ${refDocNumber}`);
+      }
+
+      return rowsAffected;
+    } catch (error) {
+      logger.error('Error linking receipts to invoice:', error);
+      // Don't throw, this is a non-critical side effect
+      return 0;
     }
   }
 
@@ -499,6 +497,12 @@ class ReceiptRepository extends BaseRepository {
           r.TransactionDate,
           r.PaymentMode,
           r.PaymentModeDocNo,
+          r.AddressNo,
+          r.Address,
+          r.Address2,
+          r.AddressCity,
+          r.DistrictCode,
+          r.Country,
           i.InvoiceId,
           i.Code AS InvoiceCode,
           i.TransactionDate AS InvoiceDate
@@ -541,37 +545,33 @@ class ReceiptRepository extends BaseRepository {
    */
   async getLastReceiptNumber() {
     try {
-      // ⚠️ CRITICAL FIX: Use UPDLOCK + HOLDLOCK to prevent race conditions
-      // This ensures exclusive access while generating the next code
-      // Matches document recommendation from ASP.NET analysis
-      // OPTIMIZED: Use TRY_CAST instead of ISNUMERIC for better performance
-      // ISNUMERIC can be very slow on large tables
+      // Optimized: Get top 50 recents to find max number instead of scanning whole table
+      // This avoids locks and full table scans. Assumes Code roughly follows ReceiptId order.
       const query = `
-        SELECT ISNULL(MAX(
-          CASE 
-            WHEN TRY_CAST(Code AS INT) IS NOT NULL THEN TRY_CAST(Code AS INT)
-            ELSE 0
-          END
-        ), 0) AS LastNumber
-        FROM Receipt WITH (UPDLOCK, HOLDLOCK)
-        WHERE Code IS NOT NULL AND LEN(LTRIM(RTRIM(Code))) > 0
+        SELECT TOP 50 Code
+        FROM Receipt WITH (NOLOCK)
+        WHERE Code IS NOT NULL AND LEN(Code) > 0
+        ORDER BY ReceiptId DESC
       `;
-      
-      // CRITICAL: Add timeout to prevent 60s default timeout
-      const result = await executeQuery(query, {}, { timeout: 10000 });
-      const lastNumber = result.recordset[0] ? result.recordset[0].LastNumber : 0;
-      return (lastNumber + 1).toString().padStart(6, '0');
-    } catch (error) {
-      // If timeout, provide helpful error message
-      if (error.code === 'ETIMEOUT' || error.message?.includes('timeout')) {
-        logger.error('Receipt number query timeout - table may be very large. Consider adding index on Code column.');
-        // Return a fallback - use current timestamp as base to avoid conflicts
-        const fallbackNumber = Date.now().toString().slice(-6);
-        logger.warn(`Using fallback receipt number: ${fallbackNumber}`);
-        return fallbackNumber;
+
+      const result = await executeQuery(query, {}, { timeout: 5000 });
+
+      let maxNum = 0;
+      if (result.recordset && result.recordset.length > 0) {
+        for (const row of result.recordset) {
+          const cleanCode = String(row.Code).replace(/\D/g, '');
+          const num = parseInt(cleanCode, 10);
+          if (!isNaN(num) && num > maxNum) {
+            maxNum = num;
+          }
+        }
       }
+
+      return (maxNum + 1).toString().padStart(6, '0');
+    } catch (error) {
       logger.error('Error getting last receipt number:', error);
-      throw error;
+      // Fallback to timestamp to prevent blocking
+      return Date.now().toString().slice(-6);
     }
   }
 
@@ -581,34 +581,31 @@ class ReceiptRepository extends BaseRepository {
    */
   async getLastMiscReceiptNumber() {
     try {
-      // Optimized query with explicit timeout
-      // ISNUMERIC can be slow on large tables, so we add a reasonable timeout
-      // Using TRY_CAST instead of ISNUMERIC for better performance
+      // Optimized: Get top 50 recents to find max number instead of scanning whole table
       const query = `
-        SELECT ISNULL(MAX(
-          CASE 
-            WHEN TRY_CAST(Code AS INT) IS NOT NULL THEN TRY_CAST(Code AS INT)
-            ELSE 0
-          END
-        ), 0) AS LastNumber
+        SELECT TOP 50 Code
         FROM Receipt WITH (NOLOCK)
-        WHERE Code IS NOT NULL AND LEN(LTRIM(RTRIM(Code))) > 0
+        WHERE Code IS NOT NULL AND LEN(Code) > 0
+        ORDER BY ReceiptId DESC
       `;
-      
-      // Use 15s timeout for this query - if it takes longer, there's a problem
-      const result = await executeQuery(query, {}, { timeout: 15000 });
-      const lastNumber = result.recordset[0] ? result.recordset[0].LastNumber : 0;
-      return (lastNumber + 1).toString().padStart(6, '0');
-    } catch (error) {
-      // If query times out, return a default or handle gracefully
-      if (error.code === 'ETIMEOUT' || error.message?.includes('timeout')) {
-        logger.warn('Query timeout in getLastMiscReceiptNumber, using fallback logic');
-        // Return a reasonable default - could be improved with caching or better query
-        // For now, we'll throw to maintain existing behavior but with better context
-        throw new Error('Query timeout: Receipt table may be very large. Please add an index on Code column or contact database administrator.');
+
+      const result = await executeQuery(query, {}, { timeout: 5000 });
+
+      let maxNum = 0;
+      if (result.recordset && result.recordset.length > 0) {
+        for (const row of result.recordset) {
+          const cleanCode = String(row.Code).replace(/\D/g, '');
+          const num = parseInt(cleanCode, 10);
+          if (!isNaN(num) && num > maxNum) {
+            maxNum = num;
+          }
+        }
       }
+
+      return (maxNum + 1).toString().padStart(6, '0');
+    } catch (error) {
       logger.error('Error getting last miscellaneous receipt number:', error);
-      throw error;
+      return Date.now().toString().slice(-6);
     }
   }
 
@@ -623,7 +620,7 @@ class ReceiptRepository extends BaseRepository {
       const lastNumber = await this.getLastReceiptNumber();
       receipt.code = lastNumber;
 
-      console.log('ReceiptRepository.createReceipt - paymentMode:', receipt.paymentMode, 'type:', typeof receipt.paymentMode);
+      receipt.code = lastNumber;
 
       const query = `
         INSERT INTO Receipt (
@@ -663,7 +660,7 @@ class ReceiptRepository extends BaseRepository {
         outstandingAmount: receipt.outstandingAmount || 0
       };
 
-      console.log('SQL parameters - paymentMode:', params.paymentMode, 'type:', typeof params.paymentMode);
+
 
       const result = await executeQuery(query, params);
       return result.recordset[0].Code;
@@ -711,455 +708,84 @@ class ReceiptRepository extends BaseRepository {
    * @param {boolean} allowFallback - If true, will try without churchId if not found with churchId
    * @returns {Promise<Object>} Receipt with invoice and details
    */
+  /**
+   * Get receipt with invoice and details using JOIN (more efficient)
+   * Optimized: Uses single query with OR conditions, NOLOCK, and Address fallback
+   * @param {string} code - Receipt code
+   * @param {number} churchId - Church ID for access control
+   * @param {boolean} allowFallback - If true, will try without churchId if not found with churchId
+   * @returns {Promise<Object>} Receipt with invoice and details
+   */
   async getReceiptWithInvoiceAndDetails(code, churchId = null, allowFallback = false, applicationCode = null) {
     try {
       const normalizedCode = this.normalizeReceiptCode(code);
       const originalCode = String(code).trim();
-      const codeVariations = [normalizedCode];
+      // Use Set to ensure uniqueness
+      const codeSet = new Set([normalizedCode]);
       if (originalCode !== normalizedCode) {
-        codeVariations.push(originalCode);
+        codeSet.add(originalCode);
       }
+      const codes = Array.from(codeSet);
 
-      // Try to get receipt with invoice using JOIN
-      for (const codeVar of codeVariations) {
-        // First try with churchId if provided
-        if (churchId) {
-          let query = `
-            SELECT 
-              r.*,
-              i.InvoiceId AS Invoice_InvoiceId,
-              i.Code AS Invoice_Code,
-              i.TransactionDate AS Invoice_TransactionDate,
-              i.CustomerName AS Invoice_CustomerName,
-              i.TotalAmount AS Invoice_TotalAmount,
-              i.PayingAmount AS Invoice_PayingAmount,
-              i.TaxAmount AS Invoice_TaxAmount,
-              i.PaymentMode AS Invoice_PaymentMode,
-              i.PaymentModeDocNo AS Invoice_PaymentModeDocNo,
-              i.RefDocNumber AS Invoice_RefDocNumber,
-              i.RefDocName AS Invoice_RefDocName,
-              i.Status AS Invoice_Status,
-              i.ChurchId AS Invoice_ChurchId,
-              i.UserId AS Invoice_UserId
-            FROM Receipt r
-            LEFT JOIN Invoice i ON r.InvoiceId = i.InvoiceId
-            WHERE r.Code = @code AND r.ChurchId = @churchId
-          `;
-          
-          let result = await executeQuery(query, { code: codeVar, churchId });
-          
-          if (result.recordset && result.recordset.length > 0) {
-            const row = result.recordset[0];
-            const receipt = new Receipt(row);
-            
-            // Get receipt details
-            const detailsQuery = `
-              SELECT * FROM MisalaniousReceiptDetail 
-              WHERE ReceiptId = @receiptId
-            `;
-            const detailsResult = await executeQuery(detailsQuery, {
-              receiptId: receipt.receiptId
-            });
-            
-            // Build invoice object if exists
-            let invoice = null;
-            if (row.Invoice_InvoiceId) {
-              invoice = {
-                InvoiceId: row.Invoice_InvoiceId,
-                Code: row.Invoice_Code,
-                TransactionDate: row.Invoice_TransactionDate,
-                CustomerName: row.Invoice_CustomerName,
-                TotalAmount: row.Invoice_TotalAmount,
-                PayingAmount: row.Invoice_PayingAmount,
-                TaxAmount: row.Invoice_TaxAmount,
-                PaymentMode: row.Invoice_PaymentMode,
-                PaymentModeDocNo: row.Invoice_PaymentModeDocNo,
-                RefDocNumber: row.Invoice_RefDocNumber,
-                RefDocName: row.Invoice_RefDocName,
-                Status: row.Invoice_Status,
-                ChurchId: row.Invoice_ChurchId,
-                UserId: row.Invoice_UserId
-              };
-              
-              // Get invoice details if invoice exists
-              try {
-                const invoiceDetails = await this.getInvoiceById(row.Invoice_InvoiceId);
-                if (invoiceDetails && invoiceDetails.details) {
-                  invoice.details = invoiceDetails.details;
-                }
-              } catch (err) {
-                logger.warn(`Could not fetch invoice details for invoiceId=${row.Invoice_InvoiceId}`, err);
-              }
-            }
-            
-            return {
-              ...receipt,
-              invoice,
-              details: detailsResult.recordset || []
-            };
-          }
-          
-          // Try case-insensitive
-          query = `
-            SELECT 
-              r.*,
-              i.InvoiceId AS Invoice_InvoiceId,
-              i.Code AS Invoice_Code,
-              i.TransactionDate AS Invoice_TransactionDate,
-              i.CustomerName AS Invoice_CustomerName,
-              i.TotalAmount AS Invoice_TotalAmount,
-              i.PayingAmount AS Invoice_PayingAmount,
-              i.TaxAmount AS Invoice_TaxAmount,
-              i.PaymentMode AS Invoice_PaymentMode,
-              i.PaymentModeDocNo AS Invoice_PaymentModeDocNo,
-              i.RefDocNumber AS Invoice_RefDocNumber,
-              i.RefDocName AS Invoice_RefDocName,
-              i.Status AS Invoice_Status,
-              i.ChurchId AS Invoice_ChurchId,
-              i.UserId AS Invoice_UserId
-            FROM Receipt r
-            LEFT JOIN Invoice i ON r.InvoiceId = i.InvoiceId
-            WHERE UPPER(LTRIM(RTRIM(r.Code))) = UPPER(LTRIM(RTRIM(@code))) AND r.ChurchId = @churchId
-          `;
-          
-          result = await executeQuery(query, { code: codeVar, churchId });
-          
-          if (result.recordset && result.recordset.length > 0) {
-            const row = result.recordset[0];
-            const receipt = new Receipt(row);
-            
-            const detailsQuery = `
-              SELECT * FROM MisalaniousReceiptDetail 
-              WHERE ReceiptId = @receiptId
-            `;
-            const detailsResult = await executeQuery(detailsQuery, {
-              receiptId: receipt.receiptId
-            });
-            
-            let invoice = null;
-            if (row.Invoice_InvoiceId) {
-              invoice = {
-                InvoiceId: row.Invoice_InvoiceId,
-                Code: row.Invoice_Code,
-                TransactionDate: row.Invoice_TransactionDate,
-                CustomerName: row.Invoice_CustomerName,
-                TotalAmount: row.Invoice_TotalAmount,
-                PayingAmount: row.Invoice_PayingAmount,
-                TaxAmount: row.Invoice_TaxAmount,
-                PaymentMode: row.Invoice_PaymentMode,
-                PaymentModeDocNo: row.Invoice_PaymentModeDocNo,
-                RefDocNumber: row.Invoice_RefDocNumber,
-                RefDocName: row.Invoice_RefDocName,
-                Status: row.Invoice_Status,
-                ChurchId: row.Invoice_ChurchId,
-                UserId: row.Invoice_UserId
-              };
-              
-              try {
-                const invoiceDetails = await this.getInvoiceById(row.Invoice_InvoiceId);
-                if (invoiceDetails && invoiceDetails.details) {
-                  invoice.details = invoiceDetails.details;
-                }
-              } catch (err) {
-                logger.warn(`Could not fetch invoice details for invoiceId=${row.Invoice_InvoiceId}`, err);
-              }
-            }
-            
-            return {
-              ...receipt,
-              invoice,
-              details: detailsResult.recordset || []
-            };
-          }
+      // Helper to process row and add fallback address
+      const processRow = async (row) => {
+        // Fallback to invoice address if receipt address is missing
+        if (!row.Address && row.Invoice_Address) {
+          row.AddressNo = row.Invoice_AddressNo;
+          row.Address = row.Invoice_Address;
+          row.Address2 = row.Invoice_Address2;
+          row.AddressCity = row.Invoice_AddressCity;
+          row.DistrictCode = row.Invoice_DistrictCode;
+          row.Country = row.Invoice_Country;
         }
-        
-        // If not found with churchId and fallback allowed, try without churchId
-        if (allowFallback || !churchId) {
-          let query = `
-            SELECT 
-              r.*,
-              i.InvoiceId AS Invoice_InvoiceId,
-              i.Code AS Invoice_Code,
-              i.TransactionDate AS Invoice_TransactionDate,
-              i.CustomerName AS Invoice_CustomerName,
-              i.TotalAmount AS Invoice_TotalAmount,
-              i.PayingAmount AS Invoice_PayingAmount,
-              i.TaxAmount AS Invoice_TaxAmount,
-              i.PaymentMode AS Invoice_PaymentMode,
-              i.PaymentModeDocNo AS Invoice_PaymentModeDocNo,
-              i.RefDocNumber AS Invoice_RefDocNumber,
-              i.RefDocName AS Invoice_RefDocName,
-              i.Status AS Invoice_Status,
-              i.ChurchId AS Invoice_ChurchId,
-              i.UserId AS Invoice_UserId
-            FROM Receipt r
-            LEFT JOIN Invoice i ON r.InvoiceId = i.InvoiceId
-            WHERE r.Code = @code
-          `;
-          
-          let result = await executeQuery(query, { code: codeVar });
-          
-          if (result.recordset && result.recordset.length > 0) {
-            const row = result.recordset[0];
-            const receipt = new Receipt(row);
-            
-            const detailsQuery = `
-              SELECT * FROM MisalaniousReceiptDetail 
-              WHERE ReceiptId = @receiptId
-            `;
-            const detailsResult = await executeQuery(detailsQuery, {
-              receiptId: receipt.receiptId
-            });
-            
-            let invoice = null;
-            if (row.Invoice_InvoiceId) {
-              invoice = {
-                InvoiceId: row.Invoice_InvoiceId,
-                Code: row.Invoice_Code,
-                TransactionDate: row.Invoice_TransactionDate,
-                CustomerName: row.Invoice_CustomerName,
-                TotalAmount: row.Invoice_TotalAmount,
-                PayingAmount: row.Invoice_PayingAmount,
-                TaxAmount: row.Invoice_TaxAmount,
-                PaymentMode: row.Invoice_PaymentMode,
-                PaymentModeDocNo: row.Invoice_PaymentModeDocNo,
-                RefDocNumber: row.Invoice_RefDocNumber,
-                RefDocName: row.Invoice_RefDocName,
-                Status: row.Invoice_Status,
-                ChurchId: row.Invoice_ChurchId,
-                UserId: row.Invoice_UserId
-              };
-              
-              try {
-                const invoiceDetails = await this.getInvoiceById(row.Invoice_InvoiceId);
-                if (invoiceDetails && invoiceDetails.details) {
-                  invoice.details = invoiceDetails.details;
-                }
-              } catch (err) {
-                logger.warn(`Could not fetch invoice details for invoiceId=${row.Invoice_InvoiceId}`, err);
-              }
-            }
-            
-            logger.info(`Receipt found without churchId filter: code=${codeVar}, actual churchId=${receipt.churchId}`);
-            return {
-              ...receipt,
-              invoice,
-              details: detailsResult.recordset || []
-            };
-          }
-          
-          // Try case-insensitive without churchId
-          query = `
-            SELECT 
-              r.*,
-              i.InvoiceId AS Invoice_InvoiceId,
-              i.Code AS Invoice_Code,
-              i.TransactionDate AS Invoice_TransactionDate,
-              i.CustomerName AS Invoice_CustomerName,
-              i.TotalAmount AS Invoice_TotalAmount,
-              i.PayingAmount AS Invoice_PayingAmount,
-              i.TaxAmount AS Invoice_TaxAmount,
-              i.PaymentMode AS Invoice_PaymentMode,
-              i.PaymentModeDocNo AS Invoice_PaymentModeDocNo,
-              i.RefDocNumber AS Invoice_RefDocNumber,
-              i.RefDocName AS Invoice_RefDocName,
-              i.Status AS Invoice_Status,
-              i.ChurchId AS Invoice_ChurchId,
-              i.UserId AS Invoice_UserId
-            FROM Receipt r
-            LEFT JOIN Invoice i ON r.InvoiceId = i.InvoiceId
-            WHERE UPPER(LTRIM(RTRIM(r.Code))) = UPPER(LTRIM(RTRIM(@code)))
-          `;
-          
-          result = await executeQuery(query, { code: codeVar });
-          
-          if (result.recordset && result.recordset.length > 0) {
-            const row = result.recordset[0];
-            const receipt = new Receipt(row);
-            
-            const detailsQuery = `
-              SELECT * FROM MisalaniousReceiptDetail 
-              WHERE ReceiptId = @receiptId
-            `;
-            const detailsResult = await executeQuery(detailsQuery, {
-              receiptId: receipt.receiptId
-            });
-            
-            let invoice = null;
-            if (row.Invoice_InvoiceId) {
-              invoice = {
-                InvoiceId: row.Invoice_InvoiceId,
-                Code: row.Invoice_Code,
-                TransactionDate: row.Invoice_TransactionDate,
-                CustomerName: row.Invoice_CustomerName,
-                TotalAmount: row.Invoice_TotalAmount,
-                PayingAmount: row.Invoice_PayingAmount,
-                TaxAmount: row.Invoice_TaxAmount,
-                PaymentMode: row.Invoice_PaymentMode,
-                PaymentModeDocNo: row.Invoice_PaymentModeDocNo,
-                RefDocNumber: row.Invoice_RefDocNumber,
-                RefDocName: row.Invoice_RefDocName,
-                Status: row.Invoice_Status,
-                ChurchId: row.Invoice_ChurchId,
-                UserId: row.Invoice_UserId
-              };
-              
-              try {
-                const invoiceDetails = await this.getInvoiceById(row.Invoice_InvoiceId);
-                if (invoiceDetails && invoiceDetails.details) {
-                  invoice.details = invoiceDetails.details;
-                }
-              } catch (err) {
-                logger.warn(`Could not fetch invoice details for invoiceId=${row.Invoice_InvoiceId}`, err);
-              }
-            }
-            
-            logger.info(`Receipt found without churchId filter (case-insensitive): code=${codeVar}`);
-            return {
-              ...receipt,
-              invoice,
-              details: detailsResult.recordset || []
-            };
-          }
-        }
-      }
-      
-      // Last resort: Check if the code might be an invoice code instead
-      // Some systems might use invoice codes to look up receipts
-      // Also filter by applicationCode (RefDocName) if provided
-      logger.warn(`Receipt not found by code, trying to find via invoice code: ${code}${applicationCode ? `, applicationCode=${applicationCode}` : ''}`);
-      try {
-        // Build WHERE clause - include RefDocName filter if applicationCode provided
-        const refDocNameFilter = applicationCode 
-          ? ` AND (i.RefDocName = @refDocName OR EXISTS (
-              SELECT 1 FROM InvoiceDetail id 
-              WHERE id.InvoiceId = i.InvoiceId 
-              AND id.RefDocName = @refDocName
-            ))`
-          : '';
-        
-        const invoiceQuery = `
-          SELECT 
-            r.*,
-            i.InvoiceId AS Invoice_InvoiceId,
-            i.Code AS Invoice_Code,
-            i.TransactionDate AS Invoice_TransactionDate,
-            i.CustomerName AS Invoice_CustomerName,
-            i.TotalAmount AS Invoice_TotalAmount,
-            i.PayingAmount AS Invoice_PayingAmount,
-            i.TaxAmount AS Invoice_TaxAmount,
-            i.PaymentMode AS Invoice_PaymentMode,
-            i.PaymentModeDocNo AS Invoice_PaymentModeDocNo,
-            i.RefDocNumber AS Invoice_RefDocNumber,
-            i.RefDocName AS Invoice_RefDocName,
-            i.Status AS Invoice_Status,
-            i.ChurchId AS Invoice_ChurchId,
-            i.UserId AS Invoice_UserId
-          FROM Invoice i
-          INNER JOIN Receipt r ON i.InvoiceId = r.InvoiceId
-          WHERE i.Code = @code${refDocNameFilter}
-        `;
-        
-        const queryParams = { code: normalizedCode };
-        if (applicationCode) {
-          queryParams.refDocName = String(applicationCode).trim().toUpperCase();
-        }
-        
-        let invoiceResult = await executeQuery(invoiceQuery, queryParams);
-        
-        if (!invoiceResult.recordset || invoiceResult.recordset.length === 0) {
-          // Try with original code if different
-          if (originalCode !== normalizedCode) {
-            queryParams.code = originalCode;
-            invoiceResult = await executeQuery(invoiceQuery, queryParams);
-          }
-          
-          // If still no result and applicationCode was provided, try without RefDocName filter as fallback
-          if ((!invoiceResult.recordset || invoiceResult.recordset.length === 0) && applicationCode) {
-            logger.warn(`Receipt not found with applicationCode filter, trying without filter: code=${code}, applicationCode=${applicationCode}`);
-            const fallbackQuery = invoiceQuery.replace(refDocNameFilter, '');
-            invoiceResult = await executeQuery(fallbackQuery, { code: normalizedCode });
-            if (!invoiceResult.recordset || invoiceResult.recordset.length === 0 && originalCode !== normalizedCode) {
-              invoiceResult = await executeQuery(fallbackQuery, { code: originalCode });
-            }
-          }
-        }
-        
-        if (invoiceResult.recordset && invoiceResult.recordset.length > 0) {
-          const row = invoiceResult.recordset[0];
-          const receipt = new Receipt(row);
-          
-          const detailsQuery = `
-            SELECT * FROM MisalaniousReceiptDetail 
-            WHERE ReceiptId = @receiptId
-          `;
-          const detailsResult = await executeQuery(detailsQuery, {
-            receiptId: receipt.receiptId
-          });
-          
-          let invoice = null;
-          if (row.Invoice_InvoiceId) {
-            invoice = {
-              InvoiceId: row.Invoice_InvoiceId,
-              Code: row.Invoice_Code,
-              TransactionDate: row.Invoice_TransactionDate,
-              CustomerName: row.Invoice_CustomerName,
-              TotalAmount: row.Invoice_TotalAmount,
-              PayingAmount: row.Invoice_PayingAmount,
-              TaxAmount: row.Invoice_TaxAmount,
-              PaymentMode: row.Invoice_PaymentMode,
-              PaymentModeDocNo: row.Invoice_PaymentModeDocNo,
-              RefDocNumber: row.Invoice_RefDocNumber,
-              RefDocName: row.Invoice_RefDocName,
-              Status: row.Invoice_Status,
-              ChurchId: row.Invoice_ChurchId,
-              UserId: row.Invoice_UserId
-            };
-            
-            try {
+
+        const receipt = new Receipt(row);
+        let details = [];
+        try {
+          details = await this.receiptItemRepository.getReceiptItems(receipt.receiptId, { includeItemInfo: true });
+        } catch (e) { logger.warn('Error fetching receipt details', e); }
+
+        let invoice = null;
+        if (row.Invoice_InvoiceId) {
+          invoice = {
+            InvoiceId: row.Invoice_InvoiceId,
+            Code: row.Invoice_Code,
+            TransactionDate: row.Invoice_TransactionDate,
+            CustomerName: row.Invoice_CustomerName,
+            TotalAmount: row.Invoice_TotalAmount,
+            PayingAmount: row.Invoice_PayingAmount,
+            TaxAmount: row.Invoice_TaxAmount,
+            PaymentMode: row.Invoice_PaymentMode,
+            PaymentModeDocNo: row.Invoice_PaymentModeDocNo,
+            RefDocNumber: row.Invoice_RefDocNumber,
+            RefDocName: row.Invoice_RefDocName,
+            Status: row.Invoice_Status,
+            ChurchId: row.Invoice_ChurchId,
+            UserId: row.Invoice_UserId,
+            // Add address to invoice object too
+            AddressNo: row.Invoice_AddressNo,
+            Address: row.Invoice_Address,
+            Address2: row.Invoice_Address2,
+            AddressCity: row.Invoice_AddressCity,
+            DistrictCode: row.Invoice_DistrictCode,
+            Country: row.Invoice_Country
+          };
+          try {
+            if (this.getInvoiceById) {
               const invoiceDetails = await this.getInvoiceById(row.Invoice_InvoiceId);
               if (invoiceDetails && invoiceDetails.details) {
                 invoice.details = invoiceDetails.details;
               }
-            } catch (err) {
-              logger.warn(`Could not fetch invoice details for invoiceId=${row.Invoice_InvoiceId}`, err);
             }
+          } catch (err) {
+            logger.warn(`Could not fetch invoice details for invoiceId=${row.Invoice_InvoiceId}`, err);
           }
-          
-          logger.info(`Receipt found via invoice code: invoiceCode=${normalizedCode}, receiptCode=${receipt.code}`);
-          return {
-            ...receipt,
-            invoice,
-            details: detailsResult.recordset || []
-          };
         }
-      } catch (invoiceSearchError) {
-        logger.warn('Error searching by invoice code:', invoiceSearchError);
-        // Continue to try RefDocNumber lookup
-      }
-      
-      // Final fallback: Check if code might be a RefDocNumber (e.g., NAPP-45, WAPP-123)
-      // Detect RefDocName from code pattern or use provided applicationCode
-      let refDocName = applicationCode ? String(applicationCode).trim().toUpperCase() : null;
-      if (!refDocName) {
-        const upperCode = normalizedCode.toUpperCase();
-        if (upperCode.startsWith('NAPP-')) {
-          refDocName = 'NAPP';
-        } else if (upperCode.startsWith('WAPP-')) {
-          refDocName = 'WAPP';
-        } else if (upperCode.startsWith('INCR-')) {
-          refDocName = 'INCR';
-        } else if (upperCode.startsWith('GOLA-')) {
-          refDocName = 'GOLA';
-        }
-      }
 
-      // Only try RefDocNumber lookup if code looks like an application code
-      if (refDocName || normalizedCode.match(/^(NAPP|WAPP|INCR|GOLA)-/i)) {
-        logger.info(`Receipt not found by code, trying RefDocNumber lookup: ${normalizedCode}${refDocName ? ` (RefDocName: ${refDocName})` : ''}`);
-        try {
-          let refDocQuery = `
-            SELECT 
+        return { ...receipt, invoice, details };
+      };
+
+      const selectColumns = `
               r.*,
               i.InvoiceId AS Invoice_InvoiceId,
               i.Code AS Invoice_Code,
@@ -1174,10 +800,115 @@ class ReceiptRepository extends BaseRepository {
               i.RefDocName AS Invoice_RefDocName,
               i.Status AS Invoice_Status,
               i.ChurchId AS Invoice_ChurchId,
-              i.UserId AS Invoice_UserId
-            FROM InvoiceDetail id
-            INNER JOIN Invoice i ON id.InvoiceId = i.InvoiceId
-            INNER JOIN Receipt r ON i.InvoiceId = r.InvoiceId
+              i.UserId AS Invoice_UserId,
+              i.AddressNo AS Invoice_AddressNo,
+              i.Address AS Invoice_Address,
+              i.Address2 AS Invoice_Address2,
+              i.AddressCity AS Invoice_AddressCity,
+              i.DistrictCode AS Invoice_DistrictCode,
+              i.Country AS Invoice_Country
+      `;
+
+      // Build dynamic WHERE clause for codes
+      const params = {};
+      const criteria = [];
+      codes.forEach((c, idx) => {
+        const p = `code${idx}`;
+        params[p] = c;
+        // Check both exact and likely case-insensitive matches
+        criteria.push(`r.Code = @${p}`);
+        criteria.push(`UPPER(r.Code) = UPPER(@${p})`);
+      });
+      const codeCondition = `(${criteria.join(' OR ')})`;
+
+      // 1. Try with ChurchId + Code (Primary)
+      if (churchId) {
+        params.churchId = churchId;
+        const query = `
+            SELECT TOP 1 ${selectColumns}
+            FROM Receipt r WITH(NOLOCK)
+            LEFT JOIN Invoice i WITH(NOLOCK) ON r.InvoiceId = i.InvoiceId
+            WHERE ${codeCondition} AND r.ChurchId = @churchId
+            ORDER BY r.ReceiptId DESC
+         `;
+        const result = await executeQuery(query, params);
+        if (result.recordset && result.recordset.length > 0) {
+          return await processRow(result.recordset[0]);
+        }
+      }
+
+      // 2. Fallback without ChurchId (if allowed)
+      if (allowFallback || !churchId) {
+        const query = `
+            SELECT TOP 1 ${selectColumns}
+            FROM Receipt r WITH(NOLOCK)
+            LEFT JOIN Invoice i WITH(NOLOCK) ON r.InvoiceId = i.InvoiceId
+            WHERE ${codeCondition}
+            ORDER BY r.ReceiptId DESC
+         `;
+        const result = await executeQuery(query, params);
+        if (result.recordset && result.recordset.length > 0) {
+          logger.info(`Receipt found without churchId filter: code=${normalizedCode}`);
+          return await processRow(result.recordset[0]);
+        }
+      }
+
+      // 3. Last resort: Check if the code might be an invoice code instead
+      logger.warn(`Receipt not found by code, trying to find via invoice code: ${code}`);
+      try {
+        const refDocNameFilter = applicationCode
+          ? ` AND (i.RefDocName = @refDocName OR EXISTS (
+              SELECT 1 FROM InvoiceDetail id WITH(NOLOCK)
+              WHERE id.InvoiceId = i.InvoiceId 
+              AND id.RefDocName = @refDocName
+            ))`
+          : '';
+
+        const invoiceQuery = `
+            SELECT TOP 1 ${selectColumns}
+            FROM Invoice i WITH(NOLOCK)
+            INNER JOIN Receipt r WITH(NOLOCK) ON i.InvoiceId = r.InvoiceId
+            WHERE i.Code = @code${refDocNameFilter}
+        `;
+
+        const queryParams = { code: normalizedCode };
+        if (applicationCode) {
+          queryParams.refDocName = String(applicationCode).trim().toUpperCase();
+        }
+
+        let invoiceResult = await executeQuery(invoiceQuery, queryParams);
+
+        if ((!invoiceResult.recordset || invoiceResult.recordset.length === 0) && originalCode !== normalizedCode) {
+          queryParams.code = originalCode;
+          invoiceResult = await executeQuery(invoiceQuery, queryParams);
+        }
+
+        if (invoiceResult.recordset && invoiceResult.recordset.length > 0) {
+          logger.info(`Receipt found via invoice code: invoiceCode=${normalizedCode}`);
+          return await processRow(invoiceResult.recordset[0]);
+        }
+      } catch (invoiceSearchError) {
+        logger.warn('Error searching by invoice code:', invoiceSearchError);
+      }
+
+      // 4. Final fallback: Check if code might be a RefDocNumber
+      let refDocName = applicationCode ? String(applicationCode).trim().toUpperCase() : null;
+      if (!refDocName) {
+        const upperCode = normalizedCode.toUpperCase();
+        if (upperCode.startsWith('NAPP-')) refDocName = 'NAPP';
+        else if (upperCode.startsWith('WAPP-')) refDocName = 'WAPP';
+        else if (upperCode.startsWith('INCR-')) refDocName = 'INCR';
+        else if (upperCode.startsWith('GOLA-')) refDocName = 'GOLA';
+      }
+
+      if (refDocName || normalizedCode.match(/^(NAPP|WAPP|INCR|GOLA)-/i)) {
+        logger.info(`Trying RefDocNumber lookup: ${normalizedCode}`);
+        try {
+          let refDocQuery = `
+            SELECT TOP 1 ${selectColumns}
+            FROM InvoiceDetail id WITH(NOLOCK)
+            INNER JOIN Invoice i WITH(NOLOCK) ON id.InvoiceId = i.InvoiceId
+            INNER JOIN Receipt r WITH(NOLOCK) ON i.InvoiceId = r.InvoiceId
             WHERE (id.RefDocNumber = @refDocNumber OR UPPER(LTRIM(RTRIM(id.RefDocNumber))) = @refDocNumberUpper)
               AND i.Status > 0
           `;
@@ -1187,7 +918,6 @@ class ReceiptRepository extends BaseRepository {
             refDocNumberUpper: normalizedCode.toUpperCase().trim()
           };
 
-          // Add RefDocName filter if detected or provided
           if (refDocName) {
             refDocQuery += ' AND id.RefDocName = @refDocName';
             refDocParams.refDocName = refDocName;
@@ -1203,59 +933,13 @@ class ReceiptRepository extends BaseRepository {
           const refDocResult = await executeQuery(refDocQuery, refDocParams);
 
           if (refDocResult.recordset && refDocResult.recordset.length > 0) {
-            const row = refDocResult.recordset[0];
-            const receipt = new Receipt(row);
-
-            const detailsQuery = `
-              SELECT * FROM MisalaniousReceiptDetail 
-              WHERE ReceiptId = @receiptId
-            `;
-            const detailsResult = await executeQuery(detailsQuery, {
-              receiptId: receipt.receiptId
-            });
-
-            let invoice = null;
-            if (row.Invoice_InvoiceId) {
-              invoice = {
-                InvoiceId: row.Invoice_InvoiceId,
-                Code: row.Invoice_Code,
-                TransactionDate: row.Invoice_TransactionDate,
-                CustomerName: row.Invoice_CustomerName,
-                TotalAmount: row.Invoice_TotalAmount,
-                PayingAmount: row.Invoice_PayingAmount,
-                TaxAmount: row.Invoice_TaxAmount,
-                PaymentMode: row.Invoice_PaymentMode,
-                PaymentModeDocNo: row.Invoice_PaymentModeDocNo,
-                RefDocNumber: row.Invoice_RefDocNumber,
-                RefDocName: row.Invoice_RefDocName,
-                Status: row.Invoice_Status,
-                ChurchId: row.Invoice_ChurchId,
-                UserId: row.Invoice_UserId
-              };
-
-              try {
-                const invoiceDetails = await this.getInvoiceById(row.Invoice_InvoiceId);
-                if (invoiceDetails && invoiceDetails.details) {
-                  invoice.details = invoiceDetails.details;
-                }
-              } catch (err) {
-                logger.warn(`Could not fetch invoice details for invoiceId=${row.Invoice_InvoiceId}`, err);
-              }
-            }
-
-            logger.info(`Receipt found via RefDocNumber: refDocNumber=${normalizedCode}${refDocName ? `, refDocName=${refDocName}` : ''}, receiptCode=${receipt.code}`);
-            return {
-              ...receipt,
-              invoice,
-              details: detailsResult.recordset || []
-            };
+            return await processRow(refDocResult.recordset[0]);
           }
         } catch (refDocError) {
           logger.warn('Error searching by RefDocNumber:', refDocError);
-          // Continue to return null
         }
       }
-      
+
       return null;
     } catch (error) {
       logger.error('Error getting receipt with invoice and details:', error);
@@ -1348,21 +1032,75 @@ class ReceiptRepository extends BaseRepository {
   }
 
   async executeReceiptReportChunk(fromDate, toDate) {
-    const params = {
-      FromDate: fromDate ? new Date(fromDate) : null,
-      ToDate: toDate ? new Date(toDate) : null
-    };
+    try {
+      const params = {
+        FromDate: fromDate ? new Date(fromDate) : null,
+        ToDate: toDate ? new Date(toDate) : null
+      };
+
+      // Custom query that bases everything on the Receipt table (ensuring receipt-related dates)
+      // while calculating category totals compatible with buildReceiptReportTotals
+      const query = `
+        WITH ReceiptMetrics AS (
+          SELECT
+            r.ReceiptId,
+            r.TransactionDate,
+            r.Code,
+            r.CustomerName,
+            r.TotalAmount,
+            r.PayingAmount,
+            r.PaymentMode,
+            r.PaymentModeDocNo,
+            r.PayeeName,
+            r.AddressNo,
+            r.Address,
+            r.Address2,
+            r.AddressCity,
+            r.DistrictCode,
+            r.Country,
+            i.Code AS InvoiceCode,
+            i.TransactionDate AS InvoiceDate,
+            i.RefDocNumber,
+            i.RefDocName
+          FROM Receipt r WITH (NOLOCK)
+          LEFT JOIN Invoice i WITH (NOLOCK) ON r.InvoiceId = i.InvoiceId
+          WHERE r.TransactionDate >= @FromDate AND r.TransactionDate <= @ToDate
+        ),
+        Aggregates AS (
+          SELECT
+            SUM(CASE WHEN RefDocName = 'NAPP' THEN PayingAmount ELSE 0 END) AS Tot_Niche,
+            SUM(CASE WHEN RefDocName = 'WAPP' THEN PayingAmount ELSE 0 END) AS Tot_Wapp,
+            SUM(CASE WHEN RefDocName = 'GOA' THEN PayingAmount ELSE 0 END) AS Tot_Goa,
+            SUM(CASE WHEN RefDocName = 'INCR' THEN PayingAmount ELSE 0 END) AS Tot_Incr,
+            SUM(CASE WHEN RefDocName = 'Donation' THEN PayingAmount ELSE 0 END) AS Tot_Donation,
+            SUM(CASE WHEN RefDocName = 'Urn' THEN PayingAmount ELSE 0 END) AS Tot_Urn,
+            SUM(CASE WHEN RefDocName = 'Marble' THEN PayingAmount ELSE 0 END) AS Tot_Marble,
+            SUM(CASE WHEN RefDocName IS NOT NULL AND RefDocName NOT IN ('NAPP', 'WAPP', 'GOA', 'INCR', 'Donation', 'Urn', 'Marble') THEN PayingAmount ELSE 0 END) AS Tot_Others,
+            SUM(PayingAmount) AS Total_val
+          FROM ReceiptMetrics
+        )
+        SELECT 
+          m.*,
+          a.Tot_Niche, a.Tot_Wapp, a.Tot_Goa, a.Tot_Incr, a.Tot_Donation, a.Tot_Urn, a.Tot_Marble, a.Tot_Others, a.Total_val
+        FROM ReceiptMetrics m
+        CROSS JOIN Aggregates a
+        ORDER BY m.TransactionDate DESC, m.Code DESC
+      `;
 
       const receiptReportTimeout = parseInt(process.env.RECEIPT_REPORT_TIMEOUT_MS || '180000', 10);
-    const result = await executeProcedure('ReceiptReport', params, {
-      timeout: receiptReportTimeout
-    });
+      const result = await executeQuery(query, params, {
+        timeout: receiptReportTimeout
+      });
 
-    const recordset = result.recordset || [];
-    return {
-      data: recordset,
-      totals: this.buildReceiptReportTotals(recordset)
-    };
+      const recordset = result.recordset || [];
+      return {
+        data: recordset,
+        totals: this.buildReceiptReportTotals(recordset)
+      };
+    } catch (error) {
+      logger.error('Error executing query-based ReceiptReport:', error);
+      throw error;
+    }
   }
 
   buildChunkRanges(startDate, endDate, chunkDays) {
@@ -1534,7 +1272,7 @@ class ReceiptRepository extends BaseRepository {
       query += ` OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`;
 
       const result = await executeQuery(query, params);
-      
+
       // Additional deduplication by ReceiptId as a safety measure
       const seen = new Map();
       const uniqueReceipts = result.recordset
@@ -1548,7 +1286,7 @@ class ReceiptRepository extends BaseRepository {
           seen.set(receiptId, true);
           return true;
         });
-      
+
       return uniqueReceipts;
     } catch (error) {
       logger.error('Error finding receipts by date range:', error);
@@ -1573,7 +1311,7 @@ class ReceiptRepository extends BaseRepository {
 
       // Build RefDocName filter for applicationCode if provided
       const refDocName = applicationCode ? String(applicationCode).trim().toUpperCase() : null;
-      const refDocNameFilter = refDocName 
+      const refDocNameFilter = refDocName
         ? ` AND EXISTS (
             SELECT 1 FROM InvoiceDetail id_check 
             WHERE id_check.InvoiceId = i.InvoiceId 
@@ -1668,7 +1406,7 @@ class ReceiptRepository extends BaseRepository {
         // If applicationCode filter was applied but no match found, try without the filter as fallback
         if (refDocName) {
           logger.warn(`Invoice not found with applicationCode filter, trying without filter: code=${codeVariant}, applicationCode=${refDocName}`);
-          
+
           const exactQueryFallback = `
             SELECT 
               i.*,
@@ -1845,89 +1583,6 @@ class ReceiptRepository extends BaseRepository {
     }
   }
 
-  /**
-   * Diagnostic helper for invoice codes, similar to diagnoseReceiptCode
-   * Tries exact and case-insensitive matches (with and without churchId),
-   * and falls back to listing similar invoice codes.
-   * @param {string} code - Invoice code to check
-   * @param {number|null} churchId - Optional church ID filter
-   * @returns {Promise<Object>} Diagnostic information
-   */
-  async diagnoseInvoiceCode(code, churchId = null) {
-    try {
-      if (!code) {
-        return { exists: false, message: 'No code provided' };
-      }
-
-      const variations = this.buildInvoiceCodeVariations(code);
-      if (!variations.length) {
-        return { exists: false, message: 'No usable code variations derived' };
-      }
-
-      // Try exact matches across all variations
-      for (const variant of variations) {
-        const params = { code: variant };
-        let whereClause = 'Code = @code';
-
-        if (churchId) {
-          whereClause += ' AND ChurchId = @churchId';
-          params.churchId = churchId;
-        }
-
-        let query = `
-          SELECT TOP 1 Code, InvoiceId, ChurchId, Status, RefDocName, RefDocNumber
-          FROM Invoice
-          WHERE ${whereClause}
-        `;
-
-        let result = await executeQuery(query, params);
-        if (result.recordset && result.recordset.length > 0) {
-          return {
-            exists: true,
-            matchType: 'exact',
-            invoice: result.recordset[0],
-            usedVariant: variant
-          };
-        }
-
-        // Case-insensitive check
-        query = `
-          SELECT TOP 1 Code, InvoiceId, ChurchId, Status, RefDocName, RefDocNumber
-          FROM Invoice
-          WHERE UPPER(LTRIM(RTRIM(Code))) = UPPER(LTRIM(RTRIM(@code)))
-          ${churchId ? ' AND ChurchId = @churchId' : ''}
-        `;
-
-        result = await executeQuery(query, params);
-        if (result.recordset && result.recordset.length > 0) {
-          return {
-            exists: true,
-            matchType: 'case_insensitive',
-            invoice: result.recordset[0],
-            usedVariant: variant,
-            note: `Found with different case or surrounding whitespace. Actual code in DB: "${result.recordset[0].Code}"`
-          };
-        }
-      }
-
-      // If no exact match, check for similar codes
-      const similar = await this.findSimilarInvoiceCodes(code, churchId);
-      return {
-        exists: false,
-        originalCode: String(code).trim(),
-        churchId: churchId || null,
-        similarCodesFound: similar.length,
-        similarCodes: similar.slice(0, 5)
-      };
-    } catch (error) {
-      logger.error('Error diagnosing invoice code:', error);
-      return {
-        exists: false,
-        error: error.message
-      };
-    }
-  }
-
   async getInvoiceById(invoiceId) {
     try {
       // First get the invoice header
@@ -1939,7 +1594,7 @@ class ReceiptRepository extends BaseRepository {
       `;
 
       const invoiceResult = await executeQuery(invoiceQuery, { invoiceId });
-      
+
       if (!invoiceResult.recordset || invoiceResult.recordset.length === 0) {
         return null;
       }
@@ -1966,7 +1621,7 @@ class ReceiptRepository extends BaseRepository {
       `;
 
       const detailsResult = await executeQuery(detailsQuery, { invoiceId });
-      
+
       // Map the invoice with details
       invoice.details = (detailsResult.recordset || []).map(row => ({
         invoiceDetailId: row.InvoiceDetailId,
@@ -1993,36 +1648,36 @@ class ReceiptRepository extends BaseRepository {
 
   mapInvoiceRecordset(recordset = []) {
     if (!recordset || recordset.length === 0) {
-        return null;
-      }
+      return null;
+    }
 
     const invoice = { ...recordset[0] };
     invoice.details = recordset
-        .filter(row => row.InvoiceDetailId)
-        .map(row => ({
-          invoiceDetailId: row.InvoiceDetailId,
-          itemId: row.ItemId,
-          quantity: row.Quantity,
-          unitAmount: row.UnitAmount,
-          payingAmount: row.PayingAmount,
-          totalPayingAmount: row.TotalPayingAmount,
-          refDocNumber: row.RefDocNumber,
-          refDocName: row.RefDocName,
-          lineTotalAmount: row.LineTotalAmount,
-          lineTaxPercent: row.LineTaxPercent,
-          lineTaxAmount: row.LineTaxAmount,
-          itemName: row.ItemName,
-          itemDescription: row.ItemDescription,
-          description: this.buildItemDescription(row)
-        }));
+      .filter(row => row.InvoiceDetailId)
+      .map(row => ({
+        invoiceDetailId: row.InvoiceDetailId,
+        itemId: row.ItemId,
+        quantity: row.Quantity,
+        unitAmount: row.UnitAmount,
+        payingAmount: row.PayingAmount,
+        totalPayingAmount: row.TotalPayingAmount,
+        refDocNumber: row.RefDocNumber,
+        refDocName: row.RefDocName,
+        lineTotalAmount: row.LineTotalAmount,
+        lineTaxPercent: row.LineTaxPercent,
+        lineTaxAmount: row.LineTaxAmount,
+        itemName: row.ItemName,
+        itemDescription: row.ItemDescription,
+        description: this.buildItemDescriptionFromDetail(row)
+      }));
 
-      return invoice;
+    return invoice;
   }
 
   buildItemDescriptionFromDetail(detailRow) {
     // Create a meaningful description for the item from invoice detail
     const parts = [];
-    
+
     // Add reference document info if available
     if (detailRow.RefDocNumber) {
       parts.push(`Item (${detailRow.RefDocNumber})`);
@@ -2031,12 +1686,12 @@ class ReceiptRepository extends BaseRepository {
     } else {
       parts.push('Item');
     }
-    
+
     // Add quantity if greater than 1
     if (detailRow.Quantity && detailRow.Quantity > 1) {
       parts.push(`x${detailRow.Quantity}`);
     }
-    
+
     return parts.join(' ');
   }
 }

@@ -261,6 +261,45 @@ class ReportController {
   }
 
   /**
+   * Generate Receipt Register Report
+   * GET /api/reports/monthly/receipt-register
+   */
+  async generateReceiptRegister(req, res) {
+    try {
+      const { fromDate, toDate } = req.query;
+
+      if (!fromDate || !toDate) {
+        return res.status(400).json({
+          success: false,
+          error: 'fromDate and toDate query parameters are required'
+        });
+      }
+
+      const from = new Date(fromDate);
+      const to = new Date(toDate);
+
+      if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid date format. Use YYYY-MM-DD format'
+        });
+      }
+
+      logger.info(`Generating receipt register report from ${fromDate} to ${toDate}`);
+
+      // We only support JSON/Data format for register currently as it's meant for the web register view
+      const dataResult = await reportService.getReceiptRegisterData(from, to);
+      return res.json(dataResult);
+    } catch (error) {
+      logger.error('Error generating receipt register report:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to generate receipt register report'
+      });
+    }
+  }
+
+  /**
    * Generate Inscription Report
    * GET /api/reports/inscriptions/:insCode
    */

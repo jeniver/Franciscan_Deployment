@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
-import { UserCheckIcon, PlusIcon, InfoIcon, Trash2Icon } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { UserCheckIcon, PlusIcon, InfoIcon, Trash2Icon, Loader2, SearchIcon, CheckCircle2, X } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { FormSelect } from '../components/FormSelect';
 import { AddressInput } from '../components/AddressInput';
 import { PrintSecondNomineeButton } from '../components/PrintSecondNomineeButton';
 import { UpdateApplicationButton } from '../components/UpdateApplicationButton';
+import { usePersonLookup } from '../hooks/usePersonLookup';
+import { PersonData } from '../services/personService';
 interface NomineeDetailsProps {
   formData: any;
   setFormData: (data: any) => void;
@@ -39,6 +41,9 @@ export function NomineeDetails({
   const validationErrors = useSelector((state: RootState) => state.application.validationErrors);
 
   const [nominees, setNominees] = useState<Nominee[]>(formData.nominees || []);
+  const { searchPerson, searchResults, isSearching, clearResults } = usePersonLookup();
+  const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   const nomineesAreEqual = (a: Nominee[], b: Nominee[]) => {
     if (a.length !== b.length) return false;
@@ -82,12 +87,12 @@ export function NomineeDetails({
         status: nominee.status === 'Non-Active' || nominee.status === 'Inactive' ? 'Non-Active' : 'Active'
       }));
       setNominees(prev => (nomineesAreEqual(normalized, prev) ? prev : normalized));
-      
+
       // Update form data with structured address fields when nominees are loaded
       const allNomineeData: any = {
         nominees: normalized,
       };
-      
+
       // Update fields for all nominees (up to 2 for now)
       normalized.forEach((nominee: Nominee, index: number) => {
         const nomineeIndex = index + 1;
@@ -103,13 +108,13 @@ export function NomineeDetails({
         allNomineeData[`nominee${nomineeIndex}Phone`] = nominee.contactNumber || '';
         allNomineeData[`nominee${nomineeIndex}Email`] = nominee.email || '';
         allNomineeData[`nominee${nomineeIndex}Status`] = nominee.status || 'Active';
-        
+
         // Add structured address fields for backend mapping
         const isBlock = nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block';
-        const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== '' 
+        const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== ''
           ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`)
           : '';
-        
+
         // Use backend-appropriate field naming: first nominee uses base names, second uses '2' suffix
         if (nomineeIndex === 1) {
           allNomineeData[`nomineeAddressNo`] = isBlock ? 'Blk' : 'No';
@@ -118,7 +123,7 @@ export function NomineeDetails({
           allNomineeData[`nomineeAddressCity`] = unitNoNormalized;
           allNomineeData[`nomineeAddressState`] = nominee.postalCode || '';
           allNomineeData[`nomineeAddressCountry`] = nominee.country || 'Singapore';
-          
+
           // Create structured nominee object
           allNomineeData.nominee = buildNomineeObject(nominee, index);
         } else {
@@ -129,15 +134,15 @@ export function NomineeDetails({
           allNomineeData[`nomineeAddressCity2`] = unitNoNormalized;
           allNomineeData[`nomineeAddressState2`] = nominee.postalCode || '';
           allNomineeData[`nomineeAddressCountry2`] = nominee.country || 'Singapore';
-          
+
           // Also set the nominee2Address field as fallback for backend
           allNomineeData[`nominee2Address`] = nominee.address || '';
-          
+
           // Create structured nominee2 object
           allNomineeData.nominee2 = buildNomineeObject(nominee, index);
         }
       });
-      
+
       // Clear second nominee fields if there's no second nominee
       if (normalized.length < 2) {
         allNomineeData[`nominee2Address`] = '';
@@ -148,7 +153,7 @@ export function NomineeDetails({
         allNomineeData[`nomineeAddressState2`] = '';
         allNomineeData[`nomineeAddressCountry2`] = '';
       }
-      
+
       // Maintain backward compatibility with first nominee fields
       const firstNominee = normalized[0];
       allNomineeData.nomineeName = firstNominee?.fullName || '';
@@ -163,14 +168,14 @@ export function NomineeDetails({
       allNomineeData.nomineePhone = firstNominee?.contactNumber || '';
       allNomineeData.nomineeEmail = firstNominee?.email || '';
       allNomineeData.nomineeStatus = firstNominee?.status || 'Active';
-      
+
       // Add structured address fields for first nominee (primary nominee)
       if (firstNominee) {
         const isBlock = firstNominee.block === 'Block' || firstNominee.block?.toLowerCase() === 'block';
-        const unitNoNormalized = firstNominee.unitNo && firstNominee.unitNo.trim() !== '' 
+        const unitNoNormalized = firstNominee.unitNo && firstNominee.unitNo.trim() !== ''
           ? (firstNominee.unitNo.trim().startsWith('#') ? firstNominee.unitNo.trim() : `#${firstNominee.unitNo.trim()}`)
           : '';
-        
+
         allNomineeData.nomineeAddressNo = isBlock ? 'Blk' : 'No';
         allNomineeData.nomineeAddressLine1 = firstNominee.blockNo || '';
         allNomineeData.nomineeAddressLine2 = firstNominee.streetName || '';
@@ -178,7 +183,7 @@ export function NomineeDetails({
         allNomineeData.nomineeAddressState = firstNominee.postalCode || '';
         allNomineeData.nomineeAddressCountry = firstNominee.country || 'Singapore';
       }
-      
+
       // Preserve existing consolidated address fields to avoid conflicts
       const preservedFields = {
         // First nominee consolidated fields
@@ -196,10 +201,10 @@ export function NomineeDetails({
         nomineeAddressState2: formData.nomineeAddressState2 || allNomineeData.nomineeAddressState2,
         nomineeAddressCountry2: formData.nomineeAddressCountry2 || allNomineeData.nomineeAddressCountry2,
       };
-      
+
       // Merge preserved fields with the new data
       const finalNomineeData = { ...allNomineeData, ...preservedFields };
-      
+
       setFormData(finalNomineeData);
     }
   }, [JSON.stringify(formData.nominees)]);
@@ -243,10 +248,10 @@ export function NomineeDetails({
   // Helper to build structured nominee object as requested
   const buildNomineeObject = (nominee: Nominee, index: number) => {
     const isBlock = nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block';
-    const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== '' 
+    const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== ''
       ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`)
       : '';
-    
+
     // Build address string in the exact format requested
     let addressString = '';
     if (isBlock && nominee.blockNo) {
@@ -285,7 +290,7 @@ export function NomineeDetails({
       }
       addressString = parts.join(', ');
     }
-    
+
     return {
       name: nominee.fullName || '',
       address: addressString,
@@ -331,7 +336,7 @@ export function NomineeDetails({
     const allNomineeData: any = {
       nominees: updatedNominees,
     };
-    
+
     // Update fields for all nominees (up to 2 for now)
     updatedNominees.forEach((nominee, index) => {
       const nomineeIndex = index + 1;
@@ -347,13 +352,13 @@ export function NomineeDetails({
       allNomineeData[`nominee${nomineeIndex}Phone`] = nominee.contactNumber || '';
       allNomineeData[`nominee${nomineeIndex}Email`] = nominee.email || '';
       allNomineeData[`nominee${nomineeIndex}Status`] = nominee.status || 'Active';
-      
+
       // Add structured address fields for backend mapping
       const isBlock = nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block';
-      const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== '' 
+      const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== ''
         ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`)
         : '';
-      
+
       // Use backend-appropriate field naming: first nominee uses base names, second uses '2' suffix
       if (nomineeIndex === 1) {
         allNomineeData[`nomineeAddressNo`] = isBlock ? 'Blk' : 'No';
@@ -362,7 +367,7 @@ export function NomineeDetails({
         allNomineeData[`nomineeAddressCity`] = unitNoNormalized;
         allNomineeData[`nomineeAddressState`] = nominee.postalCode || '';
         allNomineeData[`nomineeAddressCountry`] = nominee.country || 'Singapore';
-        
+
         // Create structured nominee object
         allNomineeData.nominee = buildNomineeObject(nominee, index);
       } else {
@@ -373,15 +378,15 @@ export function NomineeDetails({
         allNomineeData[`nomineeAddressCity2`] = unitNoNormalized;
         allNomineeData[`nomineeAddressState2`] = nominee.postalCode || '';
         allNomineeData[`nomineeAddressCountry2`] = nominee.country || 'Singapore';
-        
+
         // Also set the nominee2Address field as fallback for backend
         allNomineeData[`nominee2Address`] = nominee.address || '';
-        
+
         // Create structured nominee2 object
         allNomineeData.nominee2 = buildNomineeObject(nominee, index);
       }
     });
-    
+
     // Clear second nominee fields if there's no second nominee
     if (updatedNominees.length < 2) {
       allNomineeData[`nominee2Address`] = '';
@@ -393,7 +398,7 @@ export function NomineeDetails({
       allNomineeData[`nomineeAddressCountry2`] = '';
       allNomineeData.nominee2 = null;
     }
-    
+
     // Maintain backward compatibility with first nominee fields
     const firstNominee = updatedNominees[0];
     allNomineeData.nomineeName = firstNominee?.fullName || '';
@@ -408,7 +413,7 @@ export function NomineeDetails({
     allNomineeData.nomineePhone = firstNominee?.contactNumber || '';
     allNomineeData.nomineeEmail = firstNominee?.email || '';
     allNomineeData.nomineeStatus = firstNominee?.status || 'Active';
-    
+
     setFormData(allNomineeData);
   };
 
@@ -425,7 +430,7 @@ export function NomineeDetails({
     if (nominee1) {
       // Determine if this is a block or number address based on addressNo field
       const isBlockAddress = nominee1.addressNo?.toLowerCase() === 'block';
-      
+
       nomineesArray.push({
         id: 1,
         fullName: nominee1.name || '',
@@ -451,7 +456,7 @@ export function NomineeDetails({
     if (nominee2) {
       // Determine if this is a block or number address based on addressNo field
       const isBlockAddress = nominee2.addressNo?.toLowerCase() === 'block';
-      
+
       nomineesArray.push({
         id: 2,
         fullName: nominee2.name || '',
@@ -488,7 +493,7 @@ export function NomineeDetails({
     const allNomineeData: any = {
       nominees: updated,
     };
-    
+
     // Update fields for all nominees (up to 2 for now)
     updated.forEach((nominee: Nominee, index: number) => {
       const nomineeIndex = index + 1;
@@ -504,13 +509,13 @@ export function NomineeDetails({
       allNomineeData[`nominee${nomineeIndex}Phone`] = nominee.contactNumber || '';
       allNomineeData[`nominee${nomineeIndex}Email`] = nominee.email || '';
       allNomineeData[`nominee${nomineeIndex}Status`] = nominee.status || 'Active';
-      
+
       // Add structured address fields for backend mapping
       const isBlock = nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block';
-      const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== '' 
+      const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== ''
         ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`)
         : '';
-      
+
       // Use backend-appropriate field naming: first nominee uses base names, second uses '2' suffix
       if (nomineeIndex === 1) {
         allNomineeData[`nomineeAddressNo`] = isBlock ? 'Blk' : 'No';
@@ -519,7 +524,7 @@ export function NomineeDetails({
         allNomineeData[`nomineeAddressCity`] = unitNoNormalized;
         allNomineeData[`nomineeAddressState`] = nominee.postalCode || '';
         allNomineeData[`nomineeAddressCountry`] = nominee.country || 'Singapore';
-        
+
         // Create structured nominee object
         allNomineeData.nominee = buildNomineeObject(nominee, index);
       } else {
@@ -530,15 +535,15 @@ export function NomineeDetails({
         allNomineeData[`nomineeAddressCity2`] = unitNoNormalized;
         allNomineeData[`nomineeAddressState2`] = nominee.postalCode || '';
         allNomineeData[`nomineeAddressCountry2`] = nominee.country || 'Singapore';
-        
+
         // Also set the nominee2Address field as fallback for backend
         allNomineeData[`nominee2Address`] = nominee.address || '';
-        
+
         // Create structured nominee2 object
         allNomineeData.nominee2 = buildNomineeObject(nominee, index);
       }
     });
-    
+
     // Clear second nominee fields if there's no second nominee
     if (updated.length < 2) {
       allNomineeData[`nominee2Address`] = '';
@@ -550,7 +555,7 @@ export function NomineeDetails({
       allNomineeData[`nomineeAddressCountry2`] = '';
       allNomineeData.nominee2 = null;
     }
-    
+
     // Maintain backward compatibility with first nominee fields
     const firstNominee = updated[0];
     allNomineeData.nomineeName = firstNominee?.fullName || '';
@@ -565,7 +570,7 @@ export function NomineeDetails({
     allNomineeData.nomineePhone = firstNominee?.contactNumber || '';
     allNomineeData.nomineeEmail = firstNominee?.email || '';
     allNomineeData.nomineeStatus = firstNominee?.status || 'Active';
-    
+
     setFormData(allNomineeData);
   };
   const handleRemoveNominee = (id: number) => {
@@ -576,7 +581,7 @@ export function NomineeDetails({
     const allNomineeData: any = {
       nominees: updated,
     };
-    
+
     // Update fields for all nominees (up to 2 for now)
     updated.forEach((nominee, index) => {
       const nomineeIndex = index + 1;
@@ -592,13 +597,13 @@ export function NomineeDetails({
       allNomineeData[`nominee${nomineeIndex}Phone`] = nominee.contactNumber || '';
       allNomineeData[`nominee${nomineeIndex}Email`] = nominee.email || '';
       allNomineeData[`nominee${nomineeIndex}Status`] = nominee.status || 'Active';
-      
+
       // Add structured address fields for backend mapping
       const isBlock = nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block';
-      const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== '' 
+      const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== ''
         ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`)
         : '';
-      
+
       // Use backend-appropriate field naming: first nominee uses base names, second uses '2' suffix
       if (nomineeIndex === 1) {
         allNomineeData[`nomineeAddressNo`] = isBlock ? 'Blk' : 'No';
@@ -607,7 +612,7 @@ export function NomineeDetails({
         allNomineeData[`nomineeAddressCity`] = unitNoNormalized;
         allNomineeData[`nomineeAddressState`] = nominee.postalCode || '';
         allNomineeData[`nomineeAddressCountry`] = nominee.country || 'Singapore';
-        
+
         // Create structured nominee object
         allNomineeData.nominee = buildNomineeObject(nominee, index);
       } else {
@@ -618,15 +623,15 @@ export function NomineeDetails({
         allNomineeData[`nomineeAddressCity2`] = unitNoNormalized;
         allNomineeData[`nomineeAddressState2`] = nominee.postalCode || '';
         allNomineeData[`nomineeAddressCountry2`] = nominee.country || 'Singapore';
-        
+
         // Also set the nominee2Address field as fallback for backend
         allNomineeData[`nominee2Address`] = nominee.address || '';
-        
+
         // Create structured nominee2 object
         allNomineeData.nominee2 = buildNomineeObject(nominee, index);
       }
     });
-    
+
     // Clear fields for missing nominees (when removing a nominee)
     for (let i = updated.length + 1; i <= 2; i++) {
       allNomineeData[`nominee${i}Name`] = '';
@@ -649,7 +654,7 @@ export function NomineeDetails({
       allNomineeData[`nominee${i}AddressState`] = '';
       allNomineeData[`nominee${i}AddressCountry`] = 'Singapore';
     }
-    
+
     // Clear second nominee fields if there's no second nominee
     if (updated.length < 2) {
       allNomineeData[`nominee2Address`] = '';
@@ -661,7 +666,7 @@ export function NomineeDetails({
       allNomineeData[`nomineeAddressCountry2`] = 'Singapore';
       allNomineeData.nominee2 = null;
     }
-    
+
     // Maintain backward compatibility with first nominee fields
     const firstNominee = updated[0];
     allNomineeData.nomineeName = firstNominee?.fullName || '';
@@ -676,14 +681,14 @@ export function NomineeDetails({
     allNomineeData.nomineePhone = firstNominee?.contactNumber || '';
     allNomineeData.nomineeEmail = firstNominee?.email || '';
     allNomineeData.nomineeStatus = firstNominee?.status || 'Active';
-    
+
     // Add structured address fields for first nominee (primary nominee)
     if (firstNominee) {
       const isBlock = firstNominee.block === 'Block' || firstNominee.block?.toLowerCase() === 'block';
-      const unitNoNormalized = firstNominee.unitNo && firstNominee.unitNo.trim() !== '' 
+      const unitNoNormalized = firstNominee.unitNo && firstNominee.unitNo.trim() !== ''
         ? (firstNominee.unitNo.trim().startsWith('#') ? firstNominee.unitNo.trim() : `#${firstNominee.unitNo.trim()}`)
         : '';
-      
+
       allNomineeData.nomineeAddressNo = isBlock ? 'Blk' : 'No';
       allNomineeData.nomineeAddressLine1 = firstNominee.blockNo || '';
       allNomineeData.nomineeAddressLine2 = firstNominee.streetName || '';
@@ -700,9 +705,44 @@ export function NomineeDetails({
       allNomineeData.nomineeAddressCountry = 'Singapore';
       allNomineeData.nominee = null;
     }
-    
+
     setFormData(allNomineeData);
   };
+
+  const handleSelectPerson = useCallback((person: PersonData, index: number) => {
+    const isBlock = person.addressNo?.toLowerCase() === 'block' || person.addressNo?.toLowerCase() === 'blk';
+
+    const updatedNominee: Partial<Nominee> = {
+      fullName: person.name,
+      nric: person.idNo || '',
+      email: person.emailID || '',
+      contactNumber: person.mobileNo || '',
+      homeTelNo: person.homeTelNo || '',
+      officeTelNo: person.officeTelNo || '',
+      block: isBlock ? 'Block' : 'No',
+      blockNo: person.addressLine1 || '',
+      streetName: person.addressLine2 || '',
+      unitNo: person.addressCity?.replace('#', '') || '',
+      postalCode: person.addressState || '',
+      country: person.addressCountry || 'Singapore',
+      address: person.address || ''
+    };
+
+    const nomineeToUpdate = nominees[index];
+    if (nomineeToUpdate) {
+      const updatedNominees = nominees.map((n, i) => i === index ? { ...n, ...updatedNominee } : n);
+      setNominees(updatedNominees);
+
+      // Re-trigger the massive formData update logic
+      // Note: we can just call handleUpdateNominee with a dummy field to trigger the full update
+      // but it's cleaner to just update the local state and let the useEffect handle the REST sync
+    }
+
+    setShowSearchResults(false);
+    setActiveSearchIndex(null);
+    clearResults();
+  }, [nominees, clearResults]);
+
   return <div>
     <div className="flex items-center gap-3 mb-8">
       <div className="w-12 h-12 bg-gradient-to-br from-[#8b2828] to-[#7d1f1f] rounded-xl flex items-center justify-center">
@@ -729,7 +769,7 @@ export function NomineeDetails({
       </div>
     )}
 
-    
+
 
     <div className="space-y-6">
       {nominees.map((nominee, index) => (
@@ -752,36 +792,98 @@ export function NomineeDetails({
             )}
           </div>
           <div className="grid grid-cols-2 gap-6">
-            <div>
+            <div className="relative">
               <label className="text-sm font-medium text-gray-700 mb-2 block">
                 Name
               </label>
-              <input
-                type="text"
-                value={nominee.fullName}
-                onChange={e => handleUpdateNominee(nominee.id, 'fullName', e.target.value)}
-                placeholder="Enter full name"
-                disabled={isReadOnly}
-                className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
-                  }`}
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={nominee.fullName}
+                  onChange={e => {
+                    const val = e.target.value;
+                    handleUpdateNominee(nominee.id, 'fullName', val);
+                    if (val.length >= 3) {
+                      searchPerson(val);
+                      setActiveSearchIndex(index);
+                      setShowSearchResults(true);
+                    } else if (activeSearchIndex === index) {
+                      setShowSearchResults(false);
+                    }
+                  }}
+                  placeholder="Enter full name"
+                  disabled={isReadOnly}
+                  className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
+                    }`}
+                />
+                {!isReadOnly && isSearching && activeSearchIndex === index && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                  </div>
+                )}
+              </div>
+
+              {showSearchResults && activeSearchIndex === index && searchResults.length > 0 && !isReadOnly && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                  <div className="p-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-500 flex items-center justify-between">
+                    <span>MATCHES FOUND</span>
+                    <button onClick={() => setShowSearchResults(false)} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {searchResults.map((person) => (
+                    <div
+                      key={person.personId}
+                      className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors group"
+                      onClick={() => handleSelectPerson(person, index)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="font-medium text-gray-900 group-hover:text-blue-700">{person.name}</span>
+                          <span className="text-xs text-gray-500">{person.idNo} • {person.emailID}</span>
+                        </div>
+                        <CheckCircle2 className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">
-                  NRIC/Passport No.
-                </label>
+            <div className="relative">
+              <label className="text-sm font-medium text-gray-700 mb-2 block">
+                NRIC/Passport No.
+              </label>
+              <div className="relative">
                 <input
                   type="text"
                   value={nominee.nric}
-                  onChange={e => handleUpdateNominee(nominee.id, 'nric', e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    handleUpdateNominee(nominee.id, 'nric', val);
+                    if (val.length >= 3) {
+                      searchPerson(val);
+                      setActiveSearchIndex(index);
+                      setShowSearchResults(true);
+                    } else if (activeSearchIndex === index) {
+                      setShowSearchResults(false);
+                    }
+                  }}
                   placeholder="Enter NRIC/Passport"
                   className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
                     }`}
                   disabled={isReadOnly}
                 />
+                {!isReadOnly && !isSearching && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <SearchIcon className="w-4 h-4 text-gray-400" />
+                  </div>
+                )}
+                {!isReadOnly && isSearching && activeSearchIndex === index && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                  </div>
+                )}
               </div>
-
             </div>
           </div>
 
@@ -802,7 +904,7 @@ export function NomineeDetails({
                 onAddressChange={(addressData) => {
                   // Convert structured address to legacy single string
                   const legacyAddress = buildLegacyAddress(addressData);
-                  
+
                   // Update this nominee with all address-related fields at once
                   const updatedNominee = {
                     ...nominee,
@@ -814,7 +916,7 @@ export function NomineeDetails({
                     postalCode: addressData.postalCode,
                     country: addressData.country
                   };
-                  
+
                   // Update all nominee fields for API compatibility
                   const updated = nominees.map(n => n.id === nominee.id ? updatedNominee : n);
                   setNominees(updated);
@@ -823,7 +925,7 @@ export function NomineeDetails({
                   const allNomineeData: any = {
                     nominees: updated,
                   };
-                  
+
                   // Update fields for all nominees (up to 2 for now)
                   updated.forEach((nominee, index) => {
                     const nomineeIndex = index + 1;
@@ -839,13 +941,13 @@ export function NomineeDetails({
                     allNomineeData[`nominee${nomineeIndex}Phone`] = nominee.contactNumber || '';
                     allNomineeData[`nominee${nomineeIndex}Email`] = nominee.email || '';
                     allNomineeData[`nominee${nomineeIndex}Status`] = nominee.status || 'Active';
-                    
+
                     // Add structured address fields for backend mapping
                     const isBlock = nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block';
-                    const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== '' 
+                    const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== ''
                       ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`)
                       : '';
-                    
+
                     // Use backend-appropriate field naming: first nominee uses base names, second uses '2' suffix
                     if (nomineeIndex === 1) {
                       allNomineeData[`nomineeAddressNo`] = isBlock ? 'Blk' : 'No';
@@ -854,7 +956,7 @@ export function NomineeDetails({
                       allNomineeData[`nomineeAddressCity`] = unitNoNormalized;
                       allNomineeData[`nomineeAddressState`] = nominee.postalCode || '';
                       allNomineeData[`nomineeAddressCountry`] = nominee.country || 'Singapore';
-                      
+
                       // Create structured nominee object
                       allNomineeData.nominee = buildNomineeObject(nominee, index);
                     } else {
@@ -865,15 +967,15 @@ export function NomineeDetails({
                       allNomineeData[`nomineeAddressCity2`] = unitNoNormalized;
                       allNomineeData[`nomineeAddressState2`] = nominee.postalCode || '';
                       allNomineeData[`nomineeAddressCountry2`] = nominee.country || 'Singapore';
-                      
+
                       // Also set the nominee2Address field as fallback for backend
                       allNomineeData[`nominee2Address`] = nominee.address || '';
-                      
+
                       // Create structured nominee2 object
                       allNomineeData.nominee2 = buildNomineeObject(nominee, index);
                     }
                   });
-                  
+
                   // Clear second nominee fields if there's no second nominee
                   if (updated.length < 2) {
                     allNomineeData[`nominee2Address`] = '';
@@ -885,7 +987,7 @@ export function NomineeDetails({
                     allNomineeData[`nomineeAddressCountry2`] = '';
                     allNomineeData.nominee2 = null;
                   }
-                  
+
                   // Maintain backward compatibility with first nominee fields
                   const firstNominee = updated[0];
                   allNomineeData.nomineeName = firstNominee?.fullName || '';
@@ -900,7 +1002,7 @@ export function NomineeDetails({
                   allNomineeData.nomineePhone = firstNominee?.contactNumber || '';
                   allNomineeData.nomineeEmail = firstNominee?.email || '';
                   allNomineeData.nomineeStatus = firstNominee?.status || 'Active';
-                  
+
                   setFormData(allNomineeData);
                 }}
                 isReadOnly={isReadOnly}
@@ -912,7 +1014,7 @@ export function NomineeDetails({
           </div>
 
           <div className="grid grid-cols-2 gap-6 mt-4">
-             <div>
+            <div>
               <label className="text-sm font-medium text-gray-700 mb-2 block">
                 Email ID
               </label>
@@ -940,7 +1042,7 @@ export function NomineeDetails({
                 disabled={isReadOnly}
               />
             </div>
-            
+
           </div>
 
           <div className="grid grid-cols-2 gap-6 mt-4">
@@ -958,7 +1060,7 @@ export function NomineeDetails({
                 disabled={isReadOnly}
               />
             </div>
-           
+
             <div>
               <label className="text-sm font-medium text-gray-700 mb-2 block">
                 Office Telephone
@@ -1008,7 +1110,7 @@ export function NomineeDetails({
             />
 
           </div>
-        <>{console.log("hjhjjhjjhjhjhj" , formData )}</>
+          <>{console.log("hjhjjhjjhjhjhj", formData)}</>
           {/* Second Nominee Agreement Button for second nominee */}
           {index === 1 && (
             <div className="mt-4 flex justify-end">
@@ -1019,24 +1121,24 @@ export function NomineeDetails({
       ))}
 
       {nominees.length > 0 && (
-      <div className="flex justify-between items-center mb-4">
-        <button
-          onClick={handleAddNominee}
-          disabled={isReadOnly}
-          className={`flex items-center gap-2 px-4 py-2 bg-[#8b5a2b] text-white rounded-md hover:bg-[#6d4420] transition-colors ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-        >
-          <PlusIcon className="w-4 h-4" />
-          Add Nominee
-        </button>
-        
-        {/* Update Application Button */}
-        <UpdateApplicationButton 
-          formData={formData} 
-          isReadOnly={isReadOnly}
-        />
-      </div>
-    )}
+        <div className="flex justify-between items-center mb-4">
+          <button
+            onClick={handleAddNominee}
+            disabled={isReadOnly}
+            className={`flex items-center gap-2 px-4 py-2 bg-[#8b5a2b] text-white rounded-md hover:bg-[#6d4420] transition-colors ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+          >
+            <PlusIcon className="w-4 h-4" />
+            Add Nominee
+          </button>
+
+          {/* Update Application Button */}
+          <UpdateApplicationButton
+            formData={formData}
+            isReadOnly={isReadOnly}
+          />
+        </div>
+      )}
 
       {/* Empty State */}
       {nominees.length === 0 && (
@@ -1052,10 +1154,10 @@ export function NomineeDetails({
               <PlusIcon className="w-4 h-4 mr-2" />
               Add Nominee
             </button>
-            
+
             {/* Update Application Button for empty state */}
-            <UpdateApplicationButton 
-              formData={formData} 
+            <UpdateApplicationButton
+              formData={formData}
               isReadOnly={isReadOnly}
               variant="outline"
             />

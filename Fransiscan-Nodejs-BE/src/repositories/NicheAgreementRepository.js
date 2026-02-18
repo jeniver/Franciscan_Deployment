@@ -378,26 +378,8 @@ class NicheAgreementRepository extends BaseRepository {
         { timeout: 10000 }
       );
 
-      logger.info(`[addBeneficiaries] Primary query returned ${primaryResult.recordset.length} records from NicheApplicationBeneficiary`);
-
       if (primaryResult.recordset.length > 0) {
         const bene1 = primaryResult.recordset[0];
-        logger.info(`[addBeneficiaries] Beneficiary 1 raw data:`, {
-          Name: bene1.Name,
-          DateOfBirth: bene1.DateOfBirth,
-          DateOfBirthType: typeof bene1.DateOfBirth,
-          BirthYear: bene1.BirthYear,
-          BirthYearType: typeof bene1.BirthYear,
-          RelationshipToNominee1: bene1.RelationshipToNominee1,
-          RelationshipToNominee2: bene1.RelationshipToNominee2
-        });
-
-        // ✅ TRACE: Log raw DB value for dateOfBirth
-        logger.info(`[TRACE-REPO] Application ${nicheAgreement.applicationCode} Bene 1 Raw:`, {
-          DateOfBirth: bene1.DateOfBirth,
-          BirthYear: bene1.BirthYear,
-          Type: typeof bene1.DateOfBirth
-        });
 
         nicheAgreement.beneName_1 = bene1.Name;
         nicheAgreement.beneIDNo_1 = bene1.IDNo;
@@ -412,28 +394,10 @@ class NicheAgreementRepository extends BaseRepository {
 
         // ✅ FIX: Format BirthYear properly (handles NVARCHAR string)
         nicheAgreement.beneBirthYear_1 = this.formatBirthYear(bene1.BirthYear);
-
-        logger.info(`[addBeneficiaries] Beneficiary 1 formatted:`, {
-          dateOfBirth: nicheAgreement.beneDateOfBirth_1,
-          birthYear: nicheAgreement.beneBirthYear_1
-        });
       }
 
       if (primaryResult.recordset.length > 1) {
         const bene2 = primaryResult.recordset[1];
-
-        logger.debug(`[addBeneficiaries] Primary Beneficiary 2 raw data:`, {
-          name: bene2.Name,
-          dateOfBirth: bene2.DateOfBirth,
-          birthYear: bene2.BirthYear
-        });
-
-        // ✅ TRACE: Log raw DB value for dateOfBirth 2
-        logger.info(`[TRACE-REPO] Application ${nicheAgreement.applicationCode} Bene 2 Raw:`, {
-          DateOfBirth: bene2.DateOfBirth,
-          BirthYear: bene2.BirthYear,
-          Type: typeof bene2.DateOfBirth
-        });
 
         nicheAgreement.beneName_2 = bene2.Name;
         nicheAgreement.beneIDNo_2 = bene2.IDNo;
@@ -448,11 +412,6 @@ class NicheAgreementRepository extends BaseRepository {
 
         // ✅ FIX: Format BirthYear properly
         nicheAgreement.beneBirthYear_2 = this.formatBirthYear(bene2.BirthYear);
-
-        logger.info(`[addBeneficiaries] Beneficiary 2 formatted:`, {
-          dateOfBirth: nicheAgreement.beneDateOfBirth_2,
-          birthYear: nicheAgreement.beneBirthYear_2
-        });
       }
 
       // FALLBACK: If no data found, try NicheBookingBeneficiary (legacy/booking data)
@@ -478,8 +437,6 @@ class NicheAgreementRepository extends BaseRepository {
 
         const fallbackResult = await executeQuery(fallbackQuery, { nicheApplicationId }, { timeout: 10000 });
 
-        logger.info(`[addBeneficiaries] Fallback query returned ${fallbackResult.recordset.length} records from NicheBookingBeneficiary`);
-
         if (fallbackResult.recordset.length > 0) {
           const bene1 = fallbackResult.recordset[0];
           logger.info(`[addBeneficiaries] Fallback Beneficiary 1 raw data:`, {
@@ -501,11 +458,6 @@ class NicheAgreementRepository extends BaseRepository {
 
           // ✅ FIX: Format BirthYear properly (handles INT)
           nicheAgreement.beneBirthYear_1 = this.formatBirthYear(bene1.BirthYear);
-
-          logger.info(`[addBeneficiaries] Fallback Beneficiary 1 formatted:`, {
-            dateOfBirth: nicheAgreement.beneDateOfBirth_1,
-            birthYear: nicheAgreement.beneBirthYear_1
-          });
 
           nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1 || null;
           nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2 || null;
@@ -533,28 +485,11 @@ class NicheAgreementRepository extends BaseRepository {
           // ✅ FIX: Format BirthYear properly
           nicheAgreement.beneBirthYear_2 = this.formatBirthYear(bene2.BirthYear);
 
-          logger.info(`[addBeneficiaries] Fallback Beneficiary 2 formatted:`, {
-            dateOfBirth: nicheAgreement.beneDateOfBirth_2,
-            birthYear: nicheAgreement.beneBirthYear_2
-          });
-
           nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1 || null;
           nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2 || null;
         }
       }
 
-      logger.info(`[addBeneficiaries] Completed. Final values:`, {
-        bene1: {
-          name: nicheAgreement.beneName_1,
-          dateOfBirth: nicheAgreement.beneDateOfBirth_1,
-          birthYear: nicheAgreement.beneBirthYear_1
-        },
-        bene2: {
-          name: nicheAgreement.beneName_2,
-          dateOfBirth: nicheAgreement.beneDateOfBirth_2,
-          birthYear: nicheAgreement.beneBirthYear_2
-        }
-      });
     } catch (error) {
       logger.warn('Could not fetch beneficiaries:', error.message);
       logger.error('[addBeneficiaries] Error details:', error);
@@ -682,7 +617,6 @@ class NicheAgreementRepository extends BaseRepository {
         }
       } else {
         // If no NicheBooking record exists, log this as it might explain why address fields are null
-        logger.info(`No NicheBooking record found for application ID: ${nicheApplicationId}. Using NicheApplication address data only.`);
       }
     } catch (error) {
       logger.warn('Could not fetch nominee info from Person table:', error.message);
@@ -696,21 +630,45 @@ class NicheAgreementRepository extends BaseRepository {
    */
   async addDeceasedAndStorageInfo(nicheApplicationId, nicheAgreement) {
     try {
+      const isMissingStorageFromColumn = (error) =>
+        /invalid column name\s+'storagefrom'/i.test(error?.message || '');
+
+      const executeStorageSafeQuery = async (primaryQuery, fallbackQuery, params) => {
+        try {
+          return await executeQuery(primaryQuery, params, { timeout: 10000 });
+        } catch (queryError) {
+          if (!isMissingStorageFromColumn(queryError)) {
+            throw queryError;
+          }
+          logger.warn('StorageFrom column missing in schema, using fallback query.');
+          return executeQuery(fallbackQuery, params, { timeout: 10000 });
+        }
+      };
+
       // Step 1: Get booking info first (Foundational)
       const bookingQuery = `
         SELECT TOP 1
           NicheBookingId,
-          StorageFrom,
-          StorageTo
+          StorageFrom
+        FROM NicheBooking WITH (NOLOCK)
+        WHERE NicheApplicationId = @nicheApplicationId
+        ORDER BY NicheBookingId DESC
+      `;
+      const bookingQueryFallback = `
+        SELECT TOP 1
+          NicheBookingId
         FROM NicheBooking WITH (NOLOCK)
         WHERE NicheApplicationId = @nicheApplicationId
         ORDER BY NicheBookingId DESC
       `;
 
-      const bookingResult = await executeQuery(bookingQuery, { nicheApplicationId }, { timeout: 10000 });
+      const bookingResult = await executeStorageSafeQuery(
+        bookingQuery,
+        bookingQueryFallback,
+        { nicheApplicationId }
+      );
 
       if (!bookingResult.recordset || bookingResult.recordset.length === 0) {
-        logger.info(`No booking found for application: ${nicheApplicationId}`);
         return;
       }
 
@@ -719,11 +677,6 @@ class NicheAgreementRepository extends BaseRepository {
 
       if (bookingRow.StorageFrom) {
         nicheAgreement.storageFrom = bookingRow.StorageFrom;
-        logger.info(`[addDeceasedAndStorageInfo] Found StorageFrom in NicheBooking: ${bookingRow.StorageFrom}`);
-      }
-      if (bookingRow.StorageTo) {
-        nicheAgreement.storageTo = bookingRow.StorageTo;
-        logger.info(`[addDeceasedAndStorageInfo] Found StorageTo in NicheBooking: ${bookingRow.StorageTo}`);
       }
 
       // Step 2: Get Inscription Request info
@@ -731,14 +684,25 @@ class NicheAgreementRepository extends BaseRepository {
         SELECT TOP 1
           NicheInscriptionRequestId,
           StorageFrom,
-          StorageTo,
-          CreatedDate
+          TranscationDate
+        FROM NicheInscriptionRequest WITH (NOLOCK)
+        WHERE NicheBookingId = @nicheBookingId
+        ORDER BY NicheInscriptionRequestId DESC
+      `;
+      const inscriptionQueryFallback = `
+        SELECT TOP 1
+          NicheInscriptionRequestId,
+          TranscationDate
         FROM NicheInscriptionRequest WITH (NOLOCK)
         WHERE NicheBookingId = @nicheBookingId
         ORDER BY NicheInscriptionRequestId DESC
       `;
 
-      const inscriptionResult = await executeQuery(inscriptionQuery, { nicheBookingId }, { timeout: 10000 });
+      const inscriptionResult = await executeStorageSafeQuery(
+        inscriptionQuery,
+        inscriptionQueryFallback,
+        { nicheBookingId }
+      );
       let inscriptionRequestId = null;
 
       if (inscriptionResult.recordset.length > 0) {
@@ -748,17 +712,11 @@ class NicheAgreementRepository extends BaseRepository {
         // Override/Set storage from Inscription if available (it's arguably more recent/specific)
         if (insRow.StorageFrom) {
           nicheAgreement.storageFrom = insRow.StorageFrom;
-          logger.info(`[addDeceasedAndStorageInfo] Found StorageFrom in NicheInscriptionRequest: ${insRow.StorageFrom}`);
-        }
-        if (insRow.StorageTo) {
-          nicheAgreement.storageTo = insRow.StorageTo;
-          logger.info(`[addDeceasedAndStorageInfo] Found StorageTo in NicheInscriptionRequest: ${insRow.StorageTo}`);
         }
 
-        // If still no StorageFrom, use CreatedDate of inscription as a last-resort fallback for FROM
-        if (!nicheAgreement.storageFrom && insRow.CreatedDate) {
-          nicheAgreement.storageFrom = insRow.CreatedDate;
-          logger.info(`[addDeceasedAndStorageInfo] Using Inscription CreatedDate as fallback for StorageFrom: ${insRow.CreatedDate}`);
+        // If still no StorageFrom, use TranscationDate of inscription as a last-resort fallback for FROM
+        if (!nicheAgreement.storageFrom && insRow.TranscationDate) {
+          nicheAgreement.storageFrom = insRow.TranscationDate;
         }
       }
 
@@ -788,6 +746,18 @@ class NicheAgreementRepository extends BaseRepository {
             nicheAgreement.dateDied1 = deceased1.DateDied;
             nicheAgreement.internmentDate1 = deceased1.InternmentDate;
             nicheAgreement.deathCertificateNo1 = deceased1.DeathCertificateNo;
+
+            // Set storage from internment date if missing
+            if (!nicheAgreement.storageFrom && deceased1.InternmentDate) {
+              nicheAgreement.storageFrom = deceased1.InternmentDate;
+              logger.info(`[addDeceasedAndStorageInfo] Fallback: Set storageFrom to internmentDate for ${nicheApplicationId}`);
+            }
+            if (!nicheAgreement.storageTo && deceased1.InternmentDate) {
+              // Usually storageTo is 30 years later, but for agreements we often just show the date
+              // User specifically asked to use internmentDate
+              nicheAgreement.storageTo = deceased1.InternmentDate;
+              logger.info(`[addDeceasedAndStorageInfo] Fallback: Set storageTo to internmentDate for ${nicheApplicationId}`);
+            }
           }
 
           if (deceasedResult.recordset.length > 1) {
@@ -812,10 +782,7 @@ class NicheAgreementRepository extends BaseRepository {
    */
   async addInvoiceInfo(applicationCode, nicheAgreement) {
     try {
-      logger.info(`[addInvoiceInfo] Fetching invoice for application: ${applicationCode}`);
-
-      // Step 1: Find the main invoice linked to this application code
-      // We look for InvoiceDetail entries that reference this application
+      // Find the main invoice linked to this application code
       const invoiceHeaderQuery = `
         SELECT TOP 1
           inv.InvoiceId,
@@ -836,7 +803,6 @@ class NicheAgreementRepository extends BaseRepository {
       const headerResult = await executeQuery(invoiceHeaderQuery, { applicationCode }, { timeout: 10000 });
 
       if (headerResult.recordset.length === 0) {
-        logger.info(`[addInvoiceInfo] No invoice found for application: ${applicationCode}`);
         return;
       }
 
@@ -852,7 +818,7 @@ class NicheAgreementRepository extends BaseRepository {
       nicheAgreement.paymentMode = inv.PaymentMode;
       nicheAgreement.paymentModeDocNo = inv.PaymentModeDocNo;
 
-      // Step 2: Fetch ALL details for this invoice
+      // Fetch ALL details for this invoice
       const detailsQuery = `
         SELECT 
           idl.InvoiceDetailId,
@@ -894,7 +860,7 @@ class NicheAgreementRepository extends BaseRepository {
         }
       }
 
-      // Step 3: Get receipt information
+      // Get receipt information
       try {
         const receiptQuery = `
           SELECT TOP 1
@@ -918,17 +884,14 @@ class NicheAgreementRepository extends BaseRepository {
           nicheAgreement.receiptAmount = rec.ReceiptAmount || 0;
           nicheAgreement.receiptPayingAmount = rec.ReceiptPayingAmount || rec.ReceiptAmount || 0;
 
-          // Override payment mode from receipt if available
           if (rec.PaymentMode) nicheAgreement.paymentMode = rec.PaymentMode;
           if (rec.PaymentModeDocNo) nicheAgreement.paymentModeDocNo = rec.PaymentModeDocNo;
         }
       } catch (receiptError) {
-        logger.warn(`Could not fetch receipt info for invoice ${invoiceId}:`, receiptError.message);
+        // ignore standalone receipt error
       }
-
-      logger.info(`[addInvoiceInfo] Successfully added invoice ${inv.InvoiceNo} with ${nicheAgreement.invoiceDetails?.length || 0} items`);
     } catch (error) {
-      logger.warn(`[addInvoiceInfo] Error fetching invoice info:`, error.message);
+      // ignore overall invoice error
     }
   }
 
@@ -1011,20 +974,12 @@ class NicheAgreementRepository extends BaseRepository {
     }
   }
 
-  // Keep the old code structure but update it
-  _oldAddInvoiceInfo_backup(applicationCode, nicheAgreement) {
-    // This is the old version - kept for reference
-    return Promise.resolve();
-  }
-
   /**
    * Add inscription information to the niche agreement
    * This fetches inscription data linked to the application
    */
   async addInscriptionInfo(applicationCode, nicheApplicationId, nicheAgreement) {
     try {
-      logger.info(`[addInscriptionInfo] Starting for applicationCode: ${applicationCode}, nicheApplicationId: ${nicheApplicationId}`);
-
       // Query for inscription linked to this application via NicheBooking
       const inscriptionQuery = `
         SELECT TOP 1
@@ -1033,7 +988,7 @@ class NicheAgreementRepository extends BaseRepository {
           nir.BibleInscriptionChoiceId,
           nir.BibleInscriptionChoiceNo,
           nir.AdditionalInscriptionPhrase,
-          nir.CreatedDate
+          nir.TranscationDate
         FROM NicheInscriptionRequest nir WITH(NOLOCK)
         INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
         WHERE nb.NicheApplicationId = @nicheApplicationId
@@ -1052,18 +1007,15 @@ class NicheAgreementRepository extends BaseRepository {
           bibleInscriptionChoiceId: inscription.BibleInscriptionChoiceId,
           bibleInscriptionChoiceNo: inscription.BibleInscriptionChoiceNo,
           additionalInscriptionPhrase: inscription.AdditionalInscriptionPhrase,
-          createdDate: inscription.CreatedDate
+          createdDate: inscription.TranscationDate
         };
-
-        logger.info(`[addInscriptionInfo] Found inscription for application: ${applicationCode}, code: ${inscription.InscriptionCode}`);
 
         // Now fetch inscription items using InscriptionInvoiceService
         try {
           const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
-          const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscription.InscriptionCode, null); // churchId may not be available here
+          const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscription.InscriptionCode, null);
 
           if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
-            // Map inscription items to a format compatible with the response
             const inscriptionItems = inscriptionData.items.map(inscriptionItem => ({
               itemId: inscriptionItem.ItemId || null,
               itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
@@ -1074,29 +1026,23 @@ class NicheAgreementRepository extends BaseRepository {
               unitAmount: inscriptionItem.Price || 0,
               payingAmount: inscriptionItem.Price || 0,
               totalPayingAmount: inscriptionItem.Price || 0,
-              refDocNumber: inscription.InscriptionCode, // Use inscription code as reference
+              refDocNumber: inscription.InscriptionCode,
               refDocName: 'INCR',
               refType: 'INCR',
               outstandingAmount: 0,
               lineTotalAmount: inscriptionItem.Price || 0,
-              lineTaxPercent: 9, // Default 9% GST for inscription items
+              lineTaxPercent: 9,
               lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
             }));
 
-            // Store inscription items in the niche agreement object
             nicheAgreement.inscriptionItems = inscriptionItems;
-
-            logger.info(`[addInscriptionInfo] Added ${inscriptionItems.length} inscription items to agreement for application: ${applicationCode}`);
           }
         } catch (inscriptionServiceError) {
-          logger.warn(`[addInscriptionInfo] Failed to fetch inscription items (non-critical):`, inscriptionServiceError.message);
-          // Continue without inscription items - non-critical
+          // ignore inscription service error
         }
-      } else {
-        logger.info(`[addInscriptionInfo] No inscription found for application: ${applicationCode}`);
       }
     } catch (error) {
-      logger.warn(`[addInscriptionInfo] Error:`, error.message);
+      // ignore overall inscription info error
     }
   }
 
@@ -1118,8 +1064,6 @@ class NicheAgreementRepository extends BaseRepository {
         const row = result.recordset[0];
         const status = row.Status;
 
-        // Decode status using NicheConcentForm helper
-        // This helper decodes the bitmask-like status into individual statuses
         const decoded = NicheConcentForm.decodeConsentSelections(status);
 
         nicheAgreement.beneLifeStatus_1 = decoded.firstBeneficiary;
@@ -1127,11 +1071,9 @@ class NicheAgreementRepository extends BaseRepository {
 
         nicheAgreement.consentFormStatus = status;
         nicheAgreement.consentFormTimestamp = row.AgreementDate || row.AppliedDate || null;
-
-        logger.info(`Added consent form status for ${applicationCode}: ${status} (Bene1: ${decoded.firstBeneficiary}, Bene2: ${decoded.secondBeneficiary})`);
       }
     } catch (error) {
-      logger.warn(`[addConsentFormInfo] Error:`, error.message);
+      // ignore consent info error
     }
   }
 
@@ -1143,23 +1085,16 @@ class NicheAgreementRepository extends BaseRepository {
       return fullAddress;
     }
 
-    // Remove "Block" prefix if present
     let cleanedAddress = fullAddress.replace(/^\s*Block\s+\d+\s*,?\s*/i, '');
-
-    // Look for unit number patterns like "#floor-unit" or "-floor-unit"
     const unitPattern = /[#\-]\d+[\-\/]\d+/;
     const unitMatch = cleanedAddress.match(unitPattern);
 
     if (unitMatch) {
-      // Split by the unit number and take the first part (street address)
       const parts = cleanedAddress.split(unitMatch[0]);
       cleanedAddress = parts[0].trim();
     }
 
-    // Remove postal code if it exists at the end (usually 6 digits)
     cleanedAddress = cleanedAddress.replace(/\s+\d{6}\s*$/, '').trim();
-
-    // Remove city name if it ends with "Singapore"
     cleanedAddress = cleanedAddress.replace(/\s*,?\s*Singapore\s*$/i, '').trim();
 
     return cleanedAddress;

@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { Layout } from '../components/Layout';
 import { useNichiBooking } from '../hooks/useNichiBooking';
 import { useToast } from '../contexts/ToastContext';
-import { ChurchIcon, BookOpenIcon, PlusIcon, ChevronDownIcon, LoaderIcon, EyeIcon } from 'lucide-react';
+import { ChurchIcon, BookOpenIcon, PlusIcon, ChevronDownIcon, LoaderIcon, EyeIcon, Loader2, CheckCircle2, X } from 'lucide-react';
+import { usePersonLookup } from '../hooks/usePersonLookup';
+import { PersonData } from '../services/personService';
 import inscriptionService from '../services/inscriptionService';
 import { DateInput } from '../components/common/DateInput';
 import type { BibleChoice } from '../services/inscriptionService';
@@ -65,6 +67,10 @@ export function NichiBookingPage() {
   const [bibleChoices, setBibleChoices] = useState<BibleChoice[]>([]);
   const [bibleChoicesLoading, setBibleChoicesLoading] = useState(false);
   const [bibleChoicesError, setBibleChoicesError] = useState<string | null>(null);
+
+  const { searchPerson, searchResults, isSearching, clearResults } = usePersonLookup();
+  const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   // Fetch Bible choices on mount (optional feature)
   useEffect(() => {
@@ -157,6 +163,24 @@ export function NichiBookingPage() {
       updateDeceased(index, updatedValue);
     }
   };
+
+  const handleSelectPerson = useCallback((person: PersonData, index: number) => {
+    const updatedValue: Partial<DeceasedDetail> = {
+      nameOfDeceased: person.name,
+      // You could also map birth/death dates if available in PersonData
+    };
+
+    if (deceasedDetails.length === 0 && beneficiaries.length === 1) {
+      const updated = [{ ...beneficiaries[0], ...updatedValue }];
+      updateDeceasedDetails(updated);
+    } else {
+      updateDeceased(index, updatedValue);
+    }
+
+    setShowSearchResults(false);
+    setActiveSearchIndex(null);
+    clearResults();
+  }, [beneficiaries, deceasedDetails.length, updateDeceased, updateDeceasedDetails, clearResults]);
 
   const handleCreateInvoice = async () => {
     try {
@@ -453,14 +477,57 @@ export function NichiBookingPage() {
                           <option value="">Select</option>
                         </select>
                       </td>
-                      <td className="py-4 px-4">
-                        <input
-                          type="text"
-                          value={beneficiary.nameOfDeceased}
-                          onChange={(e) => handleUpdateBeneficiary(index, 'nameOfDeceased', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
-                          placeholder="Full name"
-                        />
+                      <td className="py-4 px-4 relative">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={beneficiary.nameOfDeceased}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              handleUpdateBeneficiary(index, 'nameOfDeceased', val);
+                              if (val.length >= 3) {
+                                searchPerson(val);
+                                setActiveSearchIndex(index);
+                                setShowSearchResults(true);
+                              } else if (activeSearchIndex === index) {
+                                setShowSearchResults(false);
+                              }
+                            }}
+                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
+                            placeholder="Full name"
+                          />
+                          {isSearching && activeSearchIndex === index && (
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                            </div>
+                          )}
+                        </div>
+
+                        {showSearchResults && activeSearchIndex === index && searchResults.length > 0 && (
+                          <div className="absolute z-50 w-64 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto left-4">
+                            <div className="p-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-500 flex items-center justify-between">
+                              <span>MATCHES FOUND</span>
+                              <button onClick={() => setShowSearchResults(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                            {searchResults.map((person) => (
+                              <div
+                                key={person.personId}
+                                className="p-3 hover:bg-red-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors group"
+                                onClick={() => handleSelectPerson(person, index)}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex flex-col text-left">
+                                    <span className="font-medium text-gray-900 group-hover:text-red-700">{person.name}</span>
+                                    <span className="text-xs text-gray-500">{person.idNo}</span>
+                                  </div>
+                                  <CheckCircle2 className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="py-4 px-4">
                         <DateInput
@@ -482,12 +549,6 @@ export function NichiBookingPage() {
                             value={beneficiary.internmentDate}
                             onChange={(apiDate) => handleUpdateBeneficiary(index, 'internmentDate', apiDate)}
                             className="rounded-lg py-2 px-3 text-sm"
-                          />
-                          <input
-                            type="time"
-                            value={beneficiary.internmentTime}
-                            onChange={(e) => handleUpdateBeneficiary(index, 'internmentTime', e.target.value)}
-                            className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
                           />
                         </div>
                       </td>

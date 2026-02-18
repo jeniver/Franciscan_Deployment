@@ -17,6 +17,7 @@ router.get('/inscriptions/:insCode', async (req, res) => reportController.genera
 
 // Monthly Reports
 router.get('/monthly/receipts', async (req, res) => reportController.generateMonthlyReceipts(req, res));
+router.get('/monthly/receipt-register', async (req, res) => reportController.generateReceiptRegister(req, res));
 router.get('/monthly/inscriptions', async (req, res) => reportController.generateMonthlyInscriptions(req, res));
 router.get('/monthly/wakerooms', async (req, res) => reportController.generateMonthlyWakeRooms(req, res));
 router.get('/monthly/goa', async (req, res) => reportController.generateGOAMonthly(req, res));

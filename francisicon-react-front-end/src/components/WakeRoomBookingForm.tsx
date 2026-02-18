@@ -23,7 +23,9 @@ import { AppDispatch, RootState } from '../store';
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import wakeRoomService from '../services/wakeRoomService';
+import { usePersonLookup } from '../hooks/usePersonLookup';
+import { PersonData } from '../services/personService';
+import { Loader2, CheckCircle2, X } from 'lucide-react';
 
 interface WakeRoomBookingFormProps {
   onBookingCreated?: (bookingCode: string) => void;
@@ -61,6 +63,9 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
   const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
   const [isBookingCreated, setIsBookingCreated] = useState(false);
 
+  const { searchPerson, searchResults, isSearching, clearResults } = usePersonLookup();
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
   // Get user's church ID from auth
   const user = useSelector((state: RootState) => state.auth.user);
   const defaultChurchId = user?.churchId || 1;
@@ -75,13 +80,11 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     lastErrorType,
     handleLoadAllWakeRooms,
     handleCheckAvailability,
-    handleGetBookingByCode,
     handleUpdateBooking,
     handleSetSelectedWakeRoom,
     handleClearAvailabilityCheck,
     handleClearError,
     getWakeRoomById,
-    formatDateForAPI,
     createCompleteBookingData
   } = useWakeRoom();
 
@@ -347,11 +350,13 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
 
 
   const createBooking = async () => {
-    // Validate required fields
+    // Validate required fields - DISABLED per requirement
+    /*
     if (!bookingData.wakeRoomId || !contactData.name || !bookingData.nameOfDeceased || !contactData.mobileNo) {
       alert('Please fill in all required fields (Name, Mobile No, Wake Room, Name of Deceased)');
       return;
     }
+    */
 
     const completeBookingData = createCompleteBookingData(contactData, {
       ...bookingData,
@@ -404,6 +409,35 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
     }
   };
 
+  const handleSelectPerson = useCallback((person: PersonData) => {
+    const isBlock = person.addressNo?.toLowerCase() === 'block' || person.addressNo?.toLowerCase() === 'blk';
+
+    setContactData({
+      name: person.name,
+      email: person.emailID || '',
+      mobileNo: person.mobileNo || '',
+      homeTelNo: person.homeTelNo || '',
+      officeTelNo: person.officeTelNo || '',
+      block: isBlock ? 'Block' : 'No',
+      blockNo: person.addressLine1 || '',
+      streetName: person.addressLine2 || '',
+      unitNo: person.addressCity?.replace('#', '') || '',
+      postalCode: person.addressState || '',
+      country: person.addressCountry || 'Singapore',
+      addressDetails: {
+        no: person.addressNo || (isBlock ? 'Blk' : 'No'),
+        line1: person.addressLine1 || '',
+        line2: person.addressLine2 || '',
+        city: person.addressCity || 'Singapore',
+        state: person.addressState || 'Central',
+        country: person.addressCountry || 'Singapore'
+      }
+    });
+
+    setShowSearchResults(false);
+    clearResults();
+  }, [clearResults]);
+
   const handleClear = () => {
     setBookingCode('');
     setIsBookingCreated(false);
@@ -455,7 +489,8 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
   // Wizard navigation
   // Wizard navigation
   const nextStep = () => {
-    // Validation for Step 1
+    // Validation for Step 1 - DISABLED per requirement
+    /*
     if (currentStep === 1) {
       if (!contactData.name.trim()) {
         alert('Applicant Name is required');
@@ -511,6 +546,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
         return;
       }
     }
+    */
 
     if (currentStep < steps.length) {
       setCurrentStep(currentStep + 1);
@@ -730,7 +766,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                   size="sm"
                   className="bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100"
                   icon={<PrinterIcon className="w-4 h-4" />}
-                  onClick={() => navigate(`/invoice-receipt/${selectedBooking.code}`)}
+                  onClick={() => navigate(`/create-invoice/${selectedBooking.code}?type=WAPP`)}
                 >
                   Invoice
                 </Button>
@@ -739,7 +775,7 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                   size="sm"
                   className="bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100"
                   icon={<PrinterIcon className="w-4 h-4" />}
-                  onClick={() => wakeRoomService.generateWakeRoomPDF(selectedBooking.code, 'receipt')}
+                  onClick={() => navigate(`/create-receipt/${selectedBooking.code}`)}
                 >
                   Receipt
                 </Button>
@@ -778,14 +814,52 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Name: <span className="text-red-500">*</span>
                 </label>
-                <Input
-                  type="text"
-                  value={contactData.name}
-                  onChange={(e) => setContactData({ ...contactData, name: e.target.value })}
-                  className="w-full"
-                  placeholder="Enter full name"
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    type="text"
+                    value={contactData.name}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setContactData({ ...contactData, name: val });
+                      if (val.length >= 3) {
+                        searchPerson(val);
+                        setShowSearchResults(true);
+                      } else {
+                        setShowSearchResults(false);
+                      }
+                    }}
+                    className="w-full"
+                    placeholder="Enter full name"
+                    required
+                    icon={isSearching ? (<Loader2 className="w-4 h-4 animate-spin text-blue-500" />) : undefined}
+                  />
+
+                  {showSearchResults && searchResults.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                      <div className="p-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-500 flex items-center justify-between">
+                        <span>MATCHES FOUND</span>
+                        <button onClick={() => setShowSearchResults(false)} className="text-gray-400 hover:text-gray-600">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                      {searchResults.map((person) => (
+                        <div
+                          key={person.personId}
+                          className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors group text-left"
+                          onClick={() => handleSelectPerson(person)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-gray-900 group-hover:text-blue-700">{person.name}</span>
+                              <span className="text-xs text-gray-500">{person.idNo} • {person.emailID}</span>
+                            </div>
+                            <CheckCircle2 className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Email */}

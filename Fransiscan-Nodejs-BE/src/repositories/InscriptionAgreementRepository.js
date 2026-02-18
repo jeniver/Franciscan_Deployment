@@ -94,7 +94,11 @@ class InscriptionAgreementRepository {
             nir.AdditionalInscriptionPhrase,
             
             -- Bible choice information
-            bic.BibleInscriptionChoiceNoValue
+            bic.BibleInscriptionChoiceNoValue,
+            
+            -- Storage period
+            nir.StorageFrom,
+            nir.StorageTo
             
           FROM NicheInscriptionRequest nir WITH(NOLOCK)
           INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
@@ -177,7 +181,11 @@ class InscriptionAgreementRepository {
             nir.AdditionalInscriptionPhrase,
             
             -- Bible choice information
-            bic.BibleInscriptionChoiceNoValue
+            bic.BibleInscriptionChoiceNoValue,
+            
+            -- Storage period
+            nir.StorageFrom,
+            nir.StorageTo
             
           FROM NicheInscriptionRequest nir WITH(NOLOCK)
           INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
@@ -453,6 +461,12 @@ class InscriptionAgreementRepository {
 
         // Deceased details
         deceased: agreementDetails.deceasedDetails,
+
+        // Storage period (using internmentDate as fallback)
+        storage: {
+          storageFrom: agreementDetails.StorageFrom || agreementDetails.deceasedDetails?.[0]?.internmentDate || null,
+          storageTo: agreementDetails.StorageTo || agreementDetails.deceasedDetails?.[0]?.internmentDate || null
+        },
 
         // Status information
         status: this.getStatusText(agreementDetails.InscriptionStatus),

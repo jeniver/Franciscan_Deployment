@@ -116,6 +116,36 @@ class InscriptionAgreementService {
    * @private
    */
   enhancePdfData(pdfData) {
+    const formatSafeDate = (rawValue) => {
+      if (!rawValue) return '';
+      const value = String(rawValue).trim();
+      const parsed = new Date(value);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toLocaleDateString('en-SG');
+      }
+
+      // Fallback for values like "17-Feb-2026" that can be locale-dependent
+      const ddMmmYyyy = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/;
+      const match = value.match(ddMmmYyyy);
+      if (match) {
+        const [, d, m, y] = match;
+        const monthMap = {
+          Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+          Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11
+        };
+        const month = monthMap[m];
+        if (month !== undefined) {
+          const dt = new Date(Number(y), month, Number(d));
+          if (!isNaN(dt.getTime())) {
+            return dt.toLocaleDateString('en-SG');
+          }
+        }
+      }
+
+      // Keep original instead of blank if parsing fails.
+      return value;
+    };
+
     // Add computed fields
     const enhanced = {
       ...pdfData,
@@ -166,9 +196,9 @@ class InscriptionAgreementService {
         index: index + 1,
         fullName: `(${index + 1}) ${person.name}`,
         formattedDates: {
-          birth: person.dateOfBirth ? new Date(person.dateOfBirth).toLocaleDateString('en-SG') : '',
-          death: person.dateOfDeath ? new Date(person.dateOfDeath).toLocaleDateString('en-SG') : '',
-          internment: person.internmentDate ? new Date(person.internmentDate).toLocaleDateString('en-SG') : ''
+          birth: formatSafeDate(person.dateOfBirth),
+          death: formatSafeDate(person.dateOfDeath),
+          internment: formatSafeDate(person.internmentDate)
         }
       })),
 
