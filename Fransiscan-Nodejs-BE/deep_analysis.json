@@ -1,0 +1,33 @@
+{
+  "duplicates": [],
+  "allByName": [
+    {
+      "PersonId": 6857,
+      "Name": "ADELINE TAN SUE LIN",
+      "IDNo": "0000000000",
+      "EmailID": "test@gmail.com"
+    },
+    {
+      "PersonId": 11612,
+      "Name": "KarenTan Sue Ling",
+      "IDNo": "0000000000",
+      "EmailID": "test@gmail.com"
+    },
+    {
+      "PersonId": 11615,
+      "Name": "Karen Tan Sue Ling",
+      "IDNo": "0000000000",
+      "EmailID": "test@gmail.com"
+    }
+  ],
+  "asBeneficiary": [],
+  "asApplicantInNiche": [],
+  "asApplicantInWake": [],
+  "relatedPerson6304": {
+    "PersonId": 6304,
+    "Name": "ANTHONY TAN KIM HUAT",
+    "IDNo": "0000000000",
+    "EmailID": "test@gmail.com",
+    "MobileNo": "0000000000"
+  }
+}

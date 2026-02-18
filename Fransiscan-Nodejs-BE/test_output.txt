@@ -1,0 +1,41 @@
+﻿13:13:56 [[32minfo[39m]: Normalized server string: localhost -> 127.0.0.1\SQLEXPRESS02 {"service":"franciscan-api"}
+13:13:56 [[32minfo[39m]: Using SQL Server Authentication with tedious driver {"service":"franciscan-api"}
+13:13:56 [[32minfo[39m]: Default instance connection: 127.0.0.1:51970, user=franciscan_api {"service":"franciscan-api"}
+13:13:56 [[32minfo[39m]: SQL Auth connection config: {"service":"franciscan-api","serverHost":"127.0.0.1","instanceName":"N/A","database":"FransiscanTest","port":51970,"hasInstance":false,"usingBrowser":false,"user":"franciscan_api"}
+13:13:56 [[32minfo[39m]: Database configuration applied: {"service":"franciscan-api","server":"127.0.0.1","database":"FransiscanTest","driver":"tedious","authentication":"SQL Server","port":51970,"options":{"connectionTimeout":60000,"requestTimeout":60000,"cancelTimeout":60000,"encrypt":false},"pool":{"max":20,"min":2,"acquireTimeoutMillis":60000}}
+13:13:59 [[32minfo[39m]: CacheManager initialized (L1: in-memory) {"service":"franciscan-api"}
+≡ƒÜÇ Starting Verification Tests...
+
+--- Test 1: ApplicationService Resolution ---
+13:13:59 [[32minfo[39m]: Connecting to database... (attempt 1/6) {"service":"franciscan-api"}
+13:14:00 [[32minfo[39m]: Γ£à Connected to SQL Server database successfully {"service":"franciscan-api"}
+Γ£à Code 001-0 resolved as WAPP (Veronica Loharcio)
+Γ¥î Code 1 failed to resolve
+Γ¥î Code NAPP-1 failed to resolve
+13:15:41 [[31merror[39m]: Query execution failed: {"service":"franciscan-api","error":"Timeout: Request failed to complete in 60000ms","code":"ETIMEOUT","name":"RequestError","retryCount":0,"isConnectionEstablishmentError":false,"isQueryTimeoutError":true,"query":"\n      SELECT TOP 1\n        NicheInscriptionRequestId as Id,\n        Code,\n        ApplicantName,\n  ..."}
+13:15:41 [[31merror[39m]: Error resolving application details for I-1: Query timeout: Timeout: Request failed to complete in 60000ms {"service":"franciscan-api","code":"ETIMEOUT","originalError":{"code":"ETIMEOUT","originalError":{"code":"ETIMEOUT"},"name":"RequestError","number":"ETIMEOUT","precedingErrors":[]},"stack":"Error: Query timeout: Timeout: Request failed to complete in 60000ms\n    at executeQuery (C:\\Users\\geniv\\OneDrive\\Desktop\\Print\\Franciscan_Deployment\\Fransiscan-Nodejs-BE\\src\\config\\database.js:838:28)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async ApplicationService.resolveInscription (C:\\Users\\geniv\\OneDrive\\Desktop\\Print\\Franciscan_Deployment\\Fransiscan-Nodejs-BE\\src\\services\\ApplicationService.js:95:24)\n    at async ApplicationService.getApplicationDetails (C:\\Users\\geniv\\OneDrive\\Desktop\\Print\\Franciscan_Deployment\\Fransiscan-Nodejs-BE\\src\\services\\ApplicationService.js:26:24)\n    at async runTests (C:\\Users\\geniv\\OneDrive\\Desktop\\Print\\Franciscan_Deployment\\Fransiscan-Nodejs-BE\\scripts\\verify_refactoring.js:20:29)"}
+Γ¥î Code I-1 failed to resolve
+
+--- Test 2: Invoice Blocking by Existing Receipt ---
+Found existing receipt 000146 for application I-4669-0 
+13:15:42 [[31merror[39m]: Error saving invoice: Item ID is required in invoice details {"service":"franciscan-api","stack":"Error: Item ID is required in invoice details\n    at InvoiceService.saveInvoice (C:\\Users\\geniv\\OneDrive\\Desktop\\Print\\Franciscan_Deployment\\Fransiscan-Nodejs-BE\\src\\services\\InvoiceService.js:265:15)\n    at runTests (C:\\Users\\geniv\\OneDrive\\Desktop\\Print\\Franciscan_Deployment\\Fransiscan-Nodejs-BE\\scripts\\verify_refactoring.js:45:49)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)"}
+Γ¥î Failed to block invoice creation: {
+  success: false,
+  error: {
+    code: 'INTERNAL_ERROR',
+    message: 'Item ID is required in invoice details'
+  }
+}
+
+--- Test 3: Receipt One-to-One with Invoice ---
+Found existing invoice 52463 with receipt 000001
+ReceiptRepository.createReceipt - paymentMode: 1 type: number
+SQL parameters - paymentMode: 1 type: number
+Γ¥î Failed to block duplicate receipt for invoice 52463: {
+  success: true,
+  data: {
+    code: '003697',
+    receiptId: 19043,
+    message: 'Receipt created successfully from invoice'
+  }
+}
