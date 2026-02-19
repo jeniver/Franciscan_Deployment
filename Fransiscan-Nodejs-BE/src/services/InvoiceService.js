@@ -40,6 +40,8 @@ class InvoiceService extends BaseService {
   async getInvoiceByCode(code, churchId, applicationCode = null) {
     try {
       // Build cache key
+      // If applicationCode/type is provided, we might want to include it or just rely on code
+      // logic: code is usually unique enough, but for safety let's stick to code
       const cacheKey = cacheManager.buildInvoiceKey(churchId, code);
 
       // Try cache first
@@ -304,7 +306,26 @@ class InvoiceService extends BaseService {
         };
       }
 
-      // 4. Reference Document Validation - SKIPPED per requirement
+      // 4. Check for existing receipt (Requirement: Invoices cannot be created if a receipt exists for an application)
+      // DISABLED per user request to allow more flexibility in invoice/receipt creation flow
+      /*
+      const ReceiptRepository = require('../repositories/ReceiptRepository');
+      const receiptRepo = new ReceiptRepository();
+      const existingReceipt = await receiptRepo.existsByRefDocNumber(baseRefDocNumber, churchId);
+ 
+      if (existingReceipt) {
+        return {
+          success: false,
+          error: {
+            code: 'RECEIPT_ALREADY_EXISTS',
+            message: `An active receipt already exists for this application code: ${baseRefDocNumber}. No invoice can be created.`,
+            receiptCode: existingReceipt.Code || existingReceipt.code
+          }
+        };
+      }
+      */
+
+      // 5. Reference Document Validation - SKIPPED per requirement
       // Original validation was causing issues with valid Ref Document Numbers
       // The validation step has been removed to allow invoice creation
       logger.debug('Reference document validation skipped per requirement');
@@ -407,8 +428,13 @@ class InvoiceService extends BaseService {
           await cacheManager.del(cacheManager.buildInvoiceKey(churchId, invoice.refDocNumber));
         }
         logger.debug(`Cache invalidated for invoice ${invoiceCode} and refDoc ${invoice.refDocNumber}`);
+
+        // ✅ NEW: Link any existing receipts for this application to the new invoice
+        const ReceiptRepository = require('../repositories/ReceiptRepository');
+        const receiptRepo = new ReceiptRepository();
+        await receiptRepo.linkReceiptsToInvoice(invoice.refDocNumber, invoiceId, churchId);
       } catch (cacheError) {
-        logger.warn('Non-critical cache invalidation failure:', cacheError.message);
+        logger.warn('Non-critical post-save failure (cache or receipt linking):', cacheError.message);
       }
 
       return {

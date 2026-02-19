@@ -73,7 +73,7 @@ app.use(cors({
   },
   credentials: process.env.CORS_CREDENTIALS === 'true',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cache-Control', 'Pragma', 'Expires'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cache-Control', 'Pragma', 'Expires', 'X-Bypass-Cache'],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   maxAge: 86400 // 24 hours
 }));
@@ -87,14 +87,29 @@ app.use((req, res, next) => {
 });
 
 // Rate limiting
-const limiter = customRateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
-  message: {
-    error: 'Too many requests from this IP, please try again later.'
-  }
-});
-app.use(limiter);
+const isRateLimitEnabled = process.env.RATE_LIMIT_ENABLED !== 'false';
+if (isRateLimitEnabled) {
+  const limiter = customRateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000, // 15 minutes
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 1000,
+    skip: (req) => {
+      const ip = String(req.ip || req.connection?.remoteAddress || '').replace(/^::ffff:/, '');
+      const pathName = req.path || '';
+      // Keep health/static/options/local requests from consuming global API quota.
+      return (
+        req.method === 'OPTIONS' ||
+        pathName === '/health' ||
+        pathName === '/favicon.ico' ||
+        pathName.startsWith('/public') ||
+        pathName.startsWith('/pdfs') ||
+        ip === '127.0.0.1' ||
+        ip === '::1' ||
+        ip === 'localhost'
+      );
+    }
+  });
+  app.use(limiter);
+}
 
 // Compression middleware
 app.use(compression());
@@ -290,7 +305,7 @@ app.use('/niche-applications', cacheMiddleware, nicheApplicationRoutes);
 app.use('/niche-application', cacheMiddleware, nicheApplicationRoutes);
 app.use('/api/receipts', receiptRoutes); // POST/PUT operations
 app.use('/api', receiptItemRoutes); // POST/PUT operations
-app.use('/api/items', cacheMiddleware, itemRoutes);
+app.use('/api/items', itemRoutes); // Cache removed to prevent stale data after item CRUD operations
 app.use('/api/utils', utilRoutes);
 app.use('/api/reports', cacheMiddleware, reportRoutes);
 // Bible Choices APIs - mounted under both /api/bible-choices and /bible-choices for backward compatibility

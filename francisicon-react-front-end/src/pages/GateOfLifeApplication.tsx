@@ -21,8 +21,13 @@ import {
   FileText,
   MapPinIcon,
   ChevronDownIcon,
-  LoaderIcon
+  LoaderIcon,
+  Loader2,
+  CheckCircle2,
+  X
 } from 'lucide-react';
+import { usePersonLookup } from '../hooks/usePersonLookup';
+import { PersonData } from '../services/personService';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
@@ -80,6 +85,9 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
 
   const [donationAmount, setDonationAmount] = useState(0);
   const [validationErrors, setValidationErrors] = useState<any>({});
+
+  const { searchPerson, searchResults, isSearching, clearResults } = usePersonLookup();
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   // Agreement Viewer State
   const [isViewerOpen, setIsViewerOpen] = useState(false);
@@ -158,7 +166,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
     } else if (isTableMode) {
       // Check if we need to reload the list (e.g. if it's empty or stale)
       // For now, always refresh to be safe as per user request
-      searchApplicationList({ pagination: { page: 1 } });
+      searchApplicationList({ pagination: { page: 1 }, bypassCache: true });
     }
   }, [location.pathname, routeAppCode, handleViewApplication, resetApp, isViewRoute, isEditRoute, isNewMode, isTableMode, searchApplicationList]);
 
@@ -195,13 +203,12 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
 
   // Handle donation calculation
   useEffect(() => {
-    // Only auto-calc if it's a new application or if donation is zero
-    // Assuming each name is $100 donation
-    const calculatedAmount = engravings.filter(e => e.name.trim()).length * 100;
-    if (donationAmount === 0 || isNewMode) {
+    // Keep donation synced to number of entered names (300 per person).
+    const calculatedAmount = engravings.filter(e => e.name.trim()).length * 300;
+    if (donationAmount !== calculatedAmount) {
       setDonationAmount(calculatedAmount);
     }
-  }, [engravings.length, isNewMode]);
+  }, [engravings, donationAmount]);
 
   // Handle read-only state
   const isReadOnly = (isViewMode || isViewRoute) && !isEditMode && !isEditRoute;
@@ -214,7 +221,8 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
     }
     await searchApplicationList({
       ...(Object.keys(overrides).length > 0 ? { filters: overrides } : {}),
-      pagination: { page: 1 }
+      pagination: { page: 1 },
+      bypassCache: true
     });
   }, [navigate, updateListFilters, searchApplicationList]);
 
@@ -236,10 +244,39 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
     }));
   }, []);
 
+  const handleSelectPerson = useCallback((person: PersonData) => {
+    const isBlock = person.addressNo?.toLowerCase() === 'block' || person.addressNo?.toLowerCase() === 'blk';
+
+    setApplicantData({
+      name: person.name,
+      idNo: person.idNo || '',
+      emailAddress: person.emailID || '',
+      mobileNo: person.mobileNo || '',
+      homeTelephone: person.homeTelNo || '',
+      officeTelephone: person.officeTelNo || '',
+      addressNo: person.addressNo || (isBlock ? 'Block' : 'No'),
+      addressLine1: person.addressLine1 || '',
+      addressLine2: person.addressLine2 || '',
+      addressCity: person.addressCity || 'Singapore',
+      addressState: person.addressState || 'Central',
+      addressCountry: person.addressCountry || 'Singapore',
+      block: isBlock ? 'Block' : 'No',
+      blockNo: person.addressLine1 || '',
+      streetName: person.addressLine2 || '',
+      unitNo: person.addressCity?.replace('#', '') || '',
+      postalCode: person.addressState || '',
+      country: person.addressCountry || 'Singapore'
+    });
+
+    setShowSearchResults(false);
+    clearResults();
+  }, [clearResults]);
+
   const handleSave = async () => {
     if (isReadOnly) return;
 
-    // Validate required fields
+    // Validate required fields - DISABLED per requirement to allow partial saves
+    /*
     if (!applicantData.name.trim()) {
       showError('Validation Error', 'Applicant Name is required');
       return;
@@ -250,6 +287,8 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
       showError('Validation Error', 'At least one name to engrave is required');
       return;
     }
+    */
+    const validEngravings = engravings.filter(eng => eng.name.trim() !== '');
 
     const applicationPayload = {
       bookingDate: bookingDate || new Date().toISOString(),
@@ -273,8 +312,9 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
     };
 
     try {
-      if (routeAppCode && (isEditMode || isEditRoute)) {
-        const result = await handleUpdateApplication(routeAppCode, applicationPayload as any);
+      const updateCode = routeAppCode || reduxApplicationCode;
+      if (updateCode && (isEditMode || isEditRoute)) {
+        const result = await handleUpdateApplication(updateCode, applicationPayload as any);
         if (result && result.success) {
           showSuccess('Success', 'Application updated successfully');
           handleOpenTableView();
@@ -402,7 +442,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
             <div className="flex gap-3">
               <Button
                 variant="primary"
-                onClick={() => void searchApplicationList({ pagination: { page: 1 } })}
+                onClick={() => void searchApplicationList({ pagination: { page: 1 }, bypassCache: true })}
                 disabled={applicationListLoading}
                 className="bg-amber-700 hover:bg-amber-800 text-white shadow-md hover:shadow-lg transition-all"
                 icon={applicationListLoading ? <LoadingSpinner size="sm" text="" /> : <SearchIcon className="w-4 h-4" />}
@@ -420,7 +460,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                     bookedTo: '',
                     searchTerm: ''
                   });
-                  searchApplicationList({ pagination: { page: 1 } });
+                  searchApplicationList({ pagination: { page: 1 }, bypassCache: true });
                 }}
                 disabled={applicationListLoading}
                 className="border-gray-300 text-gray-600"
@@ -622,7 +662,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                   onClick={() => handleInvoiceReceipt(reduxApplicationCode)}
                   disabled={!reduxApplicationCode}
                 >
-                  Invoice & Receipt
+                  Invoice
                 </Button>
 
                 {isViewRoute && (
@@ -656,7 +696,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => void searchApplicationList({ pagination: { page: 1 } })}
+                  onClick={() => void searchApplicationList({ pagination: { page: 1 }, bypassCache: true })}
                   disabled={applicationListLoading}
                 >
                   {applicationListLoading ? 'Refreshing...' : 'Refresh'}
@@ -751,6 +791,55 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                   <p className="text-sm text-gray-500">Details of the person requesting the engraving</p>
                 </div> */}
 
+                <div className="space-y-2 relative">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Full Name <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <Input
+                      value={applicantData.name}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setApplicantData({ ...applicantData, name: val });
+                        if (val.length >= 3) {
+                          searchPerson(val);
+                          setShowSearchResults(true);
+                        } else {
+                          setShowSearchResults(false);
+                        }
+                      }}
+                      placeholder="As per ID/Passport"
+                      disabled={isReadOnly}
+                      className="bg-gray-50 border-gray-200 shadow-sm"
+                      icon={isSearching ? <Loader2 className="w-4 h-4 animate-spin text-blue-500" /> : undefined}
+                    />
+
+                    {showSearchResults && searchResults.length > 0 && !isReadOnly && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                        <div className="p-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-500 flex items-center justify-between">
+                          <span>MATCHES FOUND</span>
+                          <button onClick={() => setShowSearchResults(false)} className="text-gray-400 hover:text-gray-600">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        {searchResults.map((person) => (
+                          <div
+                            key={person.personId}
+                            className="p-3 hover:bg-amber-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors group"
+                            onClick={() => handleSelectPerson(person)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-col text-left">
+                                <span className="font-medium text-gray-900 group-hover:text-amber-700">{person.name}</span>
+                                <span className="text-xs text-gray-500">{person.idNo} • {person.emailID}</span>
+                              </div>
+                              <CheckCircle2 className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid gap-6">
                   <div className="space-y-6">
                     <AddressInput
@@ -776,17 +865,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                     />
 
                     <div className="grid gap-5 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Full Name <span className="text-red-500">*</span></label>
-                        <Input
-                          value={applicantData.name}
-                          onChange={(e) => setApplicantData({ ...applicantData, name: e.target.value })}
-                          placeholder="As per ID/Passport"
-                          disabled={isReadOnly}
-                          className="bg-gray-50 border-gray-200 shadow-sm"
-                        />
-                      </div>
-                      <div className="space-y-2">
+                      {/* <div className="space-y-2">
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">ID / NRIC / Passport No.</label>
                         <Input
                           value={applicantData.idNo}
@@ -795,7 +874,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                           disabled={isReadOnly}
                           className="bg-gray-50 border-gray-200 shadow-sm"
                         />
-                      </div>
+                      </div> */}
                       <div className="space-y-2">
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Email Address</label>
                         <Input

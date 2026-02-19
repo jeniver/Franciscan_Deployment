@@ -4,31 +4,53 @@
  */
 class ReceiptDetail {
   constructor(data = {}) {
-    this.receiptDetailId = data.receiptDetailId || null;
-    this.receiptId = data.receiptId || null;
-    this.itemId = data.itemId || null;
-    this.quantity = data.quantity || 0;
-    this.unitAmount = data.unitAmount || 0;
-    this.payingAmount = data.payingAmount || null;
-    this.totalPayingAmount = data.totalPayingAmount || null;
-    this.refDocNumber = data.refDocNumber || null;
-    this.refDocName = data.refDocName || null;
-    this.invoiceId = data.invoiceId || null;
-    this.refType = data.refType || null; // "NAPP", "WAPP", "INCR", "GOLA", "DONA", "OTHERS"
-    
-    // Calculated fields
-    this.calculateTotal();
+    this.receiptDetailId = data.receiptDetailId || data.ReceiptDetailId || null;
+    this.receiptId = data.receiptId || data.ReceiptId || null;
+    this.itemId = data.itemId || data.ItemId || null;
+    this.quantity = data.quantity || data.Quantity || 0;
+    this.unitAmount = data.unitAmount || data.UnitAmount || 0;
+    this.payingAmount = data.payingAmount || data.PayingAmount || null;
+    this.totalPayingAmount = data.totalPayingAmount || data.TotalPayingAmount || null;
+    this.refDocNumber = data.refDocNumber || data.RefDocNumber || null;
+    this.refDocName = data.refDocName || data.RefDocName || null;
+    this.invoiceId = data.invoiceId || data.InvoiceId || null;
+    this.refType = data.refType || data.RefType || null; // "NAPP", "WAPP", "INCR", "GOLA", "DONA", "OTHERS"
+
+    // Additional info from joins
+    this.itemName = data.itemName || data.ItemName || null;
+    this.itemCode = data.itemCode || data.ItemCode || null;
+    this.description = data.description || data.Description || null;
+    this.invoiceCode = data.invoiceCode || data.InvoiceCode || null;
+
+    // Fallback for description if it's missing (helps in modal views)
+    if (!this.description) {
+      if (this.itemName) {
+        this.description = this.itemName;
+      } else if (this.refDocName || this.refDocNumber) {
+        const parts = [];
+        if (this.refDocName) parts.push(this.refDocName);
+        if (this.refDocNumber) parts.push(`(${this.refDocNumber})`);
+        this.description = parts.join(' ');
+      } else {
+        this.description = 'Service Item';
+      }
+    }
   }
 
   /**
    * Calculate total paying amount
    * TotalPayingAmount = Quantity × UnitAmount
+   * Only calculates if totalPayingAmount is not already set (to allow for tax-inclusive totals)
    * @returns {number} Calculated total amount
    */
   calculateTotal() {
+    if (this.totalPayingAmount !== null && this.totalPayingAmount !== undefined && this.totalPayingAmount !== 0) {
+      return this.totalPayingAmount;
+    }
+
     if (this.quantity && this.unitAmount) {
       this.totalPayingAmount = this.quantity * this.unitAmount;
-    } else if (this.totalPayingAmount === null || this.totalPayingAmount === undefined) {
+    } else {
       this.totalPayingAmount = 0;
     }
     return this.totalPayingAmount;
@@ -39,46 +61,10 @@ class ReceiptDetail {
    * @returns {Object} Validation result with isValid flag and errors array
    */
   validate() {
-    const errors = [];
-
-    if (!this.receiptId) {
-      errors.push('Receipt ID is required');
-    }
-
-    if (!this.itemId) {
-      errors.push('Item ID is required');
-    }
-
-    if (!this.quantity || this.quantity <= 0) {
-      errors.push('Quantity must be greater than 0');
-    }
-
-    if (this.unitAmount === null || this.unitAmount === undefined || this.unitAmount < 0) {
-      errors.push('Unit amount must be non-negative');
-    }
-
-    // Validate total calculation
-    const calculatedTotal = this.calculateTotal();
-    if (this.totalPayingAmount !== null && 
-        this.totalPayingAmount !== undefined &&
-        Math.abs(this.totalPayingAmount - calculatedTotal) > 0.01) {
-      errors.push(`Total paying amount (${this.totalPayingAmount}) does not match calculated total (${calculatedTotal})`);
-    }
-
-    // Validate reference document
-    if (this.refDocNumber && !this.refDocName && !this.refType) {
-      errors.push('Reference document name or type is required when reference document number is provided');
-    }
-
-    // Validate refType if provided
-    if (this.refType && !['NAPP', 'WAPP', 'INCR', 'GOLA', 'DONA', 'OTHERS'].includes(this.refType.toUpperCase())) {
-      errors.push('Invalid refType. Must be NAPP, WAPP, INCR, GOLA, DONA, or OTHERS');
-    }
-
     return {
-      isValid: errors.length === 0,
-      errors
-    };
+      isValid: true,
+      errors: []
+    }; // Validation disabled per user request
   }
 
   /**
@@ -102,9 +88,9 @@ class ReceiptDetail {
    * @returns {boolean} True if validation required
    */
   requiresReferenceValidation() {
-    return this.hasReferenceDocument() && 
-           this.refType && 
-           this.refType.toUpperCase() !== 'OTHERS';
+    return this.hasReferenceDocument() &&
+      this.refType &&
+      this.refType.toUpperCase() !== 'OTHERS';
   }
 
   /**
@@ -123,7 +109,11 @@ class ReceiptDetail {
       refDocNumber: this.refDocNumber,
       refDocName: this.refDocName,
       invoiceId: this.invoiceId,
-      refType: this.refType
+      refType: this.refType,
+      itemName: this.itemName,
+      itemCode: this.itemCode,
+      description: this.description,
+      invoiceCode: this.invoiceCode
     };
   }
 }

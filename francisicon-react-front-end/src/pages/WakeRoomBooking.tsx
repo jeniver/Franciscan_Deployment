@@ -27,7 +27,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
   const navigate = useNavigate();
   const [bookingNumber, setBookingNumber] = useState('');
   const [currentStep, setCurrentStep] = useState(1);
-  
+
   // Use the custom hook
   const {
     loading,
@@ -37,7 +37,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
     handleClearError,
     handleLoadAllWakeRooms
   } = useWakeRoom();
-  
+
   // Contact Details State
   const [contactData, setContactData] = useState({
     name: '',
@@ -180,7 +180,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                 <Input
                   type="text"
                   value={contactData.name}
-                  onChange={(e) => setContactData({...contactData, name: e.target.value})}
+                  onChange={(e) => setContactData({ ...contactData, name: e.target.value })}
                   className="w-full"
                   placeholder="Enter full name"
                 />
@@ -194,7 +194,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                 <Input
                   type="text"
                   value={contactData.mobileNo}
-                  onChange={(e) => setContactData({...contactData, mobileNo: e.target.value})}
+                  onChange={(e) => setContactData({ ...contactData, mobileNo: e.target.value })}
                   className="w-full"
                   placeholder="Enter mobile number"
                 />
@@ -207,9 +207,9 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                   <div>
-                    <select 
+                    <select
                       value={contactData.block}
-                      onChange={(e) => setContactData({...contactData, block: e.target.value})}
+                      onChange={(e) => setContactData({ ...contactData, block: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]"
                     >
                       <option value="">Block</option>
@@ -222,7 +222,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                     <Input
                       type="text"
                       value={contactData.blockNo}
-                      onChange={(e) => setContactData({...contactData, blockNo: e.target.value})}
+                      onChange={(e) => setContactData({ ...contactData, blockNo: e.target.value })}
                       placeholder="Block No"
                     />
                   </div>
@@ -230,7 +230,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                     <Input
                       type="text"
                       value={contactData.streetName}
-                      onChange={(e) => setContactData({...contactData, streetName: e.target.value})}
+                      onChange={(e) => setContactData({ ...contactData, streetName: e.target.value })}
                       placeholder="Street Name"
                     />
                   </div>
@@ -238,7 +238,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                     <Input
                       type="text"
                       value={contactData.unitNo}
-                      onChange={(e) => setContactData({...contactData, unitNo: e.target.value})}
+                      onChange={(e) => setContactData({ ...contactData, unitNo: e.target.value })}
                       placeholder="Unit No"
                     />
                   </div>
@@ -246,14 +246,14 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                     <Input
                       type="text"
                       value={contactData.postalCode}
-                      onChange={(e) => setContactData({...contactData, postalCode: e.target.value})}
+                      onChange={(e) => setContactData({ ...contactData, postalCode: e.target.value })}
                       placeholder="Postal Code"
                     />
                   </div>
                   <div>
-                    <select 
+                    <select
                       value={contactData.country}
-                      onChange={(e) => setContactData({...contactData, country: e.target.value})}
+                      onChange={(e) => setContactData({ ...contactData, country: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]"
                     >
                       <option value="Singapore">Singapore</option>
@@ -272,7 +272,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                 <Input
                   type="text"
                   value={contactData.homeTelephone}
-                  onChange={(e) => setContactData({...contactData, homeTelephone: e.target.value})}
+                  onChange={(e) => setContactData({ ...contactData, homeTelephone: e.target.value })}
                   className="w-full"
                   placeholder="Enter home telephone"
                 />
@@ -286,7 +286,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                 <Input
                   type="text"
                   value={contactData.officeTelephone}
-                  onChange={(e) => setContactData({...contactData, officeTelephone: e.target.value})}
+                  onChange={(e) => setContactData({ ...contactData, officeTelephone: e.target.value })}
                   className="w-full"
                   placeholder="Enter office telephone"
                 />
@@ -295,7 +295,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
           </div>
         );
       case 2:
-        return <WakeRoomBookingDetails formData={{bookingDetails: bookingData}} setFormData={(data) => setBookingData(data.bookingDetails)} />;
+        return <WakeRoomBookingDetails formData={{ bookingDetails: bookingData }} setFormData={(data) => setBookingData(data.bookingDetails)} />;
       default:
         return null;
     }
@@ -324,29 +324,29 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
 
               {/* All Action Buttons in One Row */}
               <div className="flex flex-wrap gap-2">
-                <Button 
-                  variant="primary" 
+                <Button
+                  variant="primary"
                   icon={<EyeIcon className="w-4 h-4" />}
                   onClick={handleView}
                   disabled={loading || !bookingNumber.trim()}
                 >
                   {loading ? 'Loading...' : 'View'}
                 </Button>
-                <Button 
-                  variant="secondary" 
+                <Button
+                  variant="secondary"
                   icon={<RefreshCwIcon className="w-4 h-4" />}
                   onClick={() => handleGeneratePDFFromForm('booking')}
                   disabled={!bookingNumber.trim() && !contactData.name.trim()}
                 >
                   Print Agreement
                 </Button>
-                <Button 
-                  variant="primary" 
+                <Button
+                  variant="primary"
                   icon={<HashIcon className="w-4 h-4" />}
-                  onClick={() => navigate(`/invoice-receipt/${bookingNumber}`)}
+                  onClick={() => navigate(`/create-invoice/${bookingNumber}?type=WAPP`)}
                   disabled={!bookingNumber.trim() && !contactData.name.trim()}
                 >
-                  Go to Invoice & Receipt
+                  Go to Invoice
                 </Button>
               </div>
             </div>
@@ -356,7 +356,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
               <div className={`p-4 border rounded-lg flex items-center gap-3 ${getErrorStyling()}`}>
                 {getErrorIcon()}
                 <div className="flex-1 text-sm">{error}</div>
-                <button 
+                <button
                   onClick={handleClearError}
                   className="text-sm font-medium hover:opacity-75"
                 >
@@ -377,18 +377,17 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                 const Icon = step.icon;
                 const isActive = currentStep === step.id;
                 const isCompleted = currentStep > step.id;
-                
+
                 return (
                   <button
                     key={step.id}
                     onClick={() => goToStep(step.id)}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all duration-200 font-semibold ${
-                      isActive 
-                        ? 'bg-gradient-to-r from-[#8b2828] to-[#7d1f1f] text-white shadow-md' 
-                        : isCompleted 
-                          ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                    }`}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all duration-200 font-semibold ${isActive
+                      ? 'bg-gradient-to-r from-[#8b2828] to-[#7d1f1f] text-white shadow-md'
+                      : isCompleted
+                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      }`}
                   >
                     <Icon className="w-5 h-5" />
                     <span className="font-medium">{step.label}</span>
@@ -396,7 +395,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                 );
               })}
             </div>
-            
+
             {/* Step Navigation */}
             <div className="flex items-center space-x-2">
               <Button
@@ -452,7 +451,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
               <Button
                 variant="primary"
                 icon={<HashIcon className="w-4 h-4" />}
-                onClick={() => navigate(`/invoice-receipt/${bookingNumber}`)}
+                onClick={() => navigate(`/create-invoice/${bookingNumber}?type=WAPP`)}
                 disabled={!bookingNumber.trim() && !contactData.name.trim()}
               >
                 Go to Invoice
@@ -460,7 +459,7 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
               <Button
                 variant="primary"
                 icon={<HashIcon className="w-4 h-4" />}
-                onClick={() => navigate(`/invoice-receipt/${bookingNumber}`)}
+                onClick={() => navigate(`/create-receipt/${bookingNumber}`)}
                 disabled={!bookingNumber.trim() && !contactData.name.trim()}
               >
                 Go to Receipt

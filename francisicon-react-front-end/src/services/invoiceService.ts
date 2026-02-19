@@ -13,6 +13,9 @@ export class InvoiceError extends Error {
   }
 }
 
+// Prevent duplicate concurrent lookups for the same code/type pair.
+const inFlightInvoiceLookups = new Map<string, Promise<any>>();
+
 // Types for Invoice data
 export interface InvoiceDetail {
   itemId: number;
@@ -163,28 +166,39 @@ export const invoiceService = {
       if (params.customerName) queryParams.customerName = params.customerName;
       if (params.invoiceCode) queryParams.invoiceCode = params.invoiceCode;
       if (params.paymentMode) queryParams.paymentMode = params.paymentMode;
+      if (params.bypassCache) {
+        queryParams._t = Date.now();
+        queryParams.bypassCache = true;
+      }
 
-      const response = await api.get('/api/invoices/search', { params: queryParams });
+      const response = await api.get('/api/invoices/search', {
+        params: queryParams,
+        headers: params.bypassCache ? {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        } : {}
+      });
       const responseData = response.data ?? {};
 
       // Extract invoices from response (handle both nested and flat structures)
-      const rawInvoices = responseData.invoices || responseData.data?.invoices || responseData.data || 
-                         (Array.isArray(responseData) ? responseData : []);
+      const rawInvoices = responseData.invoices || responseData.data?.invoices || responseData.data ||
+        (Array.isArray(responseData) ? responseData : []);
 
       // Map backend invoice fields to frontend InvoiceListItem format
       const invoices: InvoiceListItem[] = Array.isArray(rawInvoices)
         ? rawInvoices.map((invoice: any) => ({
-            invoiceId: invoice.InvoiceId || invoice.invoiceId || 0,
-            invoiceCode: invoice.Code || invoice.InvoiceCode || invoice.invoiceCode || '',
-            customerName: invoice.CustomerName || invoice.customerName || '',
-            totalAmount: invoice.TotalAmount || invoice.totalAmount || 0,
-            payingAmount: invoice.PayingAmount || invoice.payingAmount || 0,
-            paymentMode: invoice.PaymentMode || invoice.paymentMode || '',
-            invoiceDate: invoice.TransactionDate || invoice.InvoiceDate || invoice.invoiceDate || invoice.transactionDate || '',
-            transactionDate: invoice.TransactionDate || invoice.transactionDate || invoice.InvoiceDate || invoice.invoiceDate || '',
-            status: invoice.Status === 1 ? 'Active' : invoice.Status === 0 ? 'Inactive' : invoice.Status?.toString() || 'Active',
-            applicationCode: invoice.RefDocNumber || invoice.refDocNumber || invoice.ApplicationCode || invoice.applicationCode || undefined,
-          }))
+          invoiceId: invoice.InvoiceId || invoice.invoiceId || 0,
+          invoiceCode: invoice.Code || invoice.InvoiceCode || invoice.invoiceCode || '',
+          customerName: invoice.CustomerName || invoice.customerName || '',
+          totalAmount: invoice.TotalAmount || invoice.totalAmount || 0,
+          payingAmount: invoice.PayingAmount || invoice.payingAmount || 0,
+          paymentMode: invoice.PaymentMode || invoice.paymentMode || '',
+          invoiceDate: invoice.TransactionDate || invoice.InvoiceDate || invoice.invoiceDate || invoice.transactionDate || '',
+          transactionDate: invoice.TransactionDate || invoice.transactionDate || invoice.InvoiceDate || invoice.invoiceDate || '',
+          status: invoice.Status === 1 ? 'Active' : invoice.Status === 0 ? 'Inactive' : invoice.Status?.toString() || 'Active',
+          applicationCode: invoice.RefDocNumber || invoice.refDocNumber || invoice.ApplicationCode || invoice.applicationCode || undefined,
+        }))
         : [];
 
       // Extract pagination from response
@@ -232,73 +246,77 @@ export const invoiceService = {
    * GET /api/invoices/:code
    * 
    * @param code - The invoice or application code (e.g., "1405-0", "I-5339-0", "INV-00123")
+   * @param type - Optional application type (NAPP, INCR, WAPP, GOLA)
    * @returns Invoice or application data
    */
-  getInvoiceByCode: async (code: string): Promise<any> => {
-    try {
-      if (!code) {
-        throw new InvoiceError('Code is required', 'validation');
-      }
+  getInvoiceByCode: async (code: string, type?: string): Promise<any> => {
+    if (!code) {
+      throw new InvoiceError('Code is required', 'validation');
+    }
 
-      const response = await api.get(`/api/invoices/${encodeURIComponent(code)}`);
+    const normalizedCode = code.trim();
+    const normalizedType = (type || '').trim().toUpperCase();
+    const requestKey = `${normalizedCode}::${normalizedType}`;
 
-      // Handle different response formats
-      if (response.data && typeof response.data === 'object') {
-        if ('success' in response.data && response.data.success === false) {
-          throw new InvoiceError(
-            (response.data as any).message || 'Failed to fetch invoice/application',
-            'server',
-            response.status
-          );
+    if (inFlightInvoiceLookups.has(requestKey)) {
+      return inFlightInvoiceLookups.get(requestKey)!;
+    }
+
+    const requestPromise = (async () => {
+      try {
+        let url = `/api/invoices/${encodeURIComponent(normalizedCode)}`;
+        if (normalizedType) {
+          // Backend expects query param name "applicationCode" for type-filtered lookup.
+          url += `?applicationCode=${encodeURIComponent(normalizedType)}`;
         }
-        
-        // Return the data directly or from nested structure
-        return (response.data as any).data || response.data;
-      }
 
-      throw new InvoiceError('Invalid response format', 'server', response.status);
-    } catch (error: any) {
-      if (error instanceof InvoiceError) {
-        throw error;
-      }
+        const response = await api.get(url);
 
-      // Handle axios errors
-      if (error.response) {
-        const status = error.response.status;
-        const errorData = error.response.data;
+        if (response.data && typeof response.data === 'object') {
+          if ('success' in response.data && response.data.success === false) {
+            throw new InvoiceError(
+              (response.data as any).message || 'Failed to fetch invoice/application',
+              'server',
+              response.status
+            );
+          }
+          return (response.data as any).data || response.data;
+        }
 
-        if (status === 401 || status === 403) {
-          throw new InvoiceError(
-            errorData?.message || 'Unauthorized access',
-            'auth',
-            status
-          );
-        } else if (status === 400) {
-          throw new InvoiceError(
-            errorData?.message || 'Invalid code',
-            'validation',
-            status
-          );
-        } else if (status === 404) {
-          throw new InvoiceError(
-            errorData?.message || `Invoice/application not found: ${code}`,
-            'validation',
-            status
-          );
-        } else if (status >= 500) {
-          throw new InvoiceError('Server error occurred', 'server', status);
+        throw new InvoiceError('Invalid response format', 'server', response.status);
+      } catch (error: any) {
+        if (error instanceof InvoiceError) {
+          throw error;
+        }
+
+        if (error.response) {
+          const status = error.response.status;
+          const errorData = error.response.data;
+
+          if (status === 401 || status === 403) {
+            throw new InvoiceError(errorData?.message || 'Unauthorized access', 'auth', status);
+          } else if (status === 400) {
+            throw new InvoiceError(errorData?.message || 'Invalid code', 'validation', status);
+          } else if (status === 404) {
+            throw new InvoiceError(errorData?.message || `Invoice/application not found: ${normalizedCode}`, 'validation', status);
+          } else if (status >= 500) {
+            throw new InvoiceError('Server error occurred', 'server', status);
+          } else {
+            throw new InvoiceError(errorData?.message || 'Failed to fetch invoice/application', 'server', status);
+          }
+        } else if (error.request) {
+          throw new InvoiceError('Network error: Unable to connect to server', 'network');
         } else {
-          throw new InvoiceError(
-            errorData?.message || 'Failed to fetch invoice/application',
-            'server',
-            status
-          );
+          throw new InvoiceError(error.message || 'An unexpected error occurred', 'server');
         }
-      } else if (error.request) {
-        throw new InvoiceError('Network error: Unable to connect to server', 'network');
-      } else {
-        throw new InvoiceError(error.message || 'An unexpected error occurred', 'server');
       }
+    })();
+
+    inFlightInvoiceLookups.set(requestKey, requestPromise);
+    try {
+      return await requestPromise;
+    } finally {
+      inFlightInvoiceLookups.delete(requestKey);
     }
   },
 
@@ -328,7 +346,7 @@ export const invoiceService = {
             response.status
           );
         }
-        
+
         // Return the data directly or from nested structure
         return (response.data as any).data || response.data;
       }
@@ -381,6 +399,7 @@ export const invoiceService = {
 };
 
 export interface InvoiceListItem {
+  [x: string]: string;
   invoiceId: number;
   invoiceCode: string;
   customerName: string;
@@ -414,6 +433,7 @@ export interface InvoiceSearchParams {
   paymentMode?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  bypassCache?: boolean;
 }
 
 // Application Items Types

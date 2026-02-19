@@ -63,7 +63,7 @@ export function GlobalSearch({
     searchMethod: '',
     totalMatches: 0
   });
-  
+
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -105,7 +105,7 @@ export function GlobalSearch({
         if (abortControllerRef.current) {
           abortControllerRef.current.abort();
         }
-        
+
         abortControllerRef.current = new AbortController();
 
         // Fetch search results
@@ -161,7 +161,7 @@ export function GlobalSearch({
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
-    
+
     if (value.trim().length >= 2) {
       debouncedSearch(value);
     } else {
@@ -182,14 +182,14 @@ export function GlobalSearch({
 
   // Handle result selection with proper routing
   const handleResultSelect = (result: GlobalSearchResult) => {
-  
+
     setSearchTerm(result.code || result.name || '');
     setShowResults(false);
-    
+
     if (onResultSelect) {
       onResultSelect(result);
     }
-    
+
     // Navigate to the appropriate page based on entity type
     switch (result.entityType) {
       case 'application':
@@ -198,7 +198,7 @@ export function GlobalSearch({
           navigate(`/niche/view/${result.code}`);
         }
         break;
-        
+
       case 'inscription':
         // Navigate to edit inscription page
         if (result.code) {
@@ -207,7 +207,7 @@ export function GlobalSearch({
           navigate(`/inscriptions/${result.id}/edit`);
         }
         break;
-        
+
       case 'wake-room':
         // Navigate to edit wake room booking
         if (result.code) {
@@ -216,31 +216,31 @@ export function GlobalSearch({
           navigate(`/wake-room/edit/${result.id}`);
         }
         break;
-        
+
       case 'person':
-        // For person entities, navigate to search results or person management
-        // Since there's no dedicated person route, we'll go to the main search page
-        console.log('Person selected:', result);
-        // Could navigate to a person details page if one exists
+        // Navigate to person profile page
+        if (result.id) {
+          navigate(`/person/${result.id}`);
+        }
         break;
-        
+
       case 'church':
         // Navigate to create new niche application (as per your specification)
         navigate('/niche/new');
         break;
-        
+
       case 'niche':
         // Navigate to create new niche application
         navigate('/niche/new');
         break;
-        
+
       case 'date':
         // For date entities, navigate to relevant section
         // Could be reports or date-specific search
         console.log('Date selected:', result);
         // Could navigate to reports or date search functionality
         break;
-        
+
       default:
         console.log('Unknown entity type:', result.entityType);
         break;
@@ -285,7 +285,7 @@ export function GlobalSearch({
   const getStatusColor = (status: string | number, isAvailable?: boolean) => {
     if (isAvailable === true) return 'text-green-600';
     if (isAvailable === false) return 'text-red-600';
-    
+
     const statusStr = String(status).toLowerCase();
     if (statusStr.includes('draft') || statusStr.includes('pending')) return 'text-yellow-600';
     if (statusStr.includes('booked') || statusStr.includes('completed')) return 'text-green-600';
@@ -304,7 +304,7 @@ export function GlobalSearch({
             <Search className="h-5 w-5 text-gray-400" />
           )}
         </div>
-        
+
         <input
           ref={inputRef}
           type="text"
@@ -314,7 +314,7 @@ export function GlobalSearch({
           onChange={handleSearchChange}
           autoComplete="off"
         />
-        
+
         {searchTerm && (
           <button
             onClick={handleClear}
@@ -346,7 +346,7 @@ export function GlobalSearch({
                       <div className="flex-shrink-0 mt-0.5">
                         {getEntityIcon(result.entityType)}
                       </div>
-                      
+
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-medium text-gray-900 truncate">
@@ -359,7 +359,7 @@ export function GlobalSearch({
                             {result.entityType}hjhjghgjg
                           </span>
                         </div>
-                        
+
                         <div className="text-sm text-gray-600 space-y-1">
                           {result.applicantName && (
                             <div>
@@ -372,13 +372,13 @@ export function GlobalSearch({
                               )}
                             </div>
                           )}
-                          
+
                           {result.inscriptionPhrase && (
                             <div className="text-gray-700 italic">
                               "{result.inscriptionPhrase}"
                             </div>
                           )}
-                          
+
                           {result.chapelName && (
                             <div className="flex items-center gap-1">
                               <MapPin className="w-3 h-3" />
@@ -386,30 +386,29 @@ export function GlobalSearch({
                               {result.nicheCode && ` • Niche: ${result.nicheCode}`}
                             </div>
                           )}
-                          
+
                           {result.email && (
                             <div>{result.email} • {result.mobile}</div>
                           )}
-                          
+
                           {result.address && (
                             <div className="truncate">{result.address}</div>
                           )}
-                          
+
                           {result.description && (
                             <div className="truncate text-gray-500">{result.description}</div>
                           )}
                         </div>
-                        
+
                         <div className="flex items-center justify-between mt-2">
-                          <span className={`text-xs px-2 py-1 rounded ${
-                            result.relevance === 'Very High' ? 'bg-green-100 text-green-800' :
-                            result.relevance === 'High' ? 'bg-blue-100 text-blue-800' :
-                            result.relevance === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
+                          <span className={`text-xs px-2 py-1 rounded ${result.relevance === 'Very High' ? 'bg-green-100 text-green-800' :
+                              result.relevance === 'High' ? 'bg-blue-100 text-blue-800' :
+                                result.relevance === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-gray-100 text-gray-800'
+                            }`}>
                             Relevance: {result.relevance}
                           </span>
-                          
+
                           {(result.applicationDate || result.transactionDate || result.usingDate) && (
                             <span className="text-xs text-gray-500">
                               {result.applicationDate && new Date(result.applicationDate).toLocaleDateString()}
@@ -423,12 +422,12 @@ export function GlobalSearch({
                   </div>
                 ))}
               </div>
-              
+
               {/* Footer */}
               <div className="p-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
-                Found {results.length} of {searchMetadata.totalMatches} results • 
-                Search took {searchMetadata.executionTime}ms • 
-                Method: {searchMetadata.searchMethod || 'N/A'} • 
+                Found {results.length} of {searchMetadata.totalMatches} results •
+                Search took {searchMetadata.executionTime}ms •
+                Method: {searchMetadata.searchMethod || 'N/A'} •
                 Search across applications, inscriptions, wake rooms, persons, churches, niches, and dates
               </div>
             </>

@@ -16,6 +16,11 @@ class GateOfLifeController {
         });
       }
 
+      // Prevent browser/proxy from serving stale list responses after create/update/delete.
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+
       const result = await GateOfLifeService.searchApplications(query, user.churchId);
       return res.status(200).json(result);
     } catch (error) {

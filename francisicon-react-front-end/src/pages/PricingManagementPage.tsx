@@ -68,9 +68,13 @@ export default function PricingManagementPage() {
         fetchItems(categoryFilter);
     }, [categoryFilter]); // Re-fetch when category changes
 
-    useEffect(() => {
-        let result = items || [];
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 8;
 
+    useEffect(() => {
+        let result = [...(items || [])]; // Create a copy to sort
+
+        // 1. Filter
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
             result = result.filter(item =>
@@ -80,8 +84,22 @@ export default function PricingManagementPage() {
             );
         }
 
+        // 2. Sort (Newest First by ItemId)
+        result.sort((a, b) => (b.ItemId || 0) - (a.ItemId || 0));
+
         setFilteredItems(result);
+        setCurrentPage(1); // Reset to page 1 on filter change
     }, [searchTerm, items]);
+
+    // Calculate pagination
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const currentItems = filteredItems.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+
+    const handlePageChange = (pageNumber: number) => {
+        setCurrentPage(pageNumber);
+    };
 
     const handleOpenModal = (item: Item | null = null) => {
         if (item) {
@@ -125,8 +143,13 @@ export default function PricingManagementPage() {
             // Clear search and reset category to ensure the new/updated item is visible
             setSearchTerm('');
             setCategoryFilter('All');
-            // Force refresh to ensure updated data is shown
-            fetchItems('All', true);
+
+            // Wait a bit for DB propagation
+            setTimeout(() => {
+                console.log('[Pricing] Refreshing table after save...');
+                // Force refresh to ensure updated data is shown
+                fetchItems('All', true);
+            }, 500);
         } catch (error: any) {
             showError('Error', error.response?.data?.message || 'Failed to save item');
         }
@@ -140,8 +163,13 @@ export default function PricingManagementPage() {
                 // Clear search and reset category to ensure table is fresh
                 setSearchTerm('');
                 setCategoryFilter('All');
-                // Force refresh to ensure updated data is shown
-                fetchItems('All', true);
+
+                // Wait a bit for DB propagation
+                setTimeout(() => {
+                    console.log('[Pricing] Refreshing table after delete...');
+                    // Force refresh to ensure updated data is shown
+                    fetchItems('All', true);
+                }, 500);
             } catch (error: any) {
                 showError('Error', 'Failed to delete item');
             }
@@ -235,7 +263,7 @@ export default function PricingManagementPage() {
                 </div>
 
                 {/* Items Table */}
-                <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
+                <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden flex flex-col">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
@@ -267,7 +295,7 @@ export default function PricingManagementPage() {
                                                 </div>
                                             </td>
                                         </tr>
-                                    ) : filteredItems.map((item, idx) => (
+                                    ) : currentItems.map((item) => (
                                         <motion.tr
                                             key={item.ItemId}
                                             initial={{ opacity: 0 }}
@@ -316,6 +344,36 @@ export default function PricingManagementPage() {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Pagination Controls */}
+                    {!loading && filteredItems.length > 0 && (
+                        <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                            <div className="text-sm text-gray-500 font-medium">
+                                Showing <span className="font-bold text-gray-900">{indexOfFirstItem + 1}</span> to <span className="font-bold text-gray-900">{Math.min(indexOfLastItem, filteredItems.length)}</span> of <span className="font-bold text-gray-900">{filteredItems.length}</span> items
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handlePageChange(currentPage - 1)}
+                                    disabled={currentPage === 1}
+                                    className="p-2 rounded-lg hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                >
+                                    <ChevronRight className="w-4 h-4 rotate-180" />
+                                </button>
+
+                                <span className="text-sm font-bold text-gray-700 bg-white px-3 py-1 rounded-lg border border-gray-200 shadow-sm">
+                                    Page {currentPage} of {totalPages}
+                                </span>
+
+                                <button
+                                    onClick={() => handlePageChange(currentPage + 1)}
+                                    disabled={currentPage === totalPages}
+                                    className="p-2 rounded-lg hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 

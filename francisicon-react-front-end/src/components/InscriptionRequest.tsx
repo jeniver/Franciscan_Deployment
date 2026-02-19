@@ -96,6 +96,9 @@ export function InscriptionRequest() { // Removed props parameter since they wer
     console.log('InscriptionRequest: inscriptionRequestNo', inscriptionRequestNo);
   }, [inscriptionRequestNo, nicheApplicationCode]);
 
+  // URL-driven auto-fetch is handled in InscriptionPage.
+  // Keep this component focused on rendering/editing to avoid duplicate fetch races.
+
 
   // Handle view action
   const handleView = async () => {
@@ -208,23 +211,7 @@ export function InscriptionRequest() { // Removed props parameter since they wer
   };
 
   const handleCreateInvoiceClick = () => {
-    if (!nicheApplicationCode.trim()) {
-      showError('Validation Error', 'Please enter a Niche Application Code to create invoice');
-      return;
-    }
-
-    // Check if the nicheApplicationCode is an inscription code (starts with 'I-')
-    let codeToNavigate;
-    if (nicheApplicationCode.startsWith('I-')) {
-      codeToNavigate = nicheApplicationCode;
-    } else {
-      // For regular application codes, prepend 'I-' as per convention
-      codeToNavigate = `I-${nicheApplicationCode}`;
-    }
-
-    // Navigate to the invoice-receipt page directly
-    // The InvoicePage will handle loading details or creating invoice if needed
-    navigate(`/${churchId}/invoice-receipt/${codeToNavigate}`);
+    navigate(`/create-invoice/${inscriptionRequestNo}?type=INCR`);
   };
 
   const handleSaveRequest = async () => {
@@ -339,7 +326,7 @@ export function InscriptionRequest() { // Removed props parameter since they wer
                 className="px-5 py-2.5 bg-[#1a2a40] text-white rounded-lg font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {creatingInvoice ? <LoaderIcon className="w-4 h-4 animate-spin" /> : <BookOpenIcon className="w-4 h-4" />}
-                Invoice & Receipt
+                Invoice
               </button>
 
               <button
@@ -532,16 +519,7 @@ export function InscriptionRequest() { // Removed props parameter since they wer
                           id={`storage-from-${index}`}
                           name={`storage-from-${index}`}
                           value={beneficiary.storagePeriodFrom || ''}
-                          onChange={(apiDate) => handleUpdateBeneficiary(index, 'storagePeriodFrom', apiDate)}
-                          className="rounded-lg py-2 px-3 text-sm"
-                        />
-                      </td>
-                      <td className="py-4 px-4">
-                        <DateInput
-                          id={`storage-to-${index}`}
-                          name={`storage-to-${index}`}
-                          value={beneficiary.storagePeriodTo || ''}
-                          onChange={(apiDate) => handleUpdateBeneficiary(index, 'storagePeriodTo', apiDate)}
+                          onChange={(apiDate) => handleUpdateBeneficiary(index, 'internmentDate', apiDate)}
                           className="rounded-lg py-2 px-3 text-sm"
                         />
                       </td>

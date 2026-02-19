@@ -209,21 +209,21 @@ class InvoiceRepository extends BaseRepository {
    * @param {number} churchId - Church ID for filtering
    * @returns {Promise<Object|null>} Application details or null
    */
-  async getApplicationDetailsByCode(code, churchId = null) {
+  async getApplicationDetailsByCode(code, churchId = null, type = null) {
     try {
-      if (!code || code.trim().length === 0) {
+      const searchCode = (code != null ? String(code) : '').trim();
+      if (!searchCode) {
         logger.warn('getApplicationDetailsByCode called with empty code');
         return null;
       }
-
-      const searchCode = code.trim();
-      logger.info(`Fetching application details for code: ${searchCode}, churchId: ${churchId}`);
+      logger.info(`Fetching application details for code: ${searchCode}, churchId: ${churchId}, type: ${type}`);
 
       let application = null;
-      let refDocType = 'NAPP';
+      let refDocType = type || 'NAPP'; // Default to NAPP or provided type
 
       // Step 1: Detect application type and fetch data
-      if (searchCode.startsWith('GOL-') || searchCode.startsWith('GOLA-')) {
+      // Optimized: Use provided type hint if available
+      if (refDocType === 'GOLA' || searchCode.startsWith('GOL-') || searchCode.startsWith('GOLA-')) {
         refDocType = 'GOLA';
         const golQuery = `
           SELECT TOP 1
@@ -231,7 +231,6 @@ class InvoiceRepository extends BaseRepository {
             e.Code AS ApplicationCode,
             e.BookingDate AS AppliedDate,
             e.BookingDate AS AgreementDate,
-            e.Status AS ApplicationStatus,
             e.ApplicantName,
             e.ApplicantIDNo,
             e.ApplicantEmailID,
@@ -248,8 +247,8 @@ class InvoiceRepository extends BaseRepository {
             e.DefaultDonationAmount AS ApplicationDefaultAmount,
             e.ChurchId,
             e.UserId,
-            e.Remarks,
-            e.RefDocType
+            'GOLA' AS RefDocType
+
           FROM EngraveWallApplication e WITH(NOLOCK)
           WHERE e.Code = @code OR e.Code = @codeGola
         `;
@@ -262,8 +261,19 @@ class InvoiceRepository extends BaseRepository {
           application = golResult.recordset[0];
           application.NicheApplicationId = application.ApplicationId; // Map for compatibility
         }
-      } else {
-        // Default: Niche Application
+      } else if (refDocType === 'INCR' || searchCode.startsWith('INCR-') || searchCode.startsWith('I-')) {
+        // If purely Inscription, we might need specific logic or just treat as NAPP parent for now in this repo?
+        // Looking at existing code, this repo seems to focus on NicheApplication as the base.
+        // For now, let's keep the existing logic but recognize we entered this block.
+        // IF strict NAPP logic is required, we do it here.
+        // NOTE: The current logic falls through to NicheApplication query which is likely correct for legacy reasons,
+        // but we should verify if we need specific INCR handling here.
+        // For now, we fallback to NicheApplication query as per original code,
+        // ensuring we don't break existing flows.
+      }
+
+      // Default: Niche Application (or derived)
+      if (!application) {
         let applicationQuery = `
           SELECT TOP 1
             na.NicheApplicationId,
@@ -306,7 +316,7 @@ class InvoiceRepository extends BaseRepository {
             na.ChurchId,
             na.UserId,
             na.Remarks,
-            na.RefDocType
+            'NAPP' AS RefDocType
           FROM NicheApplication na WITH(NOLOCK)
           WHERE na.Code = @code
         `;
@@ -326,7 +336,7 @@ class InvoiceRepository extends BaseRepository {
       }
 
       if (!application) {
-        logger.info(`No application found for code: ${searchCode}`);
+        logger.info(`No application found for code: ${searchCode} `);
         return null;
       }
 
@@ -334,31 +344,31 @@ class InvoiceRepository extends BaseRepository {
       let nicheDetails = null;
       if (application.NicheId) {
         const nicheQuery = `
-          SELECT 
-            n.NicheId,
-            n.Code AS NicheCode,
-            n.DefaultAmount AS NichePrice,
+      SELECT
+      n.NicheId,
+        n.Code AS NicheCode,
+          n.DefaultAmount AS NichePrice,
             n.AppearanceDescription,
             n.Status AS NicheStatus,
-            n.ChurchId AS NicheChurchId,
-            r.NicheRowlId,
-            r.Code AS RowCode,
-            r.NicheLevel,
-            r.DefaultAmount AS RowPrice,
-            w.NicheWallId,
-            w.Code AS WallCode,
-            w.Name AS WallName,
-            c.ChapelId,
-            c.Code AS ChapelCode,
-            c.Name AS ChapelName,
-            CASE WHEN EXISTS (
-              SELECT 1 FROM NicheBooking nb WITH (NOLOCK)
+              n.ChurchId AS NicheChurchId,
+                r.NicheRowlId,
+                r.Code AS RowCode,
+                  r.NicheLevel,
+                  r.DefaultAmount AS RowPrice,
+                    w.NicheWallId,
+                    w.Code AS WallCode,
+                      w.Name AS WallName,
+                        c.ChapelId,
+                        c.Code AS ChapelCode,
+                          c.Name AS ChapelName,
+                            CASE WHEN EXISTS(
+                              SELECT 1 FROM NicheBooking nb WITH(NOLOCK)
               WHERE nb.NicheId = n.NicheId AND nb.BookingStatus = 1
-            ) THEN 1 ELSE 0 END AS IsBooked
-          FROM Niche n WITH (NOLOCK)
-          INNER JOIN NicheRow r WITH (NOLOCK) ON n.NicheRowlId = r.NicheRowlId
-          INNER JOIN NicheWall w WITH (NOLOCK) ON r.NicheWallId = w.NicheWallId
-          INNER JOIN Chapel c WITH (NOLOCK) ON w.ChapelId = c.ChapelId
+                            ) THEN 1 ELSE 0 END AS IsBooked
+          FROM Niche n WITH(NOLOCK)
+          INNER JOIN NicheRow r WITH(NOLOCK) ON n.NicheRowlId = r.NicheRowlId
+          INNER JOIN NicheWall w WITH(NOLOCK) ON r.NicheWallId = w.NicheWallId
+          INNER JOIN Chapel c WITH(NOLOCK) ON w.ChapelId = c.ChapelId
           WHERE n.NicheId = @nicheId
         `;
 
@@ -375,13 +385,13 @@ class InvoiceRepository extends BaseRepository {
         // Try to get item by niche level (e.g., Level 6 -> ItemId 6)
         const levelItemQuery = `
           SELECT TOP 1
-            i.ItemId,
-            i.Name AS ItemName,
-            i.Code AS ItemCode,
+      i.ItemId,
+        i.Name AS ItemName,
+          i.Code AS ItemCode,
             i.Price AS ItemPrice,
-            i.IsRefType,
-            i.DocType,
-            i.ChurchId
+              i.IsRefType,
+              i.DocType,
+              i.ChurchId
           FROM Item i WITH(NOLOCK)
           WHERE i.ChurchId = @churchId
             AND i.ItemId = @itemId
@@ -400,16 +410,16 @@ class InvoiceRepository extends BaseRepository {
       if (!item && application.ChurchId) {
         const itemQuery = `
           SELECT TOP 1
-            i.ItemId,
-            i.Name AS ItemName,
-            i.Code AS ItemCode,
+      i.ItemId,
+        i.Name AS ItemName,
+          i.Code AS ItemCode,
             i.Price AS ItemPrice,
-            i.IsRefType,
-            i.DocType,
-            i.ChurchId
+              i.IsRefType,
+              i.DocType,
+              i.ChurchId
           FROM Item i WITH(NOLOCK)
           WHERE i.ChurchId = @churchId
-            AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
+      AND(i.DocType = 'NAPP' OR i.IsRefType = 1)
           ORDER BY i.ItemId
         `;
         const itemResult = await executeQuery(itemQuery, { churchId: application.ChurchId }, { timeout: 5000 });
@@ -423,13 +433,13 @@ class InvoiceRepository extends BaseRepository {
       if (!item && application.ChurchId) {
         const fallbackItemQuery = `
           SELECT TOP 1
-            i.ItemId,
-            i.Name AS ItemName,
-            i.Code AS ItemCode,
+      i.ItemId,
+        i.Name AS ItemName,
+          i.Code AS ItemCode,
             i.Price AS ItemPrice,
-            i.IsRefType,
-            i.DocType,
-            i.ChurchId
+              i.IsRefType,
+              i.DocType,
+              i.ChurchId
           FROM Item i WITH(NOLOCK)
           WHERE i.ChurchId = @churchId
           ORDER BY i.ItemId
@@ -445,22 +455,22 @@ class InvoiceRepository extends BaseRepository {
       let booking = null;
       const bookingQuery = `
         SELECT TOP 1
-          nb.NicheBookingId,
-          nb.NicheId,
-          nb.NicheApplicationId,
-          nb.BookedDate,
-          nb.BookingStatus,
-          nb.Remarks AS BookingRemarks,
+      nb.NicheBookingId,
+        nb.NicheId,
+        nb.NicheApplicationId,
+        nb.BookedDate,
+        nb.BookingStatus,
+        nb.Remarks AS BookingRemarks,
           nb.ChurchId AS BookingChurchId,
-          nb.UserId AS BookingUserId,
-          cp.Name AS ContactPersonName,
-          cp.IDNo AS ContactPersonIDNo,
-          cp.MobileNo AS ContactPersonMobile,
-          cp.EmailID AS ContactPersonEmail,
-          nom1.Name AS NomineeName,
-          nom1.IDNo AS NomineeIDNo,
-          nom2.Name AS Nominee2Name,
-          nom2.IDNo AS Nominee2IDNo
+            nb.UserId AS BookingUserId,
+              cp.Name AS ContactPersonName,
+                cp.IDNo AS ContactPersonIDNo,
+                  cp.MobileNo AS ContactPersonMobile,
+                    cp.EmailID AS ContactPersonEmail,
+                      nom1.Name AS NomineeName,
+                        nom1.IDNo AS NomineeIDNo,
+                          nom2.Name AS Nominee2Name,
+                            nom2.IDNo AS Nominee2IDNo
         FROM NicheBooking nb WITH(NOLOCK)
         LEFT JOIN Person cp WITH(NOLOCK) ON nb.ContactPersonId = cp.PersonId
         LEFT JOIN Person nom1 WITH(NOLOCK) ON nb.NomineeId = nom1.PersonId
@@ -468,7 +478,7 @@ class InvoiceRepository extends BaseRepository {
         WHERE nb.NicheApplicationId = @nicheApplicationId
           AND nb.BookingStatus > 0
         ORDER BY nb.BookedDate DESC
-      `;
+        `;
 
       const bookingResult = await executeQuery(bookingQuery, {
         nicheApplicationId: application.NicheApplicationId
@@ -487,8 +497,8 @@ class InvoiceRepository extends BaseRepository {
       try {
         const inscriptionQuery = `
           SELECT TOP 1
-            nir.Code AS InscriptionCode,
-            nir.NicheBookingId
+      nir.Code AS InscriptionCode,
+        nir.NicheBookingId
           FROM NicheInscriptionRequest nir WITH(NOLOCK)
           INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
           WHERE nb.NicheApplicationId = @nicheApplicationId
@@ -500,7 +510,7 @@ class InvoiceRepository extends BaseRepository {
 
         if (inscriptionResult.recordset && inscriptionResult.recordset.length > 0) {
           const inscriptionCode = inscriptionResult.recordset[0].InscriptionCode;
-          logger.info(`[getApplicationDetailsByCode] Found inscription for application ${application.ApplicationCode}: ${inscriptionCode}`);
+          logger.info(`[getApplicationDetailsByCode] Found inscription for application ${application.ApplicationCode}: ${inscriptionCode} `);
 
           // Fetch inscription items using InscriptionInvoiceService
           try {
@@ -521,7 +531,7 @@ class InvoiceRepository extends BaseRepository {
                 quantity: 1,
                 unitAmount: inscriptionItem.Price || 0,
                 payingAmount: inscriptionItem.Price || 0,
-                totalPayingAmount: inscriptionItem.Price || 0,
+                totalPayingAmount: (inscriptionItem.Price || 0) * 1.09,
                 refDocNumber: inscriptionCode, // Use inscription code as reference
                 refDocName: 'INCR',
                 refType: 'INCR',
@@ -533,12 +543,12 @@ class InvoiceRepository extends BaseRepository {
               logger.info(`[getApplicationDetailsByCode] Added ${inscriptionItems.length} inscription items to invoice details`);
             }
           } catch (inscriptionError) {
-            logger.warn(`[getApplicationDetailsByCode] Failed to fetch inscription items (non-critical):`, inscriptionError.message);
+            logger.warn(`[getApplicationDetailsByCode] Failed to fetch inscription items(non - critical): `, inscriptionError.message);
             // Continue without inscription items - non-critical
           }
         }
       } catch (inscriptionQueryError) {
-        logger.warn(`[getApplicationDetailsByCode] Failed to query inscription (non-critical):`, inscriptionQueryError.message);
+        logger.warn(`[getApplicationDetailsByCode] Failed to query inscription(non - critical): `, inscriptionQueryError.message);
         // Continue without inscription items - non-critical
       }
 
@@ -555,14 +565,14 @@ class InvoiceRepository extends BaseRepository {
         quantity: 1,
         unitAmount: itemPrice,
         payingAmount: itemPrice,
-        totalPayingAmount: itemPrice,
         refDocNumber: application.ApplicationCode,
         refDocName: 'NAPP',
         refType: 'NAPP',
         outstandingAmount: 0,
         lineTotalAmount: itemPrice,
-        lineTaxPercent: 0,
-        lineTaxAmount: 0
+        lineTaxPercent: 9, // Default 9% GST
+        lineTaxAmount: itemPrice * 0.09,
+        totalPayingAmount: itemPrice * 1.09
       }];
 
       // Add inscription items to details
@@ -574,8 +584,8 @@ class InvoiceRepository extends BaseRepository {
       try {
         // Query for any inscription requests linked to this application via NicheBooking
         const additionalInscriptionQuery = `
-          SELECT 
-            nir.Code AS InscriptionCode
+      SELECT
+      nir.Code AS InscriptionCode
           FROM NicheInscriptionRequest nir WITH(NOLOCK)
           INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
           WHERE nb.NicheApplicationId = @nicheApplicationId
@@ -594,7 +604,7 @@ class InvoiceRepository extends BaseRepository {
               continue;
             }
 
-            logger.info(`[getApplicationDetailsByCode] Found additional inscription for application ${application.ApplicationCode}: ${inscrCode}`);
+            logger.info(`[getApplicationDetailsByCode] Found additional inscription for application ${application.ApplicationCode}: ${inscrCode} `);
 
             try {
               const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
@@ -614,7 +624,7 @@ class InvoiceRepository extends BaseRepository {
                   quantity: 1,
                   unitAmount: inscriptionItem.Price || 0,
                   payingAmount: inscriptionItem.Price || 0,
-                  totalPayingAmount: inscriptionItem.Price || 0,
+                  totalPayingAmount: (inscriptionItem.Price || 0) * 1.09,
                   refDocNumber: inscrCode, // Use inscription code as reference
                   refDocName: 'INCR',
                   refType: 'INCR',
@@ -625,15 +635,15 @@ class InvoiceRepository extends BaseRepository {
                 }));
 
                 allDetails.push(...additionalInscriptionItems);
-                logger.info(`[getApplicationDetailsByCode] Added ${additionalInscriptionItems.length} additional inscription items from ${inscrCode}`);
+                logger.info(`[getApplicationDetailsByCode] Added ${additionalInscriptionItems.length} additional inscription items from ${inscrCode} `);
               }
             } catch (additionalInscriptionError) {
-              logger.warn(`[getApplicationDetailsByCode] Failed to fetch additional inscription items from ${inscrCode} (non-critical):`, additionalInscriptionError.message);
+              logger.warn(`[getApplicationDetailsByCode] Failed to fetch additional inscription items from ${inscrCode} (non - critical): `, additionalInscriptionError.message);
             }
           }
         }
       } catch (additionalInscriptionQueryError) {
-        logger.warn(`[getApplicationDetailsByCode] Failed to query additional inscriptions (non-critical):`, additionalInscriptionQueryError.message);
+        logger.warn(`[getApplicationDetailsByCode] Failed to query additional inscriptions(non - critical): `, additionalInscriptionQueryError.message);
       }
 
       // Calculate totals including all items
@@ -763,7 +773,7 @@ class InvoiceRepository extends BaseRepository {
 
 
 
-      logger.info(`Application details retrieved: ApplicationCode=${response.applicationCode}, NicheCode=${nicheDetails?.NicheCode || 'N/A'}, Price=${nichePrice}, ItemName=${item?.ItemName || 'N/A'}`);
+      logger.info(`Application details retrieved: ApplicationCode = ${response.applicationCode}, NicheCode = ${nicheDetails?.NicheCode || 'N/A'}, Price = ${nichePrice}, ItemName = ${item?.ItemName || 'N/A'} `);
 
       return response;
     } catch (error) {
@@ -774,15 +784,14 @@ class InvoiceRepository extends BaseRepository {
 
   async getInvoiceByCode(code, churchId = null, applicationCode = null) {
     try {
-      if (!code || code.trim().length === 0) {
+      const searchCode = (code != null ? String(code) : '').trim();
+      if (!searchCode) {
         logger.warn('getInvoiceByCode called with empty code');
         return null;
       }
-
-      const searchCode = code.trim();
       const normalizedSearchCode = searchCode;
       const normalizedSearchCodeUpper = normalizedSearchCode.toUpperCase();
-      const looksLikeRefDoc = /^\\d+-0$/.test(normalizedSearchCodeUpper)
+      const looksLikeRefDoc = /^\d+-0$/.test(normalizedSearchCodeUpper)
         || normalizedSearchCodeUpper.startsWith('NAPP-')
         || normalizedSearchCodeUpper.startsWith('WAPP-')
         || normalizedSearchCodeUpper.startsWith('INCR-')
@@ -791,13 +800,13 @@ class InvoiceRepository extends BaseRepository {
           (normalizedSearchCodeUpper.match(/^I-\d+$/) ||
             normalizedSearchCodeUpper.startsWith('I-NAPP-') ||
             /^I-\d+-\d+$/.test(normalizedSearchCodeUpper)));
-      logger.info(`Looking up invoice: code=${searchCode}, churchId=${churchId}, applicationCode=${applicationCode}`);
+      logger.info(`Looking up invoice: code = ${searchCode}, churchId = ${churchId}, applicationCode = ${applicationCode} `);
 
       // Build a set of candidate code values to handle different user inputs
       // (e.g. numeric \"63059\" vs stored as \"063059\" or \"00063059\").
       const codeCandidates = new Set();
       codeCandidates.add(searchCode);
-      if (/^\\d+$/.test(searchCode)) {
+      if (/^\d+$/.test(searchCode)) {
         const numeric = parseInt(searchCode, 10);
         if (!Number.isNaN(numeric)) {
           const base = String(numeric);
@@ -835,7 +844,7 @@ class InvoiceRepository extends BaseRepository {
           params.churchId = churchId;
         }
 
-        return executeQuery(query, params, { timeout: 10000 });
+        return executeQuery(query, params, { timeout: 5000 });
       };
 
       let result = { recordset: [] };
@@ -851,7 +860,7 @@ class InvoiceRepository extends BaseRepository {
 
       // If not found by invoice code, try to find by niche application code (RefDocNumber)
       if (result.recordset.length === 0) {
-        logger.info(`Invoice not found by code, trying niche application code: ${searchCode}`);
+        logger.info(`Invoice not found by code, trying niche application code: ${searchCode} `);
 
         // Detect RefDocName from code pattern or use provided applicationCode
         let refDocName = applicationCode ? String(applicationCode).trim().toUpperCase() : null;
@@ -864,19 +873,22 @@ class InvoiceRepository extends BaseRepository {
             refDocName = 'INCR';
           } else if (normalizedSearchCodeUpper.startsWith('GOLA-')) {
             refDocName = 'GOLA';
+          } else if (/^\d+-\d+$/.test(normalizedSearchCodeUpper)) {
+            // Pattern like 1601-8 is likely an inscription code
+            refDocName = 'INCR';
           }
         }
 
         // 1) Detail-first search
         let appCodeQuery = `
           SELECT TOP 1
-            i.*
-          FROM InvoiceDetail id WITH(NOLOCK)
+      i.*
+        FROM InvoiceDetail id WITH(NOLOCK)
           INNER JOIN Invoice i WITH(NOLOCK) ON id.InvoiceId = i.InvoiceId
-          WHERE (
-            id.RefDocNumber = @code
+      WHERE(
+        id.RefDocNumber = @code
             OR id.RefDocNumber = @codeUpper
-          )
+      )
           AND i.Status > 0
         `;
 
@@ -886,10 +898,10 @@ class InvoiceRepository extends BaseRepository {
         };
 
         if (refDocName) {
-          appCodeQuery += ` AND (
-            id.RefDocName = @refDocName
+          appCodeQuery += ` AND(
+          id.RefDocName = @refDocName
             OR i.RefDocName = @refDocName
-          )`;
+        )`;
           appParams.refDocName = refDocName.trim();
         }
 
@@ -900,23 +912,23 @@ class InvoiceRepository extends BaseRepository {
 
         appCodeQuery += ' ORDER BY i.TransactionDate DESC, i.InvoiceId DESC';
 
-        let appResult = await executeQuery(appCodeQuery, appParams, { timeout: 10000 });
+        let appResult = await executeQuery(appCodeQuery, appParams, { timeout: 5000 });
 
         if (appResult.recordset.length > 0) {
           invoice = appResult.recordset[0];
-          logger.info(`Invoice found by niche application code: ${searchCode}${refDocName ? ` (RefDocName: ${refDocName})` : ''}, InvoiceId: ${invoice.InvoiceId}`);
+          logger.info(`Invoice found by niche application code: ${searchCode}${refDocName ? ` (RefDocName: ${refDocName})` : ''}, InvoiceId: ${invoice.InvoiceId} `);
         } else {
           // 2) Header-only search as fallback
           let appHeaderQuery = `
             SELECT TOP 1
-              i.*
-            FROM Invoice i WITH(NOLOCK)
-            WHERE (
-              i.RefDocNumber = @code
+      i.*
+        FROM Invoice i WITH(NOLOCK)
+      WHERE(
+        i.RefDocNumber = @code
               OR i.RefDocNumber = @codeUpper
-            )
+      )
             AND i.Status > 0
-          `;
+        `;
 
           const appHeaderParams = {
             code: normalizedSearchCode,
@@ -935,115 +947,42 @@ class InvoiceRepository extends BaseRepository {
 
           appHeaderQuery += ' ORDER BY i.TransactionDate DESC, i.InvoiceId DESC';
 
-          appResult = await executeQuery(appHeaderQuery, appHeaderParams, { timeout: 10000 });
+          appResult = await executeQuery(appHeaderQuery, appHeaderParams, { timeout: 5000 });
 
           if (appResult.recordset.length > 0) {
             invoice = appResult.recordset[0];
-            logger.info(`Invoice found by header RefDocNumber: ${searchCode}${refDocName ? ` (RefDocName: ${refDocName})` : ''}, InvoiceId: ${invoice.InvoiceId}`);
+            logger.info(`Invoice found by header RefDocNumber: ${searchCode}${refDocName ? ` (RefDocName: ${refDocName})` : ''}, InvoiceId: ${invoice.InvoiceId} `);
           } else if (refDocName) {
-            // 3) Last-resort fallback without RefDocName filter
-            logger.warn(`Invoice not found with RefDocName filter, trying without filter: ${searchCode}, RefDocName: ${refDocName}`);
-
-            const fallbackParams = {
-              code: normalizedSearchCode,
-              codeUpper: normalizedSearchCodeUpper,
-              codePrefix: (normalizedSearchCodeUpper.startsWith('I-') &&
-                (normalizedSearchCodeUpper.match(/^I-\d+$/) ||
-                  normalizedSearchCodeUpper.startsWith('I-NAPP-') ||
-                  /^I-\d+-\d+$/.test(normalizedSearchCodeUpper)))
-                ? normalizedSearchCodeUpper
-                : `I-${normalizedSearchCodeUpper}`
-            };
-
+            // 3) Fallback without RefDocName filter (Fast lookup only)
+            const fallbackParams = { code: normalizedSearchCode, codeUpper: normalizedSearchCodeUpper };
             let fallbackHeaderQuery = `
-              SELECT TOP 1
-                i.*
-              FROM Invoice i WITH(NOLOCK)
-              WHERE (
-                i.RefDocNumber = @code
-                OR i.RefDocNumber = @codeUpper
-              )
+              SELECT TOP 1 i.* FROM Invoice i WITH(NOLOCK)
+              WHERE (i.RefDocNumber = @code OR i.RefDocNumber = @codeUpper)
               AND i.Status > 0
             `;
-
             if (churchId) {
               fallbackHeaderQuery += ' AND i.ChurchId = @churchId';
               fallbackParams.churchId = churchId;
             }
-
             fallbackHeaderQuery += ' ORDER BY i.TransactionDate DESC, i.InvoiceId DESC';
 
-            const fallbackHeaderResult = await executeQuery(fallbackHeaderQuery, fallbackParams, { timeout: 10000 });
-
+            const fallbackHeaderResult = await executeQuery(fallbackHeaderQuery, fallbackParams, { timeout: 3000 });
             if (fallbackHeaderResult.recordset.length > 0) {
               invoice = fallbackHeaderResult.recordset[0];
-              logger.warn(`Invoice found without RefDocName filter (header): ${searchCode}, InvoiceId: ${invoice.InvoiceId}`);
             } else {
+              // Try Detail lookup (Fast)
               let fallbackDetailQuery = `
-                SELECT TOP 1
-                  i.*
-                FROM InvoiceDetail id WITH(NOLOCK)
+                SELECT TOP 1 i.* FROM InvoiceDetail id WITH(NOLOCK)
                 INNER JOIN Invoice i WITH(NOLOCK) ON id.InvoiceId = i.InvoiceId
-                WHERE (
-                  id.RefDocNumber = @code
-                  OR id.RefDocNumber = @codeUpper
-                  OR (id.RefDocNumber LIKE @codePrefix AND id.RefDocNumber LIKE 'I-%')
-                )
+                WHERE (id.RefDocNumber = @code OR id.RefDocNumber = @codeUpper)
                 AND i.Status > 0
               `;
-
-              if (churchId) {
-                fallbackDetailQuery += ' AND i.ChurchId = @churchId';
-              }
-
+              if (churchId) { fallbackDetailQuery += ' AND i.ChurchId = @churchId'; }
               fallbackDetailQuery += ' ORDER BY i.TransactionDate DESC, i.InvoiceId DESC';
 
-              const fallbackDetailResult = await executeQuery(fallbackDetailQuery, fallbackParams, { timeout: 10000 });
-
+              const fallbackDetailResult = await executeQuery(fallbackDetailQuery, fallbackParams, { timeout: 3000 });
               if (fallbackDetailResult.recordset.length > 0) {
                 invoice = fallbackDetailResult.recordset[0];
-                logger.warn(`Invoice found without RefDocName filter (detail): ${searchCode}, InvoiceId: ${invoice.InvoiceId}`);
-              } else {
-                // Diagnostic: Check if invoice exists but with different RefDocName
-                let diagnosticQuery = `
-                  SELECT TOP 5
-                    i.InvoiceId,
-                    i.Code AS InvoiceCode,
-                    i.Status,
-                    id.RefDocNumber,
-                    id.RefDocName,
-                    i.ChurchId
-                  FROM Invoice i WITH(NOLOCK)
-                  INNER JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
-                  WHERE (id.RefDocNumber = @code OR id.RefDocNumber = @codeUpper)
-                    AND i.Status > 0
-                `;
-
-                const diagnosticParams = {
-                  code: searchCode,
-                  codeUpper: searchCode.toUpperCase().trim()
-                };
-
-                if (churchId) {
-                  diagnosticQuery += ' AND i.ChurchId = @churchId';
-                  diagnosticParams.churchId = churchId;
-                }
-
-                try {
-                  const diagnosticResult = await executeQuery(diagnosticQuery, diagnosticParams, { timeout: 5000 });
-                  if (diagnosticResult.recordset.length > 0) {
-                    logger.warn(`Invoice exists but RefDocName mismatch. Found:`, diagnosticResult.recordset.map(r => ({
-                      invoiceId: r.InvoiceId,
-                      invoiceCode: r.InvoiceCode,
-                      refDocNumber: r.RefDocNumber,
-                      refDocName: r.RefDocName,
-                      status: r.Status,
-                      churchId: r.ChurchId
-                    })));
-                  }
-                } catch (diagError) {
-                  logger.warn('Failed to run diagnostic query:', diagError);
-                }
               }
             }
           }
@@ -1052,396 +991,17 @@ class InvoiceRepository extends BaseRepository {
         invoice = result.recordset[0];
       }
 
-      // If this looked like a RefDocNumber but still not found, try invoice code search as a last fallback
+      // Final fallback: try search by invoice code if it looks like a RefDoc but wasn't found
       if (!invoice && looksLikeRefDoc) {
         result = await findByInvoiceCode();
         if (result.recordset.length > 0) {
           invoice = result.recordset[0];
-          logger.info(`Invoice found by invoice code after RefDocNumber attempts: ${searchCode}, InvoiceId: ${invoice.InvoiceId}`);
         }
       }
 
+
       if (!invoice) {
-        // Enhanced logging for debugging
-        logger.warn(`Invoice not found for code: ${searchCode}`, {
-          churchId,
-          applicationCode,
-          searchedByRefDocNumber: looksLikeRefDoc || result.recordset.length === 0
-        });
-
-        // FEATURE: Fetch application details if invoice doesn't exist
-        logger.info(`Attempting to fetch application details for code: ${searchCode}`);
-
-        try {
-          const applicationDetails = await this.getApplicationDetailsByCode(searchCode, churchId);
-
-          if (applicationDetails) {
-            logger.info(`Application found for code: ${searchCode}, returning application details`);
-            return applicationDetails;
-          }
-        } catch (appError) {
-          logger.warn('Failed to fetch application details:', appError);
-        }
-
-        // FEATURE: Check if there's an existing invoice for this application code with additional items
-        logger.info(`Attempting to find invoice by application code with expanded search: ${searchCode}`);
-
-        try {
-          // Look for invoices that might exist for this application code
-          const invoiceQuery = `
-            SELECT TOP 1
-              i.*
-            FROM Invoice i WITH(NOLOCK)
-            WHERE (
-              i.RefDocNumber = @code
-              OR i.Code = @code
-            )
-            AND i.Status > 0
-          `;
-
-          const invoiceParams = {
-            code: searchCode
-          };
-
-          if (churchId) {
-            invoiceQuery += ' AND i.ChurchId = @churchId';
-            invoiceParams.churchId = churchId;
-          }
-
-          const invoiceResult = await executeQuery(invoiceQuery, invoiceParams, { timeout: 10000 });
-
-          if (invoiceResult.recordset && invoiceResult.recordset.length > 0) {
-            invoice = invoiceResult.recordset[0];
-
-            // Get invoice details
-            const detailsQuery = `
-              SELECT *
-              FROM InvoiceDetail id WITH(NOLOCK)
-              WHERE id.InvoiceId = @invoiceId
-              ORDER BY id.InvoiceDetailId
-            `;
-
-            const detailsResult = await executeQuery(detailsQuery, { invoiceId: invoice.InvoiceId }, { timeout: 10000 });
-
-            // Add details to invoice
-            invoice.Details = detailsResult.recordset || [];
-
-            // Check for inscription items that might be related to this application
-            try {
-              const inscriptionQuery = `
-                SELECT TOP 1
-                  nir.Code AS InscriptionCode,
-                  nir.NicheBookingId
-                FROM NicheInscriptionRequest nir WITH(NOLOCK)
-                INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
-                INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
-                WHERE na.Code = @appCode
-                ORDER BY nir.NicheInscriptionRequestId DESC
-              `;
-
-              const inscriptionResult = await executeQuery(inscriptionQuery, { appCode: searchCode }, { timeout: 10000 });
-
-              if (inscriptionResult.recordset && inscriptionResult.recordset.length > 0) {
-                const inscriptionCode = inscriptionResult.recordset[0].InscriptionCode;
-                logger.info(`Found inscription for application ${searchCode}: ${inscriptionCode}`);
-
-                // Fetch inscription items to potentially add to invoice
-                try {
-                  const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
-                  const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscriptionCode, churchId);
-
-                  if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
-                    // Add inscription items to the invoice details if they're not already present
-                    const existingDetailRefNumbers = new Set(invoice.Details.map(d => d.RefDocNumber));
-
-                    for (const inscriptionItem of inscriptionData.items) {
-                      if (!existingDetailRefNumbers.has(inscriptionCode)) {
-                        // Add inscription item to details
-                        invoice.Details.push({
-                          InvoiceDetailId: null,
-                          InvoiceId: invoice.InvoiceId,
-                          ItemId: inscriptionItem.ItemId || null,
-                          ItemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
-                          ItemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
-                          Quantity: 1,
-                          UnitAmount: inscriptionItem.Price || 0,
-                          PayingAmount: inscriptionItem.Price || 0,
-                          TotalPayingAmount: inscriptionItem.Price || 0,
-                          RefDocNumber: inscriptionCode,
-                          RefDocName: 'INCR',
-                          RefType: 'INCR',
-                          OutstandingAmount: 0,
-                          LineTotalAmount: inscriptionItem.Price || 0,
-                          LineTaxPercent: 9,
-                          LineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
-                        });
-                      }
-                    }
-
-                    // Also check for any other inscriptions linked to this application
-                    try {
-                      const additionalInscriptionQuery = `
-                        SELECT 
-                          nir.Code AS InscriptionCode
-                        FROM NicheInscriptionRequest nir WITH(NOLOCK)
-                        INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
-                        INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
-                        WHERE na.Code = @appCode
-                      `;
-
-                      const additionalInscriptionResult = await executeQuery(additionalInscriptionQuery, { appCode: searchCode }, { timeout: 10000 });
-
-                      if (additionalInscriptionResult.recordset && additionalInscriptionResult.recordset.length > 0) {
-                        for (const inscrRecord of additionalInscriptionResult.recordset) {
-                          const additionalInscrCode = inscrRecord.InscriptionCode;
-
-                          // Skip if already added
-                          if (existingDetailRefNumbers.has(additionalInscrCode)) {
-                            continue;
-                          }
-
-                          logger.info(`Found additional inscription for application ${searchCode}: ${additionalInscrCode}`);
-
-                          try {
-                            const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
-                            const additionalInscriptionData = await InscriptionInvoiceService.getInscriptionItems(additionalInscrCode, churchId);
-
-                            if (additionalInscriptionData && additionalInscriptionData.items && Array.isArray(additionalInscriptionData.items) && additionalInscriptionData.items.length > 0) {
-                              for (const additionalItem of additionalInscriptionData.items) {
-                                invoice.Details.push({
-                                  InvoiceDetailId: null,
-                                  InvoiceId: invoice.InvoiceId,
-                                  ItemId: additionalItem.ItemId || null,
-                                  ItemName: additionalItem.Name || additionalItem.ItemName || 'Inscription Item',
-                                  ItemCode: additionalItem.Code || additionalItem.ItemCode || null,
-                                  Quantity: 1,
-                                  UnitAmount: additionalItem.Price || 0,
-                                  PayingAmount: additionalItem.Price || 0,
-                                  TotalPayingAmount: additionalItem.Price || 0,
-                                  RefDocNumber: additionalInscrCode,
-                                  RefDocName: 'INCR',
-                                  RefType: 'INCR',
-                                  OutstandingAmount: 0,
-                                  LineTotalAmount: additionalItem.Price || 0,
-                                  LineTaxPercent: 9,
-                                  LineTaxAmount: ((additionalItem.Price || 0) * 9) / 100
-                                });
-                              }
-                              logger.info(`Added ${additionalInscriptionData.items.length} items from additional inscription ${additionalInscrCode}`);
-                            }
-                          } catch (additionalInscriptionError) {
-                            logger.warn(`Failed to fetch additional inscription items for ${additionalInscrCode}:`, additionalInscriptionError.message);
-                          }
-                        }
-                      }
-                    } catch (additionalInscriptionLookupError) {
-                      logger.warn('Failed to look up additional inscriptions for application:', additionalInscriptionLookupError.message);
-                    }
-                  }
-                } catch (inscriptionError) {
-                  logger.warn(`Failed to fetch inscription items for ${inscriptionCode}:`, inscriptionError.message);
-                }
-              }
-            } catch (inscriptionLookupError) {
-              logger.warn('Failed to look up inscription for application:', inscriptionLookupError.message);
-            }
-
-            logger.info(`Returning existing invoice for application code: ${searchCode}, InvoiceId: ${invoice.InvoiceId}`);
-
-            // Format the invoice to match expected response structure
-            return {
-              isApplicationData: false,
-              isInvoice: true,
-              hasInvoice: true,
-              canCreateInvoice: false,
-              invoiceId: invoice.InvoiceId,
-              code: invoice.Code,
-              applicationCode: searchCode,
-              customerName: invoice.CustomerName,
-              totalAmount: invoice.TotalAmount,
-              payingAmount: invoice.PayingAmount,
-              transactionDate: invoice.TransactionDate,
-              refDocNumber: invoice.RefDocNumber,
-              refDocName: invoice.RefDocName,
-              status: invoice.Status,
-              details: invoice.Details,
-              churchId: invoice.ChurchId,
-              userId: invoice.UserId,
-              paymentMode: invoice.PaymentMode,
-              paymentModeDocNo: invoice.PaymentModeDocNo,
-              taxCode: invoice.TaxCode,
-              taxPercentage: invoice.TaxPercentage,
-              taxAmount: invoice.TaxAmount
-            };
-          }
-        } catch (invoiceSearchError) {
-          // For WAPP codes (wake room bookings), this is expected behavior as they typically don't have existing invoices
-          const isWAPPCode = /^I-\d+-\d+$/.test(searchCode) || searchCode.startsWith('WAPP-');
-          if (isWAPPCode) {
-            logger.info(`No existing invoice found for WAPP code ${searchCode} (expected for new wake room bookings)`);
-          } else {
-            logger.warn('Failed to search for existing invoice by application code:', invoiceSearchError.message);
-          }
-        }
-
-        // Comprehensive diagnostic: Check multiple scenarios
-        try {
-          // Diagnostic 1: Check if invoice exists with this RefDocNumber (any status, any church)
-          let diagnosticQuery1 = `
-            SELECT TOP 10
-              i.InvoiceId,
-              i.Code AS InvoiceCode,
-              i.Status,
-              i.RefDocNumber AS InvoiceRefDocNumber,
-              i.RefDocName AS InvoiceRefDocName,
-              id.RefDocNumber AS DetailRefDocNumber,
-              id.RefDocName AS DetailRefDocName,
-              id.ItemId,
-              i.ChurchId,
-              i.TransactionDate,
-              i.CustomerName
-            FROM Invoice i WITH(NOLOCK)
-            LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
-            WHERE (
-              id.RefDocNumber = @code
-              OR UPPER(id.RefDocNumber) = @codeUpper
-            )
-            OR (
-              i.RefDocNumber = @code
-              OR UPPER(i.RefDocNumber) = @codeUpper
-            )
-            ORDER BY i.TransactionDate DESC, i.InvoiceId DESC
-          `;
-
-          const diagnosticParams1 = {
-            code: searchCode,
-            codeUpper: searchCode.toUpperCase().trim()
-          };
-
-          const diagnosticResult1 = await executeQuery(diagnosticQuery1, diagnosticParams1, { timeout: 5000 });
-          if (diagnosticResult1.recordset && diagnosticResult1.recordset.length > 0) {
-            logger.warn(`DIAGNOSTIC: Found ${diagnosticResult1.recordset.length} invoice(s) with matching RefDocNumber (any status/church):`,
-              diagnosticResult1.recordset.map(r => ({
-                invoiceId: r.InvoiceId,
-                invoiceCode: r.InvoiceCode,
-                status: r.Status,
-                statusIssue: r.Status === 0 ? 'DELETED (Status=0)' : r.Status > 0 ? 'ACTIVE' : 'UNKNOWN',
-                invoiceRefDocNumber: r.InvoiceRefDocNumber,
-                invoiceRefDocName: r.InvoiceRefDocName,
-                detailRefDocNumber: r.DetailRefDocNumber,
-                detailRefDocName: r.DetailRefDocName,
-                itemId: r.ItemId,
-                churchId: r.ChurchId,
-                churchIdMismatch: churchId && r.ChurchId !== churchId ? `Expected ${churchId}, found ${r.ChurchId}` : churchId ? 'MATCH' : 'NO_FILTER',
-                transactionDate: r.TransactionDate,
-                customerName: r.CustomerName
-              }))
-            );
-          } else {
-            logger.warn(`DIAGNOSTIC: No invoices found with RefDocNumber matching "${searchCode}" (searched without any filters)`);
-          }
-
-          // Diagnostic 2: Check if any invoice exists with similar RefDocNumber (partial match)
-          let diagnosticQuery2 = `
-            SELECT TOP 5
-              i.InvoiceId,
-              i.Code AS InvoiceCode,
-              i.Status,
-              id.RefDocNumber AS DetailRefDocNumber,
-              id.RefDocName AS DetailRefDocName,
-              i.ChurchId,
-              i.TransactionDate
-            FROM Invoice i WITH(NOLOCK)
-            INNER JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
-            WHERE id.RefDocNumber LIKE @codePattern
-              AND i.Status > 0
-          `;
-
-          const diagnosticParams2 = {
-            codePattern: `%${searchCode}%`
-          };
-
-          if (churchId) {
-            diagnosticQuery2 += ' AND i.ChurchId = @churchId';
-            diagnosticParams2.churchId = churchId;
-          }
-
-          diagnosticQuery2 += ' ORDER BY i.TransactionDate DESC';
-
-          try {
-            const diagnosticResult2 = await executeQuery(diagnosticQuery2, diagnosticParams2, { timeout: 5000 });
-            if (diagnosticResult2.recordset && diagnosticResult2.recordset.length > 0) {
-              logger.warn(`DIAGNOSTIC: Found invoices with similar RefDocNumber (contains "${searchCode}"):`,
-                diagnosticResult2.recordset.map(r => ({
-                  invoiceId: r.InvoiceId,
-                  invoiceCode: r.InvoiceCode,
-                  detailRefDocNumber: r.DetailRefDocNumber,
-                  detailRefDocName: r.DetailRefDocName,
-                  churchId: r.ChurchId
-                }))
-              );
-            }
-          } catch (diag2Error) {
-            logger.warn('DIAGNOSTIC: Failed to run diagnostic query 2 (similar RefDocNumber):', diag2Error.message);
-          }
-
-          // Diagnostic 3: Check recent invoices for this church to see if invoice creation is working
-          if (churchId) {
-            let diagnosticQuery3 = `
-              SELECT TOP 5
-                i.InvoiceId,
-                i.Code AS InvoiceCode,
-                i.Status,
-                i.RefDocNumber AS InvoiceRefDocNumber,
-                i.TransactionDate,
-                (SELECT TOP 1 id.RefDocNumber FROM InvoiceDetail id WHERE id.InvoiceId = i.InvoiceId ORDER BY id.InvoiceDetailId) AS FirstDetailRefDocNumber,
-                (SELECT TOP 1 id.RefDocName FROM InvoiceDetail id WHERE id.InvoiceId = i.InvoiceId ORDER BY id.InvoiceDetailId) AS FirstDetailRefDocName
-              FROM Invoice i WITH(NOLOCK)
-              WHERE i.ChurchId = @churchId
-              ORDER BY i.TransactionDate DESC, i.InvoiceId DESC
-            `;
-
-            const diagnosticResult3 = await executeQuery(diagnosticQuery3, { churchId }, { timeout: 5000 });
-            if (diagnosticResult3.recordset && diagnosticResult3.recordset.length > 0) {
-              logger.info(`DIAGNOSTIC: Recent invoices for church ${churchId}:`,
-                diagnosticResult3.recordset.map(r => ({
-                  invoiceId: r.InvoiceId,
-                  invoiceCode: r.InvoiceCode,
-                  status: r.Status,
-                  invoiceRefDocNumber: r.InvoiceRefDocNumber,
-                  firstDetailRefDocNumber: r.FirstDetailRefDocNumber,
-                  firstDetailRefDocName: r.FirstDetailRefDocName,
-                  transactionDate: r.TransactionDate
-                }))
-              );
-            }
-          }
-
-          // Diagnostic 4: Check if NicheApplication exists for this code
-          try {
-            const { executeQuery: executeQueryDiag } = require('../config/database');
-            const appQuery = `
-              SELECT TOP 1
-                NicheApplicationId,
-                Code,
-                Status,
-                ChurchId
-              FROM NicheApplication WITH(NOLOCK)
-              WHERE Code = @code
-            `;
-            const appResult = await executeQueryDiag(appQuery, { code: searchCode }, { timeout: 5000 });
-            if (appResult.recordset && appResult.recordset.length > 0) {
-              logger.info(`DIAGNOSTIC: NicheApplication found for code "${searchCode}":`, appResult.recordset[0]);
-            } else {
-              logger.warn(`DIAGNOSTIC: NicheApplication NOT found for code "${searchCode}"`);
-            }
-          } catch (appError) {
-            logger.warn('DIAGNOSTIC: Failed to check NicheApplication:', appError);
-          }
-        } catch (diagError) {
-          logger.error('Failed to run diagnostic queries:', diagError);
-        }
-
+        logger.debug(`Invoice not found for code: ${searchCode} (Fast search completed)`);
         return null;
       }
 
@@ -1463,9 +1023,9 @@ class InvoiceRepository extends BaseRepository {
           id.LineTaxPercent,
           id.LineTaxAmount,
           i.Name AS ItemName,
-          i.Code AS ItemCode,
-          i.Price AS ItemPrice,
-          i.ChurchId AS ItemChurchId
+            i.Code AS ItemCode,
+              i.Price AS ItemPrice,
+                i.ChurchId AS ItemChurchId
         FROM InvoiceDetail id WITH(NOLOCK)
         LEFT JOIN Item i WITH(NOLOCK) ON id.ItemId = i.ItemId
         WHERE id.InvoiceId = @invoiceId
@@ -1474,33 +1034,33 @@ class InvoiceRepository extends BaseRepository {
 
       const detailsResult = await executeQuery(detailsQuery, { invoiceId: invoice.InvoiceId }, { timeout: 10000 });
 
-      logger.debug(`Retrieved ${detailsResult.recordset?.length || 0} invoice details for InvoiceId: ${invoice.InvoiceId}`);
+      logger.debug(`Retrieved ${detailsResult.recordset?.length || 0} invoice details for InvoiceId: ${invoice.InvoiceId} `);
 
       // Get related receipt for PayeeName and additional address info
       let receipt = null;
       let receiptQuery = `
         SELECT TOP 1
-          ReceiptId,
-          Code AS ReceiptCode,
-          TransactionDate AS ReceiptDate,
-          PayeeName,
-          AddressNo AS ReceiptAddressNo,
-          Address AS ReceiptAddress,
+ReceiptId,
+  Code AS ReceiptCode,
+    TransactionDate AS ReceiptDate,
+      PayeeName,
+      AddressNo AS ReceiptAddressNo,
+        Address AS ReceiptAddress,
           Address2 AS ReceiptAddress2,
-          AddressCity AS ReceiptAddressCity,
-          DistrictCode AS ReceiptDistrictCode,
-          Country AS ReceiptCountry,
-          TotalAmount AS ReceiptTotalAmount,
-          PayingAmount AS ReceiptPayingAmount,
-          PaymentMode AS ReceiptPaymentMode,
-          PaymentModeDocNo AS ReceiptPaymentModeDocNo,
-          Status AS ReceiptStatus,
-          ChurchId AS ReceiptChurchId,
-          UserId AS ReceiptUserId
+            AddressCity AS ReceiptAddressCity,
+              DistrictCode AS ReceiptDistrictCode,
+                Country AS ReceiptCountry,
+                  TotalAmount AS ReceiptTotalAmount,
+                    PayingAmount AS ReceiptPayingAmount,
+                      PaymentMode AS ReceiptPaymentMode,
+                        PaymentModeDocNo AS ReceiptPaymentModeDocNo,
+                          Status AS ReceiptStatus,
+                            ChurchId AS ReceiptChurchId,
+                              UserId AS ReceiptUserId
         FROM Receipt WITH(NOLOCK)
         WHERE InvoiceId = @invoiceId
         ORDER BY ReceiptId DESC
-      `;
+  `;
 
       let receiptResult = await executeQuery(receiptQuery, { invoiceId: invoice.InvoiceId }, { timeout: 10000 });
       if (receiptResult.recordset.length > 0) {
@@ -1509,23 +1069,23 @@ class InvoiceRepository extends BaseRepository {
         // Fallback: Check MisalaniousReceiptDetail for receipt linked to this application
         const miscReceiptQuery = `
           SELECT TOP 1
-            r.ReceiptId,
-            r.Code AS ReceiptCode,
-            r.TransactionDate AS ReceiptDate,
-            r.PayeeName,
-            r.AddressNo AS ReceiptAddressNo,
-            r.Address AS ReceiptAddress,
-            r.Address2 AS ReceiptAddress2,
+r.ReceiptId,
+  r.Code AS ReceiptCode,
+    r.TransactionDate AS ReceiptDate,
+      r.PayeeName,
+      r.AddressNo AS ReceiptAddressNo,
+        r.Address AS ReceiptAddress,
+          r.Address2 AS ReceiptAddress2,
             r.AddressCity AS ReceiptAddressCity,
-            r.DistrictCode AS ReceiptDistrictCode,
-            r.Country AS ReceiptCountry,
-            mrd.TotalPayingAmount AS ReceiptTotalAmount,
-            mrd.PayingAmount AS ReceiptPayingAmount,
-            r.PaymentMode AS ReceiptPaymentMode,
-            r.PaymentModeDocNo AS ReceiptPaymentModeDocNo,
-            r.Status AS ReceiptStatus,
-            r.ChurchId AS ReceiptChurchId,
-            r.UserId AS ReceiptUserId
+              r.DistrictCode AS ReceiptDistrictCode,
+                r.Country AS ReceiptCountry,
+                  mrd.TotalPayingAmount AS ReceiptTotalAmount,
+                    mrd.PayingAmount AS ReceiptPayingAmount,
+                      r.PaymentMode AS ReceiptPaymentMode,
+                        r.PaymentModeDocNo AS ReceiptPaymentModeDocNo,
+                          r.Status AS ReceiptStatus,
+                            r.ChurchId AS ReceiptChurchId,
+                              r.UserId AS ReceiptUserId
           FROM MisalaniousReceiptDetail mrd WITH(NOLOCK)
           INNER JOIN Receipt r WITH(NOLOCK) ON mrd.ReceiptId = r.ReceiptId
           WHERE mrd.RefDocNumber = @refDocNumber
@@ -1535,7 +1095,7 @@ class InvoiceRepository extends BaseRepository {
         const miscReceiptResult = await executeQuery(miscReceiptQuery, { refDocNumber: invoice.RefDocNumber }, { timeout: 10000 });
         if (miscReceiptResult.recordset.length > 0) {
           receipt = miscReceiptResult.recordset[0];
-          logger.info(`Found receipt via MisalaniousReceiptDetail for invoice ${invoice.Code} (RefDoc: ${invoice.RefDocNumber})`);
+          logger.info(`Found receipt via MisalaniousReceiptDetail for invoice ${invoice.Code}(RefDoc: ${invoice.RefDocNumber})`);
         }
       }
 
@@ -1665,21 +1225,21 @@ class InvoiceRepository extends BaseRepository {
         if (!invoiceResponse.addressNo || !invoiceResponse.address || !invoiceResponse.address2 ||
           !invoiceResponse.addressCity || !invoiceResponse.districtCode || !invoiceResponse.country) {
 
-          logger.info(`[getInvoiceByCode] Populating address fields from NAPP: ${invoiceResponse.refDocNumber}`);
+          logger.info(`[getInvoiceByCode] Populating address fields from NAPP: ${invoiceResponse.refDocNumber} `);
 
           try {
             // Get the niche application details to populate address
             const appQuery = `
-              SELECT 
-                ApplicantAddressNo,
-                ApplicantAddressLine1,
-                ApplicantAddressLine2,
-                ApplicantAddressCity,
-                ApplicantAddressState,
-                ApplicantAddressCountry
+SELECT
+ApplicantAddressNo,
+  ApplicantAddressLine1,
+  ApplicantAddressLine2,
+  ApplicantAddressCity,
+  ApplicantAddressState,
+  ApplicantAddressCountry
               FROM NicheApplication WITH(NOLOCK)
               WHERE Code = @code
-            `;
+  `;
 
             const appResult = await executeQuery(appQuery, { code: invoiceResponse.refDocNumber }, { timeout: 5000 });
 
@@ -1706,18 +1266,21 @@ class InvoiceRepository extends BaseRepository {
                 invoiceResponse.country = app.ApplicantAddressCountry;
               }
 
-              logger.info(`[getInvoiceByCode] Updated address fields from NAPP application: ${invoiceResponse.refDocNumber}`);
+              logger.info(`[getInvoiceByCode] Updated address fields from NAPP application: ${invoiceResponse.refDocNumber} `);
             }
           } catch (addressError) {
-            logger.warn(`[getInvoiceByCode] Failed to populate address fields from NAPP:`, addressError.message);
+            logger.warn(`[getInvoiceByCode] Failed to populate address fields from NAPP: `, addressError.message);
           }
         }
       }
 
-      // ENHANCEMENT: Check for inscription items if this is a niche application invoice
-      if (invoiceResponse.refDocName === 'NAPP' && invoiceResponse.refDocNumber) {
+      // ENHANCEMENT: Check for inscription items only when missing in current invoice details.
+      const hasIncrDetails = (invoiceResponse.details || []).some(
+        d => String(d.refDocName || '').toUpperCase() === 'INCR'
+      );
+      if (invoiceResponse.refDocName === 'NAPP' && invoiceResponse.refDocNumber && !hasIncrDetails) {
         try {
-          logger.info(`[getInvoiceByCode] Checking for inscription items for NAPP: ${invoiceResponse.refDocNumber}`);
+          logger.info(`[getInvoiceByCode] Checking for inscription items for NAPP: ${invoiceResponse.refDocNumber} `);
 
           // Get niche application ID if not already available
           let nicheApplicationId = invoiceResponse.nicheApplicationId;
@@ -1731,147 +1294,81 @@ class InvoiceRepository extends BaseRepository {
           }
 
           if (nicheApplicationId) {
-            // Check for ALL inscription items associated with this niche application (not just the first one)
+            // Fetch inscription codes linked to this NAPP (single query, limited size to avoid long tail latency).
             const inscriptionQuery = `
-              SELECT 
-                nir.Code AS InscriptionCode,
-                nir.NicheBookingId
+SELECT TOP 2
+  nir.Code AS InscriptionCode
               FROM NicheInscriptionRequest nir WITH(NOLOCK)
               INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
               WHERE nb.NicheApplicationId = @nicheApplicationId
-              ORDER BY nir.NicheInscriptionRequestId
-            `;
+              ORDER BY nir.NicheInscriptionRequestId DESC
+  `;
             const inscriptionResult = await executeQuery(inscriptionQuery, {
               nicheApplicationId: nicheApplicationId
             }, { timeout: 5000 });
 
             if (inscriptionResult.recordset && inscriptionResult.recordset.length > 0) {
-              for (const inscrRecord of inscriptionResult.recordset) {
+              const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+              // Keep enrichment best-effort and bounded so invoice API never blocks for long.
+              const enrichmentTasks = inscriptionResult.recordset.map(async(inscrRecord) => {
                 const inscriptionCode = inscrRecord.InscriptionCode;
-                logger.info(`[getInvoiceByCode] Found inscription for NAPP ${invoiceResponse.refDocNumber}: ${inscriptionCode}`);
-
-                // Fetch inscription items using InscriptionInvoiceService
+                logger.info(`[getInvoiceByCode] Found inscription for NAPP ${invoiceResponse.refDocNumber}: ${inscriptionCode} `);
                 try {
-                  const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
-                  const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscriptionCode, invoiceResponse.churchId);
+                  const inscriptionData = await Promise.race([
+                    InscriptionInvoiceService.getInscriptionItems(inscriptionCode, invoiceResponse.churchId),
+                    new Promise((resolve) => setTimeout(() => resolve(null), 2000))
+                  ]);
 
-                  if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
-                    // Check if any of these inscription items already exist in the invoice details
-                    const existingDetailRefNumbers = new Set(invoiceResponse.details.map(d => d.refDocNumber));
-
-                    // Check if inscription items for this specific inscription code are already included
-                    const inscriptionItemsAlreadyExist = invoiceResponse.details.some(detail =>
-                      detail.refDocNumber === inscriptionCode
-                    );
-
-                    if (!inscriptionItemsAlreadyExist) {
-                      // Map inscription items to invoice detail format
-                      const newInscriptionItems = inscriptionData.items.map(inscriptionItem => ({
-                        invoiceDetailId: null, // Will be set when saved
-                        invoiceId: invoiceResponse.invoiceId, // Link to existing invoice
-                        itemId: inscriptionItem.ItemId || null,
-                        itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
-                        itemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
-                        itemPrice: inscriptionItem.Price || 0,
-                        itemDocType: inscriptionItem.DocType || 'INCR',
-                        itemIsRefType: inscriptionItem.IsRefType || false,
-                        quantity: 1,
-                        unitAmount: inscriptionItem.Price || 0,
-                        payingAmount: inscriptionItem.Price || 0,
-                        totalPayingAmount: inscriptionItem.Price || 0,
-                        refDocNumber: inscriptionCode, // Use inscription code as reference
-                        refDocName: 'INCR',
-                        refType: 'INCR',
-                        outstandingAmount: 0,
-                        lineTotalAmount: inscriptionItem.Price || 0,
-                        lineTaxPercent: 9, // Default 9% GST for inscription items
-                        lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
-                      }));
-
-                      // Add to response details
-                      invoiceResponse.details = [...invoiceResponse.details, ...newInscriptionItems];
-                      logger.info(`[getInvoiceByCode] Added ${newInscriptionItems.length} inscription items from ${inscriptionCode}`);
-                    } else {
-                      logger.info(`[getInvoiceByCode] Inscription items for ${inscriptionCode} already exist in invoice details`);
-                    }
+                  if (!(inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0)) {
+                    return;
                   }
+
+                  // Check if inscription items for this specific inscription code are already included
+                  const inscriptionItemsAlreadyExist = invoiceResponse.details.some(detail =>
+                    detail.refDocNumber === inscriptionCode
+                  );
+                  if (inscriptionItemsAlreadyExist) {
+                    logger.info(`[getInvoiceByCode] Inscription items for ${inscriptionCode} already exist in invoice details`);
+                    return;
+                  }
+
+                  // Map inscription items to invoice detail format
+                  const newInscriptionItems = inscriptionData.items.map(inscriptionItem => ({
+                    invoiceDetailId: null, // Will be set when saved
+                    invoiceId: invoiceResponse.invoiceId, // Link to existing invoice
+                    itemId: inscriptionItem.ItemId || null,
+                    itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
+                    itemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
+                    itemPrice: inscriptionItem.Price || 0,
+                    itemDocType: inscriptionItem.DocType || 'INCR',
+                    itemIsRefType: inscriptionItem.IsRefType || false,
+                    quantity: 1,
+                    unitAmount: inscriptionItem.Price || 0,
+                    payingAmount: inscriptionItem.Price || 0,
+                    totalPayingAmount: (inscriptionItem.Price || 0) * 1.09,
+                    refDocNumber: inscriptionCode, // Use inscription code as reference
+                    refDocName: 'INCR',
+                    refType: 'INCR',
+                    outstandingAmount: 0,
+                    lineTotalAmount: inscriptionItem.Price || 0,
+                    lineTaxPercent: 9, // Default 9% GST for inscription items
+                    lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
+                  }));
+
+                  // Add to response details
+                  invoiceResponse.details = [...invoiceResponse.details, ...newInscriptionItems];
+                  logger.info(`[getInvoiceByCode] Added ${newInscriptionItems.length} inscription items from ${inscriptionCode} `);
                 } catch (inscriptionError) {
-                  logger.warn(`[getInvoiceByCode] Failed to fetch inscription items:`, inscriptionError.message);
+                  logger.warn(`[getInvoiceByCode] Failed to fetch inscription items: `, inscriptionError.message);
                   // Continue without inscription items - non-critical
                 }
-              }
+              });
+
+              await Promise.allSettled(enrichmentTasks);
             }
-          }
-
-          // Also check for additional inscription requests directly linked to this application code
-          try {
-            const additionalInscriptionQuery = `
-              SELECT 
-                nir.Code AS InscriptionCode
-              FROM NicheInscriptionRequest nir WITH(NOLOCK)
-              INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
-              INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
-              WHERE na.Code = @appCode
-            `;
-
-            const additionalInscriptionResult = await executeQuery(additionalInscriptionQuery, {
-              appCode: invoiceResponse.refDocNumber
-            }, { timeout: 5000 });
-
-            if (additionalInscriptionResult.recordset && additionalInscriptionResult.recordset.length > 0) {
-              for (const inscrRecord of additionalInscriptionResult.recordset) {
-                const inscrCode = inscrRecord.InscriptionCode;
-
-                // Check if inscription items for this code already exist in the details
-                const inscriptionItemsAlreadyExist = invoiceResponse.details.some(item => item.refDocNumber === inscrCode);
-                if (inscriptionItemsAlreadyExist) {
-                  logger.info(`[getInvoiceByCode] Skipping inscription ${inscrCode} - already exists in details`);
-                  continue;
-                }
-
-                logger.info(`[getInvoiceByCode] Found additional inscription for NAPP ${invoiceResponse.refDocNumber}: ${inscrCode}`);
-
-                try {
-                  const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
-                  const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscrCode, invoiceResponse.churchId);
-
-                  if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
-                    const additionalInscriptionItems = inscriptionData.items.map(inscriptionItem => ({
-                      invoiceDetailId: null, // Will be set when saved
-                      invoiceId: invoiceResponse.invoiceId, // Link to existing invoice
-                      itemId: inscriptionItem.ItemId || null,
-                      itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
-                      itemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
-                      itemPrice: inscriptionItem.Price || 0,
-                      itemDocType: inscriptionItem.DocType || 'INCR',
-                      itemIsRefType: inscriptionItem.IsRefType || false,
-                      quantity: 1,
-                      unitAmount: inscriptionItem.Price || 0,
-                      payingAmount: inscriptionItem.Price || 0,
-                      totalPayingAmount: inscriptionItem.Price || 0,
-                      refDocNumber: inscrCode, // Use inscription code as reference
-                      refDocName: 'INCR',
-                      refType: 'INCR',
-                      outstandingAmount: 0,
-                      lineTotalAmount: inscriptionItem.Price || 0,
-                      lineTaxPercent: 9, // Default 9% GST for inscription items
-                      lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
-                    }));
-
-                    // Add to response details
-                    invoiceResponse.details = [...invoiceResponse.details, ...additionalInscriptionItems];
-                    logger.info(`[getInvoiceByCode] Added ${additionalInscriptionItems.length} additional inscription items from ${inscrCode}`);
-                  }
-                } catch (additionalInscriptionError) {
-                  logger.warn(`[getInvoiceByCode] Failed to fetch additional inscription items from ${inscrCode}:`, additionalInscriptionError.message);
-                }
-              }
-            }
-          } catch (additionalInscriptionQueryError) {
-            logger.warn(`[getInvoiceByCode] Failed to query additional inscriptions:`, additionalInscriptionQueryError.message);
           }
         } catch (inscriptionCheckError) {
-          logger.warn(`[getInvoiceByCode] Failed to check for inscription items:`, inscriptionCheckError.message);
+          logger.warn(`[getInvoiceByCode] Failed to check for inscription items: `, inscriptionCheckError.message);
           // Continue without inscription items - non-critical
         }
       }
@@ -1892,7 +1389,7 @@ class InvoiceRepository extends BaseRepository {
       invoiceResponse.summary = detailsSummary;
 
       // Log successful retrieval with summary
-      logger.info(`Invoice retrieved successfully: InvoiceId=${invoiceResponse.invoiceId}, Code=${invoiceResponse.code}, RefDocNumber="${invoiceResponse.refDocNumber}", Details=${detailsSummary.totalItems} items, Total=${detailsSummary.grandTotal}`);
+      logger.info(`Invoice retrieved successfully: InvoiceId = ${invoiceResponse.invoiceId}, Code = ${invoiceResponse.code}, RefDocNumber = "${invoiceResponse.refDocNumber}", Details = ${detailsSummary.totalItems} items, Total = ${detailsSummary.grandTotal} `);
 
       return invoiceResponse;
     } catch (error) {
@@ -1913,7 +1410,7 @@ class InvoiceRepository extends BaseRepository {
         FROM Invoice WITH(NOLOCK)
         WHERE Code = @code
           AND Status > 0
-      `;
+  `;
 
       const result = await executeQuery(query, { code });
 
@@ -1946,7 +1443,7 @@ class InvoiceRepository extends BaseRepository {
         SET Status = 0
         WHERE Code = @code
           AND Status > 0
-      `;
+  `;
 
       const params = { code: code.trim() };
 
@@ -1977,14 +1474,14 @@ class InvoiceRepository extends BaseRepository {
     try {
       const query = `
         SELECT TOP 1 i.*
-        FROM Invoice i WITH(NOLOCK)
+  FROM Invoice i WITH(NOLOCK)
         INNER JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
         WHERE i.CustomerName = @customerName
           AND id.ItemId = @itemId
           AND id.RefDocNumber = @refDocNumber
           AND CAST(i.TransactionDate AS DATE) = CAST(@transactionDate AS DATE)
           AND i.Status = 1
-      `;
+  `;
 
       const result = await executeQuery(query, {
         customerName,
@@ -2020,22 +1517,22 @@ class InvoiceRepository extends BaseRepository {
 
       // 1. Insert Invoice
       const insertInvoiceQuery = `
-        INSERT INTO Invoice (
-          Code, TransactionDate, RefDocNumber, RefDocName,
-          CustomerName, TotalAmount, PayingAmount,
-          PaymentMode, PaymentModeDocNo, UserId, ChurchId, Status,
-          TaxCode, TaxPercentage, TaxAmount, NicheApplicationId,
-          AddressNo, Address, Address2, AddressCity, DistrictCode, Country
-        )
+        INSERT INTO Invoice(
+    Code, TransactionDate, RefDocNumber, RefDocName,
+    CustomerName, TotalAmount, PayingAmount,
+    PaymentMode, PaymentModeDocNo, UserId, ChurchId, Status,
+    TaxCode, TaxPercentage, TaxAmount, NicheApplicationId,
+    AddressNo, Address, Address2, AddressCity, DistrictCode, Country
+  )
         OUTPUT INSERTED.InvoiceId
-        VALUES (
-          @code, @transactionDate, @refDocNumber, @refDocName,
-          @customerName, @totalAmount, @payingAmount,
-          @paymentMode, @paymentModeDocNo, @userId, @churchId, @status,
-          @taxCode, @taxPercentage, @taxAmount, @nicheApplicationId,
-          @addressNo, @address, @address2, @addressCity, @districtCode, @country
-        )
-      `;
+VALUES(
+  @code, @transactionDate, @refDocNumber, @refDocName,
+  @customerName, @totalAmount, @payingAmount,
+  @paymentMode, @paymentModeDocNo, @userId, @churchId, @status,
+  @taxCode, @taxPercentage, @taxAmount, @nicheApplicationId,
+  @addressNo, @address, @address2, @addressCity, @districtCode, @country
+)
+  `;
 
       const invoiceRequest = new sql.Request(transaction);
       invoiceRequest.input('code', sql.NVarChar, invoice.code);
@@ -2101,16 +1598,16 @@ class InvoiceRepository extends BaseRepository {
       if (invoiceDetails && invoiceDetails.length > 0) {
         for (const detail of invoiceDetails) {
           const insertDetailQuery = `
-            INSERT INTO InvoiceDetail (
-              InvoiceId, ItemId, Quantity, UnitAmount,
-              PayingAmount, TotalPayingAmount, RefDocNumber,
-              RefDocName, LineTotalAmount, LineTaxPercent, LineTaxAmount
-            )
-            VALUES (
-              @invoiceId, @itemId, @quantity, @unitAmount,
-              @payingAmount, @totalPayingAmount, @refDocNumber,
-              @refDocName, @lineTotalAmount, @lineTaxPercent, @lineTaxAmount
-            )
+            INSERT INTO InvoiceDetail(
+    InvoiceId, ItemId, Quantity, UnitAmount,
+    PayingAmount, TotalPayingAmount, RefDocNumber,
+    RefDocName, LineTotalAmount, LineTaxPercent, LineTaxAmount
+  )
+VALUES(
+  @invoiceId, @itemId, @quantity, @unitAmount,
+  @payingAmount, @totalPayingAmount, @refDocNumber,
+  @refDocName, @lineTotalAmount, @lineTaxPercent, @lineTaxAmount
+)
           `;
 
           const detailRequest = new sql.Request(transaction);
@@ -2124,7 +1621,7 @@ class InvoiceRepository extends BaseRepository {
           // CRITICAL: Normalize RefDocNumber - trim whitespace to ensure consistent lookup
           const refDocNumberValue = detail.refDocNumber ? String(detail.refDocNumber).trim() : null;
           const refDocNameValue = detail.refDocName ? String(detail.refDocName).trim().toUpperCase() : null;
-          logger.debug(`Saving InvoiceDetail: ItemId=${detail.itemId}, RefDocNumber="${refDocNumberValue}", RefDocName="${refDocNameValue}"`);
+          logger.debug(`Saving InvoiceDetail: ItemId = ${detail.itemId}, RefDocNumber = "${refDocNumberValue}", RefDocName = "${refDocNameValue}"`);
 
           detailRequest.input('refDocNumber', sql.NVarChar, refDocNumberValue);
           detailRequest.input('refDocName', sql.NVarChar, refDocNameValue);
@@ -2146,7 +1643,7 @@ class InvoiceRepository extends BaseRepository {
         refDocName: d.refDocName ? String(d.refDocName).trim().toUpperCase() : null
       })) || [];
 
-      logger.info(`Invoice and details saved successfully. InvoiceId: ${invoiceId}`, {
+      logger.info(`Invoice and details saved successfully.InvoiceId: ${invoiceId} `, {
         invoiceId,
         invoiceCode: invoice.code,
         invoiceRefDocNumber: normalizedRefDocNumber,
@@ -2175,21 +1672,21 @@ class InvoiceRepository extends BaseRepository {
    */
   async getInvoiceById(invoiceId, churchId = null) {
     try {
-      logger.info(`Getting invoice by ID: ${invoiceId}, churchId: ${churchId}`);
+      logger.info(`Getting invoice by ID: ${invoiceId}, churchId: ${churchId} `);
 
       // Main invoice query - include address fields
       let invoiceQuery = `
-        SELECT 
-          i.InvoiceId, i.Code, i.TransactionDate, i.RefDocNumber, i.RefDocName,
-          i.CustomerName, i.TotalAmount, i.PayingAmount, i.PaymentMode, i.PaymentModeDocNo,
-          i.UserId, i.ChurchId, i.Status, i.TaxCode, i.TaxPercentage, i.TaxAmount,
-          i.NicheApplicationId, i.InvType,
-          -- Address fields
-          i.AddressNo, i.Address, i.Address2, i.AddressCity, i.DistrictCode, i.Country
+SELECT
+i.InvoiceId, i.Code, i.TransactionDate, i.RefDocNumber, i.RefDocName,
+  i.CustomerName, i.TotalAmount, i.PayingAmount, i.PaymentMode, i.PaymentModeDocNo,
+  i.UserId, i.ChurchId, i.Status, i.TaxCode, i.TaxPercentage, i.TaxAmount,
+  i.NicheApplicationId, i.InvType,
+  --Address fields
+i.AddressNo, i.Address, i.Address2, i.AddressCity, i.DistrictCode, i.Country
         FROM Invoice i WITH(NOLOCK)
         WHERE i.InvoiceId = @invoiceId
           AND i.Status > 0
-      `;
+  `;
 
       const invoiceParams = { invoiceId };
 
@@ -2201,7 +1698,7 @@ class InvoiceRepository extends BaseRepository {
       const invoiceResult = await executeQuery(invoiceQuery, invoiceParams);
 
       if (!invoiceResult.recordset || invoiceResult.recordset.length === 0) {
-        logger.info(`Invoice not found by ID: ${invoiceId}`);
+        logger.info(`Invoice not found by ID: ${invoiceId} `);
         return null;
       }
 
@@ -2209,27 +1706,27 @@ class InvoiceRepository extends BaseRepository {
 
       // Get invoice details
       const detailsQuery = `
-        SELECT 
-          id.InvoiceDetailId, id.InvoiceId, id.ItemId, id.Quantity, id.UnitAmount,
-          id.PayingAmount, id.TotalPayingAmount, id.RefDocNumber, id.RefDocName,
-          id.LineTotalAmount, id.LineTaxPercent, id.LineTaxAmount,
-          itm.Name AS ItemName, itm.Code AS ItemCode, itm.Price AS ItemPrice
+SELECT
+id.InvoiceDetailId, id.InvoiceId, id.ItemId, id.Quantity, id.UnitAmount,
+  id.PayingAmount, id.TotalPayingAmount, id.RefDocNumber, id.RefDocName,
+  id.LineTotalAmount, id.LineTaxPercent, id.LineTaxAmount,
+  itm.Name AS ItemName, itm.Code AS ItemCode, itm.Price AS ItemPrice
         FROM InvoiceDetail id WITH(NOLOCK)
         LEFT JOIN Item itm WITH(NOLOCK) ON id.ItemId = itm.ItemId
         WHERE id.InvoiceId = @invoiceId
         ORDER BY id.InvoiceDetailId
-      `;
+  `;
 
       const detailsResult = await executeQuery(detailsQuery, { invoiceId });
 
       // Get related receipt if exists
       const receiptQuery = `
         SELECT TOP 1
-          ReceiptId, Code AS ReceiptCode, TransactionDate AS ReceiptDate,
-          PayeeName, AddressNo AS ReceiptAddressNo, Address AS ReceiptAddress,
-          Address2 AS ReceiptAddress2, AddressCity AS ReceiptAddressCity,
-          DistrictCode AS ReceiptDistrictCode, Country AS ReceiptCountry,
-          TotalAmount AS ReceiptTotalAmount, PayingAmount AS ReceiptPayingAmount,
+ReceiptId, Code AS ReceiptCode, TransactionDate AS ReceiptDate,
+  PayeeName, AddressNo AS ReceiptAddressNo, Address AS ReceiptAddress,
+    Address2 AS ReceiptAddress2, AddressCity AS ReceiptAddressCity,
+      DistrictCode AS ReceiptDistrictCode, Country AS ReceiptCountry,
+        TotalAmount AS ReceiptTotalAmount, PayingAmount AS ReceiptPayingAmount,
           PaymentMode AS ReceiptPaymentMode, PaymentModeDocNo AS ReceiptPaymentModeDocNo
         FROM Receipt WITH(NOLOCK)
         WHERE InvoiceId = @invoiceId
@@ -2299,7 +1796,7 @@ class InvoiceRepository extends BaseRepository {
         }))
       };
 
-      logger.info(`Invoice retrieved successfully by ID: ${invoiceId}`);
+      logger.info(`Invoice retrieved successfully by ID: ${invoiceId} `);
       return response;
     } catch (error) {
       logger.error('Error getting invoice by ID:', error);

@@ -30,6 +30,7 @@ export interface Receipt {
   createdAt?: string;
   updatedAt?: string;
   invoiceDetails?: InvoiceDetail[];
+  customerAddress?: string;
   addressNo?: string;
   address?: string;
   address2?: string;
@@ -42,24 +43,37 @@ export interface Receipt {
 }
 
 export interface InvoiceDetail {
-  invoiceDetailId?: number;
-  description: string;
+  invoiceDetailId?: number | null;
+  invoiceId?: number | null;
+  description?: string;
   quantity?: number;
-  unitPrice?: number;
-  amount: number;
-  // Additional fields from API response for proper mapping
+  unitAmount?: number;
+  payingAmount?: number;
+  totalPayingAmount?: number;
+  refDocNumber?: string;
+  refDocName?: string;
+  refType?: string;
+  lineTotalAmount?: number;
+  lineTaxPercent?: number;
+  lineTaxAmount?: number;
+  outstandingAmount?: number;
+
+  // API Compatibility aliases
   RefDocNumber?: string;
   TotalPayingAmount?: number;
   itemName?: string;
   itemCode?: string;
   itemId?: number;
-  payingAmount?: number;
-  lineTaxPercent?: number;
-  lineTaxAmount?: number;
-  lineTotalAmount?: number;
-  refDocName?: string;
-  refType?: string;
-  outstandingAmount?: number;
+  UnitAmount?: number;
+  Quantity?: number;
+  LineTotalAmount?: number;
+  LineTaxPercent?: number;
+  LineTaxAmount?: number;
+  PayingAmount?: number;
+  unitPrice?: number;
+  amount?: number;
+  taxPercent?: number;
+  itemPrice?: number;
 }
 
 export interface CreateReceiptRequest {
@@ -91,6 +105,15 @@ export interface CreateIndividualReceiptRequest {
   payingAmount?: number;
   paymentMode?: string;
   paymentModeDocNo?: string;
+  invoiceId?: number;
+  invoiceCode?: string;
+  receiptDetails?: any[];
+  addressNo?: string;
+  address?: string;
+  address2?: string;
+  addressCity?: string;
+  districtCode?: string;
+  country?: string;
 }
 
 export interface Invoice {
@@ -111,6 +134,8 @@ export interface Invoice {
   taxAmount?: number;
   taxCode?: string;
   taxPercentage?: number;
+  refDocNumber?: string;
+  districtCode?: string;
 }
 
 export interface ReceiptItem {
@@ -147,6 +172,7 @@ export interface ReceiptReportTransaction {
   Item: string;
   Total: number;
   Status: string;
+  InvoiceCode?: string;
   Tot_Niche: number;
   Tot_Wapp: number;
   Tot_Goa: number;
@@ -204,6 +230,7 @@ export interface ReceiptQueryParams {
   invoiceId?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  bypassCache?: boolean;
 }
 
 export interface ReceiptSearchParams {
@@ -215,6 +242,7 @@ export interface ReceiptSearchParams {
   limit?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  bypassCache?: boolean;
 }
 
 export interface LastReceiptNumberResponse {
@@ -224,6 +252,7 @@ export interface LastReceiptNumberResponse {
 // Receipt Service
 export const receiptService = {
   // Get receipt by code
+  // Get receipt by code
   getReceiptByCode: async (code: string): Promise<Receipt> => {
     try {
       if (!code) {
@@ -232,7 +261,38 @@ export const receiptService = {
 
       const trimmedCode = code.trim();
       const response = await api.get(`/api/receipts/${trimmedCode}`);
-      return response.data;
+
+      // Unwrap response: API returns { success: true, data: { ... } }
+      const responseData = response.data;
+      const data = (responseData && responseData.success && responseData.data) ? responseData.data : responseData;
+
+      if (!data) {
+        throw new ReceiptError('Receipt not found', 'validation', 404);
+      }
+
+      const paymentModeToString = (mode: any) => {
+        if (typeof mode === 'string') return mode;
+        const map: Record<number, string> = { 1: 'Cash', 2: 'Cheque', 3: 'Bank Transfer', 4: 'Other' };
+        return map[Number(mode)] || 'Cash';
+      };
+
+      // Map backend fields to frontend interface
+      return {
+        ...data,
+        receiptCode: data.code || data.receiptCode || data.ReceiptCode,
+        invoiceCode: data.invoice?.code || data.invoiceCode || data.InvoiceCode,
+        customerName: data.customerName || data.CustomerName || data.payeeName || data.PayeeName,
+        totalAmount: data.totalAmount || data.TotalAmount || 0,
+        payingAmount: data.payingAmount || data.PayingAmount || 0,
+        paymentMode: paymentModeToString(data.paymentMode || data.PaymentMode),
+        receiptDate: data.transactionDate || data.receiptDate || data.ReceiptDate || data.createdAt,
+        invoiceDetails: data.invoiceDetails || data.details || [],
+        // Ensure invoice object has code if needed
+        invoice: data.invoice ? {
+          ...data.invoice,
+          code: data.invoice.code || data.invoice.invoiceCode || data.invoice.Code
+        } : undefined
+      };
     } catch (error: any) {
       if (error.response) {
         const status = error.response.status;
@@ -268,8 +328,8 @@ export const receiptService = {
         typeof data.paymentMode === 'number'
           ? data.paymentMode
           : /^\d+$/.test(data.paymentMode)
-          ? Number(data.paymentMode)
-          : data.paymentMode;
+            ? Number(data.paymentMode)
+            : data.paymentMode;
 
       const payload: CreateReceiptRequest = {
         ...data,
@@ -346,9 +406,10 @@ export const receiptService = {
   // Create individual receipt
   createIndividualReceipt: async (data: CreateIndividualReceiptRequest): Promise<Receipt> => {
     try {
-      if (!data.applicationCode) {
-        throw new ReceiptError('Application code is required', 'validation');
-      }
+      // Validation removed to allow standalone receipts (e.g. Others / Miscellaneous)
+      // if (!data.applicationCode) {
+      //   throw new ReceiptError('Application code is required', 'validation');
+      // }
 
       const response = await api.post('/api/receipts/individual', data);
       return response.data;
@@ -381,7 +442,7 @@ export const receiptService = {
     try {
       const response = await api.get('/api/receipts/last-number');
       const data = response.data;
-      
+
       // Handle different response formats
       if (typeof data === 'string') {
         return data;
@@ -469,11 +530,11 @@ export const receiptService = {
       const response = await api.get('/api/receipts/report', {
         params: { fromDate, toDate },
       });
-      
+
       // API returns: { success: true, data: { data: [...] } }
       // axios response.data contains the actual response body
       const responseData = response.data;
-      
+
       // If response has the expected structure with success and nested data
       if (responseData && responseData.success && responseData.data) {
         // Check if data.data is an array (the actual transaction list)
@@ -492,7 +553,7 @@ export const receiptService = {
         // Return as-is if structure is correct
         return responseData;
       }
-      
+
       // If response.data is directly an array, wrap it
       if (Array.isArray(responseData)) {
         return {
@@ -502,12 +563,12 @@ export const receiptService = {
           }
         };
       }
-      
+
       // Return as-is if it has success property (might be different structure)
       if (responseData && responseData.success !== undefined) {
         return responseData;
       }
-      
+
       // Fallback: return empty structure
       return {
         success: true,
@@ -672,6 +733,7 @@ export const receiptService = {
     invoiceId,
     sortBy = 'TransactionDate',
     sortOrder = 'desc',
+    bypassCache = false,
   }: ReceiptQueryParams = {}): Promise<ReceiptListResponse> => {
     try {
       const params: Record<string, any> = {
@@ -688,7 +750,18 @@ export const receiptService = {
       if (applicationId) params.applicationId = applicationId;
       if (invoiceId) params.invoiceId = invoiceId;
 
-      const response = await api.get('/api/receipts/report', { params });
+      if (bypassCache) {
+        params._t = Date.now();
+      }
+
+      const response = await api.get('/api/receipts/report', {
+        params,
+        headers: bypassCache ? {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        } : {}
+      });
       const responseData = response.data;
 
       const transactions: ReceiptReportTransaction[] = (() => {
@@ -717,9 +790,9 @@ export const receiptService = {
         paymentMode: string;
         receiptDate: string;
         invoiceCode: string;
-        applicationId?: string;
         applicationCode?: string;
         transactionCount: number;
+        customerAddress?: string;
       }>();
 
       transactions.forEach((transaction) => {
@@ -727,11 +800,11 @@ export const receiptService = {
         if (!receiptCode) return;
 
         const existing = receiptMap.get(receiptCode);
-        const transactionTotal = typeof transaction.Total === 'number' 
-          ? transaction.Total 
-          : typeof transaction.TotalAmount === 'number' 
-          ? transaction.TotalAmount 
-          : 0;
+        const transactionTotal = typeof transaction.Total === 'number'
+          ? transaction.Total
+          : typeof transaction.TotalAmount === 'number'
+            ? transaction.TotalAmount
+            : 0;
 
         if (existing) {
           // Aggregate totals for duplicate receipt codes
@@ -740,10 +813,13 @@ export const receiptService = {
           existing.transactionCount += 1;
           // Keep the most recent invoice code if multiple exist
           if (transaction.RefDocNumber) {
-            existing.invoiceCode = transaction.RefDocNumber;
+            existing.applicationId = transaction.RefDocNumber;
           }
           if (transaction.RefDocName) {
             existing.applicationCode = transaction.RefDocName;
+          }
+          if (transaction.InvoiceCode) {
+            existing.invoiceCode = transaction.InvoiceCode;
           }
         } else {
           // Create new receipt entry
@@ -754,10 +830,11 @@ export const receiptService = {
             payingAmount: transactionTotal,
             paymentMode: transaction.PaymentMode || 'N/A',
             receiptDate: transaction.TransactionDate || '',
-            invoiceCode: transaction.RefDocNumber || '',
+            invoiceCode: transaction.InvoiceCode || '',
             applicationId: transaction.RefDocNumber,
             applicationCode: transaction.RefDocName,
             transactionCount: 1,
+            customerAddress: transaction.CustomerAddress || transaction.customerAddress || transaction.address,
           });
         }
       });
@@ -776,6 +853,8 @@ export const receiptService = {
         invoiceDetails: undefined,
         applicationId: receiptData.applicationId,
         applicationCode: receiptData.applicationCode,
+        customerAddress: receiptData.customerAddress,
+        address: receiptData.customerAddress,
       }));
 
       const paginationSource =
@@ -825,21 +904,21 @@ export const receiptService = {
 
       const summary: ReceiptSummary | null = summarySource
         ? {
-            totalTransactions:
-              extractNumericValue(responseData?.data, ['totalTransactions']) ||
-              extractNumericValue(responseData, ['totalTransactions']) ||
-              totalRecords ||
-              transactions.length,
-            totalValue: extractNumericValue(summarySource, ['Total_val', 'totalValue', 'TotalValue']),
-            totalNiche: extractNumericValue(summarySource, ['Tot_Niche', 'totalNiche']),
-            totalWapp: extractNumericValue(summarySource, ['Tot_Wapp', 'totalWapp']),
-            totalGoa: extractNumericValue(summarySource, ['Tot_Goa', 'totalGoa']),
-            totalInscription: extractNumericValue(summarySource, ['Tot_Incr', 'totalInscription']),
-            totalDonation: extractNumericValue(summarySource, ['Tot_Donation', 'totalDonation']),
-            totalUrn: extractNumericValue(summarySource, ['Tot_Urn', 'totalUrn']),
-            totalMarble: extractNumericValue(summarySource, ['Tot_Marble', 'totalMarble']),
-            totalOthers: extractNumericValue(summarySource, ['Tot_Others', 'totalOthers']),
-          }
+          totalTransactions:
+            extractNumericValue(responseData?.data, ['totalTransactions']) ||
+            extractNumericValue(responseData, ['totalTransactions']) ||
+            totalRecords ||
+            transactions.length,
+          totalValue: extractNumericValue(summarySource, ['Total_val', 'totalValue', 'TotalValue']),
+          totalNiche: extractNumericValue(summarySource, ['Tot_Niche', 'totalNiche']),
+          totalWapp: extractNumericValue(summarySource, ['Tot_Wapp', 'totalWapp']),
+          totalGoa: extractNumericValue(summarySource, ['Tot_Goa', 'totalGoa']),
+          totalInscription: extractNumericValue(summarySource, ['Tot_Incr', 'totalInscription']),
+          totalDonation: extractNumericValue(summarySource, ['Tot_Donation', 'totalDonation']),
+          totalUrn: extractNumericValue(summarySource, ['Tot_Urn', 'totalUrn']),
+          totalMarble: extractNumericValue(summarySource, ['Tot_Marble', 'totalMarble']),
+          totalOthers: extractNumericValue(summarySource, ['Tot_Others', 'totalOthers']),
+        }
         : null;
 
       return {
@@ -898,7 +977,18 @@ export const receiptService = {
       if (invoiceCode) queryParams.invoiceCode = invoiceCode;
       if (query) queryParams.query = query;
 
-      const response = await api.get('/api/receipts/search', { params: queryParams });
+      if (params.bypassCache) {
+        queryParams._t = Date.now();
+      }
+
+      const response = await api.get('/api/receipts/search', {
+        params: queryParams,
+        headers: params.bypassCache ? {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        } : {}
+      });
       const responseData = response.data;
 
       const items =
@@ -911,48 +1001,52 @@ export const receiptService = {
 
       const receipts: Receipt[] = Array.isArray(items)
         ? items.map((item, index) => {
-            const derivedTotal =
-              item.totalAmount ??
-              item.TotalAmount ??
-              item.total ??
-              item.Total ??
-              item.payingAmount ??
-              item.PayingAmount ??
-              0;
+          const derivedTotal =
+            item.totalAmount ??
+            item.TotalAmount ??
+            item.total ??
+            item.Total ??
+            item.payingAmount ??
+            item.PayingAmount ??
+            0;
 
-            return {
-              receiptId: item.receiptId ?? item.id ?? index,
-              receiptCode:
-                item.receiptCode ||
-                item.code ||
-                item.ReceiptCode ||
-                item.Code ||
-                item.invoiceNo ||
-                '',
-              invoiceId: item.invoiceId ?? item.InvoiceId,
-              invoiceCode:
-                item.invoiceCode ||
-                item.InvoiceCode ||
-                item.invoiceNo ||
-                item.RefDocNumber ||
-                '',
-              customerName: item.customerName || item.CustomerName || 'Unknown Customer',
-              totalAmount: derivedTotal,
-              payingAmount:
-                item.payingAmount ?? item.PayingAmount ?? item.total ?? item.Total ?? derivedTotal,
-              paymentMode: item.paymentMode || item.PaymentMode || 'N/A',
-              receiptDate:
-                item.receiptDate ||
-                item.ReceiptDate ||
-                item.transactionDate ||
-                item.TransactionDate ||
-                item.createdAt ||
-                '',
-              applicationCode: item.applicationCode || item.ApplicationCode || item.RefDocName || '',
-              applicationId: item.applicationId || item.ApplicationId,
-              invoiceDetails: item.details || item.invoiceDetails,
-            };
-          })
+          return {
+            receiptId: item.receiptId ?? item.id ?? index,
+            receiptCode:
+              item.receiptCode ||
+              item.code ||
+              item.ReceiptCode ||
+              item.Code ||
+              item.invoiceNo ||
+              '',
+            invoiceId: item.invoiceId ?? item.InvoiceId,
+            invoiceCode:
+              item.invoiceCode ||
+              item.InvoiceCode ||
+              item.invoiceNo ||
+              '',
+            customerName: item.customerName || item.CustomerName || 'Unknown Customer',
+            totalAmount: derivedTotal,
+            payingAmount:
+              item.payingAmount ?? item.PayingAmount ?? item.total ?? item.Total ?? derivedTotal,
+            paymentMode: item.paymentMode || item.PaymentMode || 'N/A',
+            receiptDate:
+              item.receiptDate ||
+              item.ReceiptDate ||
+              item.transactionDate ||
+              item.TransactionDate ||
+              item.createdAt ||
+              '',
+            applicationCode: item.applicationCode || item.ApplicationCode || item.RefDocName || '',
+            applicationId: item.applicationId || item.ApplicationId,
+            addressNo: item.addressNo || item.AddressNo,
+            address: item.address || item.Address,
+            address2: item.address2 || item.Address2,
+            addressCity: item.addressCity || item.AddressCity,
+            country: item.country || item.Country,
+            invoiceDetails: item.details || item.invoiceDetails,
+          };
+        })
         : [];
 
       const paginationSource =
@@ -1037,10 +1131,10 @@ export const receiptService = {
 
       const trimmedCode = code.trim();
       console.log('[ReceiptService] Fetching invoice data for code:', trimmedCode);
-      
+
       const response = await api.get(`/api/invoices/${trimmedCode}`);
       console.log('[ReceiptService] API response:', response.data);
-      
+
       // Handle response structure: {success: true, data: {...}}
       let invoiceData;
       if (response.data && response.data.success && response.data.data) {
@@ -1051,9 +1145,9 @@ export const receiptService = {
       } else {
         invoiceData = response.data;
       }
-      
+
       console.log('[ReceiptService] Processed invoice data:', invoiceData);
-      
+
       // Enhanced mapping to handle all API response fields properly
       const invoice: Invoice = {
         invoiceId: invoiceData.InvoiceId || invoiceData.invoiceId || invoiceData.invoiceId || 0,
@@ -1085,7 +1179,7 @@ export const receiptService = {
           outstandingAmount: detail.OutstandingAmount || detail.outstandingAmount || detail.outstandingAmount || 0
         }))
       };
-      
+
       // Add additional fields that might be useful
       (invoice as any).addressNo = invoiceData.addressNo || invoiceData.addressNo;
       (invoice as any).address = invoiceData.address || invoiceData.address;
@@ -1095,9 +1189,9 @@ export const receiptService = {
       (invoice as any).taxAmount = invoiceData.taxAmount || invoiceData.taxAmount;
       (invoice as any).taxCode = invoiceData.taxCode || invoiceData.taxCode;
       (invoice as any).taxPercentage = invoiceData.taxPercentage || invoiceData.taxPercentage;
-      
+
       console.log('[ReceiptService] Final mapped invoice:', invoice);
-      
+
       return invoice;
     } catch (error: any) {
       console.error('[ReceiptService] Error fetching invoice:', error);
@@ -1141,12 +1235,12 @@ export const receiptService = {
       const params: Record<string, string> = {
         data: 'true',
       };
-      
+
       // Add application code if provided
       if (applicationCode && applicationCode.trim()) {
         params.applicationCode = applicationCode.trim();
       }
-      
+
       // Backend fallback mechanism (automatic):
       // - ChurchId is extracted from JWT token in Authorization header
       // - Backend tries: exact match with churchId → case-insensitive with churchId → exact without churchId
@@ -1159,7 +1253,7 @@ export const receiptService = {
           'Content-Type': 'application/json',
         },
       });
-      
+
       const contentType = (response.headers?.['content-type'] || '').toLowerCase();
       const isJsonBlob =
         response.data instanceof Blob &&
@@ -1193,11 +1287,11 @@ export const receiptService = {
       if (response.data instanceof Blob) {
         const blob = new Blob([response.data], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        
+
         if (openInNewTab) {
           window.open(url, '_blank');
         }
-        
+
         return url;
       } else if (typeof response.data === 'string') {
         // If API returns a URL string, use it directly
@@ -1209,11 +1303,11 @@ export const receiptService = {
         // API returned JSON data containing receipt/invoice details - generate PDF on the fly
         // Open window immediately to avoid popup blocking (before PDF generation)
         const newWindow = openInNewTab ? window.open('', '_blank', 'noopener,noreferrer') : null;
-        
+
         if (openInNewTab && !newWindow) {
           throw new ReceiptError('Popup blocked. Please allow popups for this site to view the receipt.', 'validation', 403);
         }
-        
+
         // Show loading message in the new window
         if (newWindow) {
           newWindow.document.write(`
@@ -1228,7 +1322,7 @@ export const receiptService = {
           `);
           newWindow.document.close();
         }
-        
+
         const pdfBlob = await receiptPdfService.generateReceiptPdf(response.data.data, {
           requestedCode: code,
           applicationCode,
@@ -1314,14 +1408,14 @@ export const receiptService = {
       if (isJsonBlob) {
         const jsonPayload = JSON.parse(await response.data.text());
         console.log('[getInvoicePdfLink] Parsed JSON payload:', jsonPayload);
-        
+
         if (jsonPayload?.success && jsonPayload?.data) {
           // Generate PDF first (like getReceiptPdfLink does) - this avoids blank screen issues
           try {
             // Map API response to InvoiceData format for invoicePdfService
             console.log('[getInvoicePdfLink] Mapping API response to InvoiceData format...');
             const apiData = jsonPayload.data;
-            
+
             // Helper to get first non-null value from array or use value directly
             const getFirstValue = (value: any): any => {
               if (Array.isArray(value)) {
@@ -1330,7 +1424,7 @@ export const receiptService = {
               }
               return value;
             };
-            
+
             // Helper to normalize reference fields
             const normalizeRefField = (field: any): string => {
               if (!field) return '';
@@ -1340,23 +1434,23 @@ export const receiptService = {
               }
               return String(field).trim();
             };
-            
+
             // Extract invoice details
             const invoiceNo = apiData.Code || apiData.InvoiceNo || code || 'N/A';
             const invoiceDate = apiData.TransactionDate || apiData.InvoiceDate || new Date().toISOString();
             const customerName = apiData.CustomerName || 'N/A';
             const address = apiData.Address || '';
-            
+
             // Extract amounts
             const totalAmount = typeof apiData.TotalAmount === 'number' ? apiData.TotalAmount : 0;
             const taxAmount = typeof apiData.TaxAmount === 'number' ? apiData.TaxAmount : 0;
             const payingAmount = getFirstValue(apiData.PayingAmount);
             const finalPayingAmount = typeof payingAmount === 'number' ? payingAmount : totalAmount;
-            
+
             // Extract reference document info
             const refDocNumber = normalizeRefField(getFirstValue(apiData.RefDocNumber));
             const refDocName = normalizeRefField(getFirstValue(apiData.RefDocName));
-            
+
             // Build line items from details array
             const lineItems: Array<{
               description: string;
@@ -1366,7 +1460,7 @@ export const receiptService = {
               unitPrice: number;
               amount: number;
             }> = [];
-            
+
             if (Array.isArray(apiData.details) && apiData.details.length > 0) {
               apiData.details.forEach((detail: any, index: number) => {
                 const itemRefNumber = normalizeRefField(getFirstValue(detail.refDocNumber || detail.RefDocNumber));
@@ -1375,12 +1469,12 @@ export const receiptService = {
                 const unitAmount = typeof detail.unitAmount === 'number' ? detail.unitAmount : 0;
                 const lineTaxAmount = typeof detail.lineTaxAmount === 'number' ? detail.lineTaxAmount : 0;
                 const gstPercent = typeof detail.lineTaxPercent === 'number' ? detail.lineTaxPercent : 9.0;
-                
+
                 // Calculate base amount (excluding GST)
                 // If lineTotalAmount includes GST, subtract tax; otherwise use lineTotalAmount as base
                 let lineTotal = typeof detail.lineTotalAmount === 'number' ? detail.lineTotalAmount : (unitAmount * quantity);
                 let baseAmount = lineTotal;
-                
+
                 // If we have tax amount, the base is lineTotal - tax
                 if (lineTaxAmount > 0 && lineTotal > 0) {
                   baseAmount = lineTotal - lineTaxAmount;
@@ -1391,10 +1485,10 @@ export const receiptService = {
                   // Use lineTotal as base if no GST info
                   baseAmount = lineTotal;
                 }
-                
+
                 // Calculate unit price from base amount
                 const unitPrice = quantity > 0 ? baseAmount / quantity : baseAmount;
-                
+
                 // Create better description based on item type or reference
                 // Try to detect item type from description or itemId
                 let description = '';
@@ -1426,15 +1520,15 @@ export const receiptService = {
                   ];
                   description = defaultDescriptions[index] || 'Niche Service';
                 }
-                
+
                 // Reference number for line item - combine chapel/niche info if available
                 let refNo = itemRefNumber || itemRefName || applicationCode || refDocNumber || refDocName || 'N/A';
-                
+
                 // If we have both ref name and number, combine them for better reference
                 if (itemRefName && itemRefNumber && itemRefName !== itemRefNumber) {
                   refNo = `${itemRefName} ${itemRefNumber}`.trim();
                 }
-                
+
                 lineItems.push({
                   description,
                   referenceNo: refNo,
@@ -1456,20 +1550,20 @@ export const receiptService = {
                 amount: baseAmount
               });
             }
-            
+
             // Calculate pricing breakdown
             const subTotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
             const calculatedTax = lineItems.reduce((sum, item) => sum + (item.amount * item.gstPercent / 100), 0);
             const finalTaxAmount = taxAmount > 0 ? taxAmount : calculatedTax;
             const nicheAmount = lineItems.length > 0 ? lineItems[0].amount : subTotal;
             const serviceAmount = subTotal > nicheAmount ? subTotal - nicheAmount : 0;
-            
+
             // Format address - remove extra "Blk:" if already present
             let formattedAddress = address || '';
             if (formattedAddress && !formattedAddress.toLowerCase().includes('blk')) {
               formattedAddress = `Blk: ${formattedAddress}`;
             }
-            
+
             // Map to InvoiceData format
             const invoicePdfData = {
               invoiceNo,
@@ -1494,34 +1588,34 @@ export const receiptService = {
               },
               lineItems
             };
-            
+
             console.log('[getInvoicePdfLink] Mapped invoice data:', invoicePdfData);
-            
+
             // Use invoicePdfService for better HTML template UI
             const { invoicePdfService } = await import('./invoicePdfService');
             console.log('[getInvoicePdfLink] Generating invoice PDF using invoicePdfService...');
             const pdfBlob = await invoicePdfService.generateInvoicePdfBlob(invoicePdfData);
             console.log('[getInvoicePdfLink] PDF blob generated, size:', pdfBlob.size);
-            
+
             // Validate PDF blob
             if (!pdfBlob || pdfBlob.size === 0) {
               throw new Error('Generated PDF blob is empty or invalid');
             }
-            
+
             // Check if blob is actually a PDF (should start with %PDF)
             try {
               const blobArrayBuffer = await pdfBlob.arrayBuffer();
               const blobStart = new Uint8Array(blobArrayBuffer.slice(0, 4));
               const pdfHeader = String.fromCharCode(...blobStart);
               console.log('[getInvoicePdfLink] PDF header check:', pdfHeader.substring(0, 10));
-              
+
               if (!pdfHeader.startsWith('%PDF')) {
                 console.warn('[getInvoicePdfLink] PDF header check failed, but continuing...');
               }
             } catch (headerError) {
               console.warn('[getInvoicePdfLink] Could not verify PDF header:', headerError);
             }
-            
+
             const pdfUrl = URL.createObjectURL(pdfBlob);
             console.log('[getInvoicePdfLink] PDF URL created:', pdfUrl);
 
@@ -1614,10 +1708,10 @@ export const receiptService = {
     try {
       // New API: /api/items
       const response = await api.get('/api/items');
-      
+
       // Handle response structure: {success: true, data: [...]} or direct array
       let items: ReceiptItem[] = [];
-      
+
       if (response.data) {
         if (response.data.success && response.data.data) {
           items = response.data.data;
@@ -1629,7 +1723,7 @@ export const receiptService = {
           items = response.data.data;
         }
       }
-      
+
       // Map API /api/items response to ReceiptItem interface
       return items.map((item: any) => ({
         itemId: item.ItemId || item.itemId || item.ItemID || item.id,

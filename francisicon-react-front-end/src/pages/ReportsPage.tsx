@@ -243,6 +243,13 @@ export function ReportsPage() {
           description: 'Generate beneficiaries list report',
           type: 'beneficiaries-list',
         },
+        {
+          id: 'receipt-register',
+          name: 'Receipt Register',
+          description: 'Detailed receipt register for finance',
+          type: 'receipt-register',
+          requiresDateRange: true,
+        },
       ],
     },
   ];
@@ -523,6 +530,23 @@ export function ReportsPage() {
             break;
           case 'beneficiaries-list':
             blob = await generateBeneficiariesListReport();
+            break;
+          case 'receipt-register':
+            try {
+              const jsonData = await reportService.getReceiptRegisterData(dateRange);
+              if (jsonData && jsonData.success) {
+                navigate('/reports/receipt-register', {
+                  state: { reportData: jsonData },
+                });
+                setSelectedCategory(null);
+                showSuccess('Success', 'Report generated successfully');
+                return;
+              }
+            } catch (error: any) {
+              console.error('Failed to generate receipt register:', error);
+              showError('Error', error?.message || 'Failed to generate report');
+              return;
+            }
             break;
           default:
             showError('Error', 'Unknown report type');

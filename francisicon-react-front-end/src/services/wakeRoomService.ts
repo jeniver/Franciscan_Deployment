@@ -170,9 +170,11 @@ export interface WakeRoomDropdownOption {
 // Wake Room Service
 export const wakeRoomService = {
   // Get all wake rooms (no church filter)
-  getAllWakeRooms: async (): Promise<WakeRoomResponse<WakeRoom[]>> => {
+  getAllWakeRooms: async (bypassCache: boolean = false): Promise<WakeRoomResponse<WakeRoom[]>> => {
     try {
-      const response = await api.get('/api/wake-rooms/all');
+      const response = await api.get('/api/wake-rooms/all', {
+        params: bypassCache ? { _t: Date.now(), bypassCache: true } : {}
+      });
 
       if (response.data?.success) {
         return response.data;
@@ -206,13 +208,15 @@ export const wakeRoomService = {
   },
 
   // Get all wake rooms by church ID
-  getWakeRoomsByChurch: async (churchId: number): Promise<WakeRoomResponse<WakeRoom[]>> => {
+  getWakeRoomsByChurch: async (churchId: number, bypassCache: boolean = false): Promise<WakeRoomResponse<WakeRoom[]>> => {
     try {
       if (!churchId) {
         throw new WakeRoomError('Church ID is required', 'validation');
       }
 
-      const response = await api.get(`/api/wake-rooms/church/${churchId}`);
+      const response = await api.get(`/api/wake-rooms/church/${churchId}`, {
+        params: bypassCache ? { _t: Date.now(), bypassCache: true } : {}
+      });
 
       if (response.data.success) {
         return response.data;
@@ -442,9 +446,11 @@ export const wakeRoomService = {
   },
 
   // Search wake room bookings
-  searchBookings: async (searchCriteria: any): Promise<WakeRoomResponse<WakeRoomBookingSearchResponse | WakeRoomBooking[]>> => {
+  searchBookings: async (searchCriteria: any, bypassCache: boolean = false): Promise<WakeRoomResponse<WakeRoomBookingSearchResponse | WakeRoomBooking[]>> => {
     try {
-      const response = await api.post('/api/wake-room-bookings/search', searchCriteria);
+      const response = await api.post('/api/wake-room-bookings/search', searchCriteria, {
+        params: bypassCache ? { _t: Date.now(), bypassCache: true } : {}
+      });
 
       if (response.data.success) {
         return response.data;

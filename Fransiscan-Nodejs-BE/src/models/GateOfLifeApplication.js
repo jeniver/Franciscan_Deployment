@@ -73,25 +73,10 @@ class GateOfLifeApplication {
   }
 
   validate() {
-    const errors = [];
-
-    if (!this.applicantName || !this.applicantName.trim()) {
-      errors.push('Applicant name is required');
-    }
-
-    if (!this.details.length) {
-      errors.push('At least one name to engrave is required');
-    }
-
-    this.details.forEach((detail, index) => {
-      if (!detail.isValid()) {
-        errors.push(`Name to engrave is required for entry #${index + 1}`);
-      }
-    });
-
+    // Validations removed to support niche application style
     return {
-      isValid: errors.length === 0,
-      errors
+      isValid: true,
+      errors: []
     };
   }
 

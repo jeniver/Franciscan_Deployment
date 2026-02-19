@@ -23,33 +23,17 @@ class InscriptionInvoiceController extends BaseController {
 
     try {
       const { code } = req.params;
-      let churchId = req.user?.churchId;
-
-      logger.info('DIAGNOSTIC: getInscriptionItems API called:', {
-        code,
-        churchId,
-        userId: req.user?.userId
-      });
+      const churchId = req.user?.churchId;
 
       if (!code) {
         return this.sendError(res, 'Application code is required', 400);
       }
 
-      // For testing purposes, default to churchId 1 if not provided
       if (!churchId) {
-        logger.info('DIAGNOSTIC: No churchId from auth, using default churchId 1 for testing');
-        churchId = 1;
+        return this.sendError(res, 'Authentication required with church ID', 401);
       }
 
       const result = await InscriptionInvoiceService.getInscriptionItems(code, churchId);
-
-      logger.info('DIAGNOSTIC: getInscriptionItems result:', {
-        code,
-        hasResult: !!result,
-        isArray: Array.isArray(result),
-        itemCount: Array.isArray(result) ? result.length : (result?.items?.length || 0),
-        hasInscriptionRequestNo: !!result?.inscriptionRequestNo
-      });
 
       // Return enhanced response with items and application details
       // Maintain backward compatibility: if result is array, return as-is
@@ -300,11 +284,11 @@ class InscriptionInvoiceController extends BaseController {
       // Validate pagination parameters
       const pageNum = parseInt(String(page)) || 1;
       const pageSizeNum = parseInt(String(pageSize)) || 20;
-      
+
       if (pageNum < 1) {
         return this.sendError(res, 'Page must be greater than 0', 400);
       }
-      
+
       if (pageSizeNum < 1 || pageSizeNum > 100) {
         return this.sendError(res, 'PageSize must be between 1 and 100', 400);
       }

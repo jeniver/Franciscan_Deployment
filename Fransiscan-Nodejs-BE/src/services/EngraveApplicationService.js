@@ -5,6 +5,10 @@ const { NicheApplication } = require('../models/NicheApplication');
 const logger = require('../utils/logger');
 
 class EngraveApplicationService {
+  normalizeNicheApplicationCode(code) {
+    return (code || '').trim().replace(/^I-/i, '');
+  }
+
   /**
    * Create new engrave application
    * @param {Object} data - Application data with applicant and details
@@ -23,7 +27,9 @@ class EngraveApplicationService {
       const application = new EngraveApplication({
         ...data.applicant,
         ...data.inscription,
-        nicheApplicationCode: data.inscription?.nicheApplicationCode || data.applicant?.nicheApplicationCode || null,
+        nicheApplicationCode: this.normalizeNicheApplicationCode(
+          data.nicheApplicationCode || data.inscription?.nicheApplicationCode || data.applicant?.nicheApplicationCode || ''
+        ) || null,
         nicheBookingId: data.inscription?.nicheBookingId || null,
         churchId,
         userId,
@@ -36,6 +42,16 @@ class EngraveApplicationService {
         .map(d =>
           new EngraveApplicationDetail(d)
         );
+
+      // Fallback: Use internmentDate for storageFrom/To if missing
+      if (!application.storageFrom || !application.storageTo) {
+        const firstDeceasedWithDate = details.find(d => d.internmentDate);
+        if (firstDeceasedWithDate) {
+          if (!application.storageFrom) application.storageFrom = firstDeceasedWithDate.internmentDate;
+          if (!application.storageTo) application.storageTo = firstDeceasedWithDate.internmentDate;
+          logger.info(`Service: Using internmentDate ${firstDeceasedWithDate.internmentDate} as fallback for storage period`);
+        }
+      }
 
       // Validate
       const appValidation = application.validate();
@@ -59,7 +75,7 @@ class EngraveApplicationService {
       // Synchronize with niche application if it exists
       // Try to get nicheApplicationCode from the created application
       let nicheAppCode = application.nicheApplicationCode;
-      
+
       if (!nicheAppCode && code) {
         // Derive from inscription code format: I-7980-0 -> 7980-0
         const match = code.match(/^I-(.+)$/);
@@ -67,11 +83,11 @@ class EngraveApplicationService {
           nicheAppCode = match[1];
         }
       }
-      
+
       if (nicheAppCode) {
         try {
           const nicheApp = await NicheApplicationRepository.getByCode(nicheAppCode);
-          
+
           if (nicheApp && nicheApp.churchId === churchId) {
             // Update niche application with inscription applicant details
             const updatedNicheApp = new NicheApplication({
@@ -90,14 +106,14 @@ class EngraveApplicationService {
               applicantAddressState: application.applicantAddressState || nicheApp.applicantAddressState,
               applicantAddressCountry: application.applicantAddressCountry || nicheApp.applicantAddressCountry
             });
-            
+
             // Update niche application (preserve existing beneficiaries)
             await NicheApplicationRepository.update(
               nicheAppCode,
               updatedNicheApp,
               nicheApp.beneficiaries || []
             );
-            
+
             logger.info(`Synchronized niche application ${nicheAppCode} with inscription ${code}`);
           }
         } catch (syncError) {
@@ -177,6 +193,9 @@ class EngraveApplicationService {
         ...data.inscription,
         remarks: data.remarks
       });
+      if (application.nicheApplicationCode) {
+        application.nicheApplicationCode = this.normalizeNicheApplicationCode(application.nicheApplicationCode);
+      }
 
       // Create detail objects (can be empty - deceased details are optional)
       const details = (data.deceasedDetails || [])
@@ -184,6 +203,16 @@ class EngraveApplicationService {
         .map(d =>
           new EngraveApplicationDetail(d)
         );
+
+      // Fallback: Use internmentDate for storageFrom/To if missing
+      if (!application.storageFrom || !application.storageTo) {
+        const firstDeceasedWithDate = details.find(d => d.internmentDate);
+        if (firstDeceasedWithDate) {
+          if (!application.storageFrom) application.storageFrom = firstDeceasedWithDate.internmentDate;
+          if (!application.storageTo) application.storageTo = firstDeceasedWithDate.internmentDate;
+          logger.info(`Service(Update): Using internmentDate ${firstDeceasedWithDate.internmentDate} as fallback for storage period`);
+        }
+      }
 
       // Validate
       const appValidation = application.validate();
@@ -208,7 +237,7 @@ class EngraveApplicationService {
       // Synchronize with niche application if it exists
       // Try to get nicheApplicationCode from existing inscription, or derive from code (I-7980-0 -> 7980-0)
       let nicheAppCode = existing.nicheApplicationCode;
-      
+
       if (!nicheAppCode && existing.code) {
         // Derive from inscription code format: I-7980-0 -> 7980-0
         const match = existing.code.match(/^I-(.+)$/);
@@ -216,11 +245,11 @@ class EngraveApplicationService {
           nicheAppCode = match[1];
         }
       }
-      
+
       if (nicheAppCode) {
         try {
           const nicheApp = await NicheApplicationRepository.getByCode(nicheAppCode);
-          
+
           if (nicheApp && nicheApp.churchId === churchId) {
             // Update niche application with inscription applicant details
             const updatedNicheApp = new NicheApplication({
@@ -239,14 +268,14 @@ class EngraveApplicationService {
               applicantAddressState: application.applicantAddressState || nicheApp.applicantAddressState,
               applicantAddressCountry: application.applicantAddressCountry || nicheApp.applicantAddressCountry
             });
-            
+
             // Update niche application (preserve existing beneficiaries)
             await NicheApplicationRepository.update(
               nicheAppCode,
               updatedNicheApp,
               nicheApp.beneficiaries || []
             );
-            
+
             logger.info(`Synchronized niche application ${nicheAppCode} with inscription ${code}`);
           }
         } catch (syncError) {

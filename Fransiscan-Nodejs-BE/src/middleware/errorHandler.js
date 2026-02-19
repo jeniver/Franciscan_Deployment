@@ -199,9 +199,16 @@ const rateLimit = (options = {}) => {
   const limits = new Map();
   const windowMs = options.windowMs || 15 * 60 * 1000; // 15 minutes
   const max = options.max || 100; // limit each IP to 100 requests per windowMs
+  const enabled = options.enabled !== false;
+  const shouldSkip = typeof options.skip === 'function' ? options.skip : () => false;
 
   return (req, res, next) => {
-    const ip = req.ip || req.connection.remoteAddress;
+    if (!enabled || shouldSkip(req)) {
+      return next();
+    }
+
+    const rawIp = req.ip || req.connection.remoteAddress || 'unknown';
+    const ip = String(rawIp).replace(/^::ffff:/, '');
     const now = Date.now();
     const windowStart = now - windowMs;
 

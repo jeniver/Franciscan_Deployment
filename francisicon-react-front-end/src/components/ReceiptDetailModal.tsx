@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { XIcon, DownloadIcon, PrinterIcon } from 'lucide-react';
-import { Receipt, receiptService } from '../services/receiptService';
+import { Receipt } from '../services/receiptService';
 import { receiptPdfService } from '../services/receiptPdfService';
 import { useToast } from '../contexts/ToastContext';
 import { ReceiptTemplate } from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
@@ -14,28 +14,60 @@ interface ReceiptDetailModalProps {
 }
 
 export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailModalProps) {
-  const { showError, showSuccess } = useToast();
-  const [isDownloading, setIsDownloading] = useState(false);
+  const { showError } = useToast();
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [htmlContent, setHtmlContent] = useState<string>('');
   const contentRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  const [fullReceiptData, setFullReceiptData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
   useEffect(() => {
-    if (!isOpen || !receipt) {
+    if (isOpen && receipt && !fullReceiptData) {
+      const loadFullReceipt = async () => {
+        setIsLoading(true);
+        try {
+          const data = await receiptService.getReceiptByCode(receipt.receiptCode || (receipt as any).code);
+          setFullReceiptData(data);
+        } catch (err: any) {
+          console.error('[ReceiptDetailModal] Failed to fetch full receipt:', err);
+          showError('Error', 'Could not load full receipt details. Address and items might be missing.');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      loadFullReceipt();
+    }
+  }, [isOpen, receipt, fullReceiptData, showError]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setFullReceiptData(null);
       setHtmlContent('');
       return;
     }
 
-    const currentReceipt = receipt;
+    if (!receipt) return;
+
+    const currentReceipt = fullReceiptData || receipt;
     // Calculate address with comprehensive fallback
     const getAddress = () => {
+      // Check for an existing single address string first
+      const existingAddress = (currentReceipt as any).customerAddress ||
+        (currentReceipt as any).address ||
+        (currentReceipt as any).customer?.address ||
+        (currentReceipt as any).invoice?.customerAddress ||
+        (currentReceipt as any).invoice?.address ||
+        (currentReceipt as any).payeeAddress;
+
       const parts = [
-        currentReceipt.addressNo || (currentReceipt as any).invoice?.addressNo,
-        currentReceipt.address || (currentReceipt as any).addressLine1 || (currentReceipt as any).invoice?.address || (currentReceipt as any).invoice?.addressLine1,
-        currentReceipt.address2 || (currentReceipt as any).addressLine2 || (currentReceipt as any).invoice?.address2 || (currentReceipt as any).invoice?.addressLine2,
-        currentReceipt.addressCity || (currentReceipt as any).invoice?.addressCity,
-        currentReceipt.country || (currentReceipt as any).invoice?.country
+        currentReceipt.addressNo || (currentReceipt as any).AddressNo || (currentReceipt as any).invoice?.addressNo || (currentReceipt as any).invoice?.AddressNo,
+        currentReceipt.address || (currentReceipt as any).Address || (currentReceipt as any).addressLine1 || (currentReceipt as any).invoice?.address || (currentReceipt as any).invoice?.Address || (currentReceipt as any).invoice?.addressLine1,
+        currentReceipt.address2 || (currentReceipt as any).Address2 || (currentReceipt as any).addressLine2 || (currentReceipt as any).invoice?.address2 || (currentReceipt as any).invoice?.Address2 || (currentReceipt as any).invoice?.addressLine2,
+        currentReceipt.addressCity || (currentReceipt as any).AddressCity || (currentReceipt as any).invoice?.addressCity || (currentReceipt as any).invoice?.AddressCity,
+        (currentReceipt as any).districtCode || (currentReceipt as any).DistrictCode || (currentReceipt as any).addressState || (currentReceipt as any).invoice?.districtCode || (currentReceipt as any).invoice?.DistrictCode,
+        currentReceipt.country || (currentReceipt as any).Country || (currentReceipt as any).invoice?.country || (currentReceipt as any).invoice?.Country
       ].filter(part =>
         part &&
         part !== 'undefined' &&
@@ -43,38 +75,42 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
         typeof part === 'string' &&
         part.trim() !== ''
       );
-      console.log('Address parts:', currentReceipt)
 
-      if (parts.length > 0) {
-        return parts.join(', ');
+      const fullAddress = parts.join(', ');
+
+      if (parts.length > 1) {
+        return fullAddress;
       }
 
-      return (currentReceipt as any).customerAddress || (currentReceipt as any).invoice?.customerAddress || 'N/A';
+      return (existingAddress && existingAddress !== 'N/A' && existingAddress !== 'null') ? existingAddress : (parts[0] || 'N/A');
     };
 
     const fullAddress = getAddress();
 
     // Build a lightweight payload compatible with receiptPdfService
+    const totalAmount = currentReceipt.totalAmount || (currentReceipt as any).ReceiptTotalAmount || currentReceipt.payingAmount || 0;
+
     const payload: any = {
       receipt: {
-        code: currentReceipt.receiptCode,
-        transactionDate: currentReceipt.receiptDate || currentReceipt.createdAt,
-        customerName: currentReceipt.customerName,
+        code: currentReceipt.receiptCode || (currentReceipt as any).ReceiptCode || (currentReceipt as any).code,
+        transactionDate: currentReceipt.receiptDate || (currentReceipt as any).ReceiptDate || (currentReceipt as any).transactionDate || currentReceipt.createdAt,
+        customerName: currentReceipt.customerName || (currentReceipt as any).CustomerName || (currentReceipt as any).payeeName,
         address: fullAddress,
         customerAddress: fullAddress,
-        totalAmount: currentReceipt.totalAmount,
-        payingAmount: currentReceipt.payingAmount,
-        paymentMode: currentReceipt.paymentMode,
+        totalAmount: totalAmount,
+        payingAmount: currentReceipt.payingAmount || totalAmount,
+        paymentMode: currentReceipt.paymentMode || (currentReceipt as any).PaymentMode,
+        paymentModeDocNo: (currentReceipt as any).paymentModeDocNo || (currentReceipt as any).PaymentModeDocNo,
       },
-      details: (currentReceipt.invoiceDetails || []).map((d) => ({
-        description: d.description,
-        refDocName: d.refDocName || d.description,
-        quantity: d.quantity,
-        unitAmount: d.unitPrice,
-        lineTotalAmount: d.amount,
+      details: (currentReceipt.invoiceDetails || (currentReceipt as any).details || []).map((d: any) => ({
+        description: d.description || d.itemName || d.ItemName || 'Service',
+        refDocName: d.refDocName || d.itemName || d.ItemName || d.description,
+        quantity: d.quantity || d.Quantity || 1,
+        unitAmount: d.unitPrice || d.unitAmount || d.UnitPrice || d.UnitAmount || 0,
+        lineTotalAmount: d.amount || d.lineTotalAmount || d.LineTotalAmount || 0,
         invoice: {
-          invoiceNo: currentReceipt.invoice?.code || currentReceipt.invoiceCode || '',
-          code: currentReceipt.invoice?.code || currentReceipt.invoiceCode || '',
+          invoiceNo: currentReceipt.invoice?.code || (currentReceipt as any).invoice?.Code || currentReceipt.invoiceCode || (currentReceipt as any).InvoiceCode || '',
+          code: currentReceipt.invoice?.code || (currentReceipt as any).invoice?.Code || currentReceipt.invoiceCode || (currentReceipt as any).InvoiceCode || '',
         }
       }))
     };
@@ -84,7 +120,7 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
         currentReceipt.applicationCode || (currentReceipt.applicationId ? String(currentReceipt.applicationId) : undefined);
 
       const html = receiptPdfService.generateReceiptHtml(payload, {
-        requestedCode: currentReceipt.receiptCode,
+        requestedCode: currentReceipt.receiptCode || (currentReceipt as any).code,
         applicationCode,
       });
       setHtmlContent(html);
@@ -92,7 +128,7 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
       console.error('Failed to generate receipt HTML preview:', err);
       setHtmlContent('');
     }
-  }, [isOpen, receipt, showError]);
+  }, [isOpen, receipt, fullReceiptData, showError]);
 
   if (!isOpen || !receipt) return null;
 
@@ -335,17 +371,20 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
       (receipt as any).customer?.address ||
       (receipt as any).invoice?.customerAddress ||
       (receipt as any).invoice?.address ||
+      (receipt as any).payeeAddress ||
       '';
 
     if (address && address !== 'N/A' && address !== 'null') return address;
 
     // Attempt to build from components
+    // Attempt to build from components
     const parts = [
-      receipt.addressNo || (receipt as any).invoice?.addressNo,
-      receipt.address || (receipt as any).addressLine1 || (receipt as any).invoice?.address || (receipt as any).invoice?.addressLine1,
-      receipt.address2 || (receipt as any).addressLine2 || (receipt as any).invoice?.address2 || (receipt as any).invoice?.addressLine2,
-      receipt.addressCity || (receipt as any).invoice?.addressCity,
-      receipt.country || (receipt as any).invoice?.country
+      receipt.addressNo || (receipt as any).AddressNo || (receipt as any).invoice?.addressNo || (receipt as any).invoice?.AddressNo,
+      receipt.address || (receipt as any).Address || (receipt as any).addressLine1 || (receipt as any).invoice?.address || (receipt as any).invoice?.Address || (receipt as any).invoice?.addressLine1,
+      receipt.address2 || (receipt as any).Address2 || (receipt as any).addressLine2 || (receipt as any).invoice?.address2 || (receipt as any).invoice?.Address2 || (receipt as any).invoice?.addressLine2,
+      receipt.addressCity || (receipt as any).AddressCity || (receipt as any).invoice?.addressCity || (receipt as any).invoice?.AddressCity,
+      (receipt as any).districtCode || (receipt as any).DistrictCode || (receipt as any).addressState || (receipt as any).invoice?.districtCode || (receipt as any).invoice?.DistrictCode,
+      receipt.country || (receipt as any).Country || (receipt as any).invoice?.country || (receipt as any).invoice?.Country
     ].filter(part =>
       part &&
       part !== 'undefined' &&
@@ -354,11 +393,17 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
       part.trim() !== ''
     );
 
-    if (parts.length > 0) {
-      return parts.join(', ');
+    const fullAddress = parts.join(', ');
+
+    // If we have multiple parts, it's better to show the full joined address
+    if (parts.length > 1) {
+      return fullAddress;
     }
 
-    return 'N/A';
+    // Otherwise use the single address field IF it's not empty, or fallback to the single part
+    if (address && address !== 'N/A' && address !== 'null') return address;
+
+    return parts[0] || 'N/A';
   };
 
   const displayAddress = getDisplayAddress();
@@ -405,34 +450,40 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
 
           {/* Content */}
           <div className="flex-1 p-6 bg-gray-50 overflow-auto relative">
-            {(isGenerating || isGeneratingPdf) && (
+            {(isGenerating || isGeneratingPdf || isLoading) && (
               <div className="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-75 z-20">
                 <div className="text-center">
                   <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#8b2828] mb-4"></div>
-                  <p className="text-gray-600">Processing document...</p>
+                  <p className="text-gray-600">{isLoading ? 'Loading receipt data...' : 'Processing document...'}</p>
                 </div>
               </div>
             )}
-            <>{console.log("+++++++++++++++++", receipt)}</>
             <div ref={contentRef}>
               <div data-pdf-page>
-                <ReceiptTemplate
-                  receiptNo={receipt.receiptCode || (receipt.applicationId != null ? String(receipt.applicationId) : 'N/A')}
-                  date={receipt.receiptDate ? formatDate(receipt.receiptDate) : (receipt.createdAt ? formatDate(receipt.createdAt) : (receipt as any).transactionDate ? formatDate((receipt as any).transactionDate) : formatDate(new Date().toISOString()))}
-                  receivedFrom={receipt.customerName || (receipt as any).payeeName || 'N/A'}
-                  address={displayAddress}
-                  invoiceNo={receipt.invoice?.code || receipt.invoiceCode || (receipt as any).invoiceNo || 'N/A'}
-                  description={(receipt.description || (receipt.invoiceDetails && receipt.invoiceDetails.length > 0 ? receipt.invoiceDetails[0].description : '')) || 'Payment received'}
-                  totalAmount={receipt.totalAmount || (receipt as any).payingAmount || 0}
-                  dollarsInWords={convertToDollarsInWords(receipt.totalAmount || (receipt as any).payingAmount)}
-                  paymentMethod={receipt.paymentMode || (receipt as any).paymentMethod || 'Cash'}
-                  items={((receipt.invoiceDetails || (receipt as any).details || []).map((d: any) => ({
-                    description: d.description || d.itemName || '',
-                    quantity: d.quantity || 1,
-                    unitPrice: d.unitPrice || d.payingAmount || 0,
-                    amount: d.amount || d.lineTotalAmount || 0,
-                  })))}
-                />
+                {(() => {
+                  const currentReceipt = fullReceiptData || receipt;
+                  const totalAmt = currentReceipt.totalAmount || (currentReceipt as any).ReceiptTotalAmount || currentReceipt.payingAmount || 0;
+
+                  return (
+                    <ReceiptTemplate
+                      receiptNo={currentReceipt.receiptCode || (currentReceipt as any).code || (currentReceipt.applicationId != null ? String(currentReceipt.applicationId) : 'N/A')}
+                      date={currentReceipt.receiptDate ? formatDate(currentReceipt.receiptDate) : (currentReceipt.createdAt ? formatDate(currentReceipt.createdAt) : (currentReceipt as any).transactionDate ? formatDate((currentReceipt as any).transactionDate) : formatDate(new Date().toISOString()))}
+                      receivedFrom={currentReceipt.customerName || (currentReceipt as any).payeeName || 'N/A'}
+                      address={displayAddress}
+                      invoiceNo={currentReceipt.invoice?.code || (currentReceipt as any).invoice?.Code || currentReceipt.invoiceCode || (currentReceipt as any).invoiceNo || 'N/A'}
+                      description={(currentReceipt.description || (currentReceipt.invoiceDetails && currentReceipt.invoiceDetails.length > 0 ? currentReceipt.invoiceDetails[0].description : (currentReceipt as any).details && (currentReceipt as any).details.length > 0 ? (currentReceipt as any).details[0].description : '')) || 'Payment received'}
+                      totalAmount={totalAmt}
+                      dollarsInWords={convertToDollarsInWords(totalAmt)}
+                      paymentMethod={currentReceipt.paymentMode || (currentReceipt as any).paymentMethod || (currentReceipt as any).PaymentMode || 'Cash'}
+                      items={((currentReceipt.invoiceDetails || (currentReceipt as any).details || []).map((d: any) => ({
+                        description: d.description || d.itemName || d.ItemName || '',
+                        quantity: d.quantity || d.Quantity || 1,
+                        unitPrice: d.unitPrice || d.UnitPrice || d.unitAmount || d.UnitAmount || d.payingAmount || d.PayingAmount || 0,
+                        amount: d.amount || d.Amount || d.lineTotalAmount || d.LineTotalAmount || d.totalPayingAmount || d.TotalPayingAmount || 0,
+                      })))}
+                    />
+                  );
+                })()}
               </div>
             </div>
 

@@ -18,6 +18,7 @@ export interface DeceasedDetail {
   internmentDate: string;
   internmentTime: string;
   deathCertNo: string;
+  inscriptionText?: string;
   storagePeriodFrom?: string;
   storagePeriodTo?: string;
 }
@@ -464,17 +465,15 @@ const inscriptionSlice = createSlice({
       .addCase(fetchInscriptionItems.fulfilled, (state, action) => {
         state.itemsLoading = false;
         const data = action.payload;
+        const normalizeNicheCode = (code: string) => (code || '').trim().replace(/^I-/i, '');
 
         // Map items
         state.inscriptionItems = data.items || [];
 
         // Map inscription request number and ID
-        if (data.inscriptionRequestNo) {
-          state.inscriptionRequestNo = data.inscriptionRequestNo;
-        }
-        if (data.nicheInscriptionRequestId) {
-          state.nicheInscriptionRequestId = data.nicheInscriptionRequestId;
-        }
+        // Always set these values so previous inscription state does not leak.
+        state.inscriptionRequestNo = data.inscriptionRequestNo || '';
+        state.nicheInscriptionRequestId = data.nicheInscriptionRequestId ?? null;
 
         // Map applicant details
         if (data.applicant) {
@@ -561,7 +560,8 @@ const inscriptionSlice = createSlice({
               dateDied: parseDate(deceased.dateOfDeath || ''),
               internmentDate: internmentDate,
               internmentTime: internmentTime,
-              deathCertNo: deceased.deathCertificateNo || ''
+              deathCertNo: deceased.deathCertificateNo || '',
+              storagePeriodFrom: internmentDate // Map internmentDate to storagePeriodFrom for UI display
             };
           });
 
@@ -577,6 +577,16 @@ const inscriptionSlice = createSlice({
               deathCertNo: ''
             }];
           }
+        } else {
+          state.deceasedDetails = [{
+            selectBeneficiary: '',
+            nameOfDeceased: '',
+            dateBorn: '',
+            dateDied: '',
+            internmentDate: '',
+            internmentTime: '12:00',
+            deathCertNo: ''
+          }];
         }
 
         // Map additional details
@@ -598,12 +608,17 @@ const inscriptionSlice = createSlice({
             state.phraseOfChoice = data.additionalDetails.additionalInscriptionPhrase;
           } else if (data.additionalDetails.bibleInscriptionText) {
             state.phraseOfChoice = data.additionalDetails.bibleInscriptionText;
+          } else {
+            state.phraseOfChoice = '';
           }
 
-          // Map niche application code if available
-          if (data.additionalDetails.nicheApplicationCode) {
-            state.nicheApplicationCode = data.additionalDetails.nicheApplicationCode;
-          }
+          // Always map application code deterministically.
+          const resolvedNicheCode =
+            data.additionalDetails.nicheApplicationCode
+            || data.nicheApplicationCode
+            || data.applicationCode
+            || action.meta.arg;
+          state.nicheApplicationCode = normalizeNicheCode(resolvedNicheCode || '');
 
           // Map crossType if available
           if (data.additionalDetails.crossType) {
@@ -611,7 +626,16 @@ const inscriptionSlice = createSlice({
           } else if (data.additionalDetails.remarks && ['Crucifix', 'WoodenCross', 'NoCrucifix/Cross'].includes(data.additionalDetails.remarks)) {
             // Fallback: Check if remarks contains crossType value (legacy support)
             state.crossType = data.additionalDetails.remarks;
+          } else {
+            state.crossType = 'Crucifix';
           }
+        } else {
+          state.selectedBibleChoiceId = null;
+          state.phraseOfChoice = '';
+          state.crossType = 'Crucifix';
+          state.nicheApplicationCode = normalizeNicheCode(
+            data.nicheApplicationCode || data.applicationCode || action.meta.arg || ''
+          );
         }
 
         // Map beneficiaries if available
@@ -619,12 +643,6 @@ const inscriptionSlice = createSlice({
           state.beneficiaries = data.beneficiaries;
         } else {
           state.beneficiaries = [];
-        }
-
-        // CRITICAL: Ensure nicheApplicationCode is set from the code parameter if not already set
-        // This handles cases where the API doesn't return it in additionalDetails
-        if (!state.nicheApplicationCode && action.meta.arg) {
-          state.nicheApplicationCode = action.meta.arg;
         }
 
         state.itemsError = null;

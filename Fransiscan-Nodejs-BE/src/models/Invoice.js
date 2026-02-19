@@ -17,29 +17,29 @@ class Invoice {
     this.notes = data.notes || null;
 
     // ASP.NET fields
-    this.code = data.code || data.invoiceNumber || null; // Invoice code (e.g., "00001")
-    this.transactionDate = data.transactionDate || data.createdDate || new Date();
-    this.refDocNumber = data.refDocNumber || null; // Reference document code
-    this.refDocName = data.refDocName || null; // Reference document type (NAPP, WAPP, etc.)
-    this.customerName = data.customerName || null;
-    this.totalAmount = data.totalAmount !== undefined ? data.totalAmount : (data.amount || 0);
-    this.payingAmount = data.payingAmount || null;
-    this.paymentMode = data.paymentMode || null; // String: "Cash", "Cheque", "TT", etc.
-    this.paymentModeDocNo = data.paymentModeDocNo || null; // Cheque number, TT reference, etc.
-    this.userId = data.userId || null;
-    this.churchId = data.churchId || null;
-    this.nicheApplicationId = data.nicheApplicationId || null;
-    this.taxCode = data.taxCode || null;
-    this.taxPercentage = data.taxPercentage || null;
-    this.taxAmount = data.taxAmount || null;
-    
+    this.code = data.code || data.Code || data.invoiceNumber || data.InvoiceNumber || null; // Invoice code (e.g., "00001")
+    this.transactionDate = data.transactionDate || data.TransactionDate || data.createdDate || data.CreatedDate || new Date();
+    this.refDocNumber = data.refDocNumber || data.RefDocNumber || null; // Reference document code
+    this.refDocName = data.refDocName || data.RefDocName || null; // Reference document type (NAPP, WAPP, etc.)
+    this.customerName = data.customerName || data.CustomerName || null;
+    this.totalAmount = data.totalAmount !== undefined ? data.totalAmount : (data.TotalAmount !== undefined ? data.TotalAmount : (data.amount || data.Amount || 0));
+    this.payingAmount = data.payingAmount || data.PayingAmount || null;
+    this.paymentMode = data.paymentMode || data.PaymentMode || null; // String: "Cash", "Cheque", "TT", etc.
+    this.paymentModeDocNo = data.paymentModeDocNo || data.PaymentModeDocNo || null; // Cheque number, TT reference, etc.
+    this.userId = data.userId || data.UserId || null;
+    this.churchId = data.churchId || data.ChurchId || null;
+    this.nicheApplicationId = data.nicheApplicationId || data.NicheApplicationId || null;
+    this.taxCode = data.taxCode || data.TaxCode || null;
+    this.taxPercentage = data.taxPercentage || data.TaxPercentage || null;
+    this.taxAmount = data.taxAmount || data.TaxAmount || null;
+
     // Address fields
-    this.addressNo = data.addressNo || null;
-    this.address = data.address || null;
-    this.address2 = data.address2 || null;
-    this.addressCity = data.addressCity || null;
-    this.districtCode = data.districtCode || null;
-    this.country = data.country || null;
+    this.addressNo = data.addressNo || data.AddressNo || null;
+    this.address = data.address || data.Address || null;
+    this.address2 = data.address2 || data.Address2 || null;
+    this.addressCity = data.addressCity || data.AddressCity || null;
+    this.districtCode = data.districtCode || data.DistrictCode || null;
+    this.country = data.country || data.Country || null;
 
     // Status: 0=Deleted, 1=Active, 2=Paid (ASP.NET format)
     // Also support legacy string format: 'pending', 'paid', 'cancelled', 'overdue'
@@ -54,8 +54,8 @@ class Invoice {
           'cancelled': 0,
           'overdue': 1
         };
-        this.status = statusMap[data.status.toLowerCase()] !== undefined 
-          ? statusMap[data.status.toLowerCase()] 
+        this.status = statusMap[data.status.toLowerCase()] !== undefined
+          ? statusMap[data.status.toLowerCase()]
           : 1; // Default to Active
       } else {
         this.status = 1; // Default to Active
@@ -70,8 +70,8 @@ class Invoice {
     const errors = [];
 
     // Code is required (either code or invoiceNumber for backward compatibility)
-    if ((!this.code || this.code.trim().length === 0) && 
-        (!this.invoiceNumber || this.invoiceNumber.trim().length === 0)) {
+    if ((!this.code || this.code.trim().length === 0) &&
+      (!this.invoiceNumber || this.invoiceNumber.trim().length === 0)) {
       errors.push('Invoice code is required');
     }
 
@@ -90,8 +90,8 @@ class Invoice {
     if (this.status !== undefined) {
       if (typeof this.status === 'number' && ![0, 1, 2].includes(this.status)) {
         errors.push('Invalid status. Must be 0 (Deleted), 1 (Active), or 2 (Paid)');
-      } else if (typeof this.status === 'string' && 
-                 !['pending', 'paid', 'cancelled', 'overdue', '0', '1', '2'].includes(this.status.toLowerCase())) {
+      } else if (typeof this.status === 'string' &&
+        !['pending', 'paid', 'cancelled', 'overdue', '0', '1', '2'].includes(this.status.toLowerCase())) {
         errors.push('Invalid status. Must be pending, paid, cancelled, overdue, or 0/1/2');
       }
     }
@@ -135,8 +135,8 @@ class Invoice {
   // Check if invoice is overdue
   isOverdue() {
     if (!this.dueDate) return false;
-    const status = typeof this.status === 'number' ? this.status : 
-                   (this.status === 'paid' ? 2 : 1);
+    const status = typeof this.status === 'number' ? this.status :
+      (this.status === 'paid' ? 2 : 1);
     return new Date() > new Date(this.dueDate) && status !== 2;
   }
 

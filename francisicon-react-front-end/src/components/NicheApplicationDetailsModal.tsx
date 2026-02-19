@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   XIcon,
   UserIcon,
@@ -35,6 +36,7 @@ export function NicheApplicationDetailsModal({
   onConfirmBooking,
   isConfirming,
 }: NicheApplicationDetailsModalProps) {
+  const navigate = useNavigate()
   const [isVisible, setIsVisible] = useState(false)
   useEffect(() => {
     if (isOpen) {
@@ -482,10 +484,27 @@ export function NicheApplicationDetailsModal({
 
             {/* Invoice Section */}
             <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-              <SectionHeader
-                icon={DollarSignIcon}
-                title="Invoice & Payment Details"
-              />
+              <div className="flex justify-between items-start mb-4 pb-2 border-b border-gray-100">
+                <SectionHeader
+                  icon={DollarSignIcon}
+                  title="Invoice & Payment Details"
+                />
+                {(getInvoice().invoiceNo || getAppCode() !== '—') && (
+                  <button
+                    onClick={() => {
+                      const code = getAppCode();
+                      if (code && code !== '—') {
+                        onClose();
+                        navigate(`/create-invoice/${code}?type=NAPP`);
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-all text-sm font-semibold border border-blue-200"
+                  >
+                    <FileTextIcon className="w-4 h-4" />
+                    Go to Invoice
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="space-y-4">
                   <InfoItem label="Invoice No" value={getInvoice().invoiceNo} />

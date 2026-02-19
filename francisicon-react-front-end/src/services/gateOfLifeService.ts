@@ -103,10 +103,12 @@ export interface SearchGateOfLifeParams {
   pageSize?: number;
   applicationCode?: string;
   applicantName?: string;
+  applicantIdNo?: string;
   nameToEngrave?: string;
   bookedFrom?: string;
   bookedTo?: string;
   searchTerm?: string;
+  bypassCache?: boolean;
 }
 
 export interface CreateGateOfLifeRequest {
@@ -175,7 +177,20 @@ export const gateOfLifeService = {
         }
       });
 
-      const response = await api.get('/api/gates-of-life', { params: queryParams });
+      // Add cache-busting timestamp when bypassCache is requested
+      if (params.bypassCache) {
+        queryParams._t = Date.now();
+      }
+
+      const response = await api.get('/api/gates-of-life', {
+        params: queryParams,
+        ...(params.bypassCache ? {
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          }
+        } : {})
+      });
       const payload = response.data ?? {};
       const rawData = payload.data ?? payload.records ?? payload.items ?? payload.results;
 

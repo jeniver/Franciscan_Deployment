@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { UserIcon, MailIcon, PhoneIcon } from 'lucide-react';
 import { FormInput } from '../components/FormInput';
 import { FormSelect } from '../components/FormSelect';
@@ -7,6 +7,9 @@ import { RootState } from '../store';
 import { AddressInput } from '../components/AddressInput';
 import { useBatchedUpdates } from '../hooks/useBatchedUpdates';
 import { UpdateApplicationButton } from '../components/UpdateApplicationButton';
+import { usePersonLookup } from '../hooks/usePersonLookup';
+import { PersonData } from '../services/personService';
+import { Loader2, SearchIcon, CheckCircle2, X } from 'lucide-react';
 
 interface ContactPersonDetailsProps {
   formData: any;
@@ -21,12 +24,15 @@ export function ContactPersonDetails({
 }: ContactPersonDetailsProps) {
   // Get validation errors from Redux store
   const validationErrors = useSelector((state: RootState) => state.application.validationErrors);
-  
+
+  const { searchPerson, searchResults, isSearching, clearResults } = usePersonLookup();
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
   const { addMultipleChanges, isDirty } = useBatchedUpdates({
     applicationCode: formData.applicationNumber || formData.applicationCode || formData.code || formData.refDocNumber,
     isEnabled: true
   });
-  
+
   // const isInitializedRef = useRef(false);
 
   // Handle address change from AddressInput component - memoized to prevent infinite loops
@@ -46,7 +52,7 @@ export function ContactPersonDetails({
     addressCountry?: string;
   }) => {
     console.log('ContactPersonDetails: handleAddressChange called with:', addressData);
-    
+
     // NOTE: Avoid parsing/converting address strings here. We store structured fields directly.
     // (Old legacy string builder removed/commented out to prevent incorrect formatting like "##14-07".)
 
@@ -72,10 +78,10 @@ export function ContactPersonDetails({
       // Also maintain legacy address field for backward compatibility
       applicantAddress: formData.applicantAddress || formData.contactAddress || ''
     };
-    
+
     console.log('ContactPersonDetails: Updating formData with:', updatedFormData);
     setFormData(updatedFormData);
-    
+
     // Add changes to batch instead of immediate update
     addMultipleChanges({
       applicantBlock: addressData.block || '',
@@ -92,7 +98,7 @@ export function ContactPersonDetails({
       applicantAddressCountry: addressData.addressCountry || 'Singapore',
       applicantAddress: formData.applicantAddress || formData.contactAddress || ''
     });
-    
+
     console.log("Address data updated in formData:", {
       uiFields: {
         applicantBlock: addressData.block,
@@ -160,11 +166,11 @@ export function ContactPersonDetails({
 
     console.log('Address sync triggered with formData:', {
       hasStructuredData: !!(formData.applicantAddressNo && formData.applicantAddressNo.trim()) ||
-                        !!(formData.applicantAddressLine1 && formData.applicantAddressLine1.trim()) ||
-                        !!(formData.applicantAddressLine2 && formData.applicantAddressLine2.trim()) ||
-                        !!(formData.applicantAddressCity && formData.applicantAddressCity.trim()) ||
-                        !!(formData.applicantAddressState && formData.applicantAddressState.trim()) ||
-                        !!(formData.applicantAddressCountry && formData.applicantAddressCountry.trim()),
+        !!(formData.applicantAddressLine1 && formData.applicantAddressLine1.trim()) ||
+        !!(formData.applicantAddressLine2 && formData.applicantAddressLine2.trim()) ||
+        !!(formData.applicantAddressCity && formData.applicantAddressCity.trim()) ||
+        !!(formData.applicantAddressState && formData.applicantAddressState.trim()) ||
+        !!(formData.applicantAddressCountry && formData.applicantAddressCountry.trim()),
       hasUiAddress: !!(formData.applicantBlockNo || formData.applicantStreetName || formData.applicantUnitNo || formData.applicantPostalCode),
       structuredFields: {
         applicantAddressNo: formData.applicantAddressNo,
@@ -254,7 +260,7 @@ export function ContactPersonDetails({
         if (country) addressParts.push(country);
         if (postalCode) addressParts.push(postalCode);
       }
-      
+
       const formattedAddress = addressParts.filter(Boolean).join(' ');
 
       setFormData({
@@ -269,7 +275,7 @@ export function ContactPersonDetails({
         applicantAddressCity: unitNoNormalized,
         applicantAddressState: postalCode,
         applicantAddressCountry: country,
-        
+
         // Update the legacy address field with properly formatted string
         applicantAddress: formattedAddress,
       });
@@ -289,265 +295,361 @@ export function ContactPersonDetails({
     });
   }, [formData, setFormData]);
 
+  const handleSelectPerson = useCallback((person: PersonData) => {
+    const updatedData = {
+      ...formData,
+      applicantName: person.name,
+      contactName: person.name,
+      applicantIDNo: person.idNo,
+      contactNric: person.idNo,
+      applicantEmail: person.emailID,
+      contactEmail: person.emailID,
+      applicantPhone: person.mobileNo,
+      contactPhone: person.mobileNo,
+      applicantHomeTel: person.homeTelNo || '',
+      contactHomeTel: person.homeTelNo || '',
+      applicantOfficeTel: person.officeTelNo || '',
+      contactOfficeTel: person.officeTelNo || '',
+      applicantIsCatholic: person.isCatholic ?? false,
+      applicantReligion: person.isCatholic ? 'Catholic' : 'Non Catholic',
+      contactReligion: person.isCatholic ? 'Catholic' : 'Non Catholic',
+      // Address fields
+      applicantAddressNo: person.addressNo || '',
+      applicantAddressLine1: person.addressLine1 || '',
+      applicantAddressLine2: person.addressLine2 || '',
+      applicantAddressCity: person.addressCity || '',
+      applicantAddressState: person.addressState || '',
+      applicantAddressCountry: person.addressCountry || 'Singapore',
+    };
+
+    setFormData(updatedData);
+    addMultipleChanges({
+      applicantName: person.name,
+      contactName: person.name,
+      applicantIDNo: person.idNo,
+      contactNric: person.idNo,
+      applicantEmail: person.emailID,
+      contactEmail: person.emailID,
+      applicantPhone: person.mobileNo,
+      contactPhone: person.mobileNo,
+      applicantHomeTel: person.homeTelNo || '',
+      applicantOfficeTel: person.officeTelNo || '',
+      applicantAddressNo: person.addressNo || '',
+      applicantAddressLine1: person.addressLine1 || '',
+      applicantAddressLine2: person.addressLine2 || '',
+      applicantAddressCity: person.addressCity || '',
+      applicantAddressState: person.addressState || '',
+      applicantAddressCountry: person.addressCountry || 'Singapore',
+    });
+
+    setShowSearchResults(false);
+    clearResults();
+  }, [formData, setFormData, addMultipleChanges, clearResults]);
+
   return <div>
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 bg-gradient-to-br from-[#8b5a2b] to-[#6d4420] rounded-xl flex items-center justify-center">
-          <UserIcon className="w-6 h-6 text-white" />
+    <div className="flex items-center gap-3 mb-8">
+      <div className="w-12 h-12 bg-gradient-to-br from-[#8b5a2b] to-[#6d4420] rounded-xl flex items-center justify-center">
+        <UserIcon className="w-6 h-6 text-white" />
+      </div>
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">
+          Contact Person (Applicant) Details
+        </h2>
+        <p className="text-sm text-gray-600">
+          Primary contact information for this application
+        </p>
+      </div>
+    </div>
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-6 relative">
+        <div className="relative">
+          <FormInput
+            label="Name"
+            value={formData.applicantName || formData.contactName || ''}
+            onChange={async (value) => {
+              const updatedFormData = {
+                ...formData,
+                applicantName: value,
+                contactName: value
+              };
+
+              setFormData(updatedFormData);
+
+              // Add change to batch
+              addMultipleChanges({
+                applicantName: value,
+                contactName: value
+              });
+
+              if (value.length >= 3) {
+                searchPerson(value);
+                setShowSearchResults(true);
+              } else {
+                setShowSearchResults(false);
+              }
+            }}
+            placeholder="Enter full name"
+            icon={isSearching ? <Loader2 className="w-4 h-4 animate-spin text-blue-500" /> : <UserIcon className="w-4 h-4" />}
+            error={validationErrors.applicantName || validationErrors.contactName}
+            disabled={isReadOnly}
+          />
+
+          {showSearchResults && searchResults.length > 0 && !isReadOnly && (
+            <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+              <div className="p-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-500 flex items-center justify-between">
+                <span>MATCHES FOUND</span>
+                <button onClick={() => setShowSearchResults(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+              {searchResults.map((person) => (
+                <div
+                  key={person.personId}
+                  className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors group"
+                  onClick={() => handleSelectPerson(person)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="font-medium text-gray-900 group-hover:text-blue-700">{person.name}</span>
+                      <span className="text-xs text-gray-500">{person.idNo} • {person.emailID}</span>
+                    </div>
+                    <CheckCircle2 className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">
-            Contact Person (Applicant) Details
-          </h2>
-          <p className="text-sm text-gray-600">
-            Primary contact information for this application
-          </p>
+
+        <div className="relative">
+          <FormInput
+            label="NRIC/Passport No."
+            value={formData.applicantIDNo || formData.contactNric || ''}
+            onChange={async (value) => {
+              const updatedFormData = {
+                ...formData,
+                applicantIDNo: value,
+                contactNric: value
+              };
+
+              setFormData(updatedFormData);
+
+              // Add change to batch
+              addMultipleChanges({
+                applicantIDNo: value,
+                contactNric: value
+              });
+
+              if (value.length >= 3) {
+                searchPerson(value);
+                setShowSearchResults(true);
+              } else {
+                setShowSearchResults(false);
+              }
+            }}
+            placeholder="Enter NRIC/Passport"
+            icon={isSearching ? <Loader2 className="w-4 h-4 animate-spin text-blue-500" /> : <SearchIcon className="w-4 h-4" />}
+            error={validationErrors.applicantIDNo || validationErrors.contactNric}
+            disabled={isReadOnly}
+          />
         </div>
       </div>
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-6">
-            <FormInput 
-              label="Name" 
-              value={formData.applicantName || formData.contactName || ''} 
-              onChange={async (value) => {
-                const updatedFormData = {
-                  ...formData,
-                  applicantName: value,
-                  contactName: value
-                };
-                
-                setFormData(updatedFormData);
-                
-                // Add change to batch
-                addMultipleChanges({
-                  applicantName: value,
-                  contactName: value
-                });
-              }} 
-              placeholder="Enter full name" 
-              icon={<UserIcon className="w-4 h-4" />}
-              error={validationErrors.applicantName || validationErrors.contactName}
-              disabled={isReadOnly}
-            />
-            <FormInput 
-              label="NRIC/Passport No." 
-              value={formData.applicantIDNo || formData.contactNric || ''} 
-              onChange={async (value) => {
-                const updatedFormData = {
-                  ...formData,
-                  applicantIDNo: value,
-                  contactNric: value
-                };
-                
-                setFormData(updatedFormData);
-                
-                // Add change to batch
-                addMultipleChanges({
-                  applicantIDNo: value,
-                  contactNric: value
-                });
-              }} 
-              placeholder="Enter NRIC/Passport" 
-              error={validationErrors.applicantIDNo || validationErrors.contactNric}
-              disabled={isReadOnly}
-            />
-            
-          </div>
-           
-          {/* Address Component */}
-       
-          <AddressInput
-            fieldPrefix="applicant"
-            onAddressChange={handleAddressChange}
-            autoSync={false}
-            initialValues={{
-              // Provide backend-style fields for proper conversion
-              addressNo: formData.applicantAddressNo || '',
-              addressLine1: formData.applicantAddressLine1 || '',
-              addressLine2: formData.applicantAddressLine2 || '',
-              addressCity: formData.applicantAddressCity || '',
-              addressState: formData.applicantAddressState || '',
-              addressCountry: formData.applicantAddressCountry || 'Singapore'
-            }}
-            initialAddressString={formData.applicantAddress || formData.contactAddress || ''}
-            isReadOnly={isReadOnly}
-            error={validationErrors.applicantAddress || validationErrors.contactAddress}
-          />
-          <div className="grid grid-cols-2 gap-6">
-            <FormInput 
-              label="Email Address" 
-              value={formData.applicantEmail || formData.contactEmail || ''} 
-              onChange={async (value) => {
-                const updatedFormData = {
-                  ...formData,
-                  applicantEmail: value,
-                  contactEmail: value
-                };
-                
-                setFormData(updatedFormData);
-                
-                // Add change to batch
-                addMultipleChanges({
-                  applicantEmail: value,
-                  contactEmail: value
-                });
-              }} 
-              placeholder="email@example.com" 
-              type="email" 
-              required 
-              icon={<MailIcon className="w-4 h-4" />}
-              error={validationErrors.applicantEmail || validationErrors.contactEmail}
-              disabled={isReadOnly}
-            />
-            <FormInput 
-              label="Mobile No." 
-              value={formData.applicantPhone || formData.contactPhone || ''} 
-              onChange={async (value) => {
-                const updatedFormData = {
-                  ...formData,
-                  applicantPhone: value,
-                  contactPhone: value
-                };
-                
-                setFormData(updatedFormData);
-                
-                // Add change to batch
-                addMultipleChanges({
-                  applicantPhone: value,
-                  contactPhone: value
-                });
-              }} 
-              placeholder="+65 1234 5678" 
-              type="tel" 
-              icon={<PhoneIcon className="w-4 h-4" />}
-              error={validationErrors.applicantPhone || validationErrors.contactPhone}
-              disabled={isReadOnly}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-6">
-            <FormInput 
-              label="Home Telephone" 
-              value={formData.applicantHomeTel || formData.contactHomeTel || ''} 
-              onChange={async (value) => {
-                const updatedFormData = {
-                  ...formData,
-                  applicantHomeTel: value,
-                  contactHomeTel: value
-                };
-                
-                setFormData(updatedFormData);
-                
-                // Add change to batch
-                addMultipleChanges({
-                  applicantHomeTel: value,
-                  contactHomeTel: value
-                });
-              }} 
-              placeholder="Enter home telephone" 
-              type="tel"
-              error={validationErrors.applicantHomeTel || validationErrors.contactHomeTel}
-              disabled={isReadOnly}
-            />
-            <FormInput 
-              label="Office Telephone" 
-              value={formData.applicantOfficeTel || formData.contactOfficeTel || ''} 
-              onChange={async (value) => {
-                const updatedFormData = {
-                  ...formData,
-                  applicantOfficeTel: value,
-                  contactOfficeTel: value
-                };
-                
-                setFormData(updatedFormData);
-                
-                // Add change to batch
-                addMultipleChanges({
-                  applicantOfficeTel: value,
-                  contactOfficeTel: value
-                });
-              }} 
-              placeholder="Enter office telephone" 
-              type="tel"
-              error={validationErrors.applicantOfficeTel || validationErrors.contactOfficeTel}
-              disabled={isReadOnly}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-6">
-            <FormSelect
-              label="Religion"
-              value={
-                formData.applicantReligion ||
-                (formData.applicantIsCatholic === true
-                  ? 'Catholic'
-                  : formData.applicantIsCatholic === false
-                    ? 'Non Catholic'
-                    : 'Catholic') // ✅ FIX: Default to Catholic
-              }
-              onChange={async (value) => {
-                const isCatholic = value === 'Catholic';
-                const updatedFormData = {
-                  ...formData,
-                  applicantReligion: value,
-                  contactReligion: value,
-                  applicantIsCatholic: value ? isCatholic : undefined
-                };
-                
-                setFormData(updatedFormData);
-                
-                // Add change to batch
-                addMultipleChanges({
-                  applicantReligion: value,
-                  contactReligion: value,
-                  applicantIsCatholic: value ? isCatholic : undefined
-                });
-              }}
-              options={[
-                { value: 'Catholic', label: 'Catholic' },
-                { value: 'Non Catholic', label: 'Non Catholic' }
-              ]}
-              disabled={isReadOnly}
-            />
-            <FormSelect
-              label="Status"
-              value={formData.contactStatus || 'Active'}
-              onChange={async (value) => {
-                const updatedFormData = {
-                  ...formData,
-                  contactStatus: value || 'Active'
-                };
-                
-                setFormData(updatedFormData);
-                
-                // Add change to batch
-                addMultipleChanges({
-                  contactStatus: value || 'Active'
-                });
-              }}
-              options={[
-                { value: 'Active', label: 'Active' },
-                { value: 'Non-Active', label: 'Non-Active' }
-              ]}
-              disabled={isReadOnly}
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">
-              Remarks
-            </label>
-            <textarea value={formData.contactRemarks || ''} onChange={e => setFormData({
+
+      {/* Address Component */}
+
+      <AddressInput
+        fieldPrefix="applicant"
+        onAddressChange={handleAddressChange}
+        autoSync={false}
+        initialValues={{
+          // Provide backend-style fields for proper conversion
+          addressNo: formData.applicantAddressNo || '',
+          addressLine1: formData.applicantAddressLine1 || '',
+          addressLine2: formData.applicantAddressLine2 || '',
+          addressCity: formData.applicantAddressCity || '',
+          addressState: formData.applicantAddressState || '',
+          addressCountry: formData.applicantAddressCountry || 'Singapore'
+        }}
+        initialAddressString={formData.applicantAddress || formData.contactAddress || ''}
+        isReadOnly={isReadOnly}
+        error={validationErrors.applicantAddress || validationErrors.contactAddress}
+      />
+      <div className="grid grid-cols-2 gap-6">
+        <FormInput
+          label="Email Address"
+          value={formData.applicantEmail || formData.contactEmail || ''}
+          onChange={async (value) => {
+            const updatedFormData = {
               ...formData,
-              contactRemarks: e.target.value
-            })} placeholder="Enter any additional remarks" rows={2} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent resize-none" />
-          </div>
-        </div>
-        
-        {/* Update Application Button */}
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <UpdateApplicationButton 
-            formData={formData} 
-            isReadOnly={isReadOnly}
-            className="w-full sm:w-auto"
-          />
-        </div>
-      </div>;
+              applicantEmail: value,
+              contactEmail: value
+            };
+
+            setFormData(updatedFormData);
+
+            // Add change to batch
+            addMultipleChanges({
+              applicantEmail: value,
+              contactEmail: value
+            });
+          }}
+          placeholder="email@example.com"
+          type="email"
+          required
+          icon={<MailIcon className="w-4 h-4" />}
+          error={validationErrors.applicantEmail || validationErrors.contactEmail}
+          disabled={isReadOnly}
+        />
+        <FormInput
+          label="Mobile No."
+          value={formData.applicantPhone || formData.contactPhone || ''}
+          onChange={async (value) => {
+            const updatedFormData = {
+              ...formData,
+              applicantPhone: value,
+              contactPhone: value
+            };
+
+            setFormData(updatedFormData);
+
+            // Add change to batch
+            addMultipleChanges({
+              applicantPhone: value,
+              contactPhone: value
+            });
+          }}
+          placeholder="+65 1234 5678"
+          type="tel"
+          icon={<PhoneIcon className="w-4 h-4" />}
+          error={validationErrors.applicantPhone || validationErrors.contactPhone}
+          disabled={isReadOnly}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-6">
+        <FormInput
+          label="Home Telephone"
+          value={formData.applicantHomeTel || formData.contactHomeTel || ''}
+          onChange={async (value) => {
+            const updatedFormData = {
+              ...formData,
+              applicantHomeTel: value,
+              contactHomeTel: value
+            };
+
+            setFormData(updatedFormData);
+
+            // Add change to batch
+            addMultipleChanges({
+              applicantHomeTel: value,
+              contactHomeTel: value
+            });
+          }}
+          placeholder="Enter home telephone"
+          type="tel"
+          error={validationErrors.applicantHomeTel || validationErrors.contactHomeTel}
+          disabled={isReadOnly}
+        />
+        <FormInput
+          label="Office Telephone"
+          value={formData.applicantOfficeTel || formData.contactOfficeTel || ''}
+          onChange={async (value) => {
+            const updatedFormData = {
+              ...formData,
+              applicantOfficeTel: value,
+              contactOfficeTel: value
+            };
+
+            setFormData(updatedFormData);
+
+            // Add change to batch
+            addMultipleChanges({
+              applicantOfficeTel: value,
+              contactOfficeTel: value
+            });
+          }}
+          placeholder="Enter office telephone"
+          type="tel"
+          error={validationErrors.applicantOfficeTel || validationErrors.contactOfficeTel}
+          disabled={isReadOnly}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-6">
+        <FormSelect
+          label="Religion"
+          value={
+            formData.applicantReligion ||
+            (formData.applicantIsCatholic === true
+              ? 'Catholic'
+              : formData.applicantIsCatholic === false
+                ? 'Non Catholic'
+                : 'Catholic') // ✅ FIX: Default to Catholic
+          }
+          onChange={async (value) => {
+            const isCatholic = value === 'Catholic';
+            const updatedFormData = {
+              ...formData,
+              applicantReligion: value,
+              contactReligion: value,
+              applicantIsCatholic: value ? isCatholic : undefined
+            };
+
+            setFormData(updatedFormData);
+
+            // Add change to batch
+            addMultipleChanges({
+              applicantReligion: value,
+              contactReligion: value,
+              applicantIsCatholic: value ? isCatholic : undefined
+            });
+          }}
+          options={[
+            { value: 'Catholic', label: 'Catholic' },
+            { value: 'Non Catholic', label: 'Non Catholic' }
+          ]}
+          disabled={isReadOnly}
+        />
+        <FormSelect
+          label="Status"
+          value={formData.contactStatus || 'Active'}
+          onChange={async (value) => {
+            const updatedFormData = {
+              ...formData,
+              contactStatus: value || 'Active'
+            };
+
+            setFormData(updatedFormData);
+
+            // Add change to batch
+            addMultipleChanges({
+              contactStatus: value || 'Active'
+            });
+          }}
+          options={[
+            { value: 'Active', label: 'Active' },
+            { value: 'Non-Active', label: 'Non-Active' }
+          ]}
+          disabled={isReadOnly}
+        />
+      </div>
+
+      <div>
+        <label className="text-sm font-medium text-gray-700 mb-2 block">
+          Remarks
+        </label>
+        <textarea value={formData.contactRemarks || ''} onChange={e => setFormData({
+          ...formData,
+          contactRemarks: e.target.value
+        })} placeholder="Enter any additional remarks" rows={2} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent resize-none" />
+      </div>
+    </div>
+
+    {/* Update Application Button */}
+    <div className="mt-8 pt-6 border-t border-gray-200">
+      <UpdateApplicationButton
+        formData={formData}
+        isReadOnly={isReadOnly}
+        className="w-full sm:w-auto"
+      />
+    </div>
+  </div>;
 }

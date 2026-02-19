@@ -3,6 +3,7 @@ import receiptService, {
   Receipt,
   CreateReceiptRequest,
   CreateReceiptFromInvoiceRequest,
+  CreateIndividualReceiptRequest,
   ReceiptReport,
   MonthlyList,
   ReceiptListResponse,
@@ -18,31 +19,31 @@ export interface ReceiptState {
   receipts: Receipt[];
   selectedReceipt: Receipt | null;
   currentReceipt: Receipt | null;
-  
+
   // Invoice data
   selectedInvoice: Invoice | null;
-  
+
   // Reports
   receiptReport: ReceiptReport | null;
   goaMonthlyList: MonthlyList | null;
   inscriptionMonthlyList: MonthlyList | null;
   wakeRoomMonthlyList: MonthlyList | null;
-  
+
   // Last numbers
   lastReceiptNumber: string | null;
   lastMiscReceiptNumber: string | null;
-  
+
   // Items
   receiptItems: ReceiptItem[];
   itemsLoading: boolean;
   itemsError: string | null;
-  
+
   // Pagination
   currentPage: number;
   receiptsPerPage: number;
   totalReceipts: number;
   totalPages: number;
-  
+
   // Filters
   filters: {
     fromDate: string | null;
@@ -55,13 +56,13 @@ export interface ReceiptState {
     invoiceId: string;
   };
   reportSummary: ReceiptSummary | null;
-  
+
   // UI State
   loading: boolean;
   error: string | null;
   lastErrorType: 'auth' | 'network' | 'validation' | 'server' | null;
   isDataLoaded: boolean;
-  
+
   // Action states
   isCreating: boolean;
   isFetchingReport: boolean;
@@ -341,6 +342,7 @@ export const fetchReceiptsByDateRange = createAsyncThunk(
       invoiceId,
       sortBy,
       sortOrder,
+      bypassCache,
     }: {
       fromDate?: string;
       toDate?: string;
@@ -352,6 +354,7 @@ export const fetchReceiptsByDateRange = createAsyncThunk(
       invoiceId?: string;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
+      bypassCache?: boolean;
     },
     { rejectWithValue }
   ) => {
@@ -367,6 +370,7 @@ export const fetchReceiptsByDateRange = createAsyncThunk(
         invoiceId,
         sortBy,
         sortOrder,
+        bypassCache,
       });
       return response;
     } catch (error: any) {

@@ -16,7 +16,7 @@ class ReceiptItemRepository {
   async getReceiptItems(receiptId, options = {}) {
     try {
       const { includeItemInfo = false } = options;
-      
+
       let query = `
         SELECT 
           mrd.*
@@ -30,21 +30,26 @@ class ReceiptItemRepository {
           SELECT 
             mrd.*,
             i.Name AS ItemName,
-            i.Code AS ItemCode
+            i.Name AS Description,
+            i.Code AS ItemCode,
+            inv.Code AS InvoiceCode
           FROM MisalaniousReceiptDetail mrd WITH(NOLOCK)
           LEFT JOIN Item i WITH(NOLOCK) ON mrd.ItemId = i.ItemId
+          LEFT JOIN Invoice inv WITH(NOLOCK) ON mrd.InvoiceId = inv.InvoiceId
           WHERE mrd.ReceiptId = @receiptId
           ORDER BY mrd.ReceiptDetailId
         `;
       }
 
       const result = await executeQuery(query, { receiptId });
-      
+
       return (result.recordset || []).map(row => {
         const detail = new ReceiptDetail(row);
-        if (includeItemInfo && row.ItemName) {
-          detail.itemName = row.ItemName;
-          detail.itemCode = row.ItemCode;
+        if (includeItemInfo) {
+          if (row.ItemName) detail.itemName = row.ItemName;
+          if (row.ItemCode) detail.itemCode = row.ItemCode;
+          if (row.Description) detail.description = row.Description;
+          if (row.InvoiceCode) detail.invoiceCode = row.InvoiceCode;
         }
         return detail;
       });
@@ -160,8 +165,7 @@ class ReceiptItemRepository {
           TotalPayingAmount = @totalPayingAmount,
           RefDocNumber = @refDocNumber,
           RefDocName = @refDocName,
-          InvoiceId = @invoiceId,
-          RefType = @refType
+          InvoiceId = @invoiceId
         OUTPUT INSERTED.*
         WHERE ReceiptDetailId = @receiptDetailId
       `;
@@ -175,8 +179,7 @@ class ReceiptItemRepository {
         totalPayingAmount: receiptItem.totalPayingAmount || receiptItem.calculateTotal(),
         refDocNumber: receiptItem.refDocNumber || null,
         refDocName: receiptItem.refDocName || null,
-        invoiceId: receiptItem.invoiceId || null,
-        refType: receiptItem.refType || null
+        invoiceId: receiptItem.invoiceId || null
       };
 
       let result;
@@ -264,7 +267,7 @@ class ReceiptItemRepository {
       }
 
       const createdItems = [];
-      
+
       for (const item of items) {
         item.receiptId = receiptId;
         const created = await this.createReceiptItem(item, transaction);
@@ -306,7 +309,7 @@ class ReceiptItemRepository {
       }
 
       const updatedItems = [];
-      
+
       for (const item of items) {
         if (!item.receiptDetailId) {
           throw new Error('ReceiptDetailId is required for update');
@@ -369,7 +372,7 @@ class ReceiptItemRepository {
       query += ' ORDER BY r.TransactionDate DESC, mrd.ReceiptDetailId DESC';
 
       const result = await executeQuery(query, params);
-      
+
       return (result.recordset || []).map(row => {
         const detail = new ReceiptDetail(row);
         detail.receiptCode = row.ReceiptCode;

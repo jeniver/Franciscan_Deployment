@@ -195,7 +195,7 @@ class GateOfLifeRepository {
       const code = application.code || await this._generateNextCode(transaction, application.churchId);
 
       const insertRequest = new sql.Request(transaction);
-      insertRequest.input('Code', sql.NVarChar(50), code);
+      insertRequest.input('Code', sql.VarChar(50), code);
       insertRequest.input('BookingDate', sql.DateTime, application.bookingDate || new Date());
       insertRequest.input('ApplicantName', sql.NVarChar(200), application.applicantName);
       insertRequest.input('ApplicantIDNo', sql.NVarChar(100), application.applicantIDNo || null);

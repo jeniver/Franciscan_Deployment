@@ -18,7 +18,7 @@ export function WakeRoomPage() {
   const [viewMode, setViewMode] = useState<'form' | 'table'>('table');
   const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
   const [newlyCreatedBookingCode, setNewlyCreatedBookingCode] = useState<string | null>(null);
-  const { handleGetBookingByCode, selectedBooking } = useWakeRoom();
+  const { handleGetBookingByCode, selectedBooking, handleSearchBookings } = useWakeRoom();
   const user = useSelector((state: RootState) => state.auth.user);
 
   // Effect to sync view mode with route
@@ -40,13 +40,18 @@ export function WakeRoomPage() {
   const handleBookingCreated = (bookingCode: string) => {
     console.log('Booking created:', bookingCode);
     // Set the newly created booking code for highlighting
+    // Set the newly created booking code for highlighting
     setNewlyCreatedBookingCode(bookingCode);
+    // Refresh the search list with cache bypass
+    handleSearchBookings({ page: 1, pageSize: 10, bypassCache: true });
     // Switch to table view to show the created booking
     navigate('/wake-room');
   };
 
   const handleBookingUpdated = (bookingCode: string) => {
     console.log('Booking updated:', bookingCode);
+    // Refresh the search list with cache bypass
+    handleSearchBookings({ page: 1, pageSize: 10, bypassCache: true });
     // Switch to table view after update
     navigate('/wake-room');
   };
@@ -94,10 +99,10 @@ export function WakeRoomPage() {
                   <Button
                     variant="primary"
                     icon={<PrinterIcon className="w-4 h-4" />}
-                    onClick={() => navigate(`/invoice-receipt/${bookingCode}`)}
+                    onClick={() => navigate(`/create-invoice/${bookingCode}?type=WAPP`)}
                     disabled={!bookingCode}
                   >
-                    Invoice & Receipt
+                    Invoice
                   </Button>
 
                   <Button
@@ -120,7 +125,7 @@ export function WakeRoomPage() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    onClick={() => window.location.reload()}
+                    onClick={() => handleSearchBookings({ page: 1, pageSize: 10, bypassCache: true })}
                   >
                     Refresh
                   </Button>

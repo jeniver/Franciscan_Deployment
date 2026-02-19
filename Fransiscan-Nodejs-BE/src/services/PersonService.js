@@ -84,11 +84,19 @@ class PersonService extends BaseService {
       )
     )`);
 
-    // Filter out completely empty placeholder persons (no name, no ID, no email)
+    // Filter out placeholder/test persons:
+    // Must have a real name, or a real (non-placeholder) IDNo, or a real (non-placeholder) email
     conditions.push(`(
       (p.Name IS NOT NULL AND LTRIM(RTRIM(p.Name)) <> '')
-      OR (p.IDNo IS NOT NULL AND LTRIM(RTRIM(p.IDNo)) <> '')
-      OR (p.EmailID IS NOT NULL AND LTRIM(RTRIM(p.EmailID)) <> '')
+      OR (p.IDNo IS NOT NULL AND LTRIM(RTRIM(p.IDNo)) <> '' AND p.IDNo <> '0000000000')
+      OR (p.EmailID IS NOT NULL AND LTRIM(RTRIM(p.EmailID)) <> '' AND p.EmailID <> 'test@gmail.com')
+    )`);
+
+    // Also exclude records that have ALL placeholder values (no name + placeholder ID + placeholder email)
+    conditions.push(`NOT (
+      (p.Name IS NULL OR LTRIM(RTRIM(p.Name)) = '')
+      AND (p.IDNo IS NULL OR LTRIM(RTRIM(p.IDNo)) = '' OR p.IDNo = '0000000000')
+      AND (p.EmailID IS NULL OR LTRIM(RTRIM(p.EmailID)) = '' OR p.EmailID = 'test@gmail.com')
     )`);
 
     const whereClause = conditions.join(' AND ');
@@ -109,7 +117,7 @@ class PersonService extends BaseService {
         ) THEN 1 ELSE 0 END AS IsBeneficiary
       FROM Person p
       WHERE ${whereClause}
-      ORDER BY p.Name
+      ORDER BY CASE WHEN p.Name IS NOT NULL AND LTRIM(RTRIM(p.Name)) <> '' THEN 0 ELSE 1 END, p.Name
       OFFSET ${offset} ROWS FETCH NEXT ${safeLimit} ROWS ONLY
     `;
 
@@ -180,6 +188,156 @@ class PersonService extends BaseService {
     person.isNominee = !!row.IsNominee;
     person.isBeneficiary = !!row.IsBeneficiary;
     return person;
+  }
+
+  /**
+   * Get a comprehensive person profile with all related records
+   * @param {number} id - PersonId
+   * @returns {Promise<Object|null>} Full profile or null
+   */
+  async getPersonProfile(id) {
+    // 1. Get person with role flags
+    const person = await this.getCustomerById(id);
+    if (!person) return null;
+
+    const personName = (person.name || '').trim();
+    const personIdNo = (person.idNo || '').trim();
+
+    // Build name/IDNo match conditions for tables without FK
+    const nameConditions = [];
+    const nameParams = { personId: id };
+
+    if (personName) {
+      nameParams.personName = personName;
+    }
+    if (personIdNo) {
+      nameParams.personIdNo = personIdNo;
+    }
+
+    // 2. Niche Bookings — linked via ContactPersonId or NomineeId FK
+    const nicheBookingsQuery = `
+      SELECT TOP 50
+        nb.NicheBookingId, nb.BookedDate, nb.BookingStatus,
+        nb.NicheId, nb.NicheApplicationId, nb.ContactPersonId, nb.NomineeId, nb.NomineeId2,
+        na.Code,
+        n.Code AS NicheCode, nw.Name AS WallName, nr.Name AS RowName,
+        ch.Name AS ChapelName,
+        CASE 
+          WHEN nb.ContactPersonId = @personId THEN 'Contact Person'
+          WHEN nb.NomineeId = @personId THEN 'Nominee 1'
+          WHEN nb.NomineeId2 = @personId THEN 'Nominee 2'
+          ELSE 'Related'
+        END AS PersonRole
+      FROM NicheBooking nb
+      LEFT JOIN NicheApplication na ON nb.NicheApplicationId = na.NicheApplicationId
+      LEFT JOIN Niche n ON nb.NicheId = n.NicheId
+      LEFT JOIN NicheRow nr ON n.NicheRowlId = nr.NicheRowlId
+      LEFT JOIN NicheWall nw ON nr.NicheWallId = nw.NicheWallId
+      LEFT JOIN Chapel ch ON nw.ChapelId = ch.ChapelId
+      WHERE nb.ContactPersonId = @personId
+         OR nb.NomineeId = @personId
+         OR nb.NomineeId2 = @personId
+      ORDER BY nb.BookedDate DESC
+    `;
+
+    // 3. Niche Applications — matched by applicant name/IDNo
+    let nicheAppsQuery = `SELECT TOP 50
+        na.NicheApplicationId, na.Code, na.AppliedDate, na.Status,
+        na.ApplicantName, na.ApplicantIDNo, na.NicheId, na.Amount,
+        n.Code AS NicheCode, ch.Name AS ChapelName
+      FROM NicheApplication na
+      LEFT JOIN Niche n ON na.NicheId = n.NicheId
+      LEFT JOIN NicheRow nr ON n.NicheRowlId = nr.NicheRowlId
+      LEFT JOIN NicheWall nw ON nr.NicheWallId = nw.NicheWallId
+      LEFT JOIN Chapel ch ON nw.ChapelId = ch.ChapelId
+      WHERE 1=0`;
+
+    if (personName) {
+      nicheAppsQuery += ` OR na.ApplicantName = @personName`;
+    }
+    if (personIdNo) {
+      nicheAppsQuery += ` OR na.ApplicantIDNo = @personIdNo`;
+    }
+    nicheAppsQuery += ` ORDER BY na.AppliedDate DESC`;
+
+    // 4. Wake Room Bookings — matched by applicant name/IDNo
+    let wakeRoomQuery = `SELECT TOP 50
+        wrb.WakeRoomBookingId, wrb.Code, wrb.UsingDate, wrb.Status,
+        wrb.ApplicantName, wrb.ApplicantIDNo, wrb.NameOfDeceased,
+        wrb.HallNo, wrb.DonationAmount,
+        wr.Name AS WakeRoomName
+      FROM WakeRoomBooking wrb
+      LEFT JOIN WakeRoom wr ON wrb.WakeRoomId = wr.WakeRoomId
+      WHERE 1=0`;
+
+    if (personName) {
+      wakeRoomQuery += ` OR wrb.ApplicantName = @personName`;
+    }
+    if (personIdNo) {
+      wakeRoomQuery += ` OR wrb.ApplicantIDNo = @personIdNo`;
+    }
+    wakeRoomQuery += ` ORDER BY wrb.UsingDate DESC`;
+
+    // 5. Invoices — matched by CustomerName (PersonId FK missing in DB)
+    let invoicesQuery = `SELECT TOP 50
+        i.InvoiceId, i.Code, i.TransactionDate, i.CustomerName,
+        i.TotalAmount, i.PayingAmount, i.PaymentMode, i.Status,
+        i.RefDocNumber, i.RefDocName
+      FROM Invoice i
+      WHERE 1=0`;
+
+    if (personName) {
+      invoicesQuery += ` OR i.CustomerName = @personName`;
+    }
+    invoicesQuery += ` ORDER BY i.TransactionDate DESC`;
+
+    // 6. Receipts — linked via CustomerName or joined Invoice
+    let receiptsQuery = `SELECT TOP 50
+        r.ReceiptId, r.Code, r.TransactionDate, r.CustomerName,
+        r.TotalAmount, r.PayingAmount, r.PaymentMode, r.Status,
+        i.RefDocNumber
+      FROM Receipt r
+      LEFT JOIN Invoice i ON r.InvoiceId = i.InvoiceId
+      WHERE r.CustomerName = @personName
+      ORDER BY r.TransactionDate DESC`;
+
+    try {
+      // Execute all queries in parallel
+      const queries = [
+        executeQuery(nicheBookingsQuery, nameParams),
+        executeQuery(nicheAppsQuery, nameParams),
+        executeQuery(wakeRoomQuery, nameParams),
+        executeQuery(invoicesQuery, nameParams),
+      ];
+
+      // Only query receipts if we have a person name
+      if (personName) {
+        queries.push(executeQuery(receiptsQuery, nameParams));
+      }
+
+      const results = await Promise.all(queries);
+
+      return {
+        person,
+        nicheBookings: results[0].recordset || [],
+        nicheApplications: results[1].recordset || [],
+        wakeRoomBookings: results[2].recordset || [],
+        invoices: results[3].recordset || [],
+        receipts: (results[4] && results[4].recordset) || [],
+      };
+    } catch (error) {
+      const logger = require('../utils/logger');
+      logger.error('Error getting person profile:', error);
+      // Return person data even if related queries fail
+      return {
+        person,
+        nicheBookings: [],
+        nicheApplications: [],
+        wakeRoomBookings: [],
+        invoices: [],
+        receipts: [],
+      };
+    }
   }
 }
 

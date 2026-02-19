@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeIcon, ReceiptIcon, DoorOpenIcon, BedIcon, FileTextIcon, PenToolIcon, TagIcon } from 'lucide-react';
+import { HomeIcon, ReceiptIcon, DoorOpenIcon, BedIcon, FileTextIcon, PenToolIcon, TagIcon, UsersIcon } from 'lucide-react';
 
 interface MenuItem {
   label: string;
@@ -45,9 +45,24 @@ export function Sidebar({
       icon: <TagIcon className="w-5 h-5 ml-0.5" />
     },
     {
-      label: 'Receipts & Invoices',
-      path: '/receipt',
+      label: 'Persons',
+      path: '/persons',
+      icon: <UsersIcon className="w-5 h-5" />
+    },
+    {
+      label: 'Create Invoice',
+      path: '/create-invoice',
+      icon: <FileTextIcon className="w-5 h-5" />
+    },
+    {
+      label: 'Create Receipt',
+      path: '/create-receipt',
       icon: <ReceiptIcon className="w-5 h-5" />
+    },
+    {
+      label: 'Manage Invoices/Receipts',
+      path: '/receipt',
+      icon: <FileTextIcon className="w-5 h-5 opacity-70" />
     },
     {
       label: 'Reports',

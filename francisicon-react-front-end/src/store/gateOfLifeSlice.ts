@@ -51,18 +51,18 @@ export interface GateOfLifeState {
   error: string | null;
   isDataLoaded: boolean;
   lastErrorType: 'auth' | 'network' | 'validation' | 'server' | null;
-  
+
   // List state
   applicationList: GateOfLifeListItem[];
   applicationListLoading: boolean;
   applicationListError: string | null;
   applicationListFilters: GateOfLifeListFilters;
   applicationListPagination: GateOfLifeListPagination;
-  
+
   // View/Edit mode state
   isViewMode: boolean;
   isEditMode: boolean;
-  
+
   // Created application
   createdApplication: GateOfLifeResponse | null;
   isCreatingApplication: boolean;
@@ -91,6 +91,7 @@ const initialState: GateOfLifeState = {
 interface FetchGateOfLifeApplicationsArgs {
   filters?: Partial<GateOfLifeListFilters>;
   pagination?: Partial<GateOfLifeListPagination>;
+  bypassCache?: boolean;
 }
 
 export const fetchGateOfLifeApplications = createAsyncThunk<
@@ -125,7 +126,8 @@ export const fetchGateOfLifeApplications = createAsyncThunk<
       nameToEngrave: mergedFilters.nameToEngrave,
       bookedFrom: mergedFilters.bookedFrom,
       bookedTo: mergedFilters.bookedTo,
-      searchTerm: mergedFilters.searchTerm
+      searchTerm: mergedFilters.searchTerm,
+      bypassCache: args?.bypassCache || false,
     };
 
     try {

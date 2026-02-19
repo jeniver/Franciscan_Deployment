@@ -279,8 +279,8 @@ export function useGateOfLife() {
       if (result.type.endsWith('/fulfilled')) {
         console.log('Application deleted successfully');
         showSuccess('Success', `Application ${appCode} has been deleted successfully`);
-        // Refresh the application list to reflect the deletion
-        await searchApplicationList();
+        // Refresh the application list with cache bypass to ensure deleted record is gone
+        await searchApplicationList({ bypassCache: true });
       } else {
         const errorData = result.payload as { message: string; type: string; statusCode: number };
         console.error('Error deleting application:', errorData.message);
@@ -321,7 +321,7 @@ export function useGateOfLife() {
     }
 
     // Navigate to the invoice-receipt page with the application code
-    navigate(`/invoice-receipt/${codeToUse.trim()}`);
+    navigate(`/create-invoice/${codeToUse.trim()}?type=GOLA`);
   }, [applicationCode, navigate]);
 
   // Handle Invoice Only

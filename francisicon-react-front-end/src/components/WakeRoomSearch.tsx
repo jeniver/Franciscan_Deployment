@@ -2,11 +2,9 @@ import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { SearchIcon, EyeIcon, EditIcon, TrashIcon, CalendarIcon, UserIcon, ClockIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
-import { Button } from './common/Button';
 import { Input } from './common/Input';
 import { DateInput } from './common/DateInput';
 import { LoadingSpinner } from './common/LoadingSpinner';
-import { Card } from './common/Card';
 import { useWakeRoom } from '../hooks/useWakeRoom';
 import { RootState } from '../store';
 
@@ -57,11 +55,9 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBook
 
   // Initial search if no results (e.g. first load)
   useEffect(() => {
-    // Only verify we aren't already loading and no error
-    if (searchResults.length === 0 && !loading && !error) {
-      // Search with defaults (page 1, size 10) to show all bookings
-      handleSearchBookings({ page: 1, pageSize: 10 });
-    }
+    // Search with defaults (page 1, size 10) to show all bookings
+    // Always bypass cache on mount to ensure fresh data
+    handleSearchBookings({ page: 1, pageSize: 10, bypassCache: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run on mount
 
@@ -84,19 +80,10 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBook
       return;
     }
 
-    await handleSearchBookings({ ...cleanedCriteria, page: 1, pageSize: 10 });
+    await handleSearchBookings({ ...cleanedCriteria, page: 1, pageSize: 10, bypassCache: true });
   };
 
-  const cleanCriteria = (criteria: SearchCriteria) => {
-    const cleaned: any = {};
-    (Object.entries(criteria) as [keyof SearchCriteria, any][])
-      .forEach(([key, value]) => {
-        if (value !== '' && value !== 0 && value !== undefined) {
-          cleaned[key] = value;
-        }
-      });
-    return cleaned;
-  };
+  // ... (cleanCriteria helper)
 
   const handlePageChange = (newPage: number) => {
     const totalPages = searchPagination?.totalPages || 1;
@@ -108,7 +95,8 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBook
       handleSearchBookings({
         ...cleaned,
         page: newPage,
-        pageSize: searchPagination?.pageSize || 10
+        pageSize: searchPagination?.pageSize || 10,
+        bypassCache: true // Force fresh data on page change
       });
     }
   };
@@ -124,8 +112,15 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBook
   const handleDelete = async (bookingId: number, bookingCode: string) => {
     if (window.confirm(`Are you sure you want to delete booking ${bookingCode}?`)) {
       await handleDeleteBooking(bookingId);
-      // Refresh current page to update totals and fill the page
-      handlePageChange(currentPage);
+
+      // Wait a bit for DB propagation then refresh
+      setTimeout(() => {
+        handleSearchBookings({
+          page: currentPage,
+          pageSize: pageSize,
+          bypassCache: true
+        });
+      }, 500);
     }
   };
 
@@ -277,8 +272,8 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBook
                   <tr
                     key={booking.wakeRoomBookingId}
                     className={`transition-colors group ${highlightBookingCode === booking.code
-                        ? 'bg-yellow-50 border-l-4 border-l-yellow-400 animate-pulse'
-                        : 'hover:bg-[#fcfcfc]'
+                      ? 'bg-yellow-50 border-l-4 border-l-yellow-400 animate-pulse'
+                      : 'hover:bg-[#fcfcfc]'
                       }`}
                   >
                     <td className="px-4 py-4 whitespace-nowrap align-top">
@@ -424,3 +419,7 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBook
 }
 
 export default WakeRoomSearch;
+
+function cleanCriteria(arg0: { wakeRoomId: number | undefined; applicantName?: string; nameOfDeceased?: string; usingDate?: string; }) {
+  throw new Error('Function not implemented.');
+}
