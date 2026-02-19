@@ -9,6 +9,7 @@ import inscriptionService from '../services/inscriptionService';
 import { DateInput } from '../components/common/DateInput';
 import type { BibleChoice } from '../services/inscriptionService';
 import type { DeceasedDetail } from '../store/nichibookingSlice';
+import { PAYMENT_MODE_OPTIONS } from '../utils/paymentMode';
 
 export function NichiBookingPage() {
   const {
@@ -19,6 +20,7 @@ export function NichiBookingPage() {
     refDocNumber,
     lineTaxPercent,
     itemId,
+    remarks,
     creatingInvoice,
     invoiceError,
     createdInvoice,
@@ -37,6 +39,7 @@ export function NichiBookingPage() {
     updateRefDocNumber,
     updateLineTaxPercent,
     updateItemId,
+    updateRemarks,
     handleCreateNichiBookingInvoice: _handleCreateNichiBookingInvoice,
     handleCreateNichiApplication,
     handleViewNichiApplication,
@@ -350,10 +353,11 @@ export function NichiBookingPage() {
                   onChange={(e) => updatePaymentMode(e.target.value)}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all"
                 >
-                  <option value="Cash">Cash</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="Bank Transfer">Bank Transfer</option>
-                  <option value="Credit Card">Credit Card</option>
+                  {PAYMENT_MODE_OPTIONS.map((option) => (
+                    <option key={option.code} value={option.label}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -439,6 +443,17 @@ export function NichiBookingPage() {
                 </div>
               </div>
             </details>
+
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700">Remarks</label>
+              <textarea
+                rows={3}
+                value={remarks}
+                onChange={(e) => updateRemarks(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all resize-none"
+                placeholder="Enter remarks (optional)"
+              />
+            </div>
           </div>
         </div>
 

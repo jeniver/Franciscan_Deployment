@@ -17,11 +17,10 @@ interface SearchCriteria {
 
 interface WakeRoomSearchProps {
   onBookingSelected?: (booking: any) => void;
-  onBookingEdit?: (booking: any) => void;
   highlightBookingCode?: string | null;
 }
 
-export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBookingCode }: WakeRoomSearchProps) {
+export function WakeRoomSearch({ onBookingSelected, highlightBookingCode }: WakeRoomSearchProps) {
   const navigate = useNavigate();
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({
     wakeRoomId: 0,
@@ -88,15 +87,23 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBook
   const handlePageChange = (newPage: number) => {
     const totalPages = searchPagination?.totalPages || 1;
     if (newPage >= 1 && newPage <= totalPages) {
-      const cleaned = cleanCriteria({
+      const criteria: SearchCriteria = {
         ...searchCriteria,
         wakeRoomId: searchCriteria.wakeRoomId || undefined
+      };
+
+      const cleaned = {} as any;
+      Object.entries(criteria).forEach(([key, value]) => {
+        if (value !== '' && value !== 0 && value !== undefined) {
+          cleaned[key] = value;
+        }
       });
+
       handleSearchBookings({
         ...cleaned,
         page: newPage,
         pageSize: searchPagination?.pageSize || 10,
-        bypassCache: true // Force fresh data on page change
+        bypassCache: true
       });
     }
   };
@@ -380,22 +387,50 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBook
 
             {totalPages > 1 && (
               <div className="flex items-center gap-1.5">
-                {[...Array(totalPages)].map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handlePageChange(i + 1)}
-                    className={`w-7 h-7 rounded-md text-[11px] font-black transition-all ${currentPage === i + 1
-                      ? 'bg-[#8b5a2b] text-white shadow-md'
-                      : 'text-gray-400 hover:bg-white hover:text-gray-800'
-                      }`}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
+                {/* Previous Page */}
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 disabled:opacity-20 hover:bg-white hover:shadow-sm transition-all"
+                >
+                  <ChevronLeftIcon className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Page Numbers */}
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  // Show pages around current page if totalPages > 5
+                  let pageNum = i + 1;
+                  if (totalPages > 5) {
+                    if (currentPage > 3) {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    if (pageNum > totalPages) {
+                      pageNum = totalPages - (4 - i);
+                    }
+                    if (pageNum < 1) pageNum = i + 1;
+                  }
+
+                  if (pageNum > totalPages) return null;
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`w-8 h-8 rounded-lg text-[11px] font-black transition-all ${currentPage === pageNum
+                        ? 'bg-[#8b5a2b] text-white shadow-md'
+                        : 'text-gray-400 hover:bg-white hover:text-gray-800 border border-transparent'
+                        }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+
+                {/* Next Page */}
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="w-8 h-8 ml-2 flex items-center justify-center rounded-lg border border-gray-200 disabled:opacity-20 hover:bg-white hover:shadow-sm transition-all"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 disabled:opacity-20 hover:bg-white hover:shadow-sm transition-all"
                 >
                   <ChevronRightIcon className="w-3.5 h-3.5" />
                 </button>
@@ -420,6 +455,4 @@ export function WakeRoomSearch({ onBookingSelected, onBookingEdit, highlightBook
 
 export default WakeRoomSearch;
 
-function cleanCriteria(arg0: { wakeRoomId: number | undefined; applicantName?: string; nameOfDeceased?: string; usingDate?: string; }) {
-  throw new Error('Function not implemented.');
-}
+

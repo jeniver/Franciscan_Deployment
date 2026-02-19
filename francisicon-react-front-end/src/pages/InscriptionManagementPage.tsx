@@ -412,14 +412,28 @@ export function InscriptionManagementPage() {
                 <nav className="relative z-0 inline-flex rounded-xl shadow-sm -space-x-px bg-white overflow-hidden border border-gray-200">
                   <button
                     onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
+                    disabled={currentPage === 1 || loading}
                     className="px-4 py-2 text-gray-400 hover:bg-gray-50 disabled:opacity-30 transition-colors"
                   >
                     Previous
                   </button>
 
                   {Array.from({ length: Math.min(5, Math.ceil(totalRecords / recordsPerPage)) }, (_, i) => {
-                    const pageNum = i + 1;
+                    let pageNum = i + 1;
+                    const totalPages = Math.ceil(totalRecords / recordsPerPage);
+
+                    if (totalPages > 5) {
+                      if (currentPage > 3) {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      if (pageNum > totalPages) {
+                        pageNum = totalPages - (4 - i);
+                      }
+                      if (pageNum < 1) pageNum = i + 1;
+                    }
+
+                    if (pageNum > totalPages) return null;
+
                     return (
                       <button
                         key={pageNum}
@@ -436,7 +450,7 @@ export function InscriptionManagementPage() {
 
                   <button
                     onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage * recordsPerPage >= totalRecords}
+                    disabled={currentPage * recordsPerPage >= totalRecords || loading}
                     className="px-4 py-2 text-gray-400 hover:bg-gray-50 disabled:opacity-30 transition-colors"
                   >
                     Next

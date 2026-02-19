@@ -28,7 +28,12 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
       const loadFullReceipt = async () => {
         setIsLoading(true);
         try {
-          const data = await receiptService.getReceiptByCode(receipt.receiptCode || (receipt as any).code);
+          const appCode = receipt.applicationCode || (receipt as any).RefDocName;
+          const isAppType = appCode && isNaN(Number(appCode));
+          const data = await receiptService.getReceiptByCode(
+            receipt.receiptCode || (receipt as any).code,
+            isAppType ? String(appCode) : undefined
+          );
           setFullReceiptData(data);
         } catch (err: any) {
           console.error('[ReceiptDetailModal] Failed to fetch full receipt:', err);
@@ -76,13 +81,35 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
         part.trim() !== ''
       );
 
-      const fullAddress = parts.join(', ');
+      // Deduplicate parts to avoid repeats like #65686, #65686
+      const uniqueParts: string[] = [];
+      const seenNormalized = new Set<string>();
 
-      if (parts.length > 1) {
+      for (const part of parts) {
+        const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!normalized) continue;
+
+        let exists = false;
+        for (const seen of seenNormalized) {
+          if (seen.includes(normalized) || normalized.includes(seen)) {
+            exists = true;
+            break;
+          }
+        }
+
+        if (!exists) {
+          uniqueParts.push(part);
+          seenNormalized.add(normalized);
+        }
+      }
+
+      const fullAddress = uniqueParts.join(', ');
+
+      if (uniqueParts.length > 1) {
         return fullAddress;
       }
 
-      return (existingAddress && existingAddress !== 'N/A' && existingAddress !== 'null') ? existingAddress : (parts[0] || 'N/A');
+      return (existingAddress && existingAddress !== 'N/A' && existingAddress !== 'null') ? existingAddress : (uniqueParts[0] || 'N/A');
     };
 
     const fullAddress = getAddress();
@@ -393,17 +420,39 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
       part.trim() !== ''
     );
 
-    const fullAddress = parts.join(', ');
+    // Deduplicate parts to avoid repeats like #65686, #65686
+    const uniqueParts: string[] = [];
+    const seenNormalized = new Set<string>();
+
+    for (const part of parts) {
+      const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!normalized) continue;
+
+      let exists = false;
+      for (const seen of seenNormalized) {
+        if (seen.includes(normalized) || normalized.includes(seen)) {
+          exists = true;
+          break;
+        }
+      }
+
+      if (!exists) {
+        uniqueParts.push(part);
+        seenNormalized.add(normalized);
+      }
+    }
+
+    const fullAddress = uniqueParts.join(', ');
 
     // If we have multiple parts, it's better to show the full joined address
-    if (parts.length > 1) {
+    if (uniqueParts.length > 1) {
       return fullAddress;
     }
 
     // Otherwise use the single address field IF it's not empty, or fallback to the single part
     if (address && address !== 'N/A' && address !== 'null') return address;
 
-    return parts[0] || 'N/A';
+    return uniqueParts[0] || 'N/A';
   };
 
   const displayAddress = getDisplayAddress();

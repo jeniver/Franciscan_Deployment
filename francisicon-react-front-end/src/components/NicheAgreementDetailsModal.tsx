@@ -86,6 +86,9 @@ export function NicheAgreementDetailsModal({
     }).format(amount);
   };
 
+  const hasInvoice = Boolean(agreementData?.invoice?.invoiceNo);
+  const hasReceipt = Boolean(agreementData?.invoice?.receiptNo);
+
 
 
   if (!isOpen) return null;
@@ -328,14 +331,18 @@ export function NicheAgreementDetailsModal({
                             <td className="px-3 py-3 text-sm border-b border-gray-100">
                               Niche Fee ({agreementData.niche.location?.chapel?.chapelName || agreementData.niche.chapelName} {agreementData.niche.code})
                             </td>
-                            <td className="px-3 py-3 text-sm border-b border-gray-100">{agreementData.invoice.invoiceNo || 'N/A'}</td>
+                            <td className="px-3 py-3 text-sm border-b border-gray-100">{hasInvoice ? agreementData.invoice.invoiceNo : ''}</td>
                             <td className="px-3 py-3 text-sm border-b border-gray-100">
-                              <span className="text-green-600 font-bold">
-                                {agreementData.invoice.invoicePayingAmount > 0 ? 'PAID' : 'PENDING'}
-                              </span>
+                              {hasInvoice ? (
+                                <span className="text-green-600 font-bold">
+                                  {agreementData.invoice.invoicePayingAmount > 0 ? 'PAID' : 'PENDING'}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 font-bold">-</span>
+                              )}
                             </td>
                             <td className="px-3 py-3 text-sm font-bold text-right border-b border-gray-100">
-                              {formatCurrency(agreementData.niche.totalAmount || 0)}
+                              {hasInvoice ? formatCurrency(agreementData.niche.totalAmount || 0) : ''}
                             </td>
                           </tr>
                           {agreementData.invoice.taxAmount > 0 && (
@@ -352,6 +359,22 @@ export function NicheAgreementDetailsModal({
                               </td>
                             </tr>
                           )}
+                          <tr>
+                            <td className="px-3 py-3 text-sm border-b border-gray-100">
+                              Receipt
+                            </td>
+                            <td className="px-3 py-3 text-sm border-b border-gray-100">{hasReceipt ? agreementData.invoice.receiptNo : ''}</td>
+                            <td className="px-3 py-3 text-sm border-b border-gray-100">
+                              {hasReceipt ? (
+                                <span className="text-green-600 font-bold">PAID</span>
+                              ) : (
+                                <span className="text-gray-400 font-bold">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-sm font-bold text-right border-b border-gray-100">
+                              {hasReceipt ? formatCurrency(agreementData.invoice.receiptPayingAmount || agreementData.invoice.receiptAmount || 0) : ''}
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
                       {(() => {

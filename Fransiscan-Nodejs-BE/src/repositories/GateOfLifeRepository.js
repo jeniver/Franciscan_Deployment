@@ -214,11 +214,11 @@ class GateOfLifeRepository {
       insertRequest.input('ApplicantAddressState', sql.NVarChar(100), application.applicantAddressState || null);
       insertRequest.input('ApplicantAddressCountry', sql.NVarChar(100), application.applicantAddressCountry || null);
 
-      insertRequest.input('DonationAmount', sql.Decimal(18, 2), application.donationAmount || null);
-      insertRequest.input('DefaultDonationAmount', sql.Decimal(18, 2), application.defaultDonationAmount || null);
+      insertRequest.input('DonationAmount', sql.Decimal(18, 2), application.donationAmount ?? null);
+      insertRequest.input('DefaultDonationAmount', sql.Decimal(18, 2), application.defaultDonationAmount ?? null);
       insertRequest.input('ChurchId', sql.Int, application.churchId);
       insertRequest.input('UserId', sql.Int, application.userId || null);
-      insertRequest.input('RequestSameBrick', sql.Bit, application.requestSameBrick || false);
+      insertRequest.input('RequestSameBrick', sql.Bit, application.requestSameBrick ?? false);
       insertRequest.input('RefDocType', sql.VarChar(10), application.refDocType || 'GOLA');
 
       const insertQuery = `
@@ -317,9 +317,9 @@ class GateOfLifeRepository {
       updateRequest.input('ApplicantAddressState', sql.NVarChar(100), application.applicantAddressState || null);
       updateRequest.input('ApplicantAddressCountry', sql.NVarChar(100), application.applicantAddressCountry || null);
 
-      updateRequest.input('DonationAmount', sql.Decimal(18, 2), application.donationAmount || null);
-      updateRequest.input('DefaultDonationAmount', sql.Decimal(18, 2), application.defaultDonationAmount || null);
-      updateRequest.input('RequestSameBrick', sql.Bit, application.requestSameBrick || false);
+      updateRequest.input('DonationAmount', sql.Decimal(18, 2), application.donationAmount ?? null);
+      updateRequest.input('DefaultDonationAmount', sql.Decimal(18, 2), application.defaultDonationAmount ?? null);
+      updateRequest.input('RequestSameBrick', sql.Bit, application.requestSameBrick ?? false);
       updateRequest.input('BookingDate', sql.DateTime, application.bookingDate || new Date());
 
       const updateQuery = `

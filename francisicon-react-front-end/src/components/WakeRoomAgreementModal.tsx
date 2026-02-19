@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
     XIcon,
     DownloadIcon,
@@ -10,6 +10,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { WakeRoomAgreementTemplate } from './WakeRoomAgreementTemplate';
 import { WakeRoomBooking } from '../services/wakeRoomService';
+import { invoiceService } from '../services/invoiceService';
 
 interface WakeRoomAgreementModalProps {
     isOpen: boolean;
@@ -26,7 +27,39 @@ export function WakeRoomAgreementModal({
 }: WakeRoomAgreementModalProps) {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    const [billingData, setBillingData] = useState<any>(null);
     const contentRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        let mounted = true;
+
+        const fetchBillingData = async () => {
+            if (!isOpen || !booking?.code) {
+                if (mounted) {
+                    setBillingData(null);
+                }
+                return;
+            }
+
+            try {
+                const invoice = await invoiceService.getInvoiceByCode(booking.code, 'WAPP');
+                if (mounted) {
+                    setBillingData(invoice || null);
+                }
+            } catch {
+                // Keep agreement rendering resilient even if invoice lookup fails.
+                if (mounted) {
+                    setBillingData(null);
+                }
+            }
+        };
+
+        fetchBillingData();
+
+        return () => {
+            mounted = false;
+        };
+    }, [isOpen, booking?.code]);
 
     const toggleFullscreen = () => {
         setIsFullscreen(!isFullscreen);
@@ -222,7 +255,7 @@ export function WakeRoomAgreementModal({
                                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8b2828]"></div>
                             </div>
                         ) : booking ? (
-                            <WakeRoomAgreementTemplate ref={contentRef} booking={booking} />
+                            <WakeRoomAgreementTemplate ref={contentRef} booking={booking} billingData={billingData} />
                         ) : (
                             <div className="text-center text-gray-500 mt-20">
                                 No booking data available

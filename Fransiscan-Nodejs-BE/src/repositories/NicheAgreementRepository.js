@@ -121,6 +121,12 @@ class NicheAgreementRepository extends BaseRepository {
 
       logger.info(`Found application: ${mergedData.Code} in Chapel: ${mergedData.ChapelCode || 'N/A'}, Wall: ${mergedData.WallCode || 'N/A'}`);
       console.log("Adresss finder", mergedData)
+
+      // Prefer application-level storage/deceased values before inscription exists.
+      // This ensures agreement APIs return storageFrom for pre-inscription records.
+      const applicationStorageFrom = mergedData.StorageFrom || mergedData.InternmentDate1 || null;
+      const applicationStorageTo = mergedData.StorageTo || mergedData.InternmentDate1 || null;
+
       // Build the niche agreement object using data from NicheApplication
       const nicheAgreement = new NicheAgreement({
         Status: mergedData.Status,
@@ -202,6 +208,20 @@ class NicheAgreementRepository extends BaseRepository {
             rowPrice: mergedData.RowPrice || 0
           }
         },
+
+        // Deceased details from NicheApplication (fallback until inscription is created)
+        nameOfDeceased1: mergedData.NameOfDeceased1 || null,
+        dateDied1: mergedData.DateDied1 || null,
+        internmentDate1: mergedData.InternmentDate1 || null,
+        deathCertificateNo1: mergedData.DeathCertificateNo1 || null,
+        nameOfDeceased2: mergedData.NameOfDeceased2 || null,
+        dateDied2: mergedData.DateDied2 || null,
+        internmentDate2: mergedData.InternmentDate2 || null,
+        deathCertificateNo2: mergedData.DeathCertificateNo2 || null,
+
+        // Storage period from application-level data
+        storageFrom: applicationStorageFrom,
+        storageTo: applicationStorageTo,
 
         // Basic info
         refDocNumber: mergedData.Code
@@ -630,42 +650,37 @@ class NicheAgreementRepository extends BaseRepository {
    */
   async addDeceasedAndStorageInfo(nicheApplicationId, nicheAgreement) {
     try {
-      const isMissingStorageFromColumn = (error) =>
-        /invalid column name\s+'storagefrom'/i.test(error?.message || '');
-
-      const executeStorageSafeQuery = async (primaryQuery, fallbackQuery, params) => {
-        try {
-          return await executeQuery(primaryQuery, params, { timeout: 10000 });
-        } catch (queryError) {
-          if (!isMissingStorageFromColumn(queryError)) {
-            throw queryError;
-          }
-          logger.warn('StorageFrom column missing in schema, using fallback query.');
-          return executeQuery(fallbackQuery, params, { timeout: 10000 });
-        }
-      };
+      const hasBookingStorageFromResult = await executeQuery(
+        `
+          SELECT CASE
+            WHEN COL_LENGTH('NicheBooking', 'StorageFrom') IS NOT NULL THEN 1
+            ELSE 0
+          END AS HasStorageFrom
+        `,
+        {},
+        { timeout: 5000 }
+      );
+      const hasBookingStorageFrom = Boolean(hasBookingStorageFromResult.recordset?.[0]?.HasStorageFrom);
 
       // Step 1: Get booking info first (Foundational)
-      const bookingQuery = `
+      const bookingQuery = hasBookingStorageFrom ? `
         SELECT TOP 1
           NicheBookingId,
           StorageFrom
         FROM NicheBooking WITH (NOLOCK)
         WHERE NicheApplicationId = @nicheApplicationId
         ORDER BY NicheBookingId DESC
-      `;
-      const bookingQueryFallback = `
+      ` : `
         SELECT TOP 1
           NicheBookingId
         FROM NicheBooking WITH (NOLOCK)
         WHERE NicheApplicationId = @nicheApplicationId
         ORDER BY NicheBookingId DESC
       `;
-
-      const bookingResult = await executeStorageSafeQuery(
+      const bookingResult = await executeQuery(
         bookingQuery,
-        bookingQueryFallback,
-        { nicheApplicationId }
+        { nicheApplicationId },
+        { timeout: 10000 }
       );
 
       if (!bookingResult.recordset || bookingResult.recordset.length === 0) {
@@ -675,12 +690,24 @@ class NicheAgreementRepository extends BaseRepository {
       const bookingRow = bookingResult.recordset[0];
       const nicheBookingId = bookingRow.NicheBookingId;
 
-      if (bookingRow.StorageFrom) {
+      if (hasBookingStorageFrom && bookingRow.StorageFrom) {
         nicheAgreement.storageFrom = bookingRow.StorageFrom;
       }
 
+      const hasInscriptionStorageFromResult = await executeQuery(
+        `
+          SELECT CASE
+            WHEN COL_LENGTH('NicheInscriptionRequest', 'StorageFrom') IS NOT NULL THEN 1
+            ELSE 0
+          END AS HasStorageFrom
+        `,
+        {},
+        { timeout: 5000 }
+      );
+      const hasInscriptionStorageFrom = Boolean(hasInscriptionStorageFromResult.recordset?.[0]?.HasStorageFrom);
+
       // Step 2: Get Inscription Request info
-      const inscriptionQuery = `
+      const inscriptionQuery = hasInscriptionStorageFrom ? `
         SELECT TOP 1
           NicheInscriptionRequestId,
           StorageFrom,
@@ -688,8 +715,7 @@ class NicheAgreementRepository extends BaseRepository {
         FROM NicheInscriptionRequest WITH (NOLOCK)
         WHERE NicheBookingId = @nicheBookingId
         ORDER BY NicheInscriptionRequestId DESC
-      `;
-      const inscriptionQueryFallback = `
+      ` : `
         SELECT TOP 1
           NicheInscriptionRequestId,
           TranscationDate
@@ -697,11 +723,10 @@ class NicheAgreementRepository extends BaseRepository {
         WHERE NicheBookingId = @nicheBookingId
         ORDER BY NicheInscriptionRequestId DESC
       `;
-
-      const inscriptionResult = await executeStorageSafeQuery(
+      const inscriptionResult = await executeQuery(
         inscriptionQuery,
-        inscriptionQueryFallback,
-        { nicheBookingId }
+        { nicheBookingId },
+        { timeout: 10000 }
       );
       let inscriptionRequestId = null;
 
@@ -710,7 +735,7 @@ class NicheAgreementRepository extends BaseRepository {
         inscriptionRequestId = insRow.NicheInscriptionRequestId;
 
         // Override/Set storage from Inscription if available (it's arguably more recent/specific)
-        if (insRow.StorageFrom) {
+        if (hasInscriptionStorageFrom && insRow.StorageFrom) {
           nicheAgreement.storageFrom = insRow.StorageFrom;
         }
 
@@ -782,6 +807,9 @@ class NicheAgreementRepository extends BaseRepository {
    */
   async addInvoiceInfo(applicationCode, nicheAgreement) {
     try {
+      const trimmedCode = String(applicationCode || '').trim();
+      const prefixedCode = `I-${trimmedCode}`;
+
       // Find the main invoice linked to this application code
       const invoiceHeaderQuery = `
         SELECT TOP 1
@@ -795,12 +823,17 @@ class NicheAgreementRepository extends BaseRepository {
           inv.PaymentModeDocNo,
           inv.Status
         FROM Invoice inv WITH(NOLOCK)
-        INNER JOIN InvoiceDetail idl WITH(NOLOCK) ON inv.InvoiceId = idl.InvoiceId
-        WHERE idl.RefDocNumber = @applicationCode
+        LEFT JOIN InvoiceDetail idl WITH(NOLOCK) ON inv.InvoiceId = idl.InvoiceId
+        WHERE inv.RefDocNumber IN (@applicationCode, @prefixedCode)
+           OR idl.RefDocNumber IN (@applicationCode, @prefixedCode)
         ORDER BY inv.TransactionDate DESC
       `;
 
-      const headerResult = await executeQuery(invoiceHeaderQuery, { applicationCode }, { timeout: 10000 });
+      const headerResult = await executeQuery(
+        invoiceHeaderQuery,
+        { applicationCode: trimmedCode, prefixedCode },
+        { timeout: 10000 }
+      );
 
       if (headerResult.recordset.length === 0) {
         return;
@@ -872,6 +905,7 @@ class NicheAgreementRepository extends BaseRepository {
             PaymentModeDocNo
           FROM Receipt WITH(NOLOCK)
           WHERE InvoiceId = @invoiceId
+            AND Status > 0
           ORDER BY ReceiptId DESC
         `;
 
@@ -901,6 +935,9 @@ class NicheAgreementRepository extends BaseRepository {
    */
   async addReceiptInfo(applicationCode, nicheAgreement) {
     try {
+      const trimmedCode = String(applicationCode || '').trim();
+      const prefixedCode = `I-${trimmedCode}`;
+
       // Search for standalone receipt linked via Application Code in MisalaniousReceiptDetail
       // This handles cases where no invoice exists or individual receipts (without InvoiceId)
       const receiptQuery = `
@@ -913,12 +950,16 @@ class NicheAgreementRepository extends BaseRepository {
           r.PaymentModeDocNo
         FROM Receipt r WITH(NOLOCK)
         INNER JOIN MisalaniousReceiptDetail rd WITH(NOLOCK) ON r.ReceiptId = rd.ReceiptId
-        WHERE rd.RefDocNumber = @applicationCode
+        WHERE rd.RefDocNumber IN (@applicationCode, @prefixedCode)
         AND r.Status > 0
         ORDER BY r.ReceiptId DESC
       `;
 
-      const result = await executeQuery(receiptQuery, { applicationCode }, { timeout: 10000 });
+      const result = await executeQuery(
+        receiptQuery,
+        { applicationCode: trimmedCode, prefixedCode },
+        { timeout: 10000 }
+      );
 
       if (result.recordset.length > 0) {
         const rec = result.recordset[0];

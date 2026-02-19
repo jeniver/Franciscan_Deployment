@@ -60,6 +60,11 @@ export function Sidebar({
       icon: <ReceiptIcon className="w-5 h-5" />
     },
     {
+      label: 'Miscellaneous Receipts',
+      path: '/misc-receipt',
+      icon: <FileTextIcon className="w-5 h-5 text-teal-400" />
+    },
+    {
       label: 'Manage Invoices/Receipts',
       path: '/receipt',
       icon: <FileTextIcon className="w-5 h-5 opacity-70" />

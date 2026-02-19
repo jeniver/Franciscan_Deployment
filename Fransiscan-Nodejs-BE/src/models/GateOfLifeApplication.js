@@ -14,6 +14,9 @@ const coerceNumber = (value) => {
  */
 class GateOfLifeApplication {
   constructor(data = {}) {
+    const applicant = data.applicant || {};
+    const applicantAddress = applicant.address || {};
+
     this.applicationId = data.applicationId
       || data.gateOfLifeApplicationId
       || data.EngraveWallApplicationId
@@ -29,25 +32,25 @@ class GateOfLifeApplication {
       || null;
     this.bookingDate = bookingDateValue ? new Date(bookingDateValue) : new Date();
 
-    this.applicantName = data.applicantName || data.ApplicantName || null;
-    this.applicantIDNo = data.applicantIDNo || data.ApplicantIDNo || null;
-    this.applicantEmailID = data.applicantEmailID || data.ApplicantEmailID || null;
-    this.applicantMobileNo = data.applicantMobileNo || data.ApplicantMobileNo || null;
-    this.applicantHomeTelNo = data.applicantHomeTelNo || data.ApplicantHomeTelNo || null;
-    this.applicantOfficeTelNo = data.applicantOfficeTelNo || data.ApplicantOfficeTelNo || null;
+    this.applicantName = data.applicantName ?? data.ApplicantName ?? applicant.name ?? null;
+    this.applicantIDNo = data.applicantIDNo ?? data.ApplicantIDNo ?? applicant.idNo ?? null;
+    this.applicantEmailID = data.applicantEmailID ?? data.ApplicantEmailID ?? applicant.email ?? null;
+    this.applicantMobileNo = data.applicantMobileNo ?? data.ApplicantMobileNo ?? applicant.mobileNo ?? null;
+    this.applicantHomeTelNo = data.applicantHomeTelNo ?? data.ApplicantHomeTelNo ?? applicant.homeTelNo ?? null;
+    this.applicantOfficeTelNo = data.applicantOfficeTelNo ?? data.ApplicantOfficeTelNo ?? applicant.officeTelNo ?? null;
 
-    this.applicantAddressNo = data.applicantAddressNo || data.ApplicantAddressNo || null;
-    this.applicantAddressLine1 = data.applicantAddressLine1 || data.ApplicantAddressLine1 || null;
-    this.applicantAddressLine2 = data.applicantAddressLine2 || data.ApplicantAddressLine2 || null;
-    this.applicantAddressCity = data.applicantAddressCity || data.ApplicantAddressCity || null;
-    this.applicantAddressState = data.applicantAddressState || data.ApplicantAddressState || null;
-    this.applicantAddressCountry = data.applicantAddressCountry || data.ApplicantAddressCountry || null;
+    this.applicantAddressNo = data.applicantAddressNo ?? data.ApplicantAddressNo ?? applicantAddress.no ?? null;
+    this.applicantAddressLine1 = data.applicantAddressLine1 ?? data.ApplicantAddressLine1 ?? applicantAddress.line1 ?? null;
+    this.applicantAddressLine2 = data.applicantAddressLine2 ?? data.ApplicantAddressLine2 ?? applicantAddress.line2 ?? null;
+    this.applicantAddressCity = data.applicantAddressCity ?? data.ApplicantAddressCity ?? applicantAddress.city ?? null;
+    this.applicantAddressState = data.applicantAddressState ?? data.ApplicantAddressState ?? applicantAddress.state ?? null;
+    this.applicantAddressCountry = data.applicantAddressCountry ?? data.ApplicantAddressCountry ?? applicantAddress.country ?? null;
 
-    this.donationAmount = coerceNumber(data.donationAmount || data.DonationAmount);
-    this.defaultDonationAmount = coerceNumber(data.defaultDonationAmount || data.DefaultDonationAmount);
+    this.donationAmount = coerceNumber(data.donationAmount ?? data.DonationAmount);
+    this.defaultDonationAmount = coerceNumber(data.defaultDonationAmount ?? data.DefaultDonationAmount);
 
-    this.churchId = data.churchId || data.ChurchId || null;
-    this.userId = data.userId || data.UserId || null;
+    this.churchId = data.churchId ?? data.ChurchId ?? null;
+    this.userId = data.userId ?? data.UserId ?? null;
     this.requestSameBrick = !!(data.requestSameBrick || data.RequestSameBrick || data.isHusbandWife || data.IsHusbandWife);
     this.refDocType = data.refDocType || data.RefDocType || 'GOLA';
 

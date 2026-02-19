@@ -238,8 +238,8 @@ export function BeneficiaryDetails({
         const beneficiary = updatedBeneficiaries[index];
         const i = index + 1
 
-        let dateOfBirth = beneficiary.dateOfBirth || ''
-        let birthYear: string | number | null = beneficiary.birthYear || null
+        const dateOfBirth: string | null = beneficiary.dateOfBirth ?? null
+        let birthYear: string | number | null = beneficiary.birthYear ?? null
 
         if (dateOfBirth && dateOfBirth.includes('-')) {
           const parts = dateOfBirth.split('-')
@@ -253,7 +253,7 @@ export function BeneficiaryDetails({
         allBeneficiaryData[`beneficiary${i}Relationship`] =
           beneficiary.relationshipToApplicant || ''
         allBeneficiaryData[`beneficiary${i}DateOfBirth`] = dateOfBirth
-        allBeneficiaryData[`beneficiary${i}BirthYear`] = typeof birthYear === 'number' ? birthYear.toString() : birthYear
+        allBeneficiaryData[`beneficiary${i}BirthYear`] = typeof birthYear === 'number' ? birthYear.toString() : (birthYear ?? null)
         allBeneficiaryData[`beneficiary${i}Gender`] = beneficiary.sex || ''
         allBeneficiaryData[`beneficiary${i}Religion`] =
           beneficiary.religion || ''
@@ -273,8 +273,8 @@ export function BeneficiaryDetails({
         allBeneficiaryData[`beneficiary${i}Name`] = ''
         allBeneficiaryData[`beneficiary${i}IDNo`] = ''
         allBeneficiaryData[`beneficiary${i}Relationship`] = ''
-        allBeneficiaryData[`beneficiary${i}DateOfBirth`] = ''
-        allBeneficiaryData[`beneficiary${i}BirthYear`] = ''
+        allBeneficiaryData[`beneficiary${i}DateOfBirth`] = null
+        allBeneficiaryData[`beneficiary${i}BirthYear`] = null
         allBeneficiaryData[`beneficiary${i}Gender`] = ''
         allBeneficiaryData[`beneficiary${i}Religion`] = ''
         allBeneficiaryData[`beneficiary${i}Status`] = 'Not Occupied'
@@ -312,7 +312,7 @@ export function BeneficiaryDetails({
         prevValuesRef.current[key] = normalizedValue
         const updated = prev.map((b) => {
           if (b.id === id) {
-            let updatedBeneficiary = {
+            const updatedBeneficiary = {
               ...b,
               [field]: normalizedValue,
             }

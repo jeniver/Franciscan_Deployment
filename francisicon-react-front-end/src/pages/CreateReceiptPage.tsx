@@ -9,16 +9,17 @@ import { EyeIcon, LoaderIcon, AlertTriangle, CheckCircle, SaveIcon, PrinterIcon,
 import { ReceiptDetailModal } from '../components/ReceiptDetailModal';
 import type { AppDispatch, RootState } from '../store';
 import {
-    createIndividualReceipt,
     fetchInvoiceByCode,
+    createIndividualReceipt,
     setSelectedReceipt,
     setSelectedInvoice,
     fetchReceiptByCode,
+    resetReceiptState,
 } from '../store/receiptSlice';
-import { fetchInvoiceOrApplication, clearCurrentData } from '../store/invoiceSlice';
+import { clearCurrentData } from '../store/invoiceSlice';
 import { InvoiceItemTable, InvoiceItem } from '../components/common/InvoiceItemTable';
 import { PaymentModeSelector } from '../components/common/PaymentModeSelector';
-import { CustomerAddressForm } from '../components/common/CustomerAddressForm';
+import { AddressInput } from '../components/AddressInput';
 import { receiptService } from '../services/receiptService';
 
 export function CreateReceiptPage() {
@@ -63,8 +64,7 @@ export function CreateReceiptPage() {
             // Clear all data if no code provided
             setLookupCode('');
             dispatch(clearCurrentData());
-            dispatch(setSelectedInvoice(null));
-            dispatch(setSelectedReceipt(null));
+            dispatch(resetReceiptState());
             setPayeeName('');
             setAddressBlock('Block');
             setAddressNumber('');
@@ -74,6 +74,7 @@ export function CreateReceiptPage() {
             setAddressCountry('Singapore');
             setItems([]);
             setRefDocumentNo('');
+            setRefDocType('NAPP');
         }
         fetchReceiptItems('567', true);
         fetchLastReceiptNumber();
@@ -249,6 +250,15 @@ export function CreateReceiptPage() {
         }
     };
 
+    const handleAddressChange = (addressData: any) => {
+        setAddressBlock(addressData.block || 'Block');
+        setAddressNumber(addressData.blockNo || '');
+        setAddressStreet(addressData.streetName || '');
+        setAddressUnit(addressData.unitNo || '');
+        setAddressPostalCode(addressData.postalCode || '');
+        setAddressCountry(addressData.country || 'Singapore');
+    };
+
     const handlePrint = async () => {
         if (isPdfLoading) return;
 
@@ -275,46 +285,48 @@ export function CreateReceiptPage() {
 
     return (
         <Layout title="Create Receipt">
-            <div className="min-h-screen p-4 md:p-6 bg-[#f4f1ea] bg-[url('https://www.transparenttextures.com/patterns/pinstripe.png')]">
-                <div className="max-w-[1200px] mx-auto space-y-6">
+            <div className="min-h-screen bg-[#fcfcfc] pb-12">
+                <div className="max-w-7xl mx-auto px-6 mt-4 space-y-5">
 
-                    <div className="bg-white rounded-xl p-4 shadow-lg border border-gray-200">
-                        <div className="flex flex-col sm:flex-row items-center gap-4">
-                            <label className="font-bold text-gray-700">Invoice Code:</label>
-                            <div className="flex-1 flex gap-2 w-full">
-                                <input
-                                    type="text"
-                                    value={lookupCode}
-                                    onChange={(e) => {
-                                        setLookupCode(e.target.value);
-                                        if (!e.target.value.trim()) {
-                                            // Clear all data
-                                            dispatch(clearCurrentData());
-                                            dispatch(setSelectedInvoice(null));
-                                            dispatch(setSelectedReceipt(null));
-                                            setPayeeName('');
-                                            setAddressBlock('Block');
-                                            setAddressNumber('');
-                                            setAddressStreet('');
-                                            setAddressUnit('');
-                                            setAddressPostalCode('');
-                                            setAddressCountry('Singapore');
-                                            setItems([]);
-                                            setRefDocumentNo('');
-                                        }
-                                    }}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleLookup(lookupCode)}
-                                    className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#4b3621] outline-none transition-all"
-                                    placeholder="Enter Invoice Code"
-                                />
-                                <button
-                                    onClick={() => handleLookup(lookupCode)}
-                                    disabled={receiptLoading || applicationLoading || !lookupCode.trim()}
-                                    className="px-6 py-2 bg-[#4b3621] text-white rounded-lg font-bold hover:bg-[#5a4730] transition-all flex items-center gap-2 disabled:opacity-50"
-                                >
-                                    {receiptLoading || applicationLoading ? <LoaderIcon className="w-4 h-4 animate-spin" /> : <EyeIcon className="w-4 h-4" />}
-                                    Search
-                                </button>
+                    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                        <div className="flex flex-col md:flex-row items-end gap-5">
+                            <div className="flex-1 w-full">
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Invoice Code</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={lookupCode}
+                                        onChange={(e) => {
+                                            setLookupCode(e.target.value);
+                                            if (!e.target.value.trim()) {
+                                                // Clear all data
+                                                dispatch(clearCurrentData());
+                                                dispatch(setSelectedInvoice(null));
+                                                dispatch(setSelectedReceipt(null));
+                                                setPayeeName('');
+                                                setAddressBlock('Block');
+                                                setAddressNumber('');
+                                                setAddressStreet('');
+                                                setAddressUnit('');
+                                                setAddressPostalCode('');
+                                                setAddressCountry('Singapore');
+                                                setItems([]);
+                                                setRefDocumentNo('');
+                                            }
+                                        }}
+                                        onKeyPress={(e) => e.key === 'Enter' && handleLookup(lookupCode)}
+                                        className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/10 focus:border-teal-500 outline-none font-semibold text-gray-700 transition-all text-sm"
+                                        placeholder="e.g. INV-12345"
+                                    />
+                                    <button
+                                        onClick={() => handleLookup(lookupCode)}
+                                        disabled={receiptLoading || applicationLoading || !lookupCode.trim()}
+                                        className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition-all flex items-center gap-2 disabled:opacity-50 text-sm"
+                                    >
+                                        {receiptLoading || applicationLoading ? <LoaderIcon className="w-3.5 h-3.5 animate-spin" /> : <EyeIcon className="w-3.5 h-3.5" />}
+                                        <span>Search</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -350,91 +362,106 @@ export function CreateReceiptPage() {
                         )} */}
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 space-y-6">
-                            <div className="bg-white rounded-xl p-4 shadow-lg border border-gray-200">
-                                <div className="flex flex-col sm:flex-row items-center gap-4">
-                                    <label className="w-32 font-bold text-gray-700">Payee Name:</label>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                        <div className="lg:col-span-2 space-y-5">
+                            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Payee Name</label>
                                     <input
                                         type="text"
                                         value={payeeName}
                                         onChange={(e) => setPayeeName(e.target.value)}
-                                        className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#4b3621] outline-none"
-                                        placeholder="Enter customer name"
+                                        className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/10 focus:border-teal-500 outline-none font-semibold text-gray-700 transition-all text-sm"
+                                        placeholder="Full Name / Entity"
                                     />
                                 </div>
                             </div>
 
-                            <CustomerAddressForm
-                                addressBlock={addressBlock} setAddressBlock={setAddressBlock}
-                                addressNumber={addressNumber} setAddressNumber={setAddressNumber}
-                                addressStreet={addressStreet} setAddressStreet={setAddressStreet}
-                                addressUnit={addressUnit} setAddressUnit={setAddressUnit}
-                                addressPostalCode={addressPostalCode} setAddressPostalCode={setAddressPostalCode}
-                                addressCountry={addressCountry} setAddressCountry={setAddressCountry}
-                            />
+                            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                <AddressInput
+                                    onAddressChange={handleAddressChange}
+                                    label="Payee Address"
+                                    initialValues={{
+                                        block: addressBlock,
+                                        blockNo: addressNumber,
+                                        streetName: addressStreet,
+                                        unitNo: addressUnit,
+                                        postalCode: addressPostalCode,
+                                        country: addressCountry
+                                    }}
+                                    isReadOnly={receiptLoading || applicationLoading}
+                                />
+                            </div>
 
-                            <InvoiceItemTable
-                                items={items}
-                                setItems={setItems}
-                                availableItems={availableItems}
-                                receiptItems={receiptItems}
-                            />
+                            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
+                                        <FileTextIcon className="w-4 h-4 text-indigo-600" />
+                                    </div>
+                                    <h2 className="text-lg font-bold text-gray-900">Receipt Details</h2>
+                                </div>
+                                <InvoiceItemTable
+                                    items={items}
+                                    setItems={setItems}
+                                    availableItems={availableItems}
+                                    receiptItems={receiptItems}
+                                />
+                            </div>
                         </div>
 
-                        <div className="space-y-6">
-                            <PaymentModeSelector
-                                paymentMode={paymentMode} setPaymentMode={setPaymentMode}
-                                refDocumentNo={refDocumentNo} setRefDocumentNo={setRefDocumentNo}
-                            />
+                        <div className="space-y-5 sticky top-[110px] self-start">
+                            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 space-y-5">
+                                <PaymentModeSelector
+                                    paymentMode={paymentMode} setPaymentMode={setPaymentMode}
+                                    refDocumentNo={refDocumentNo} setRefDocumentNo={setRefDocumentNo}
+                                />
 
-                            <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200 space-y-4">
-                                <button
-                                    onClick={handleCreateReceipt}
-                                    disabled={creatingReceipt}
-                                    className="w-full py-4 bg-gradient-to-r from-[#1b5e20] to-[#2e7d32] text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-                                >
-                                    {creatingReceipt ? <LoaderIcon className="w-6 h-6 animate-spin" /> : <SaveIcon className="w-6 h-6" />}
-                                    {(currentReceipt || selectedReceipt) ? 'Receipt Generated!' : 'Generate Receipt'}
-                                </button>
-
-                                {(currentReceipt || selectedReceipt || selectedInvoice) && (
+                                <div className="space-y-2 pt-4 border-t border-gray-50">
                                     <button
-                                        onClick={handlePrint}
-                                        className="w-full py-3 bg-white border-2 border-[#1b5e20] text-[#1b5e20] rounded-xl font-bold hover:bg-[#1b5e20] hover:text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                                        disabled={isPdfLoading}
+                                        onClick={handleCreateReceipt}
+                                        disabled={creatingReceipt}
+                                        className="w-full py-3.5 bg-emerald-600 text-white rounded-lg font-bold text-md shadow-md hover:bg-emerald-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                                     >
-                                        <PrinterIcon className={`w-5 h-5 ${isPdfLoading ? 'animate-spin' : ''}`} />
-                                        {isPdfLoading ? 'Loading...' : 'Print Receipt'}
+                                        {creatingReceipt ? <LoaderIcon className="w-5 h-5 animate-spin" /> : <SaveIcon className="w-5 h-5" />}
+                                        <span>{(currentReceipt || selectedReceipt) ? 'Created!' : 'Generate'}</span>
                                     </button>
-                                )}
 
+                                    {(currentReceipt || selectedReceipt || selectedInvoice) && (
+                                        <button
+                                            onClick={handlePrint}
+                                            className="w-full py-2 bg-white border border-gray-200 text-slate-700 rounded-lg font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-xs"
+                                            disabled={isPdfLoading}
+                                        >
+                                            <PrinterIcon className={`w-3.5 h-3.5 ${isPdfLoading ? 'animate-spin' : ''}`} />
+                                            <span>{isPdfLoading ? 'Loading...' : 'Print'}</span>
+                                        </button>
+                                    )}
 
+                                    {selectedInvoice && (
+                                        <button
+                                            onClick={() => navigate(`/create-invoice/${selectedInvoice.invoiceCode}`)}
+                                            className="w-full py-2 bg-white border border-gray-100 text-slate-500 rounded-lg font-bold hover:bg-gray-100 transition-all flex items-center justify-center gap-2 text-xs"
+                                        >
+                                            <FileTextIcon className="w-3.5 h-3.5" />
+                                            <span>View Invoice</span>
+                                        </button>
+                                    )}
 
-                                {selectedInvoice && (
-                                    <button
-                                        onClick={() => navigate(`/create-invoice/${selectedInvoice.invoiceCode}`)}
-                                        className="w-full py-3 bg-white border-2 border-[#4b3621] text-[#4b3621] rounded-xl font-bold hover:bg-[#4b3621] hover:text-white transition-all flex items-center justify-center gap-2"
-                                    >
-                                        <FileTextIcon className="w-5 h-5" />
-                                        Go to Invoice
-                                    </button>
-                                )}
+                                    {(currentReceipt || selectedReceipt) && (
+                                        <div className="text-center pt-1">
+                                            <p className="text-[10px] font-bold text-emerald-600">ID: {currentReceipt?.receiptCode || selectedReceipt?.receiptCode}</p>
+                                        </div>
+                                    )}
+                                </div>
 
-                                {(currentReceipt || selectedReceipt) && (
-                                    <div className="text-center">
-                                        <p className="text-sm font-bold text-green-600">Receipt: {currentReceipt?.receiptCode || selectedReceipt?.receiptCode}</p>
-                                    </div>
-                                )}
-
-                                <div className="mt-6 pt-6 border-t border-gray-100">
+                                <div className="mt-4 pt-4 border-t border-gray-50">
                                     <button
                                         onClick={() => navigate(`/legacy-invoice-receipt/${lookupCode || (currentReceipt as any)?.receiptCode || ''}`)}
-                                        className="w-full py-2.5 bg-gray-50 border border-gray-200 text-gray-500 rounded-lg text-sm font-medium hover:bg-gray-100 hover:text-gray-700 transition-all flex items-center justify-center gap-2"
-                                        title="Navigate to legacy page for deeper analysis"
+                                        className="w-full py-2 bg-gray-50 border border-gray-100 text-gray-400 rounded-lg text-[9px] font-bold uppercase tracking-wider hover:bg-gray-100 hover:text-gray-600 transition-all flex items-center justify-center gap-2"
+                                        title="Navigate to legacy page"
                                     >
-                                        <EyeIcon className="w-4 h-4" />
-                                        Advanced Analysis (Legacy)
+                                        <EyeIcon className="w-3.5 h-3.5" />
+                                        Advanced Details
                                     </button>
                                 </div>
                             </div>

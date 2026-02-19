@@ -53,6 +53,7 @@ export interface NichiBookingState {
   refDocNumber: string;
   lineTaxPercent: number;
   itemId: number;
+  remarks: string;
 
   // Optional: Applicant details
   applicantName?: string;
@@ -127,6 +128,7 @@ const initialState: NichiBookingState = {
   refDocNumber: '',
   lineTaxPercent: 9, // Default tax percent for Nichi (NAPP)
   itemId: 6, // Default item ID for Nichi (from curl example)
+  remarks: '',
   deceasedDetails: [],
   selectedBibleChoiceId: null,
   phraseOfChoice: '',
@@ -340,6 +342,9 @@ const nichibookingSlice = createSlice({
     },
     setItemId: (state, action: PayloadAction<number>) => {
       state.itemId = action.payload;
+    },
+    setRemarks: (state, action: PayloadAction<string>) => {
+      state.remarks = action.payload;
     },
 
     // Applicant details (optional)
@@ -590,6 +595,7 @@ export const {
   setRefDocNumber,
   setLineTaxPercent,
   setItemId,
+  setRemarks,
   setApplicantName,
   setApplicantIdNo,
   setApplicantEmail,

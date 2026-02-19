@@ -727,16 +727,50 @@ class ReceiptRepository extends BaseRepository {
       }
       const codes = Array.from(codeSet);
 
-      // Helper to process row and add fallback address
+      // Helper to process row and add robust fallback address
       const processRow = async (row) => {
-        // Fallback to invoice address if receipt address is missing
-        if (!row.Address && row.Invoice_Address) {
-          row.AddressNo = row.Invoice_AddressNo;
-          row.Address = row.Invoice_Address;
-          row.Address2 = row.Invoice_Address2;
-          row.AddressCity = row.Invoice_AddressCity;
-          row.DistrictCode = row.Invoice_DistrictCode;
-          row.Country = row.Invoice_Country;
+        const isInvalid = (val) => {
+          if (val === null || val === undefined) return true;
+          const s = String(val).trim().toLowerCase();
+          return s === '' || s === 'null' || s === 'undefined';
+        };
+
+        // Robust field-by-field fallback for address components
+        if (isInvalid(row.AddressNo) && !isInvalid(row.Invoice_AddressNo)) row.AddressNo = row.Invoice_AddressNo;
+        if (isInvalid(row.Address) && !isInvalid(row.Invoice_Address)) row.Address = row.Invoice_Address;
+        if (isInvalid(row.Address2) && !isInvalid(row.Invoice_Address2)) row.Address2 = row.Invoice_Address2;
+        if (isInvalid(row.AddressCity) && !isInvalid(row.Invoice_AddressCity)) row.AddressCity = row.Invoice_AddressCity;
+        if (isInvalid(row.DistrictCode) && !isInvalid(row.Invoice_DistrictCode)) row.DistrictCode = row.Invoice_DistrictCode;
+        if (isInvalid(row.Country) && !isInvalid(row.Invoice_Country)) row.Country = row.Invoice_Country;
+
+        // Build a deduplicated full address string for the model if needed
+        const addressPartsRaw = [
+          row.AddressNo, row.Address, row.Address2,
+          row.AddressCity, row.DistrictCode, row.Country
+        ].map(p => String(p || '').trim())
+          .filter(p => p && p.toLowerCase() !== 'null' && p.toLowerCase() !== 'undefined' && p !== '');
+
+        const uniqueParts = [];
+        const seenNormalized = new Set();
+        for (const part of addressPartsRaw) {
+          const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (!normalized) continue;
+          let exists = false;
+          for (const seen of seenNormalized) {
+            if (seen.includes(normalized) || normalized.includes(seen)) {
+              exists = true;
+              break;
+            }
+          }
+          if (!exists) {
+            uniqueParts.push(part);
+            seenNormalized.add(normalized);
+          }
+        }
+
+        // Inject the deduplicated address back into the row if we built a better one
+        if (uniqueParts.length > 0) {
+          row.CustomerAddress = uniqueParts.join(', ');
         }
 
         const receipt = new Receipt(row);
@@ -762,7 +796,6 @@ class ReceiptRepository extends BaseRepository {
             Status: row.Invoice_Status,
             ChurchId: row.Invoice_ChurchId,
             UserId: row.Invoice_UserId,
-            // Add address to invoice object too
             AddressNo: row.Invoice_AddressNo,
             Address: row.Invoice_Address,
             Address2: row.Invoice_Address2,
@@ -782,7 +815,10 @@ class ReceiptRepository extends BaseRepository {
           }
         }
 
-        return { ...receipt, invoice, details };
+        // Ensure we have some items - fallback to invoice details if receipt details are empty
+        const finalDetails = (details && details.length > 0) ? details : (invoice?.details || []);
+
+        return { ...receipt, invoice, details: finalDetails, invoiceDetails: invoice?.details || [] };
       };
 
       const selectColumns = `
@@ -1061,7 +1097,13 @@ class ReceiptRepository extends BaseRepository {
             i.Code AS InvoiceCode,
             i.TransactionDate AS InvoiceDate,
             i.RefDocNumber,
-            i.RefDocName
+            i.RefDocName,
+            i.AddressNo AS Invoice_AddressNo,
+            i.Address AS Invoice_Address,
+            i.Address2 AS Invoice_Address2,
+            i.AddressCity AS Invoice_AddressCity,
+            i.DistrictCode AS Invoice_DistrictCode,
+            i.Country AS Invoice_Country
           FROM Receipt r WITH (NOLOCK)
           LEFT JOIN Invoice i WITH (NOLOCK) ON r.InvoiceId = i.InvoiceId
           WHERE r.TransactionDate >= @FromDate AND r.TransactionDate <= @ToDate

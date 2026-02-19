@@ -1285,6 +1285,25 @@ The application list will be refreshed to show your new application.`);
                     ← Cancel
                   </Button>
                   <div className="flex gap-2">
+                    {/* <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          const saveResult = await saveChanges(formData);
+                          if (!saveResult.success && saveResult.error && saveResult.error !== 'No application code provided') {
+                            showErrorMessage(saveResult.error || 'Failed to save changes');
+                            return;
+                          }
+                          showSuccessMessage('Changes saved successfully!');
+                        } catch (error) {
+                          console.error('Error saving changes:', error);
+                          showErrorMessage('Failed to save changes');
+                        }
+                      }}
+                      disabled={loading || isUpdating}
+                    >
+                      Save Changes
+                    </Button> */}
                     <Button
                       variant="outline"
                       onClick={previousStep}
@@ -1292,6 +1311,7 @@ The application list will be refreshed to show your new application.`);
                     >
                       ← Previous Step
                     </Button>
+                 
                     <Button
                       variant="primary"
                       onClick={async () => {
@@ -1352,6 +1372,17 @@ The application list will be refreshed to show your new application.`);
                     }}
                   >
                     ← Back to Applications
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      if (applicationNumber?.trim()) {
+                        navigate(`/niche/edit/${applicationNumber.trim()}`);
+                      }
+                    }}
+                    disabled={!applicationNumber?.trim()}
+                  >
+                    Edit Application
                   </Button>
                 </div>
               )}

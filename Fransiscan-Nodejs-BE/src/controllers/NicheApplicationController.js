@@ -165,6 +165,7 @@ class NicheApplicationController {
         applicant: payload.applicant,
         nominees: payload.nominees,
         beneficiaries: beneficiaries, // Ensure this is always an array
+        remarks: payload.remarks || payload.additionalDetails?.remarks || null,
         contact: payload.contact || {
           name: payload.contactName || payload.applicant?.name,
           email: payload.contactEmail || payload.applicant?.email,
@@ -229,6 +230,7 @@ class NicheApplicationController {
 
       // Additional fields
       code: payload.code || payload.applicationCode,
+      remarks: payload.remarks || payload.additionalDetails?.remarks || null,
       contact: {
         name: payload.contactName,
         email: payload.contactEmail,
@@ -308,25 +310,19 @@ class NicheApplicationController {
     // Process additional nominees array if provided
     if (Array.isArray(payload.nominees)) {
       payload.nominees.forEach(nominee => {
-        // Avoid duplicates by checking if already added
-        const exists = nominees.some(n =>
-          (n.name === nominee.name && n.idNo === nominee.idNo) ||
-          n.name === nominee.name
-        );
-        if (!exists) {
-          nominees.push({
-            id: nominee.id,
-            name: nominee.name || nominee.fullName,
-            email: nominee.email,
-            phone: nominee.phone || nominee.contactNumber || nominee.mobileNo,
-            idNo: nominee.idNo || nominee.nric,
-            relationship: nominee.relationship || nominee.relationshipToApplicant,
-            status: nominee.status,
-            address: nominee.address ? {
-              formatted: nominee.address
-            } : undefined
-          });
-        }
+        // Keep nominee entries as provided (duplicates are allowed by business rule).
+        nominees.push({
+          id: nominee.id,
+          name: nominee.name || nominee.fullName,
+          email: nominee.email,
+          phone: nominee.phone || nominee.contactNumber || nominee.mobileNo,
+          idNo: nominee.idNo || nominee.nric,
+          relationship: nominee.relationship || nominee.relationshipToApplicant,
+          status: nominee.status,
+          address: nominee.address ? {
+            formatted: nominee.address
+          } : undefined
+        });
       });
     }
 
@@ -452,6 +448,7 @@ class NicheApplicationController {
       niche: data.nicheDetails || data.niche,
       chapel: data.chapel,
       status: data.status,
+      remarks: data.remarks || null,
       // Additional metadata
       metadata: {
         generatedAt: new Date().toISOString(),

@@ -14,6 +14,8 @@ import inscriptionAgreementService, {
   InscriptionAgreementData,
   InscriptionAgreementError,
 } from '../services/inscriptionAgreementService'
+import { invoiceService } from '../services/invoiceService'
+import { paymentModeToLabel } from '../utils/paymentMode'
 
 interface InscriptionAgreementViewerModalProps {
   isOpen: boolean
@@ -54,15 +56,77 @@ export function InscriptionAgreementViewerModal({
   const [pdfBase64, setPdfBase64] = useState<string | undefined>(undefined)
   const contentRef = useRef<HTMLDivElement>(null)
 
-  // Fetch inscription agreement data when modal opens
   useEffect(() => {
-    if (isOpen && inscriptionCode && !agreementData && !initialData) {
+    if (!isOpen) return
+    setError(null)
+    setAgreementData(initialData || null)
+  }, [isOpen, inscriptionCode, initialData])
+
+  // Fetch inscription agreement data when modal opens.
+  // Even if initial data exists, refresh from API so the modal shows latest values.
+  useEffect(() => {
+    if (isOpen && inscriptionCode) {
       const fetchAgreementData = async () => {
         setLoading(true)
         setError(null)
         try {
           const data = await inscriptionAgreementService.getPdfData(inscriptionCode)
-          setAgreementData(data)
+
+          // Try to enrich agreement view with real invoice/receipt details.
+          // Keep silent fallback so agreement still opens even if lookup fails.
+          let enrichedData: InscriptionAgreementData = data
+          try {
+            const invoiceData = await invoiceService.getInvoiceByCode(inscriptionCode, 'INCR')
+            const hasInvoice = Boolean(invoiceData?.hasInvoice && invoiceData?.code)
+            const hasReceipt = Boolean(invoiceData?.hasReceipt && invoiceData?.receiptCode)
+
+            const paymentRows = []
+            if (hasInvoice) {
+              const invoiceSubtotal = Number(invoiceData?.summary?.subtotal ?? invoiceData?.totalAmount ?? 0)
+              const invoiceTax = Number(invoiceData?.summary?.totalTax ?? invoiceData?.taxAmount ?? 0)
+              const invoiceTotal = Number(invoiceData?.summary?.grandTotal ?? invoiceData?.totalAmount ?? 0)
+              paymentRows.push({
+                date: invoiceData?.transactionDate
+                  ? new Date(invoiceData.transactionDate).toLocaleDateString('en-SG')
+                  : '',
+                invReceipt: invoiceData?.code || '',
+                description: invoiceData?.applicationCode || inscriptionCode,
+                amount: Number.isFinite(invoiceSubtotal) ? invoiceSubtotal : 0,
+                gst: Number.isFinite(invoiceTax) ? `$ ${invoiceTax.toFixed(2)}` : '',
+                totalAmount: Number.isFinite(invoiceTotal) ? invoiceTotal : 0,
+              })
+            }
+
+            if (hasReceipt) {
+              const resolvedPaymentMode = paymentModeToLabel(
+                invoiceData?.receiptPaymentMode ?? invoiceData?.paymentMode
+              )
+              const receiptAmount = Number(
+                invoiceData?.receiptPayingAmount
+                ?? invoiceData?.receiptTotalAmount
+                ?? 0
+              )
+              paymentRows.push({
+                date: invoiceData?.receiptDate
+                  ? new Date(invoiceData.receiptDate).toLocaleDateString('en-SG')
+                  : '',
+                invReceipt: invoiceData?.receiptCode || '',
+                description: resolvedPaymentMode,
+                amount: 0,
+                gst: '',
+                totalAmount: Number.isFinite(receiptAmount) ? receiptAmount : 0,
+              })
+            }
+
+            enrichedData = {
+              ...data,
+              payments: paymentRows
+            }
+          } catch {
+            // No-op: keep base agreement payload when invoice lookup is unavailable.
+          }
+
+          setAgreementData(enrichedData)
         } catch (err: any) {
           if (err instanceof InscriptionAgreementError) {
             setError(err.message)
@@ -77,7 +141,7 @@ export function InscriptionAgreementViewerModal({
 
       fetchAgreementData()
     }
-  }, [isOpen, inscriptionCode, agreementData, initialData])
+  }, [isOpen, inscriptionCode])
 
   // Helper function to get all computed styles as inline styles
   const getComputedStylesAsString = (element: Element): string => {
@@ -340,16 +404,7 @@ export function InscriptionAgreementViewerModal({
         (data.deceased[1].dateOfDeath ? new Date(data.deceased[1].dateOfDeath).toLocaleDateString('en-SG') : ''),
     } : { name: '', deathCertNo: '', dateBorn: '', dateDied: '' }
 
-    const payments = data.payments && data.payments.length > 0 ? data.payments : [
-      {
-        date: data.formattedDate || new Date().toLocaleDateString('en-SG'),
-        invReceipt: '',
-        description: 'Inscription',
-        amount: 400.0,
-        gst: '$ 36.00',
-        totalAmount: 436.0,
-      }
-    ]
+    const payments = Array.isArray(data.payments) ? data.payments : []
 
     return {
       inscriptionNo: data.inscriptionCode || inscriptionCode,
@@ -451,6 +506,8 @@ export function InscriptionAgreementViewerModal({
 function InscriptionAgreementView({
   inscriptionNo, chapelName, nicheNo, applicantName, address, telOff, telRes, telHP, crossType, deceased1, deceased2, bibleInscriptionNumber, dateOfInterment, timeOfInterment, bibleInscriptionText, payments, signatureName, signatureDate
 }: any) {
+  const safePayments = Array.isArray(payments) ? payments : []
+
   return (
     <div className="w-full max-w-[210mm] mx-auto bg-white p-12 shadow-lg text-black font-serif text-sm leading-tight print:shadow-none print:p-0">
       <div className="mb-6">
@@ -498,7 +555,31 @@ function InscriptionAgreementView({
         <div className="p-1 border-b border-black font-bold text-[10px] bg-gray-50">Payment Details: Cheque to "The Order of Friars Minor (S) Ltd-Columbarium"</div>
         <table className="w-full text-xs">
           <thead><tr className="border-b border-black bg-gray-50"><th className="border-r border-black p-1 text-left">Date</th><th className="border-r border-black p-1 text-left">Inv/Receipt</th><th className="border-r border-black p-1 text-left">Description</th><th className="border-r border-black p-1 text-left">Amount</th><th className="border-r border-black p-1 text-left">GST</th><th className="p-1 text-right">Total</th></tr></thead>
-          <tbody>{payments.map((p: any, i: number) => (<tr key={i} className="border-b border-black last:border-0"><td className="border-r border-black p-1">{p.date}</td><td className="border-r border-black p-1">{p.invReceipt}</td><td className="border-r border-black p-1">{p.description}</td><td className="border-r border-black p-1">${p.amount.toFixed(2)}</td><td className="border-r border-black p-1">{p.gst}</td><td className="p-1 text-right">${p.totalAmount.toFixed(2)}</td></tr>))}</tbody>
+          <tbody>
+            {safePayments.length > 0 ? safePayments.map((p: any, i: number) => {
+              const amount = Number(p?.amount || 0)
+              const totalAmount = Number(p?.totalAmount || 0)
+              return (
+                <tr key={i} className="border-b border-black last:border-0">
+                  <td className="border-r border-black p-1">{p?.date || ''}</td>
+                  <td className="border-r border-black p-1">{p?.invReceipt || ''}</td>
+                  <td className="border-r border-black p-1">{p?.description || ''}</td>
+                  <td className="border-r border-black p-1">{Number.isFinite(amount) ? `$${amount.toFixed(2)}` : ''}</td>
+                  <td className="border-r border-black p-1">{p?.gst || ''}</td>
+                  <td className="p-1 text-right">{Number.isFinite(totalAmount) ? `$${totalAmount.toFixed(2)}` : ''}</td>
+                </tr>
+              )
+            }) : (
+              <tr className="border-b border-black last:border-0">
+                <td className="border-r border-black p-1">&nbsp;</td>
+                <td className="border-r border-black p-1">&nbsp;</td>
+                <td className="border-r border-black p-1">&nbsp;</td>
+                <td className="border-r border-black p-1">&nbsp;</td>
+                <td className="border-r border-black p-1">&nbsp;</td>
+                <td className="p-1 text-right">&nbsp;</td>
+              </tr>
+            )}
+          </tbody>
         </table>
       </div>
       <div className="mt-8">

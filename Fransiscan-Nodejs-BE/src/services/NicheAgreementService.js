@@ -24,8 +24,12 @@ class NicheAgreementService {
    * @param {string} applicationNumber - Application number (e.g., "3795-1", "3795", or "3795-")
    * @returns {Promise<Object>} Complete niche agreement data
    */
-  async getNicheAgreementDetails(applicationNumber) {
+  async getNicheAgreementDetails(applicationNumber, options = {}) {
     try {
+      const {
+        includeDeceasedDetails = true
+      } = options;
+
       logger.info(`Getting niche agreement details for application: ${applicationNumber}`);
 
       // Validate input
@@ -35,8 +39,8 @@ class NicheAgreementService {
 
       // CRITICAL OPTIMIZATION: Check cache first
       const cacheKey = `${NICHE_AGREEMENT_CACHE_PREFIX}${applicationNumber.trim()}`;
-      // FORCE BYPASS CACHE FOR DEBUGGING
-      const bypassCache = true;
+      // For alternate/minimal payload variants (like second nominee PDF), skip shared cache.
+      const bypassCache = !includeDeceasedDetails;
 
       if (enableCache && !bypassCache) {
         const cached = cache.get(cacheKey);
@@ -46,42 +50,8 @@ class NicheAgreementService {
         }
       }
 
-      // Clean the application number
-      let cleanApplicationNumber = applicationNumber.trim();
-
-      // If application number ends with dash but no suffix, try to find it
-      if (cleanApplicationNumber.endsWith('-')) {
-        logger.info(`Application number ends with dash: ${cleanApplicationNumber}, attempting to find matching record`);
-        const suggestions = await this.findApplicationNumberByPrefix(cleanApplicationNumber);
-
-        if (suggestions.length === 0) {
-          throw new Error(`No niche agreement found for application number pattern: ${cleanApplicationNumber}`);
-        }
-
-        if (suggestions.length === 1) {
-          cleanApplicationNumber = suggestions[0];
-          logger.info(`Auto-selected application number: ${cleanApplicationNumber}`);
-        } else {
-          throw new Error(`Multiple applications found for pattern ${cleanApplicationNumber}. Please specify: ${suggestions.join(', ')}`);
-        }
-      }
-
-      // If application number doesn't contain dash, try to find it
-      if (!cleanApplicationNumber.includes('-')) {
-        logger.info(`Application number without dash: ${cleanApplicationNumber}, attempting to find matching record`);
-        const suggestions = await this.findApplicationNumberByPrefix(`${cleanApplicationNumber}-`);
-
-        if (suggestions.length === 0) {
-          throw new Error(`No niche agreement found for application number pattern: ${cleanApplicationNumber}`);
-        }
-
-        if (suggestions.length === 1) {
-          cleanApplicationNumber = suggestions[0];
-          logger.info(`Auto-selected application number: ${cleanApplicationNumber}`);
-        } else {
-          throw new Error(`Multiple applications found for pattern ${cleanApplicationNumber}. Please specify: ${suggestions.join(', ')}`);
-        }
-      }
+      // Clean/resolve the application number
+      const cleanApplicationNumber = await this.resolveApplicationNumber(applicationNumber);
 
       // Get the niche agreement from repository
       const nicheAgreement = await this.nicheAgreementRepository.getNicheAgreementDetailsCopy(cleanApplicationNumber);
@@ -91,7 +61,10 @@ class NicheAgreementService {
       }
 
       // Add additional business logic processing
-      const processedAgreement = await this.processNicheAgreementData(nicheAgreement);
+      const processedAgreement = await this.processNicheAgreementData(
+        nicheAgreement,
+        { includeDeceasedDetails }
+      );
 
       // CRITICAL OPTIMIZATION: Cache the result
       if (enableCache && !bypassCache) {
@@ -109,6 +82,47 @@ class NicheAgreementService {
       logger.error(`Error getting niche agreement details for ${applicationNumber}:`, error);
       throw error;
     }
+  }
+
+  async resolveApplicationNumber(applicationNumber) {
+    // Clean the application number
+    let cleanApplicationNumber = applicationNumber.trim();
+
+    // If application number ends with dash but no suffix, try to find it
+    if (cleanApplicationNumber.endsWith('-')) {
+      logger.info(`Application number ends with dash: ${cleanApplicationNumber}, attempting to find matching record`);
+      const suggestions = await this.findApplicationNumberByPrefix(cleanApplicationNumber);
+
+      if (suggestions.length === 0) {
+        throw new Error(`No niche agreement found for application number pattern: ${cleanApplicationNumber}`);
+      }
+
+      if (suggestions.length === 1) {
+        cleanApplicationNumber = suggestions[0];
+        logger.info(`Auto-selected application number: ${cleanApplicationNumber}`);
+      } else {
+        throw new Error(`Multiple applications found for pattern ${cleanApplicationNumber}. Please specify: ${suggestions.join(', ')}`);
+      }
+    }
+
+    // If application number doesn't contain dash, try to find it
+    if (!cleanApplicationNumber.includes('-')) {
+      logger.info(`Application number without dash: ${cleanApplicationNumber}, attempting to find matching record`);
+      const suggestions = await this.findApplicationNumberByPrefix(`${cleanApplicationNumber}-`);
+
+      if (suggestions.length === 0) {
+        throw new Error(`No niche agreement found for application number pattern: ${cleanApplicationNumber}`);
+      }
+
+      if (suggestions.length === 1) {
+        cleanApplicationNumber = suggestions[0];
+        logger.info(`Auto-selected application number: ${cleanApplicationNumber}`);
+      } else {
+        throw new Error(`Multiple applications found for pattern ${cleanApplicationNumber}. Please specify: ${suggestions.join(', ')}`);
+      }
+    }
+
+    return cleanApplicationNumber;
   }
 
   /**
@@ -130,8 +144,12 @@ class NicheAgreementService {
    * @param {NicheAgreement} nicheAgreement - Raw niche agreement data
    * @returns {Promise<Object>} Processed niche agreement data
    */
-  async processNicheAgreementData(nicheAgreement) {
+  async processNicheAgreementData(nicheAgreement, options = {}) {
     try {
+      const {
+        includeDeceasedDetails = true
+      } = options;
+
       // Convert to JSON format
       const agreementData = nicheAgreement.toJSON();
 
@@ -152,14 +170,33 @@ class NicheAgreementService {
         generatedAt: new Date().toISOString(),
         applicationNumber: nicheAgreement.applicationCode,
         hasInvoice: !!nicheAgreement.invoiceNo,
-        hasReceipt: !!nicheAgreement.receiptAmount,
+        hasReceipt: !!(nicheAgreement.receiptNo || nicheAgreement.receiptAmount),
         beneficiaryCount: agreementData.beneficiaries.length,
         nomineeCount: (nicheAgreement.nomineeName ? 1 : 0) + (nicheAgreement.nominee2Name ? 1 : 0),
         remarks: nicheAgreement.remarks || nicheAgreement.Remarks || null
       };
 
-      // Add deceased details from inscription if available
-      agreementData.deceased = await this.getDeceasedDetails(nicheAgreement.applicationCode);
+      // Add deceased details from inscription if available.
+      // Keep application-level deceased fields as fallback when inscription is not created yet.
+      if (includeDeceasedDetails) {
+        const inscriptionDeceased = await this.getDeceasedDetails(nicheAgreement.applicationCode);
+        const currentDeceased = agreementData.deceased || {};
+
+        agreementData.deceased = {
+          deceased1: {
+            name: inscriptionDeceased?.deceased1?.name || currentDeceased?.deceased1?.name || null,
+            dateDied: inscriptionDeceased?.deceased1?.dateDied || currentDeceased?.deceased1?.dateDied || null,
+            internmentDate: inscriptionDeceased?.deceased1?.internmentDate || currentDeceased?.deceased1?.internmentDate || null,
+            deathCertificateNo: inscriptionDeceased?.deceased1?.deathCertificateNo || currentDeceased?.deceased1?.deathCertificateNo || null
+          },
+          deceased2: {
+            name: inscriptionDeceased?.deceased2?.name || currentDeceased?.deceased2?.name || null,
+            dateDied: inscriptionDeceased?.deceased2?.dateDied || currentDeceased?.deceased2?.dateDied || null,
+            internmentDate: inscriptionDeceased?.deceased2?.internmentDate || currentDeceased?.deceased2?.internmentDate || null,
+            deathCertificateNo: inscriptionDeceased?.deceased2?.deathCertificateNo || currentDeceased?.deceased2?.deathCertificateNo || null
+          }
+        };
+      }
 
       // Use central DateService for consistent formatting
       const formatDate = (date) => dateService.formatForUI(date);
