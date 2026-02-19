@@ -450,11 +450,11 @@ class ReceiptService extends BaseService {
       const searchTerm = options.searchTerm ? options.searchTerm.trim().toLowerCase() : null;
 
       const cacheKey = this.buildReportCacheKey(fromDate, toDate);
-      let report = cache.get(cacheKey);
+      let report = await cacheManager.get(cacheKey);
 
       if (!report) {
         report = await this.repository.getReceiptReport(fromDate, toDate);
-        cache.set(cacheKey, report, this.reportCacheTtl);
+        await cacheManager.set(cacheKey, report, this.reportCacheTtl);
       }
 
       let items = Array.isArray(report.data) ? [...report.data] : [];
@@ -466,19 +466,43 @@ class ReceiptService extends BaseService {
         const modeLabel = Receipt.paymentModeToString(rawMode);
 
         // Build Full Customer Address from components if available
-        const addrNo = item.AddressNo || item.addressNo || '';
-        const addr1 = item.Address || item.address || '';
-        const addr2 = item.Address2 || item.address2 || '';
-        const city = item.AddressCity || item.addressCity || '';
-        const dist = item.DistrictCode || item.districtCode || '';
-        const country = item.Country || item.country || '';
+        // Fallback to Invoice address components if Receipt components are missing
+        const addrNo = item.AddressNo || item.addressNo || item.Invoice_AddressNo || '';
+        const addr1 = item.Address || item.address || item.Invoice_Address || '';
+        const addr2 = item.Address2 || item.address2 || item.Invoice_Address2 || '';
+        const city = item.AddressCity || item.addressCity || item.Invoice_AddressCity || '';
+        const dist = item.DistrictCode || item.districtCode || item.Invoice_DistrictCode || '';
+        const country = item.Country || item.country || item.Invoice_Country || '';
 
-        const addressParts = [addrNo, addr1, addr2, city, dist, country]
+        const addressPartsRaw = [addrNo, addr1, addr2, city, dist, country]
           .map(p => String(p || '').trim())
-          .filter(p => p && p !== 'null' && p !== 'undefined');
+          .filter(p => p && p.toLowerCase() !== 'null' && p.toLowerCase() !== 'undefined' && p !== '');
 
-        const fullAddress = addressParts.length > 0
-          ? addressParts.join(', ')
+        // Deduplicate parts to avoid repeats like "#65686, #65686"
+        const uniqueParts = [];
+        const seenNormalized = new Set();
+        for (const part of addressPartsRaw) {
+          // Normalize: lowercase and remove non-alphanumeric
+          const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (!normalized) continue;
+
+          // Check if this normalized part or something containing it was already seen
+          let exists = false;
+          for (const seen of seenNormalized) {
+            if (seen.includes(normalized) || normalized.includes(seen)) {
+              exists = true;
+              break;
+            }
+          }
+
+          if (!exists) {
+            uniqueParts.push(part);
+            seenNormalized.add(normalized);
+          }
+        }
+
+        const fullAddress = uniqueParts.length > 0
+          ? uniqueParts.join(', ')
           : (item.CustomerAddress || item.customerAddress || item.address || 'N/A');
 
         // Robust Receipt No handling

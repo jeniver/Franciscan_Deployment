@@ -1,5 +1,6 @@
 import api from './api';
 import receiptPdfService from './receiptPdfService';
+import { paymentModeToLabel } from '../utils/paymentMode';
 
 // Custom error class for receipt operations
 export class ReceiptError extends Error {
@@ -182,6 +183,9 @@ export interface ReceiptReportTransaction {
   Tot_Marble: number;
   Tot_Others: number;
   Total_val: number;
+  CustomerAddress?: string;
+  customerAddress?: string;
+  address?: string;
 }
 
 export interface ReceiptReport {
@@ -252,15 +256,17 @@ export interface LastReceiptNumberResponse {
 // Receipt Service
 export const receiptService = {
   // Get receipt by code
-  // Get receipt by code
-  getReceiptByCode: async (code: string): Promise<Receipt> => {
+  getReceiptByCode: async (code: string, applicationCode?: string): Promise<Receipt> => {
     try {
       if (!code) {
         throw new ReceiptError('Receipt code is required', 'validation');
       }
 
       const trimmedCode = code.trim();
-      const response = await api.get(`/api/receipts/${trimmedCode}`);
+      const url = applicationCode
+        ? `/api/receipts/${trimmedCode}?applicationCode=${applicationCode}`
+        : `/api/receipts/${trimmedCode}`;
+      const response = await api.get(url);
 
       // Unwrap response: API returns { success: true, data: { ... } }
       const responseData = response.data;
@@ -271,9 +277,7 @@ export const receiptService = {
       }
 
       const paymentModeToString = (mode: any) => {
-        if (typeof mode === 'string') return mode;
-        const map: Record<number, string> = { 1: 'Cash', 2: 'Cheque', 3: 'Bank Transfer', 4: 'Other' };
-        return map[Number(mode)] || 'Cash';
+        return paymentModeToLabel(mode);
       };
 
       // Map backend fields to frontend interface
@@ -337,7 +341,8 @@ export const receiptService = {
       };
 
       const response = await api.post('/api/receipts', payload);
-      return response.data;
+      const responseData = response.data;
+      return (responseData && responseData.success && responseData.data) ? responseData.data : responseData;
     } catch (error: any) {
       if (error.response) {
         const status = error.response.status;
@@ -374,7 +379,8 @@ export const receiptService = {
       }
 
       const response = await api.post('/api/receipts/from-invoice', data);
-      return response.data;
+      const responseData = response.data;
+      return (responseData && responseData.success && responseData.data) ? responseData.data : responseData;
     } catch (error: any) {
       if (error.response) {
         const status = error.response.status;
@@ -412,7 +418,11 @@ export const receiptService = {
       // }
 
       const response = await api.post('/api/receipts/individual', data);
-      return response.data;
+
+      const responseData = response.data;
+      const dataResult = (responseData && responseData.success && responseData.data) ? responseData.data : responseData;
+
+      return dataResult;
     } catch (error: any) {
       if (error.response) {
         const status = error.response.status;
@@ -497,7 +507,16 @@ export const receiptService = {
   getLastMiscReceiptNumber: async (): Promise<string> => {
     try {
       const response = await api.get('/api/receipts/last-misc-number');
-      return response.data.lastNumber || response.data;
+      const data = response.data;
+
+      // Handle { success: true, data: "..." } or { lastNumber: "..." } or direct string
+      if (typeof data === 'string') return data;
+      if (data && typeof data === 'object') {
+        if (data.success && data.data && typeof data.data === 'string') return data.data;
+        if (data.lastNumber) return String(data.lastNumber);
+        if (data.data) return String(data.data);
+      }
+      return String(data || '');
     } catch (error: any) {
       if (error.response) {
         const status = error.response.status;
@@ -791,6 +810,7 @@ export const receiptService = {
         receiptDate: string;
         invoiceCode: string;
         applicationCode?: string;
+        applicationId?: string;
         transactionCount: number;
         customerAddress?: string;
       }>();

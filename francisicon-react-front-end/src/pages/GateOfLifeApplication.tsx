@@ -6,7 +6,6 @@ import {
   AlertCircleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  UserIcon,
   FileTextIcon,
   FileEditIcon,
   ReceiptIcon,
@@ -16,12 +15,7 @@ import {
   ArrowLeftIcon,
   PrinterIcon,
   LayoutIcon,
-  InfoIcon,
   HelpCircleIcon,
-  FileText,
-  MapPinIcon,
-  ChevronDownIcon,
-  LoaderIcon,
   Loader2,
   CheckCircle2,
   X
@@ -336,19 +330,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
   };
 
   // Modern badge component
-  const Badge = ({ children, variant = 'default' }: { children: React.ReactNode, variant?: 'default' | 'success' | 'warning' | 'error' }) => {
-    const variants = {
-      default: 'bg-gray-100 text-gray-700 border-gray-200',
-      success: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-      warning: 'bg-amber-50 text-amber-700 border-amber-100',
-      error: 'bg-red-50 text-red-700 border-red-100'
-    };
-    return (
-      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${variants[variant]}`}>
-        {children}
-      </span>
-    );
-  };
+
 
   const getErrorStyling = () => {
     switch (lastErrorType) {
@@ -573,27 +555,57 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                 Showing {applicationList.length} of {applicationListPagination.total} Results
               </p>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => searchApplicationList({ pagination: { page: applicationListPagination.page - 1 } })}
-                  disabled={applicationListPagination.page <= 1 || applicationListLoading}
-                  className="px-3"
-                >
-                  <ChevronLeftIcon className="w-4 h-4" />
-                </Button>
-                <div className="px-3 py-1 bg-white border border-gray-200 rounded text-sm font-bold text-gray-600">
-                  {applicationListPagination.page} / {totalPages}
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => searchApplicationList({ pagination: { page: applicationListPagination.page - 1 } })}
+                    disabled={applicationListPagination.page <= 1 || applicationListLoading}
+                    className="px-3 h-9 rounded-lg border-gray-200"
+                  >
+                    <ChevronLeftIcon className="w-4 h-4" />
+                  </Button>
+
+                  <div className="flex gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum = i + 1;
+                      if (totalPages > 5) {
+                        if (applicationListPagination.page > 3) {
+                          pageNum = applicationListPagination.page - 2 + i;
+                        }
+                        if (pageNum > totalPages) {
+                          pageNum = totalPages - (4 - i);
+                        }
+                        if (pageNum < 1) pageNum = i + 1;
+                      }
+
+                      if (pageNum > totalPages) return null;
+
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => searchApplicationList({ pagination: { page: pageNum } })}
+                          className={`w-9 h-9 rounded-lg text-xs font-black transition-all ${applicationListPagination.page === pageNum
+                            ? 'bg-amber-700 text-white shadow-md'
+                            : 'text-gray-400 hover:bg-white hover:text-amber-700 border border-transparent'
+                            }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => searchApplicationList({ pagination: { page: applicationListPagination.page + 1 } })}
+                    disabled={applicationListPagination.page >= totalPages || applicationListLoading}
+                    className="px-3 h-9 rounded-lg border-gray-200"
+                  >
+                    <ChevronRightIcon className="w-4 h-4" />
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => searchApplicationList({ pagination: { page: applicationListPagination.page + 1 } })}
-                  disabled={applicationListPagination.page >= totalPages || applicationListLoading}
-                  className="px-3"
-                >
-                  <ChevronRightIcon className="w-4 h-4" />
-                </Button>
               </div>
             </div>
           )}

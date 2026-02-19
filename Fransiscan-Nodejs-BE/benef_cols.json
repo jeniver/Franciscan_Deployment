@@ -1,0 +1,16 @@
+[
+  "NicheBookingBeneficiaryId",
+  "NicheBookingId",
+  "NicheId",
+  "BeneficiaryId",
+  "BeneficiaryStatus",
+  "Name",
+  "IDNo",
+  "IsCatholic",
+  "IsMale",
+  "RelationshipToApplicant",
+  "DateOfBirth",
+  "BirthYear",
+  "RelationshipToNominee1",
+  "RelationshipToNominee2"
+]

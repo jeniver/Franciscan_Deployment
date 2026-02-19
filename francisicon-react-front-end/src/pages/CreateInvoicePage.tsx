@@ -15,9 +15,9 @@ import {
     createInvoice,
     clearCurrentData,
 } from '../store/invoiceSlice';
+import { resetReceiptState } from '../store/receiptSlice';
 import { InvoiceItemTable, InvoiceItem } from '../components/common/InvoiceItemTable';
-import { PaymentModeSelector } from '../components/common/PaymentModeSelector';
-import { CustomerAddressForm } from '../components/common/CustomerAddressForm';
+import { AddressInput } from '../components/AddressInput';
 
 
 export function CreateInvoicePage() {
@@ -40,7 +40,7 @@ export function CreateInvoicePage() {
         lastCreatedInvoiceCode,
     } = useSelector((state: RootState) => state.invoice);
 
-    const { receiptItems, fetchReceiptItems, fetchLastReceiptNumber, lastReceiptNumber } = useReceipt();
+    const { receiptItems, fetchReceiptItems, fetchLastReceiptNumber } = useReceipt();
     const {
         applicationItems,
         fetchApplicationItems,
@@ -55,7 +55,7 @@ export function CreateInvoicePage() {
     const [addressUnit, setAddressUnit] = useState('');
     const [addressPostalCode, setAddressPostalCode] = useState('');
     const [addressCountry, setAddressCountry] = useState('Singapore');
-    const [paymentMode, setPaymentMode] = useState('Cash');
+    const [paymentMode] = useState('Cash');
     const [refDocumentNo, setRefDocumentNo] = useState('');
     const [items, setItems] = useState<InvoiceItem[]>([]);
 
@@ -64,15 +64,23 @@ export function CreateInvoicePage() {
     const [viewerInvoiceData, setViewerInvoiceData] = useState<InvoiceTemplateData | null>(null);
     const [isAgreementViewerOpen, setIsAgreementViewerOpen] = useState(false);
     const [agreementData, setAgreementData] = useState<any | null>(null);
-    const [createReceiptWithInvoice, setCreateReceiptWithInvoice] = useState(false);
+    const [createReceiptWithInvoice] = useState(false);
 
-    const [refDocType, setRefDocType] = useState(typeParam || 'NAPP');
+    const normalizeRefDocType = (value?: string | null): string => {
+        const normalized = (value || '').trim().toUpperCase();
+        if (!normalized) return '';
+        if (normalized === 'GOL') return 'GOLA';
+        if (['NAPP', 'INCR', 'WAPP', 'GOLA', 'OTHERS'].includes(normalized)) return normalized;
+        return normalized;
+    };
+
+    const [refDocType, setRefDocType] = useState(normalizeRefDocType(typeParam) || 'NAPP');
     const initialLookupKeyRef = useRef<string | null>(null);
 
     // Update refDocType if URL param changes
     useEffect(() => {
         if (typeParam) {
-            setRefDocType(typeParam);
+            setRefDocType(normalizeRefDocType(typeParam) || 'NAPP');
         }
     }, [typeParam]);
 
@@ -97,16 +105,18 @@ export function CreateInvoicePage() {
     // Fetch initial data if routeCode is provided
     useEffect(() => {
         if (routeCode) {
+            setApplicationNumber(routeCode);
+            dispatch(clearCurrentData());
             // Priority: 1) explicit URL type, 2) pattern detection, 3) NAPP fallback
-            let typeToUse = typeParam || detectTypeFromCode(routeCode) || 'NAPP';
-            typeToUse = typeToUse.toUpperCase();
+            let typeToUse = normalizeRefDocType(typeParam) || detectTypeFromCode(routeCode) || 'NAPP';
+            typeToUse = normalizeRefDocType(typeToUse) || 'NAPP';
 
             if (typeToUse !== refDocType) {
                 setRefDocType(typeToUse);
             }
 
             // Canonicalize URL once so refresh/navigation keeps explicit type.
-            if (!typeParam || typeParam.toUpperCase() !== typeToUse) {
+            if (!typeParam || normalizeRefDocType(typeParam) !== typeToUse) {
                 navigate(`/create-invoice/${encodeURIComponent(routeCode)}?type=${encodeURIComponent(typeToUse)}`, { replace: true });
             }
 
@@ -120,6 +130,7 @@ export function CreateInvoicePage() {
             // Clear form if no code provided (navigated to /create-invoice)
             setApplicationNumber('');
             dispatch(clearCurrentData());
+            dispatch(resetReceiptState());
             setPayeeName('');
             setAddressBlock('Block');
             setAddressNumber('');
@@ -127,6 +138,7 @@ export function CreateInvoicePage() {
             setAddressUnit('');
             setAddressPostalCode('');
             setAddressCountry('Singapore');
+            setRefDocumentNo('');
             setItems([]);
         }
 
@@ -145,8 +157,21 @@ export function CreateInvoicePage() {
 
             // Auto-detect type if not set, BUT prefer backend's RefDocName if available
             // This prevents "flipping" of types
-            const backendType = currentData.refDocName || currentDataAny.type;
-            if (backendType && backendType !== refDocType) {
+            const explicitType = normalizeRefDocType(typeParam);
+            const backendType = normalizeRefDocType(currentData.refDocName || currentDataAny.type);
+            const routeOrInputCode = (routeCode || applicationNumber || '').trim().toUpperCase();
+            const currentCode = String(
+                currentDataAny.applicationCode
+                || currentDataAny.refDocNumber
+                || currentDataAny.code
+                || ''
+            ).trim().toUpperCase();
+            const isMatchingCurrentLookup = !routeOrInputCode || !currentCode || routeOrInputCode === currentCode;
+
+            // URL/query type must remain authoritative for this screen.
+            if (explicitType && refDocType !== explicitType) {
+                setRefDocType(explicitType);
+            } else if (!explicitType && isMatchingCurrentLookup && backendType && backendType !== refDocType) {
                 setRefDocType(backendType);
                 // NO automatic refetch of items here to prevent loops.
                 // The initial fetch should have covered it, or the user can trigger a lookup.
@@ -240,7 +265,7 @@ export function CreateInvoicePage() {
             // Set Agreement Data if available
             setAgreementData(currentData);
         }
-    }, [currentData]);
+    }, [currentData, typeParam, routeCode, applicationNumber, refDocType]);
 
     // Fallback: if backend returned application items but currentData.details is empty,
     // use applicationItems (from useApplicationItems) to pre-populate invoice lines.
@@ -396,35 +421,30 @@ export function CreateInvoicePage() {
         setIsInvoiceViewerOpen(true);
     };
 
-    const handleOpenAgreement = () => {
-        if (!agreementData) {
-            showError('Error', 'No agreement data available');
-            return;
-        }
-        setIsAgreementViewerOpen(true);
+    const handleAddressChange = (addressData: any) => {
+        setAddressBlock(addressData.block || 'Block');
+        setAddressNumber(addressData.blockNo || '');
+        setAddressStreet(addressData.streetName || '');
+        setAddressUnit(addressData.unitNo || '');
+        setAddressPostalCode(addressData.postalCode || '');
+        setAddressCountry(addressData.country || 'Singapore');
     };
 
-    const getLastReceiptNumberString = (): string => {
-        if (!lastReceiptNumber) return 'N/A';
-        if (typeof lastReceiptNumber === 'string') return lastReceiptNumber;
-        const lastReceiptAny = lastReceiptNumber as any;
-        return lastReceiptAny.data || lastReceiptAny.lastNumber || String(lastReceiptNumber);
-    };
 
     return (
         <Layout title="Create Invoice">
-            <div className="min-h-screen p-4 md:p-6 bg-[#f4f1ea] bg-[url('https://www.transparenttextures.com/patterns/pinstripe.png')]">
-                <div className="max-w-[1200px] mx-auto space-y-6">
+            <div className="min-h-screen bg-[#fcfcfc] pb-12">
+                <div className="max-w-7xl mx-auto px-6 mt-4 space-y-5">
 
                     {/* Lookup Section */}
-                    <div className="bg-white rounded-xl p-4 shadow-lg border border-gray-200">
-                        <div className="flex flex-col sm:flex-row items-center gap-4">
-                            <div className="w-full sm:w-1/3">
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Document Type:</label>
+                    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-4">
+                        <div className="flex flex-col md:flex-row items-end gap-5">
+                            <div className="w-full md:w-56">
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Document Type</label>
                                 <select
                                     value={refDocType}
                                     onChange={(e) => setRefDocType(e.target.value)}
-                                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#4b3621] outline-none"
+                                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/10 focus:border-teal-500 outline-none font-semibold text-gray-700 transition-all text-sm"
                                 >
                                     <option value="NAPP">Niche Application</option>
                                     <option value="INCR">Inscription Request</option>
@@ -433,45 +453,46 @@ export function CreateInvoicePage() {
                                     <option value="OTHERS">Others / Miscellaneous</option>
                                 </select>
                             </div>
-                            <label className="font-bold text-gray-700">Application Number / Code:</label>
-                            <div className="flex-1 flex gap-2 w-full">
-                                <input
-                                    type="text"
-                                    value={applicationNumber}
-                                    onChange={(e) => {
-                                        setApplicationNumber(e.target.value);
-                                        // Clear data if input is cleared
-                                        if (!e.target.value.trim() && currentData) {
-                                            dispatch(clearCurrentData());
-                                            setPayeeName('');
-                                            setAddressBlock('Block');
-                                            setAddressNumber('');
-                                            setAddressStreet('');
-                                            setAddressUnit('');
-                                            setAddressPostalCode('');
-                                            setAddressCountry('Singapore');
-                                            setItems([]);
-                                        }
-                                    }}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleLookup()}
-                                    className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#4b3621] outline-none transition-all"
-                                    placeholder="Enter code (e.g. 7980-0)"
-                                />
-                                <button
-                                    onClick={handleLookup}
-                                    disabled={invoiceLoading || !applicationNumber.trim()}
-                                    className="px-6 py-2 bg-[#4b3621] text-white rounded-lg font-bold hover:bg-[#5a4730] transition-all flex items-center gap-2 disabled:opacity-50"
-                                >
-                                    {invoiceLoading ? <LoaderIcon className="w-4 h-4 animate-spin" /> : <EyeIcon className="w-4 h-4" />}
-                                    Look Up
-                                </button>
+                            <div className="flex-1 w-full">
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Application Number / Code</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={applicationNumber}
+                                        onChange={(e) => {
+                                            setApplicationNumber(e.target.value);
+                                            if (!e.target.value.trim() && currentData) {
+                                                dispatch(clearCurrentData());
+                                                setPayeeName('');
+                                                setAddressBlock('Block');
+                                                setAddressNumber('');
+                                                setAddressStreet('');
+                                                setAddressUnit('');
+                                                setAddressPostalCode('');
+                                                setAddressCountry('Singapore');
+                                                setItems([]);
+                                            }
+                                        }}
+                                        onKeyPress={(e) => e.key === 'Enter' && handleLookup()}
+                                        className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/10 focus:border-teal-500 outline-none font-semibold text-gray-700 transition-all text-sm"
+                                        placeholder="e.g. 7980-0"
+                                    />
+                                    <button
+                                        onClick={handleLookup}
+                                        disabled={invoiceLoading || !applicationNumber.trim()}
+                                        className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition-all flex items-center gap-2 disabled:opacity-50 text-sm"
+                                    >
+                                        {invoiceLoading ? <LoaderIcon className="w-3.5 h-3.5 animate-spin" /> : <EyeIcon className="w-3.5 h-3.5" />}
+                                        <span>Look Up</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
                         {currentData?.hasInvoice && (
-                            <div className="mt-4 flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+                            <div className="mt-4 flex items-center gap-2 p-3 bg-teal-50 border border-teal-100 rounded-lg text-teal-700 text-xs font-medium">
                                 <CheckCircle className="w-4 h-4" />
-                                This application already has an invoice: <strong>{currentData.invoiceCode || currentData.code}</strong>
+                                <span>This application already has an invoice: <strong>{currentData.invoiceCode || currentData.code}</strong></span>
                             </div>
                         )}
 
@@ -485,85 +506,80 @@ export function CreateInvoicePage() {
                     </div>
 
                     {/* Form Content */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 space-y-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                        <div className="lg:col-span-2 space-y-5">
                             {/* Payee Name */}
-                            <div className="bg-white rounded-xl p-4 shadow-lg border border-gray-200">
-                                <div className="flex flex-col sm:flex-row items-center gap-4">
-                                    <label className="w-32 font-bold text-gray-700">Payee Name:</label>
+                            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Payee Name</label>
                                     <input
                                         type="text"
                                         value={payeeName}
                                         onChange={(e) => setPayeeName(e.target.value)}
-                                        className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#4b3621] outline-none"
-                                        placeholder="Enter customer name"
+                                        className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/10 focus:border-teal-500 outline-none font-semibold text-gray-700 transition-all text-sm"
+                                        placeholder="Full Name / Entity"
                                     />
                                 </div>
                             </div>
 
                             {/* Address Form */}
-                            <CustomerAddressForm
-                                addressBlock={addressBlock} setAddressBlock={setAddressBlock}
-                                addressNumber={addressNumber} setAddressNumber={setAddressNumber}
-                                addressStreet={addressStreet} setAddressStreet={setAddressStreet}
-                                addressUnit={addressUnit} setAddressUnit={setAddressUnit}
-                                addressPostalCode={addressPostalCode} setAddressPostalCode={setAddressPostalCode}
-                                addressCountry={addressCountry} setAddressCountry={setAddressCountry}
-                            />
+                            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                <AddressInput
+                                    onAddressChange={handleAddressChange}
+                                    label="Payee Address"
+                                    initialValues={{
+                                        block: addressBlock,
+                                        blockNo: addressNumber,
+                                        streetName: addressStreet,
+                                        unitNo: addressUnit,
+                                        postalCode: addressPostalCode,
+                                        country: addressCountry
+                                    }}
+                                    isReadOnly={invoiceLoading}
+                                />
+                            </div>
 
                             {/* Items Table */}
-                            <InvoiceItemTable
-                                items={items}
-                                setItems={setItems}
-                                availableItems={availableItems}
-                                receiptItems={receiptItems}
-                            />
+                            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
+                                        <FileTextIcon className="w-4 h-4 text-indigo-600" />
+                                    </div>
+                                    <h2 className="text-lg font-bold text-gray-900">Invoice Items</h2>
+                                </div>
+                                <InvoiceItemTable
+                                    items={items}
+                                    setItems={setItems}
+                                    availableItems={availableItems}
+                                    receiptItems={receiptItems}
+                                />
+                            </div>
                         </div>
 
                         {/* Sidebar / Actions */}
-                        <div className="space-y-6">
-
-
-                            <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200 space-y-4">
-                                {/* <div className="flex items-center gap-2">
-                                    <input
-                                        type="checkbox"
-                                        id="createReceipt"
-                                        checked={createReceiptWithInvoice}
-                                        onChange={(e) => setCreateReceiptWithInvoice(e.target.checked)}
-                                        className="w-4 h-4 text-[#4b3621] border-gray-300 rounded focus:ring-[#4b3621]"
-                                    />
-                                    <label htmlFor="createReceipt" className="text-sm text-gray-700 font-medium">
-                                        Create Receipt Automatically
-                                    </label>
-                                </div> */}
-
+                        <div className="space-y-5 sticky top-[110px] self-start">
+                            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 space-y-4">
                                 <button
                                     onClick={handleCreateInvoice}
                                     disabled={creatingInvoice || currentData?.hasInvoice}
-                                    className="w-full py-4 bg-gradient-to-r from-[#4b3621] to-[#6d4c41] text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:translate-y-0"
+                                    className="w-full py-3.5 bg-slate-900 text-white rounded-lg font-bold text-md shadow-md hover:bg-slate-800 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:translate-y-0"
                                 >
-                                    {creatingInvoice ? <LoaderIcon className="w-6 h-6 animate-spin" /> : <SaveIcon className="w-6 h-6" />}
-                                    {createInvoiceSuccess ? 'Invoice Created!' : 'Generate Invoice'}
+                                    {creatingInvoice ? <LoaderIcon className="w-5 h-5 animate-spin" /> : <SaveIcon className="w-5 h-5" />}
+                                    <span>{createInvoiceSuccess ? 'Created!' : 'Generate'}</span>
                                 </button>
 
-
-                                <div className="grid">
+                                <div className="grid gap-2">
                                     {(createInvoiceSuccess || currentData?.hasInvoice) && (
                                         <button
                                             onClick={handlePrint}
-                                            className="py-3 bg-white border-2 border-[#4b3621] text-[#4b3621] rounded-xl font-bold hover:bg-[#4b3621] hover:text-white transition-all flex items-center justify-center"
+                                            className="w-full py-2.5 bg-white border border-gray-200 text-slate-700 rounded-lg font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-2 text-sm"
                                         >
-                                            <PrinterIcon className="w-5 h-5" />
-                                            Print
+                                            <PrinterIcon className="w-4 h-4" />
+                                            <span>Print Invoice</span>
                                         </button>
                                     )}
-
-
                                 </div>
-
                             </div>
-
                         </div>
                     </div>
                 </div>

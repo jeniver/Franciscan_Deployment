@@ -30,6 +30,48 @@ class InvoiceService extends BaseService {
     return errors;
   }
 
+  async syncApplicationStatusAfterInvoiceCreate(refDocName, refDocNumber, churchId) {
+    const normalizedRefName = refDocName ? String(refDocName).trim().toUpperCase() : '';
+    const normalizedRefCode = refDocNumber ? String(refDocNumber).trim() : '';
+
+    if (!normalizedRefName || !normalizedRefCode || !churchId) {
+      return;
+    }
+
+    if (normalizedRefName !== 'NAPP') {
+      return;
+    }
+
+    const { executeRawQuery } = require('../config/knex');
+
+    await executeRawQuery(`
+      UPDATE NicheApplication
+      SET Status = 3
+      WHERE Code = @code
+        AND ChurchId = @churchId
+        AND Status <> 3
+    `, {
+      code: normalizedRefCode,
+      churchId
+    });
+
+    await executeRawQuery(`
+      UPDATE nb
+      SET
+        nb.BookingStatus = 3,
+        nb.BookedDate = COALESCE(nb.BookedDate, GETDATE())
+      FROM NicheBooking nb
+      INNER JOIN NicheApplication na ON na.NicheApplicationId = nb.NicheApplicationId
+      WHERE na.Code = @code
+        AND nb.ChurchId = @churchId
+        AND nb.BookingStatus > 0
+        AND nb.BookingStatus <> 3
+    `, {
+      code: normalizedRefCode,
+      churchId
+    });
+  }
+
   /**
    * Get invoice by code with caching
    * @param {string} code - Invoice code
@@ -420,6 +462,16 @@ class InvoiceService extends BaseService {
         churchId: invoice.churchId,
         status: invoice.status
       });
+
+      try {
+        await this.syncApplicationStatusAfterInvoiceCreate(
+          normalizedInvoiceRefDocName,
+          invoice.refDocNumber,
+          churchId
+        );
+      } catch (statusSyncError) {
+        logger.warn('Non-critical status sync after invoice creation failed:', statusSyncError.message);
+      }
 
       // Invalidate cache for this specific invoice and its reference document
       try {

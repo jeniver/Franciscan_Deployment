@@ -12,6 +12,7 @@ import { MonthlyGOAReportPage } from './pages/MonthlyGOAReportPage';
 import { MonthlyGSTReportPage } from './pages/MonthlyGSTReportPage';
 import { NichesReportPage } from './pages/NichesReportPage';
 import { MiscReceiptPage } from './pages/MiscReceiptPage';
+import { MiscReceiptCreatePage } from './pages/MiscReceiptCreatePage';
 import { MiscInvoicePage } from './pages/MiscInvoicePage';
 import { InvoiceAndReceiptPage } from './pages/InvoiceAndReceiptPage';
 import { CreateInvoicePage } from './pages/CreateInvoicePage';
@@ -216,6 +217,11 @@ export function AppRouter() {
         <Route path="/misc-receipt" element={
           <ProtectedRoute>
             <MiscReceiptPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/misc-receipt/new" element={
+          <ProtectedRoute>
+            <MiscReceiptCreatePage />
           </ProtectedRoute>
         } />
         <Route path="/misc-invoice" element={

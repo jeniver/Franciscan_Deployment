@@ -1593,6 +1593,7 @@ class NicheApplicationService {
         nomineeHomeTelNo2: nominee2Input?.homeTel || null,
         nomineeOfficeTelNo2: nominee2Input?.officeTel || null,
         nomineeRelationship2: nominee2Input?.relationship || null,
+        remarks: data.remarks || data.additionalDetails?.remarks || null,
         churchId,
         userId,
         status: 'Draft',
@@ -1881,6 +1882,7 @@ class NicheApplicationService {
         lineAmount: applicationJson.niche?.defaultAmount || 0
       },
       status: applicationJson.status,
+      remarks: applicationJson.remarks || null,
       metadata: {
         generatedAt: new Date().toISOString(),
         beneficiaryCount: beneficiariesForResponse.length,
@@ -2046,61 +2048,64 @@ class NicheApplicationService {
       const applicantData = data.applicant || {};
       const nomineeData = Array.isArray(data.nominees) ? data.nominees[0] : data.nominee || {};
       const nominee2Data = Array.isArray(data.nominees) && data.nominees.length > 1 ? data.nominees[1] : data.nominee2 || {};
+      const pickUpdateValue = (incomingValue, currentValue) => (
+        incomingValue === undefined ? currentValue : incomingValue
+      );
 
       const applicationData = {
         ...existing,
         // Applicant data mapping
-        applicantName: applicantData.name || existing.applicantName,
-        applicantEmailID: applicantData.email || existing.applicantEmailID,
-        applicantMobileNo: applicantData.phone || existing.applicantMobileNo,
-        applicantHomeTelNo: applicantData.homeTel || existing.applicantHomeTelNo,
-        applicantOfficeTelNo: applicantData.officeTel || existing.applicantOfficeTelNo,
-        applicantIDNo: applicantData.idNo || existing.applicantIDNo,
+        applicantName: pickUpdateValue(pickFirst(applicantData.name, data.applicantName), existing.applicantName),
+        applicantEmailID: pickUpdateValue(pickFirst(applicantData.email, data.applicantEmailID, data.applicantEmail), existing.applicantEmailID),
+        applicantMobileNo: pickUpdateValue(pickFirst(applicantData.phone, applicantData.mobileNo, data.applicantMobileNo, data.applicantPhone), existing.applicantMobileNo),
+        applicantHomeTelNo: pickUpdateValue(pickFirst(applicantData.homeTel, applicantData.homeTelNo, data.applicantHomeTelNo, data.applicantHomeTel), existing.applicantHomeTelNo),
+        applicantOfficeTelNo: pickUpdateValue(pickFirst(applicantData.officeTel, applicantData.officeTelNo, data.applicantOfficeTelNo, data.applicantOfficeTel), existing.applicantOfficeTelNo),
+        applicantIDNo: pickUpdateValue(pickFirst(applicantData.idNo, data.applicantIDNo), existing.applicantIDNo),
         applicantIsCatholic: applicantData.isCatholic !== undefined ? applicantData.isCatholic : existing.applicantIsCatholic,
 
         // Applicant address mapping
-        applicantAddressNo: applicantData.address?.no || existing.applicantAddressNo,
-        applicantAddressLine1: applicantData.address?.line1 || existing.applicantAddressLine1,
-        applicantAddressLine2: applicantData.address?.line2 || existing.applicantAddressLine2,
-        applicantAddressCity: applicantData.address?.city || existing.applicantAddressCity,
-        applicantAddressState: applicantData.address?.state || existing.applicantAddressState,
-        applicantAddressCountry: applicantData.address?.country || existing.applicantAddressCountry,
+        applicantAddressNo: pickUpdateValue(pickFirst(applicantData.address?.no, data.applicantAddressNo), existing.applicantAddressNo),
+        applicantAddressLine1: pickUpdateValue(pickFirst(applicantData.address?.line1, data.applicantAddressLine1), existing.applicantAddressLine1),
+        applicantAddressLine2: pickUpdateValue(pickFirst(applicantData.address?.line2, data.applicantAddressLine2), existing.applicantAddressLine2),
+        applicantAddressCity: pickUpdateValue(pickFirst(applicantData.address?.city, data.applicantAddressCity), existing.applicantAddressCity),
+        applicantAddressState: pickUpdateValue(pickFirst(applicantData.address?.state, data.applicantAddressState), existing.applicantAddressState),
+        applicantAddressCountry: pickUpdateValue(pickFirst(applicantData.address?.country, data.applicantAddressCountry), existing.applicantAddressCountry),
 
         // Primary nominee mapping
-        nomineeName: nomineeData.name || existing.nomineeName,
-        nomineeEmailID: nomineeData.email || existing.nomineeEmailID,
-        nomineeMobileNo: nomineeData.phone || existing.nomineeMobileNo,
-        nomineeHomeTelNo: nomineeData.homeTel || existing.nomineeHomeTelNo,
-        nomineeOfficeTelNo: nomineeData.officeTel || existing.nomineeOfficeTelNo,
-        nomineeIDNo: nomineeData.idNo || existing.nomineeIDNo,
-        nomineeRelationship: nomineeData.relationship || existing.nomineeRelationship,
+        nomineeName: pickUpdateValue(pickFirst(nomineeData.name, data.nomineeName), existing.nomineeName),
+        nomineeEmailID: pickUpdateValue(pickFirst(nomineeData.email, data.nomineeEmailID, data.nomineeEmail), existing.nomineeEmailID),
+        nomineeMobileNo: pickUpdateValue(pickFirst(nomineeData.phone, nomineeData.mobileNo, data.nomineeMobileNo, data.nomineePhone), existing.nomineeMobileNo),
+        nomineeHomeTelNo: pickUpdateValue(pickFirst(nomineeData.homeTel, nomineeData.homeTelNo, data.nomineeHomeTelNo, data.nomineeHomeTel), existing.nomineeHomeTelNo),
+        nomineeOfficeTelNo: pickUpdateValue(pickFirst(nomineeData.officeTel, nomineeData.officeTelNo, data.nomineeOfficeTelNo, data.nomineeOfficeTel), existing.nomineeOfficeTelNo),
+        nomineeIDNo: pickUpdateValue(pickFirst(nomineeData.idNo, data.nomineeIDNo), existing.nomineeIDNo),
+        nomineeRelationship: pickUpdateValue(pickFirst(nomineeData.relationship, data.nomineeRelationship), existing.nomineeRelationship),
         nomineeIsCatholic: nomineeData.isCatholic !== undefined ? nomineeData.isCatholic : existing.nomineeIsCatholic,
 
         // Primary nominee address mapping
-        nomineeAddressNo: nomineeData.address?.no || existing.nomineeAddressNo,
-        nomineeAddressLine1: nomineeData.address?.line1 || existing.nomineeAddressLine1,
-        nomineeAddressLine2: nomineeData.address?.line2 || existing.nomineeAddressLine2,
-        nomineeAddressCity: nomineeData.address?.city || existing.nomineeAddressCity,
-        nomineeAddressState: nomineeData.address?.state || existing.nomineeAddressState,
-        nomineeAddressCountry: nomineeData.address?.country || existing.nomineeAddressCountry,
+        nomineeAddressNo: pickUpdateValue(pickFirst(nomineeData.address?.no, data.nomineeAddressNo), existing.nomineeAddressNo),
+        nomineeAddressLine1: pickUpdateValue(pickFirst(nomineeData.address?.line1, data.nomineeAddressLine1), existing.nomineeAddressLine1),
+        nomineeAddressLine2: pickUpdateValue(pickFirst(nomineeData.address?.line2, data.nomineeAddressLine2), existing.nomineeAddressLine2),
+        nomineeAddressCity: pickUpdateValue(pickFirst(nomineeData.address?.city, data.nomineeAddressCity), existing.nomineeAddressCity),
+        nomineeAddressState: pickUpdateValue(pickFirst(nomineeData.address?.state, data.nomineeAddressState), existing.nomineeAddressState),
+        nomineeAddressCountry: pickUpdateValue(pickFirst(nomineeData.address?.country, data.nomineeAddressCountry), existing.nomineeAddressCountry),
 
         // Secondary nominee mapping
-        nomineeName2: nominee2Data.name || existing.nomineeName2,
-        nomineeEmailID2: nominee2Data.email || existing.nomineeEmailID2,
-        nomineeMobileNo2: nominee2Data.phone || existing.nomineeMobileNo2,
-        nomineeHomeTelNo2: nominee2Data.homeTel || existing.nomineeHomeTelNo2,
-        nomineeOfficeTelNo2: nominee2Data.officeTel || existing.nomineeOfficeTelNo2,
-        nomineeIDNo2: nominee2Data.idNo || existing.nomineeIDNo2,
-        nomineeRelationship2: nominee2Data.relationship || existing.nomineeRelationship2,
+        nomineeName2: pickUpdateValue(pickFirst(nominee2Data.name, data.nomineeName2), existing.nomineeName2),
+        nomineeEmailID2: pickUpdateValue(pickFirst(nominee2Data.email, data.nomineeEmailID2, data.nomineeEmail2), existing.nomineeEmailID2),
+        nomineeMobileNo2: pickUpdateValue(pickFirst(nominee2Data.phone, nominee2Data.mobileNo, data.nomineeMobileNo2, data.nomineePhone2), existing.nomineeMobileNo2),
+        nomineeHomeTelNo2: pickUpdateValue(pickFirst(nominee2Data.homeTel, nominee2Data.homeTelNo, data.nomineeHomeTelNo2, data.nomineeHomeTel2), existing.nomineeHomeTelNo2),
+        nomineeOfficeTelNo2: pickUpdateValue(pickFirst(nominee2Data.officeTel, nominee2Data.officeTelNo, data.nomineeOfficeTelNo2, data.nomineeOfficeTel2), existing.nomineeOfficeTelNo2),
+        nomineeIDNo2: pickUpdateValue(pickFirst(nominee2Data.idNo, data.nomineeIDNo2), existing.nomineeIDNo2),
+        nomineeRelationship2: pickUpdateValue(pickFirst(nominee2Data.relationship, data.nomineeRelationship2), existing.nomineeRelationship2),
         nomineeIsCatholic2: nominee2Data.isCatholic !== undefined ? nominee2Data.isCatholic : existing.nomineeIsCatholic2,
 
         // Secondary nominee address mapping
-        nomineeAddressNo2: nominee2Data.address?.no || existing.nomineeAddressNo2,
-        nomineeAddressLine12: nominee2Data.address?.line1 || existing.nomineeAddressLine12,
-        nomineeAddressLine22: nominee2Data.address?.line2 || existing.nomineeAddressLine22,
-        nomineeAddressCity2: nominee2Data.address?.city || existing.nomineeAddressCity2,
-        nomineeAddressState2: nominee2Data.address?.state || existing.nomineeAddressState2,
-        nomineeAddressCountry2: nominee2Data.address?.country || existing.nomineeAddressCountry2,
+        nomineeAddressNo2: pickUpdateValue(pickFirst(nominee2Data.address?.no, data.nomineeAddressNo2), existing.nomineeAddressNo2),
+        nomineeAddressLine12: pickUpdateValue(pickFirst(nominee2Data.address?.line1, data.nomineeAddressLine12), existing.nomineeAddressLine12),
+        nomineeAddressLine22: pickUpdateValue(pickFirst(nominee2Data.address?.line2, data.nomineeAddressLine22), existing.nomineeAddressLine22),
+        nomineeAddressCity2: pickUpdateValue(pickFirst(nominee2Data.address?.city, data.nomineeAddressCity2), existing.nomineeAddressCity2),
+        nomineeAddressState2: pickUpdateValue(pickFirst(nominee2Data.address?.state, data.nomineeAddressState2), existing.nomineeAddressState2),
+        nomineeAddressCountry2: pickUpdateValue(pickFirst(nominee2Data.address?.country, data.nomineeAddressCountry2), existing.nomineeAddressCountry2),
 
         // Keep other fields from payload or existing
         ...data,
@@ -2163,6 +2168,8 @@ class NicheApplicationService {
       );
 
       // Create beneficiary objects
+      const hasFlatBeneficiaryFields = ['beneficiary1Name', 'beneficiary2Name', 'beneficiary3Name', 'beneficiary4Name', 'beneficiary5Name']
+        .some((field) => Object.prototype.hasOwnProperty.call(data, field));
       const beneficiaries = [];
       if (Array.isArray(data.beneficiaries)) {
         data.beneficiaries.forEach(beneficiary => {
@@ -2171,7 +2178,7 @@ class NicheApplicationService {
             beneficiaries.push(entity);
           }
         });
-      } else {
+      } else if (hasFlatBeneficiaryFields) {
         // Process beneficiaries from old flat structure - unified logic using buildBeneficiaryEntity
         ['beneficiary1', 'beneficiary2', 'beneficiary3', 'beneficiary4', 'beneficiary5'].forEach((fieldPrefix) => {
           let input = {};
@@ -2215,71 +2222,20 @@ class NicheApplicationService {
             }
           }
         });
-      }
-
-      // --- Business rule: prevent duplicate nominees / beneficiaries on update as well ---
-      const updateNomineeCandidates = [];
-      const updateNomineeArray = Array.isArray(data.nominees) ? data.nominees : [];
-      const updateNomineeInput = data.nominee || updateNomineeArray[0] || {};
-      const updateNominee2Input = data.nominee2 || updateNomineeArray[1] || null;
-
-      if (updateNomineeArray.length > 0) {
-        updateNomineeArray.forEach((nominee) => {
-          if (!nominee) return;
-          updateNomineeCandidates.push({
-            name: pickFirst(nominee.fullName, nominee.name),
-            idNo: pickFirst(nominee.nric, nominee.idNo, nominee.identificationNumber, nominee.idNumber),
-            email: pickFirst(nominee.email, nominee.emailID, nominee.emailId),
-            mobileNo: pickFirst(
-              nominee.mobileNo,
-              nominee.contactNumber,
-              nominee.phone,
-              nominee.mobile
-            )
-          });
-        });
       } else {
-        if (updateNomineeInput && (updateNomineeInput.name || updateNomineeInput.fullName || updateNomineeInput.nric || updateNomineeInput.idNo)) {
-          updateNomineeCandidates.push({
-            name: pickFirst(updateNomineeInput.fullName, updateNomineeInput.name),
-            idNo: pickFirst(updateNomineeInput.nric, updateNomineeInput.idNo, updateNomineeInput.identificationNumber, updateNomineeInput.idNumber),
-            email: pickFirst(updateNomineeInput.email, updateNomineeInput.emailID, updateNomineeInput.emailId),
-            mobileNo: pickFirst(
-              updateNomineeInput.mobileNo,
-              updateNomineeInput.contactNumber,
-              updateNomineeInput.phone,
-              updateNomineeInput.mobile
-            )
-          });
-        }
-        if (updateNominee2Input && (updateNominee2Input.name || updateNominee2Input.fullName || updateNominee2Input.nric || updateNominee2Input.idNo)) {
-          updateNomineeCandidates.push({
-            name: pickFirst(updateNominee2Input.fullName, updateNominee2Input.name),
-            idNo: pickFirst(updateNominee2Input.nric, updateNominee2Input.idNo, updateNominee2Input.identificationNumber, updateNominee2Input.idNumber),
-            email: pickFirst(updateNominee2Input.email, updateNominee2Input.emailID, updateNominee2Input.emailId),
-            mobileNo: pickFirst(
-              updateNominee2Input.mobileNo,
-              updateNominee2Input.contactNumber,
-              updateNominee2Input.phone,
-              updateNominee2Input.mobile
-            )
-          });
-        }
+        // If update payload omits beneficiary fields, preserve existing beneficiaries.
+        const existingBeneficiaries = Array.isArray(existing.beneficiaries) ? existing.beneficiaries : [];
+        existingBeneficiaries.forEach((beneficiary) => {
+          const entity = buildBeneficiaryEntity(beneficiary);
+          if (entity) {
+            beneficiaries.push(entity);
+          }
+        });
       }
 
-      const updateNomineeKeys = new Set();
-      const updateDuplicateNomineeDescriptions = new Set();
-      updateNomineeCandidates.forEach((nominee) => {
-        const key = buildPersonKey(nominee);
-        if (!key) return;
-        if (updateNomineeKeys.has(key)) {
-          updateDuplicateNomineeDescriptions.add(
-            pickFirst(nominee.name, nominee.idNo, nominee.email, nominee.mobileNo) || 'Unknown nominee'
-          );
-        } else {
-          updateNomineeKeys.add(key);
-        }
-      });
+      // NOTE:
+      // Duplicate nominee validation is intentionally removed per business request.
+      // A person is now allowed to appear as multiple nominee entries.
 
       const updateBeneficiaryKeys = new Set();
       const updateDuplicateBeneficiaryDescriptions = new Set();
@@ -2299,13 +2255,8 @@ class NicheApplicationService {
         }
       });
 
-      if (updateDuplicateNomineeDescriptions.size > 0 || updateDuplicateBeneficiaryDescriptions.size > 0) {
+      if (updateDuplicateBeneficiaryDescriptions.size > 0) {
         const errors = [];
-        if (updateDuplicateNomineeDescriptions.size > 0) {
-          errors.push(
-            `Same person cannot be added as multiple nominees: ${Array.from(updateDuplicateNomineeDescriptions).join(', ')}`
-          );
-        }
         if (updateDuplicateBeneficiaryDescriptions.size > 0) {
           errors.push(
             `Same person cannot be added as multiple beneficiaries: ${Array.from(updateDuplicateBeneficiaryDescriptions).join(', ')}`

@@ -15,6 +15,9 @@ export function GatesOfLifeAgreementTemplate({ data }: GatesOfLifeAgreementTempl
     const invoice = data.invoice ?? {};
     const receipt = data.receipt ?? {};
     const payment = data.payment ?? {};
+    const metadata = data.metadata ?? {};
+    const hasInvoice = Boolean((metadata.hasInvoice ?? true) && invoice?.invoiceNo);
+    const hasReceipt = Boolean((metadata.hasReceipt ?? true) && receipt?.receiptNo);
 
     // Format date helper
     const fDate = (d: any) => d ? formatDate(d) : '';
@@ -207,28 +210,28 @@ export function GatesOfLifeAgreementTemplate({ data }: GatesOfLifeAgreementTempl
                         <tbody>
                             {/* Row 1: Invoice */}
                             <tr className="border-b border-black">
-                                <td className="border-r border-black p-2 font-mono">{fDate(invoice.invoiceDate)}</td>
-                                <td className="border-r border-black p-2 font-bold">{invoice.invoiceNo || '-'}</td>
-                                <td className="border-r border-black p-2">{application.code || ''}</td>
-                                <td className="border-r border-black p-2 text-right font-mono">$ {normalizeAmount(invoice.lineTotalAmount || payment.subtotal)}</td>
-                                <td className="border-r border-black p-2 text-right font-mono">$ {normalizeAmount(invoice.taxAmount || payment.taxAmount)}</td>
-                                <td className="p-2 text-right font-bold font-mono">$ {normalizeAmount(invoice.invoiceTotalAmount || payment.totalAmount)}</td>
+                                <td className="border-r border-black p-2 font-mono">{hasInvoice ? fDate(invoice.invoiceDate) : ''}</td>
+                                <td className="border-r border-black p-2 font-bold">{hasInvoice ? (invoice.invoiceNo || '') : ''}</td>
+                                <td className="border-r border-black p-2">{hasInvoice ? (application.code || '') : ''}</td>
+                                <td className="border-r border-black p-2 text-right font-mono">{hasInvoice ? `$ ${normalizeAmount(invoice.lineTotalAmount)}` : ''}</td>
+                                <td className="border-r border-black p-2 text-right font-mono">{hasInvoice ? `$ ${normalizeAmount(invoice.taxAmount)}` : ''}</td>
+                                <td className="p-2 text-right font-bold font-mono">{hasInvoice ? `$ ${normalizeAmount(invoice.invoiceTotalAmount)}` : ''}</td>
                             </tr>
                             {/* Row 2: Receipt/Payment */}
                             <tr>
-                                <td className="border-r border-black p-2 font-mono">{fDate(receipt.receiptDate || invoice.invoiceDate)}</td>
-                                <td className="border-r border-black p-2 font-bold">{receipt.receiptNo || '-'}</td>
+                                <td className="border-r border-black p-2 font-mono">{hasReceipt ? fDate(receipt.receiptDate) : ''}</td>
+                                <td className="border-r border-black p-2 font-bold">{hasReceipt ? (receipt.receiptNo || '') : ''}</td>
                                 <td className="border-r border-black p-2 relative h-16">
                                     <div className="absolute inset-0 p-2 flex flex-col justify-between">
                                         <span className="text-xs text-gray-500 uppercase">Payment Mode</span>
-                                        <span className="font-bold text-center border border-black rounded px-1 self-end bg-yellow-50">{receipt.paymentModeLabel || 'Cash'}</span>
+                                        <span className="font-bold text-center border border-black rounded px-1 self-end bg-yellow-50">{hasReceipt ? (receipt.paymentModeLabel || '') : ''}</span>
                                     </div>
                                 </td>
                                 <td className="border-r border-black p-2"></td>
                                 <td className="border-r border-black p-2"></td>
                                 <td className="p-2 text-right flex flex-col justify-end h-full">
                                     <div className="text-[10px] text-gray-500 uppercase text-right">Paid Amount</div>
-                                    <span className="font-black text-lg font-mono tracking-tighter">$ {normalizeAmount(receipt.payingAmount || payment.paidAmount)}</span>
+                                    <span className="font-black text-lg font-mono tracking-tighter">{hasReceipt ? `$ ${normalizeAmount(receipt.payingAmount)}` : ''}</span>
                                 </td>
                             </tr>
                         </tbody>

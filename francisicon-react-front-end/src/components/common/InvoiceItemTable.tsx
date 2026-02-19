@@ -29,6 +29,12 @@ export function InvoiceItemTable({
     receiptItems = [],
     disabled = false
 }: InvoiceItemTableProps) {
+    const GST_OPTIONS = [7, 8, 9, 10, 11];
+
+    const toNumber = (value: unknown): number => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
 
     const totals = useMemo(() => {
         const subtotal = items.reduce((sum, item) => sum + item.totalNoTax, 0);
@@ -99,14 +105,28 @@ export function InvoiceItemTable({
                     }
                 }
 
-                // Recalculate totals for this item
-                const qty = updatedItem.quantity || 0;
-                const price = updatedItem.amountPaying || 0;
-                const taxRate = (updatedItem.taxPercent || 0) / 100;
+                const qty = Math.max(0, toNumber(updatedItem.quantity));
+                const price = Math.max(0, toNumber(updatedItem.amountPaying));
+                const taxPercent = Math.max(0, toNumber(updatedItem.taxPercent));
+                const taxRate = taxPercent / 100;
+                const hasManualTotalEdit = Object.prototype.hasOwnProperty.call(updates, 'totalAmount');
 
-                updatedItem.totalNoTax = qty * price;
-                updatedItem.taxAmount = updatedItem.totalNoTax * taxRate;
-                updatedItem.totalAmount = updatedItem.totalNoTax + updatedItem.taxAmount;
+                // If user edits Amount directly, preserve it and back-calculate unit price.
+                if (hasManualTotalEdit) {
+                    const totalAmount = Math.max(0, toNumber(updatedItem.totalAmount));
+                    const totalNoTax = taxRate > 0 ? totalAmount / (1 + taxRate) : totalAmount;
+                    const taxAmount = totalAmount - totalNoTax;
+
+                    updatedItem.totalAmount = totalAmount;
+                    updatedItem.totalNoTax = totalNoTax;
+                    updatedItem.taxAmount = taxAmount;
+                    updatedItem.amountPaying = qty > 0 ? totalNoTax / qty : totalNoTax;
+                } else {
+                    // Standard calculation flow for qty/unit price/gst edits.
+                    updatedItem.totalNoTax = qty * price;
+                    updatedItem.taxAmount = updatedItem.totalNoTax * taxRate;
+                    updatedItem.totalAmount = updatedItem.totalNoTax + updatedItem.taxAmount;
+                }
 
                 return updatedItem;
             }
@@ -189,31 +209,24 @@ export function InvoiceItemTable({
                                         const val = e.target.value;
                                         // Allow numbers and a single decimal point
                                         if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                                            handleUpdateItem(item.id, { amountPaying: val as any });
+                                            handleUpdateItem(item.id, { amountPaying: val === '' ? 0 : Number(val) });
                                         }
-                                    }}
-                                    onBlur={(e) => {
-                                        const val = Number(e.target.value);
-                                        handleUpdateItem(item.id, { amountPaying: isNaN(val) ? 0 : val });
                                     }}
                                     disabled={disabled}
                                     className="w-full px-2 py-1 border border-gray-300 rounded focus:border-[#4b3621] outline-none text-right"
                                 />
                             </td>
                             <td className="px-2 py-2">
-                                <input
-                                    type="text"
-                                    inputMode="numeric"
+                                <select
                                     value={item.taxPercent}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (val === '' || /^\d+$/.test(val)) {
-                                            handleUpdateItem(item.id, { taxPercent: val === '' ? 0 : Number(val) });
-                                        }
-                                    }}
+                                    onChange={(e) => handleUpdateItem(item.id, { taxPercent: Number(e.target.value) })}
                                     disabled={disabled}
                                     className="w-full px-2 py-1 border border-gray-300 rounded focus:border-[#4b3621] outline-none text-right"
-                                />
+                                >
+                                    {GST_OPTIONS.map((rate) => (
+                                        <option key={rate} value={rate}>{rate}%</option>
+                                    ))}
+                                </select>
                             </td>
                             <td className="px-2 py-2">
                                 <input
@@ -223,31 +236,7 @@ export function InvoiceItemTable({
                                     onChange={(e) => {
                                         const val = e.target.value;
                                         if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                                            // Handle special case for reverse calculation
-                                            if (val !== '' && !val.endsWith('.')) {
-                                                const newTotal = Number(val);
-                                                const taxRate = (item.taxPercent || 0) / 100;
-                                                const qty = item.quantity || 1;
-                                                const newUnitPrice = (newTotal / (1 + taxRate)) / qty;
-                                                handleUpdateItem(item.id, {
-                                                    totalAmount: val as any,
-                                                    amountPaying: Number(newUnitPrice.toFixed(4))
-                                                });
-                                            } else {
-                                                handleUpdateItem(item.id, { totalAmount: val as any });
-                                            }
-                                        }
-                                    }}
-                                    onBlur={(e) => {
-                                        const val = Number(e.target.value);
-                                        if (!isNaN(val)) {
-                                            const taxRate = (item.taxPercent || 0) / 100;
-                                            const qty = item.quantity || 1;
-                                            const newUnitPrice = (val / (1 + taxRate)) / qty;
-                                            handleUpdateItem(item.id, {
-                                                totalAmount: val,
-                                                amountPaying: Number(newUnitPrice.toFixed(4))
-                                            });
+                                            handleUpdateItem(item.id, { totalAmount: val === '' ? 0 : Number(val) });
                                         }
                                     }}
                                     disabled={disabled}

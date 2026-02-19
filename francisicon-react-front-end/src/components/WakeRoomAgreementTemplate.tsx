@@ -4,16 +4,39 @@ import { PDF_ASSETS } from './common/FranciscanLogo';
 
 interface WakeRoomAgreementTemplateProps {
     booking: WakeRoomBooking | any;
+    billingData?: any;
 }
 
-export const WakeRoomAgreementTemplate = forwardRef<HTMLDivElement, WakeRoomAgreementTemplateProps>(({ booking }, ref) => {
+export const WakeRoomAgreementTemplate = forwardRef<HTMLDivElement, WakeRoomAgreementTemplateProps>(({ booking, billingData }, ref) => {
     if (!booking) return null;
 
     const applicant = booking.applicant || {};
     const bookingDetails = booking.booking || {};
     const serviceDetails = booking.service || {};
     const wakeRoom = booking.wakeRoom || {};
-    const financial = booking.financial || {};
+    const hasInvoice = Boolean(billingData?.hasInvoice && billingData?.code);
+    const hasReceipt = Boolean(billingData?.hasReceipt && billingData?.receiptCode);
+
+    const invoiceDateValue = billingData?.transactionDate || billingData?.invoiceDate || '';
+    const invoiceNoValue = hasInvoice ? (billingData?.code || '') : '';
+    const invoiceDescValue = hasInvoice ? (
+        billingData?.details?.[0]?.refDocNumber
+        || billingData?.applicationCode
+        || booking?.code
+        || ''
+    ) : '';
+    const invoiceSubtotal = hasInvoice ? Number(billingData?.summary?.subtotal ?? billingData?.totalAmount ?? 0) : null;
+    const invoiceTax = hasInvoice ? Number(billingData?.summary?.totalTax ?? billingData?.taxAmount ?? 0) : null;
+    const invoiceTotal = hasInvoice ? Number(billingData?.summary?.grandTotal ?? billingData?.totalAmount ?? 0) : null;
+
+    const receiptDateValue = hasReceipt ? (billingData?.receiptDate || '') : '';
+    const receiptNoValue = hasReceipt ? (billingData?.receiptCode || '') : '';
+    const receiptPaymentMode = hasReceipt
+        ? (billingData?.receiptPaymentMode || billingData?.paymentMode || '')
+        : '';
+    const receiptTotal = hasReceipt
+        ? Number(billingData?.receiptPayingAmount ?? billingData?.receiptTotalAmount ?? 0)
+        : null;
 
     // Format dates
     const formatDate = (dateString: string) => {
@@ -37,6 +60,12 @@ export const WakeRoomAgreementTemplate = forwardRef<HTMLDivElement, WakeRoomAgre
     const formatDay = (dateString: string) => {
         if (!dateString) return '';
         return new Date(dateString).toLocaleDateString('en-US', { weekday: 'long' });
+    };
+
+    const formatMoney = (value: any) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return '';
+        return numeric.toFixed(2);
     };
 
     // Address formatting
@@ -239,26 +268,20 @@ export const WakeRoomAgreementTemplate = forwardRef<HTMLDivElement, WakeRoomAgre
                         </thead>
                         <tbody>
                             <tr className="h-24 align-top">
-                                <td className="border-r border-black p-1">{formatDate(bookingDetails.usingDate)}</td>
-                                <td className="border-r border-black p-1"></td>
-                                <td className="border-r border-black p-1">
-                                    <div>{booking.code}</div>
-                                    <div>
-                                        {formatDate(bookingDetails.usingTimeFrom)} <span className="float-right">-</span>
-                                    </div>
-                                    <div>{formatDate(bookingDetails.usingTimeTo)}</div>
-                                </td>
-                                <td className="border-r border-black p-1"></td>
-                                <td className="border-r border-black p-1"></td>
-                                <td className="p-1 text-right">$ {financial.donationAmount?.toFixed(2)}</td>
+                                <td className="border-r border-black p-1">{hasInvoice ? formatDate(invoiceDateValue) : ''}</td>
+                                <td className="border-r border-black p-1">{invoiceNoValue}</td>
+                                <td className="border-r border-black p-1">{invoiceDescValue}</td>
+                                <td className="border-r border-black p-1 text-right">{hasInvoice ? `$ ${formatMoney(invoiceSubtotal)}` : ''}</td>
+                                <td className="border-r border-black p-1 text-right">{hasInvoice ? `$ ${formatMoney(invoiceTax)}` : ''}</td>
+                                <td className="p-1 text-right">{hasInvoice ? `$ ${formatMoney(invoiceTotal)}` : ''}</td>
                             </tr>
                             <tr className="h-12 border-t border-black">
+                                <td className="border-r border-black p-1">{hasReceipt ? formatDate(receiptDateValue) : ''}</td>
+                                <td className="border-r border-black p-1">{receiptNoValue}</td>
+                                <td className="border-r border-black p-1">{receiptPaymentMode}</td>
                                 <td className="border-r border-black p-1"></td>
                                 <td className="border-r border-black p-1"></td>
-                                <td className="border-r border-black p-1"></td>
-                                <td className="border-r border-black p-1"></td>
-                                <td className="border-r border-black p-1"></td>
-                                <td className="p-1 text-right align-top">-</td>
+                                <td className="p-1 text-right align-top">{hasReceipt ? `$ ${formatMoney(receiptTotal)}` : ''}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -274,7 +297,7 @@ export const WakeRoomAgreementTemplate = forwardRef<HTMLDivElement, WakeRoomAgre
                             <span className="font-bold mr-4">Amount Payable</span>
                             <span className="mr-2">:</span>
                             <span className="border-b border-black px-2 w-32 text-right">
-                                $ {financial.donationAmount?.toFixed(2)}
+                                {hasInvoice ? `$ ${formatMoney(invoiceTotal)}` : ''}
                             </span>
                         </div>
                     </div>

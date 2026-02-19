@@ -475,7 +475,9 @@ class NicheAgreementController extends BaseController {
 
       // Get niche agreement details (service will handle flexible format matching)
       logger.info(`Fetching 2nd nominee agreement data for PDF: ${applicationNumber}`);
-      const agreementDetails = await this.nicheAgreementService.getNicheAgreementDetails(applicationNumber);
+      const agreementDetails = await this.nicheAgreementService.getNicheAgreementDetails(applicationNumber, {
+        includeDeceasedDetails: false
+      });
 
       // Check if 2nd nominee exists
       if (!agreementDetails.nominee2 || !agreementDetails.nominee2.name) {

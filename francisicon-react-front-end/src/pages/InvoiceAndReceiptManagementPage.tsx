@@ -864,8 +864,8 @@ export function InvoiceAndReceiptManagementPage() {
             {/* Premium Document Switcher */}
             <div className="flex bg-gray-50 px-10 py-0 border-b border-gray-100">
               {[
-                { id: 'receipt', label: 'Cash Receipts', icon: ReceiptIcon, count: totalReceipts },
-                { id: 'invoice', label: 'Tax Invoices', icon: FileCheckIcon, count: invoices.length }
+                { id: 'receipt', label: 'Receipts', icon: ReceiptIcon, count: totalReceipts },
+                { id: 'invoice', label: 'Invoices', icon: FileCheckIcon, count: invoices.length }
               ].map((tab) => (
                 <button
                   key={tab.id}

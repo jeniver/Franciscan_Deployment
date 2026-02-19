@@ -75,9 +75,10 @@ const resolvePaymentModeLabel = (value: any): string => {
   return byCode ? byCode.label : 'Others';
 };
 
-const resolvePaymentModeCode = (label: string): number => {
+const resolvePaymentModeCode = (value: string | number): number => {
+  if (typeof value === 'number') return value;
   const match = PAYMENT_MODE_OPTIONS.find(
-    (option) => option.label.toLowerCase() === label?.toLowerCase()
+    (option) => option.label.toLowerCase() === value?.toLowerCase()
   );
   return match ? match.code : 4;
 };
@@ -139,51 +140,54 @@ export function CreateReceiptModal({
   useEffect(() => {
     if (!invoiceData) return;
 
+    // Use any casting to handle multiple possible property casings (Pascal vs camelCase)
+    const data = invoiceData as any;
+
     const resolvedInvoiceId =
-      invoiceData.invoiceId ??
-      invoiceData.InvoiceId ??
-      invoiceData.document?.InvoiceId ??
+      data.invoiceId ??
+      data.InvoiceId ??
+      data.document?.InvoiceId ??
       undefined;
 
     const resolvedInvoiceCode =
-      invoiceData.invoiceCode ??
-      invoiceData.Code ??
-      invoiceData.code ??
-      invoiceData.document?.Code ??
+      data.invoiceCode ??
+      data.Code ??
+      data.code ??
+      data.document?.Code ??
       '';
 
     const resolvedCustomerName =
-      invoiceData.customerName ??
-      invoiceData.CustomerName ??
-      invoiceData.document?.CustomerName ??
+      data.customerName ??
+      data.CustomerName ??
+      data.document?.CustomerName ??
       '';
 
     const resolvedPaymentMode =
-      invoiceData.paymentMode ??
-      invoiceData.PaymentMode ??
-      invoiceData.document?.PaymentMode ??
+      data.paymentMode ??
+      data.PaymentMode ??
+      data.document?.PaymentMode ??
       'Cash';
     const normalizedPaymentMode = resolvePaymentModeLabel(resolvedPaymentMode);
 
     const resolvedTotalAmount = extractNumericValue(
-      invoiceData.totalAmount ?? invoiceData.TotalAmount ?? invoiceData.document?.TotalAmount,
+      data.totalAmount ?? data.TotalAmount ?? data.document?.TotalAmount,
       0
     );
 
     const resolvedPayingAmount = extractNumericValue(
-      invoiceData.payingAmount ??
-        invoiceData.PayingAmount ??
-        invoiceData.totalPayingAmount ??
-        invoiceData.TotalPayingAmount ??
-        invoiceData.document?.PayingAmount ??
-        invoiceData.document?.TotalPayingAmount,
+      data.payingAmount ??
+      data.PayingAmount ??
+      data.totalPayingAmount ??
+      data.TotalPayingAmount ??
+      data.document?.PayingAmount ??
+      data.document?.TotalPayingAmount,
       resolvedTotalAmount
     );
 
     const rawDetails =
-      invoiceData.invoiceDetails ??
-      invoiceData.details ??
-      invoiceData.document?.details ??
+      data.invoiceDetails ??
+      data.details ??
+      data.document?.details ??
       [];
 
     const normalizedDetails: InvoiceDetail[] = mapInvoiceDetails(rawDetails);
@@ -217,16 +221,16 @@ export function CreateReceiptModal({
   const handleDetailChange = (index: number, field: keyof InvoiceDetail, value: any) => {
     const updated = [...invoiceDetails];
     updated[index] = { ...updated[index], [field]: value };
-    
+
     // Auto-calculate amount if quantity and unitPrice are provided
     if (field === 'quantity' || field === 'unitPrice') {
       const quantity = field === 'quantity' ? value : updated[index].quantity || 1;
       const unitPrice = field === 'unitPrice' ? value : updated[index].unitPrice || 0;
       updated[index].amount = quantity * unitPrice;
     }
-    
+
     setInvoiceDetails(updated);
-    
+
     // Recalculate total
     const total = updated.reduce((sum, detail) => sum + (detail.amount || 0), 0);
     setFormData({ ...formData, totalAmount: total, invoiceDetails: updated });
@@ -234,7 +238,7 @@ export function CreateReceiptModal({
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!formData.customerName.trim()) {
       newErrors.customerName = 'Customer name is required';
     }
@@ -250,7 +254,7 @@ export function CreateReceiptModal({
     if (!formData.paymentMode) {
       newErrors.paymentMode = 'Payment mode is required';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -258,7 +262,7 @@ export function CreateReceiptModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    
+
     const paymentModeCode = resolvePaymentModeCode(formData.paymentMode);
     const dataToSubmit: CreateReceiptRequest = {
       ...formData,
@@ -267,7 +271,7 @@ export function CreateReceiptModal({
       userId: resolvedUser?.id,
       invoiceDetails: invoiceDetails.length > 0 ? invoiceDetails : undefined,
     };
-    
+
     if (!dataToSubmit.churchId || !dataToSubmit.userId) {
       setErrors((prev) => ({
         ...prev,
@@ -275,7 +279,7 @@ export function CreateReceiptModal({
       }));
       return;
     }
-    
+
     try {
       await onCreate(dataToSubmit);
       handleClose();
@@ -307,7 +311,7 @@ export function CreateReceiptModal({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={handleClose} />
-      
+
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="relative bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
           {/* Header */}
@@ -364,11 +368,10 @@ export function CreateReceiptModal({
                 type="text"
                 value={formData.customerName}
                 onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                  errors.customerName
-                    ? 'border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:ring-[#8b2828]'
-                }`}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.customerName
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-[#8b2828]'
+                  }`}
                 placeholder="Enter customer name"
                 required
               />
@@ -385,11 +388,10 @@ export function CreateReceiptModal({
               <select
                 value={formData.paymentMode}
                 onChange={(e) => setFormData({ ...formData, paymentMode: e.target.value })}
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                  errors.paymentMode
-                    ? 'border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:ring-[#8b2828]'
-                }`}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.paymentMode
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-[#8b2828]'
+                  }`}
                 required
               >
                 {PAYMENT_MODE_OPTIONS.map((option) => (
@@ -500,11 +502,10 @@ export function CreateReceiptModal({
                   }
                   min="0"
                   step="0.01"
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                    errors.totalAmount
-                      ? 'border-red-500 focus:ring-red-500'
-                      : 'border-gray-300 focus:ring-[#8b2828]'
-                  }`}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.totalAmount
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-[#8b2828]'
+                    }`}
                   required
                 />
                 {errors.totalAmount && (
@@ -524,11 +525,10 @@ export function CreateReceiptModal({
                   min="0"
                   step="0.01"
                   max={formData.totalAmount}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                    errors.payingAmount
-                      ? 'border-red-500 focus:ring-red-500'
-                      : 'border-gray-300 focus:ring-[#8b2828]'
-                  }`}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.payingAmount
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-[#8b2828]'
+                    }`}
                   required
                 />
                 {errors.payingAmount && (

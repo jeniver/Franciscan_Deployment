@@ -152,6 +152,15 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
     return 'bg-gray-100 text-gray-800';
   };
 
+  const resolveResultId = (result: SearchResult): string | null => {
+    const candidate = result.id ?? result.personId ?? result.PersonId ?? result.code ?? null;
+    if (candidate === null || candidate === undefined) {
+      return null;
+    }
+    const value = String(candidate).trim();
+    return value.length > 0 ? value : null;
+  };
+
   // Handle navigation when grid item is clicked
   const handleResultClick = (result: SearchResult) => {
     // Close the modal first
@@ -185,8 +194,16 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
         break;
 
       case 'person':
-        // For person entities, log selection
-        console.log('Person selected:', result);
+        // Navigate to person profile detail page.
+        // Global search can return id under different keys depending on source.
+        {
+          const personId = resolveResultId(result);
+          if (personId) {
+            navigate(`/person/${personId}`);
+          } else {
+            console.log('Person selected without resolvable id:', result);
+          }
+        }
         break;
 
       case 'church':

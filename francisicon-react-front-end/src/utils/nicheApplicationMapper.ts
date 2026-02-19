@@ -1,6 +1,7 @@
 import type { CreateNichiApplicationRequest } from '../services/nichiApplicationService';
 import type { DeceasedDetail } from '../store/nichibookingSlice';
 import { mapComponentToBackendFields } from './addressMapper';
+import { paymentModeToCode, paymentModeToLabel } from './paymentMode';
 
 /**
  * Niche Application Mapper Utility
@@ -83,6 +84,7 @@ export function mapNichiBookingToApplicationRequest(formData: {
   selectedBibleChoiceId?: number | null;
   phraseOfChoice?: string;
   crossType?: string;
+  remarks?: string;
 }): CreateNichiApplicationRequest {
   const now = new Date();
   const formattedDate = now.toLocaleDateString('en-GB', {
@@ -269,6 +271,7 @@ export function mapNichiBookingToApplicationRequest(formData: {
     bibleInscriptionChoiceId: formData.selectedBibleChoiceId || null,
     additionalInscriptionPhrase: formData.phraseOfChoice || undefined,
     crossType: formData.crossType || undefined,
+    remarks: formData.remarks || undefined,
   };
 
   // Build the request
@@ -292,6 +295,7 @@ export function mapNichiBookingToApplicationRequest(formData: {
     agreement: {
       status: 'pending',
     },
+    remarks: formData.remarks || undefined,
   };
 
   return request;
@@ -312,7 +316,7 @@ export function mapNichiApplicationToFormData(
   // Map invoice fields
   if (applicationData.invoice) {
     formData.invoiceNumber = applicationData.invoice.invoiceNo || '';
-    formData.paymentMode = mapPaymentModeToString(applicationData.invoice.paymentMode);
+    formData.paymentMode = paymentModeToLabel(applicationData.invoice.paymentMode);
     formData.refDocNumber = applicationData.invoice.refDocNumber || applicationData.applicationCode || '';
 
     // Calculate quantity and unit price from invoice amounts
@@ -424,11 +428,14 @@ export function mapNichiApplicationToFormData(
   formData.rowCode = rowCode;
   formData.rowNumber = rowNumber;
   formData.rowLevel = rowLevel;
+  formData.remarks = applicationData.remarks || applicationData.additionalDetails?.remarks || '';
 
   // Map applicant details (optional)
   if (applicationData.applicant) {
     formData.applicantName = applicationData.applicant.name || '';
     formData.applicantIdNo = applicationData.applicant.idNo || '';
+    formData.applicantIDNo = applicationData.applicant.idNo || '';
+    formData.contactNric = applicationData.applicant.idNo || '';
     formData.applicantEmail = applicationData.applicant.email || '';
     formData.applicantPhone = applicationData.applicant.mobileNo || '';
     // Prefer structured address parts when present, but keep legacy address string
@@ -623,32 +630,14 @@ function formatDateFromAPI(dateStr: string): string {
  * Map payment mode string to number
  */
 function mapPaymentModeToNumber(paymentMode: string): number {
-  const modeMap: Record<string, number> = {
-    'Cash': 1,
-    'Cheque': 2,
-    'Bank Transfer': 3,
-    'Credit Card': 4,
-  };
-
-  return modeMap[paymentMode] || 1; // Default to Cash (1)
+  return paymentModeToCode(paymentMode);
 }
 
 /**
  * Map payment mode number to string
  */
 function mapPaymentModeToString(paymentMode: number | string): string {
-  if (typeof paymentMode === 'string') {
-    return paymentMode;
-  }
-
-  const modeMap: Record<number, string> = {
-    1: 'Cash',
-    2: 'Cheque',
-    3: 'Bank Transfer',
-    4: 'Credit Card',
-  };
-
-  return modeMap[paymentMode] || 'Cash';
+  return paymentModeToLabel(paymentMode);
 }
 
 /**
@@ -703,14 +692,46 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
     number: formData.nicheNumber || formData.nicheCode || formData.niche?.number || formData.niche?.code
   };
 
+  const pickDefined = (...values: any[]) => {
+    for (const value of values) {
+      if (value !== undefined && value !== null) {
+        return value;
+      }
+    }
+    return undefined;
+  };
+
   // Build applicant information - handle both flat and nested structures
   const applicant = {
-    name: formData.applicantName || formData.applicant?.name || formData.contactName || '',
-    email: formData.applicantEmail || formData.applicant?.email || formData.contactEmail || '',
-    phone: formData.applicantPhone || formData.applicant?.phone || formData.contactPhone || '',
-    homeTel: formData.applicantHomeTel || formData.applicant?.homeTel || '',
-    officeTel: formData.applicantOfficeTel || formData.applicant?.officeTel || '',
-    idNo: formData.applicantIDNo || formData.applicant?.idNo || formData.contactNric || '',
+    name: pickDefined(formData.applicantName, formData.applicant?.name, formData.contactName) ?? '',
+    email: pickDefined(
+      formData.applicantEmail,
+      formData.applicant?.email,
+      formData.applicant?.emailID,
+      formData.contactEmail
+    ) ?? '',
+    phone: pickDefined(
+      formData.applicantPhone,
+      formData.applicant?.phone,
+      formData.applicant?.mobileNo,
+      formData.contactPhone
+    ) ?? '',
+    mobileNo: pickDefined(
+      formData.applicantPhone,
+      formData.applicant?.mobileNo,
+      formData.applicant?.phone,
+      formData.contactPhone
+    ) ?? '',
+    homeTel: pickDefined(formData.applicantHomeTel, formData.applicant?.homeTel, formData.applicant?.homeTelNo) ?? '',
+    homeTelNo: pickDefined(formData.applicantHomeTel, formData.applicant?.homeTelNo, formData.applicant?.homeTel) ?? '',
+    officeTel: pickDefined(formData.applicantOfficeTel, formData.applicant?.officeTel, formData.applicant?.officeTelNo) ?? '',
+    officeTelNo: pickDefined(formData.applicantOfficeTel, formData.applicant?.officeTelNo, formData.applicant?.officeTel) ?? '',
+    idNo: pickDefined(
+      formData.applicantIDNo,
+      formData.applicantIdNo,
+      formData.applicant?.idNo,
+      formData.contactNric
+    ) ?? '',
     isCatholic: formData.applicantIsCatholic ??
       formData.applicant?.isCatholic ??
       ((formData.applicantReligion === 'Catholic') ||
@@ -722,17 +743,18 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
       (formData.applicantIsCatholic ? 'Catholic' : 'Non Catholic') ||
       (formData.applicant?.isCatholic ? 'Catholic' : 'Non Catholic'),
     address: {
-      no: formData.applicantAddressNo || formData.applicant?.address?.no || '',
-      line1: formData.applicantAddressLine1 || formData.applicant?.address?.line1 || '',
-      line2: formData.applicantAddressLine2 || formData.applicant?.address?.line2 || '',
-      city: formData.applicantAddressCity || formData.applicant?.address?.city || '',
-      state: formData.applicantAddressState || formData.applicant?.address?.state || '',
-      country: formData.applicantAddressCountry ||
-        formData.applicant?.address?.country ||
-        formData.applicantCountry ||
-        formData.applicant?.country ||
-        formData.contactCountry ||
-        'Singapore'
+      no: pickDefined(formData.applicantAddressNo, formData.applicant?.address?.no) ?? '',
+      line1: pickDefined(formData.applicantAddressLine1, formData.applicant?.address?.line1) ?? '',
+      line2: pickDefined(formData.applicantAddressLine2, formData.applicant?.address?.line2) ?? '',
+      city: pickDefined(formData.applicantAddressCity, formData.applicant?.address?.city) ?? '',
+      state: pickDefined(formData.applicantAddressState, formData.applicant?.address?.state) ?? '',
+      country: pickDefined(
+        formData.applicantAddressCountry,
+        formData.applicant?.address?.country,
+        formData.applicantCountry,
+        formData.applicant?.country,
+        formData.contactCountry
+      ) ?? 'Singapore'
     }
   };
 
@@ -853,8 +875,8 @@ function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<st
         isMale: beneficiary.isMale ?? false,
         gender: beneficiary.gender || (beneficiary.isMale ? 'Male' : 'Female'),
         relationship: beneficiary.relationship || beneficiary.relationshipToApplicant || '',
-        dateOfBirth: beneficiary.dateOfBirth || '',
-        birthYear: beneficiary.birthYear || '',
+        dateOfBirth: beneficiary.dateOfBirth ?? null,
+        birthYear: beneficiary.birthYear ?? null,
         status: beneficiary.status || 'Not Occupied',
         relationshipToNominee1: beneficiary.relationshipToNominee1 || '',
         relationshipToNominee2: beneficiary.relationshipToNominee2 || '',
@@ -894,10 +916,12 @@ function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<st
         relationship: formData[`${fieldPrefix}Relationship`] ||
           formData[fieldPrefix]?.relationship ||
           formData[fieldPrefix]?.relationshipToApplicant || '',
-        dateOfBirth: formData[`${fieldPrefix}DateOfBirth`] ||
-          formData[fieldPrefix]?.dateOfBirth || '',
-        birthYear: formData[`${fieldPrefix}BirthYear`] ||
-          formData[fieldPrefix]?.birthYear || '',
+          dateOfBirth: formData[`${fieldPrefix}DateOfBirth`] ??
+            formData[fieldPrefix]?.dateOfBirth ??
+            null,
+          birthYear: formData[`${fieldPrefix}BirthYear`] ??
+            formData[fieldPrefix]?.birthYear ??
+            null,
         status: formData[`${fieldPrefix}Status`] ||
           formData[fieldPrefix]?.status ||
           'Not Occupied',
@@ -1109,7 +1133,7 @@ export function mapApiApplicationToFormData(apiData: any): Record<string, any> {
   // Process beneficiaries to handle dateOfBirth and birthYear mapping
   if (apiData.beneficiaries && Array.isArray(apiData.beneficiaries)) {
     formData.beneficiaries = apiData.beneficiaries.map((beneficiary: any) => {
-      let processedBeneficiary = { ...beneficiary };
+      const processedBeneficiary = { ...beneficiary };
 
       // Ensure null/empty handling
       if (processedBeneficiary.dateOfBirth === '' || processedBeneficiary.dateOfBirth === 'null') {

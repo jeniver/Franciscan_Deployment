@@ -1,6 +1,7 @@
 import React from 'react'
 import { PDF_ASSETS } from '../components/common/FranciscanLogo'
 import addressUtils from '../utils/addressUtils'
+import { paymentModeToLabel } from '../utils/paymentMode'
 interface AgreementPdfTemplateProps {
   data: {
     applicationCode?: string
@@ -231,7 +232,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   const nicheAmount = invoice?.receiptAmount || invoice?.totalAmount || 0
   const taxAmount = invoice?.taxAmount || 0
   const totalAmount = invoice?.totalAmount || invoice?.invoicePayingAmount || 0
-  const paymentMethod = invoice?.paymentMode || 'Cash'
+  const paymentMethod = paymentModeToLabel(invoice?.paymentMode)
   const balance = invoice?.receiptPayingAmount || 0
   const invoiceDetails = invoice?.invoiceDetails || []
   const TableRow = ({

@@ -7,19 +7,20 @@ import { TableIcon, PlusIcon, EyeIcon, PrinterIcon } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { useWakeRoom } from '../hooks/useWakeRoom';
-import { useSelector } from 'react-redux';
-import { RootState } from '../store';
+import { useSelector, useDispatch } from 'react-redux';
+import { resetWakeRoomState } from '../store/wakeRoomSlice';
 import { WakeRoomAgreementModal } from '../components/WakeRoomAgreementModal';
 
 export function WakeRoomPage() {
   const { bookingCode } = useParams<{ bookingCode?: string }>();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const location = useLocation();
   const [viewMode, setViewMode] = useState<'form' | 'table'>('table');
   const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
   const [newlyCreatedBookingCode, setNewlyCreatedBookingCode] = useState<string | null>(null);
   const { handleGetBookingByCode, selectedBooking, handleSearchBookings } = useWakeRoom();
-  const user = useSelector((state: RootState) => state.auth.user);
+  const user = useSelector((state: any) => state.auth.user);
 
   // Effect to sync view mode with route
   useEffect(() => {
@@ -34,8 +35,11 @@ export function WakeRoomPage() {
   useEffect(() => {
     if (bookingCode) {
       handleGetBookingByCode(bookingCode, user?.churchId || 1);
+    } else if (location.pathname === '/wake-room/new') {
+      // Clear selected booking only if we're on the new booking route
+      dispatch(resetWakeRoomState());
     }
-  }, [bookingCode, handleGetBookingByCode, user?.churchId]);
+  }, [bookingCode, handleGetBookingByCode, user?.churchId, location.pathname, dispatch]);
 
   const handleBookingCreated = (bookingCode: string) => {
     console.log('Booking created:', bookingCode);
