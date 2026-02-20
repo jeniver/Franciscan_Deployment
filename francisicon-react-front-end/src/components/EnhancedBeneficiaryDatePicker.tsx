@@ -28,7 +28,6 @@ export function EnhancedBeneficiaryDatePicker({
   const [year, setYear] = useState('')
 
   // Refs to track previous values and break loops
-  const prevPropsRef = useRef({ dateOfBirth, birthYear })
   const isInternalUpdate = useRef(false)
 
   /* 🔁 Sync FROM parent props to internal state */
@@ -38,17 +37,6 @@ export function EnhancedBeneficiaryDatePicker({
       isInternalUpdate.current = false
       return
     }
-
-    // Skip if props haven't actually changed
-    if (
-      prevPropsRef.current.dateOfBirth === dateOfBirth &&
-      prevPropsRef.current.birthYear === birthYear
-    ) {
-      return
-    }
-
-    // Update previous props ref
-    prevPropsRef.current = { dateOfBirth, birthYear }
 
     // Logic to populate internal state from props
     let newDay = ''

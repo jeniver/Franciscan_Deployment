@@ -131,15 +131,16 @@ export function formatAddress(fields: ComponentAddressFields): string {
   } = fields;
 
   // Standard Singapore format: Blk 123 instead of Blk, 123
-  const blockPrefix = block ? (block === 'Block' ? 'Blk' : 'No') : '';
+  const blockPrefix = block ? (block === 'Block' ? 'Blk' : (block === 'No' ? 'No' : '')) : '';
   const blockPart = blockPrefix && blockNo ? `${blockPrefix} ${blockNo}` : (blockNo || blockPrefix);
+
+  const countryPostal = [country, postalCode].filter(p => p && p.trim()).join(' ');
 
   const parts = [
     blockPart,
     streetName,
     unitNo && !unitNo.startsWith('#') ? `#${unitNo}` : unitNo,
-    postalCode,
-    country
+    countryPostal
   ].map(p => String(p || '').trim())
     .filter(p => p !== '' && p.toLowerCase() !== 'null' && p.toLowerCase() !== 'undefined');
 
@@ -151,21 +152,20 @@ export function formatAddress(fields: ComponentAddressFields): string {
     const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!normalized) continue;
 
-    let exists = false;
-    for (const s of seen) {
-      if (s.includes(normalized) || normalized.includes(s)) {
-        exists = true;
-        break;
-      }
-    }
+    // Check if this part is contained in any already added part (e.g. "Singapore" in "Singapore 123456")
+    // Or if any already added part is contained in this part
+    // Actually, we just need basic deduplication. The previous logic was a bit aggressive.
+    // Let's just check exact matches for now, generally address parts are distinct.
+    // Exception: Country might be repeated if it was in street name? Unlikely.
 
-    if (!exists) {
+    // Using a simpler approach:
+    if (!seen.has(normalized)) {
       uniqueParts.push(part);
       seen.add(normalized);
     }
   }
 
-  return uniqueParts.length > 0 ? uniqueParts.join(', ') : 'N/A';
+  return uniqueParts.length > 0 ? uniqueParts.join(' ') : 'N/A';
 }
 
 /**

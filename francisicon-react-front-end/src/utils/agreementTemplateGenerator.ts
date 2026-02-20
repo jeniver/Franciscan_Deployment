@@ -7,14 +7,14 @@ const formatCurrency = (amount: any) => {
 // Helper function to format address into lines from a single string
 const formatAddressLinesFromString = (address: string | null | undefined): string[] => {
   if (!address) return ['', '', ''];
-  
+
   const addressStr = address.trim();
   const pattern1 = addressStr.match(/B[il]k\s+(\d+[A-Z]?)\s+(.+?)(?:,\s*Singapore\s+(\d+))?/i);
   if (pattern1) {
     const blockPart = `Blk ${pattern1[1]}`;
     const rest = pattern1[2].trim();
     const postalCode = pattern1[3] || '';
-    
+
     const unitMatch = rest.match(/#(\d+-\d+)/);
     if (unitMatch) {
       const unitPart = `#${unitMatch[1]}`;
@@ -32,7 +32,7 @@ const formatAddressLinesFromString = (address: string | null | undefined): strin
       ];
     }
   }
-  
+
   const parts = addressStr.split(',').map(p => p.trim()).filter(Boolean);
   if (parts.length >= 3) {
     return [parts[0] || '', parts[1] || '', parts.slice(2).join(', ') || ''];
@@ -54,8 +54,15 @@ const buildAddressLinesFromEntity = (entity: any): string[] => {
 
   if (addressNo || addressLine1 || addressLine2 || addressCity || addressState || addressCountry) {
     const line1Parts: string[] = [];
-    if (addressNo && addressNo.trim().toUpperCase() !== 'NO') {
-      line1Parts.push(addressNo.trim());
+    if (addressNo) {
+      const lowerNo = addressNo.trim().toUpperCase();
+      if (lowerNo === 'BLK' || lowerNo === 'BLOCK') {
+        line1Parts.push('Blk');
+      } else if (lowerNo === 'NO') {
+        line1Parts.push('No');
+      } else {
+        line1Parts.push(addressNo.trim());
+      }
     }
     if (addressLine1) {
       line1Parts.push(addressLine1.trim());
@@ -104,14 +111,14 @@ export const generateAgreementTemplateHTML = (data: any, baseUrl: string = ''): 
   const applicantAddressLines = buildAddressLinesFromEntity(applicant || {});
   const nominee1AddressLines = buildAddressLinesFromEntity(nominee || {});
   const nominee2AddressLines = buildAddressLinesFromEntity(nominee2 || {});
-  
+
   // Get consideration sum
   const considerationSum = invoice?.totalAmount || invoice?.invoicePayingAmount || niche?.totalAmount || 7000;
-  
+
   // Get chapel name and niche number
   const chapelName = niche?.chapelName || niche?.location?.chapel?.chapelName || '';
   const nicheNumber = niche?.number || '';
-  
+
   // Get agreement date for signature
   const footerAgreementDate = formatDate(agreementDate || appliedDate);
 

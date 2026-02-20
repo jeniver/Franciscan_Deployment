@@ -600,6 +600,25 @@ export function mapNichiApplicationToFormData(
   }
   formData.deceasedDetails = deceasedDetailsArray;
 
+  // Map beneficiaries
+  if (applicationData.beneficiaries && Array.isArray(applicationData.beneficiaries)) {
+    formData.beneficiaries = applicationData.beneficiaries.map((b: any) => ({
+      id: b.id,
+      name: b.name || b.fullName,
+      idNo: b.idNo || b.nric,
+      relationshipToApplicant: b.relationship || b.relationshipToApplicant,
+      dateOfBirth: b.dateOfBirth ? formatDateFromAPI(b.dateOfBirth) : null,
+      birthYear: b.birthYear,
+      isCatholic: b.isCatholic ?? (b.religion === 'Catholic'),
+      isMale: b.isMale ?? (b.gender === 'Male' || b.sex === 'Male'),
+      status: b.status,
+      religion: b.religion,
+      relationshipToNominee1: b.relationshipToNominee1,
+      relationshipToNominee2: b.relationshipToNominee2,
+      gender: b.gender || b.sex || (b.isMale ? 'Male' : 'Female')
+    }));
+  }
+
   // Map additional details (API may provide this under data.additionalDetails or flattened)
   const additionalDetails = applicationData.additionalDetails || applicationData.additionalDetails;
   if (additionalDetails) {

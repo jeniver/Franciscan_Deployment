@@ -4,219 +4,225 @@ import { PDF_ASSETS } from '../constants/pdfConstants';
 
 // PDF Template Service for generating attractive agreement and invoice templates
 export const pdfTemplateService = {
-    // Generate Agreement PDF Template
-    generateAgreementTemplate: (data: any, _baseUrl?: string): string => {
-        const {
-            applicationCode,
-            appliedDate,
-            agreementDate,
-            applicant,
-            nominee,
-            nominee2,
-            beneficiaries,
-            niche,
-            invoice,
-            deceased,
-            storage,
-            consentForm,
-            agreement,
-            metadata,
-            crystalReports,
-            printReady
-        } = data;
+  // Generate Agreement PDF Template
+  generateAgreementTemplate: (data: any, _baseUrl?: string): string => {
+    const {
+      applicationCode,
+      appliedDate,
+      agreementDate,
+      applicant,
+      nominee,
+      nominee2,
+      beneficiaries,
+      niche,
+      invoice,
+      deceased,
+      storage,
+      consentForm,
+      agreement,
+      metadata,
+      crystalReports,
+      printReady
+    } = data;
 
-        // Helper function to format currency
-        const formatCurrency = (amount: any) => {
-            const num = parseFloat(amount || 0);
-            return num.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        };
+    // Helper function to format currency
+    const formatCurrency = (amount: any) => {
+      const num = parseFloat(amount || 0);
+      return num.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
 
-        // Helper function to format date/time
-        const formatDateTime = (dateStr: string | null | undefined): string => {
-            if (!dateStr) return '';
-            try {
-                const date = new Date(dateStr);
-                return date.toLocaleString();
-            } catch {
-                return dateStr || '';
-            }
-        };
+    // Helper function to format date/time
+    const formatDateTime = (dateStr: string | null | undefined): string => {
+      if (!dateStr) return '';
+      try {
+        const date = new Date(dateStr);
+        return date.toLocaleString();
+      } catch {
+        return dateStr || '';
+      }
+    };
 
-        // Helper function to format address into lines from a single string
-        const formatAddressLinesFromString = (address: string | null | undefined): string[] => {
-            if (!address) return ['', '', ''];
-            
-            // Try to parse Singapore address format: "Blk XXX Street Name #XX-XX Singapore XXXXXX"
-            const addressStr = address.trim();
-            
-            // Pattern 1: "Blk 343 Choa Chu Kang Loop #06-43, Singapore 680343" (handle "Blk" or "Bik" typos)
-            const pattern1 = addressStr.match(/B[il]k\s+(\d+[A-Z]?)\s+(.+?)(?:,\s*Singapore\s+(\d+))?/i);
-            if (pattern1) {
-                // Normalize "Bik" to "Blk" for display
-                const blockPart = `Blk ${pattern1[1]}`;
-                const rest = pattern1[2].trim();
-                const postalCode = pattern1[3] || '';
-                
-                // Check for unit number pattern #XX-XX
-                const unitMatch = rest.match(/#(\d+-\d+)/);
-                if (unitMatch) {
-                    const unitPart = `#${unitMatch[1]}`;
-                    const streetPart = rest.replace(/#\d+-\d+/, '').trim();
-                    return [
-                        `${blockPart} ${streetPart}`,
-                        unitPart,
-                        postalCode ? `Singapore ${postalCode}` : ''
-                    ];
-                } else {
-                    // No unit number
-                    return [
-                        `${blockPart} ${rest}`,
-                        '',
-                        postalCode ? `Singapore ${postalCode}` : ''
-                    ];
-                }
-            }
-            
-            // Pattern 2: "1010 EAST COAST PARKWAY, Singapore 449892" (Address, Country PostalCode)
-            const pattern2 = addressStr.match(/^(.+?),\s*Singapore\s+(\d+)$/i);
-            if (pattern2) {
-                const mainAddress = pattern2[1].trim();
-                const postalCode = pattern2[2];
-                return [
-                    mainAddress,
-                    '',
-                    `Singapore ${postalCode}`
-                ];
-            }
-            
-            // Pattern 3: Split by commas (general case)
-            const parts = addressStr.split(',').map(p => p.trim()).filter(Boolean);
-            if (parts.length >= 3) {
-                return [parts[0] || '', parts[1] || '', parts.slice(2).join(', ') || ''];
-            } else if (parts.length === 2) {
-                // Check if second part starts with "Singapore" - likely country + postal
-                if (parts[1].toLowerCase().startsWith('singapore')) {
-                    return [parts[0] || '', '', parts[1] || ''];
-                }
-                return [parts[0] || '', parts[1] || '', ''];
-            } else {
-                // Single line - try to extract street, unit, and Singapore postal if present
-                const singaporeMatch = addressStr.match(/^(.+?)\s+(Singapore\s+\d+)$/i);
-                if (singaporeMatch) {
-                    return [singaporeMatch[1].trim(), '', singaporeMatch[2].trim()];
-                }
-                const line1 = addressStr;
-                return [line1, '', ''];
-            }
-        };
+    // Helper function to format address into lines from a single string
+    const formatAddressLinesFromString = (address: string | null | undefined): string[] => {
+      if (!address) return ['', '', ''];
 
-        // Prefer structured address parts when available (addressNo / addressLine1 / addressLine2 / addressCity / addressState / addressCountry)
-        // Mapping: addressNo → No (if "No", then empty, otherwise "Block"), addressLine1 → Block No, addressLine2 → Street Name, 
-        // addressCity → Unit No, addressState → Postal Code, addressCountry → Country
-        const buildAddressLinesFromEntity = (entity: any): string[] => {
-            // Check for structured address fields (can be at entity level or nested in entity.address)
-            const addressNo = entity.addressNo || entity.address?.no || '';
-            const addressLine1 = entity.addressLine1 || entity.address?.line1 || '';
-            const addressLine2 = entity.addressLine2 || entity.address?.line2 || '';
-            const addressCity = entity.addressCity || entity.address?.city || '';
-            const addressState = entity.addressState || entity.address?.state || '';
-            const addressCountry = entity.addressCountry || entity.address?.country || '';
+      // Try to parse Singapore address format: "Blk XXX Street Name #XX-XX Singapore XXXXXX"
+      const addressStr = address.trim();
 
-            if (addressNo || addressLine1 || addressLine2 || addressCity || addressState || addressCountry) {
-                // Line 1: No/Block + Block No + Street Name
-                const line1Parts: string[] = [];
-                // If addressNo is "No", leave empty; otherwise use it as "Block"
-                if (addressNo && addressNo.trim().toUpperCase() !== 'NO') {
-                    line1Parts.push(addressNo.trim());
-                }
-                if (addressLine1) {
-                    line1Parts.push(addressLine1.trim());
-                }
-                if (addressLine2) {
-                    line1Parts.push(addressLine2.trim());
-                }
-                const line1 = line1Parts.join(' ').trim();
+      // Pattern 1: "Blk 343 Choa Chu Kang Loop #06-43, Singapore 680343" (handle "Blk" or "Bik" typos)
+      const pattern1 = addressStr.match(/B[il]k\s+(\d+[A-Z]?)\s+(.+?)(?:,\s*Singapore\s+(\d+))?/i);
+      if (pattern1) {
+        // Normalize "Bik" to "Blk" for display
+        const blockPart = `Blk ${pattern1[1]}`;
+        const rest = pattern1[2].trim();
+        const postalCode = pattern1[3] || '';
 
-                // Line 2: Unit No (from addressCity)
-                const line2 = addressCity.trim();
+        // Check for unit number pattern #XX-XX
+        const unitMatch = rest.match(/#(\d+-\d+)/);
+        if (unitMatch) {
+          const unitPart = `#${unitMatch[1]}`;
+          const streetPart = rest.replace(/#\d+-\d+/, '').trim();
+          return [
+            `${blockPart} ${streetPart}`,
+            unitPart,
+            postalCode ? `Singapore ${postalCode}` : ''
+          ];
+        } else {
+          // No unit number
+          return [
+            `${blockPart} ${rest}`,
+            '',
+            postalCode ? `Singapore ${postalCode}` : ''
+          ];
+        }
+      }
 
-                // Line 3: Country + Postal Code (from addressState)
-                const line3Parts: string[] = [];
-                if (addressCountry) {
-                    line3Parts.push(addressCountry.trim());
-                }
-                if (addressState) {
-                    line3Parts.push(addressState.trim());
-                }
-                const line3 = line3Parts.join(' ').trim();
+      // Pattern 2: "1010 EAST COAST PARKWAY, Singapore 449892" (Address, Country PostalCode)
+      const pattern2 = addressStr.match(/^(.+?),\s*Singapore\s+(\d+)$/i);
+      if (pattern2) {
+        const mainAddress = pattern2[1].trim();
+        const postalCode = pattern2[2];
+        return [
+          mainAddress,
+          '',
+          `Singapore ${postalCode}`
+        ];
+      }
 
-                return [line1, line2, line3];
-            }
+      // Pattern 3: Split by commas (general case)
+      const parts = addressStr.split(',').map(p => p.trim()).filter(Boolean);
+      if (parts.length >= 3) {
+        return [parts[0] || '', parts[1] || '', parts.slice(2).join(', ') || ''];
+      } else if (parts.length === 2) {
+        // Check if second part starts with "Singapore" - likely country + postal
+        if (parts[1].toLowerCase().startsWith('singapore')) {
+          return [parts[0] || '', '', parts[1] || ''];
+        }
+        return [parts[0] || '', parts[1] || '', ''];
+      } else {
+        // Single line - try to extract street, unit, and Singapore postal if present
+        const singaporeMatch = addressStr.match(/^(.+?)\s+(Singapore\s+\d+)$/i);
+        if (singaporeMatch) {
+          return [singaporeMatch[1].trim(), '', singaporeMatch[2].trim()];
+        }
+        const line1 = addressStr;
+        return [line1, '', ''];
+      }
+    };
 
-            // Fallback to parsing the combined address string
-            return formatAddressLinesFromString(entity?.address);
-        };
+    // Prefer structured address parts when available (addressNo / addressLine1 / addressLine2 / addressCity / addressState / addressCountry)
+    // Mapping: addressNo → No (if "No", then empty, otherwise "Block"), addressLine1 → Block No, addressLine2 → Street Name, 
+    // addressCity → Unit No, addressState → Postal Code, addressCountry → Country
+    const buildAddressLinesFromEntity = (entity: any): string[] => {
+      // Check for structured address fields (can be at entity level or nested in entity.address)
+      const addressNo = entity.addressNo || entity.address?.no || '';
+      const addressLine1 = entity.addressLine1 || entity.address?.line1 || '';
+      const addressLine2 = entity.addressLine2 || entity.address?.line2 || '';
+      const addressCity = entity.addressCity || entity.address?.city || '';
+      const addressState = entity.addressState || entity.address?.state || '';
+      const addressCountry = entity.addressCountry || entity.address?.country || '';
 
-        // Format address for display (applicant and nominees)
-        const applicantAddressLines = buildAddressLinesFromEntity(applicant || {});
-        const nominee1AddressLines = buildAddressLinesFromEntity(nominee || {});
-        const nominee2AddressLines = buildAddressLinesFromEntity(nominee2 || {});
-        
-        // Get consideration sum (total amount) from invoice or niche
-        const considerationSum =  niche?.totalAmount || 7000;
-        
-        // Get chapel name and niche number
-        const chapelName = niche?.chapelName || niche?.location?.chapel?.chapelName || '';
-        const nicheNumber = niche?.number || '';
-        
-        // Format dates (API returns in dd-MMM-yyyy format, keep as is)
-        const formatDate = (dateStr: string | null | undefined): string => {
-            return dateStr || '';
-        };
+      if (addressNo || addressLine1 || addressLine2 || addressCity || addressState || addressCountry) {
+        // Line 1: No/Block + Block No + Street Name
+        const line1Parts: string[] = [];
+        if (addressNo) {
+          const lowerNo = addressNo.trim().toUpperCase();
+          if (lowerNo === 'BLK' || lowerNo === 'BLOCK') {
+            line1Parts.push('Blk');
+          } else if (lowerNo === 'NO') {
+            line1Parts.push('No');
+          } else {
+            line1Parts.push(addressNo.trim());
+          }
+        }
+        if (addressLine1) {
+          line1Parts.push(addressLine1.trim());
+        }
+        if (addressLine2) {
+          line1Parts.push(addressLine2.trim());
+        }
+        const line1 = line1Parts.join(' ').trim();
 
-        // Get agreement date for signature
-        const footerAgreementDate = formatDate(agreementDate || appliedDate);
+        // Line 2: Unit No (from addressCity)
+        const line2 = addressCity.trim();
 
-        // Convenience variables for main parties
-        const applicantName = applicant?.name || '';
-        const applicantIdNo = applicant?.idNo || '';
-        const applicantMobileNo = applicant?.mobileNo || '';
-        const applicantEmail = applicant?.email || '';
-        const applicantIsCatholicText = applicant?.isCatholic ? 'Yes' : 'No';
+        // Line 3: Country + Postal Code (from addressState)
+        const line3Parts: string[] = [];
+        if (addressCountry) {
+          line3Parts.push(addressCountry.trim());
+        }
+        if (addressState) {
+          line3Parts.push(addressState.trim());
+        }
+        const line3 = line3Parts.join(' ').trim();
 
-        // Beneficiaries shown in the header block (up to 2)
-        const beneficiary1 = (beneficiaries && beneficiaries[0]) || null;
-        const beneficiary2 = (beneficiaries && beneficiaries[1]) || null;
+        return [line1, line2, line3];
+      }
 
-        // Deceased information
-        const deceased1 = deceased?.deceased1 || null;
-        const deceased2 = deceased?.deceased2 || null;
-        const firstIntermentDate = formatDate(deceased1?.internmentDate);
-        const secondIntermentDate = formatDate(deceased2?.internmentDate);
-        const firstDeceasedName = deceased1?.name || '';
-        const secondDeceasedName = deceased2?.name || '';
-        const firstDeceasedDeathCert = deceased1?.deathCertificateNo || '';
-        const secondDeceasedDeathCert = deceased2?.deathCertificateNo || '';
-        // Backend sends 'dateDied', not 'dateOfDeath'
-        const firstDeceasedDate = formatDate(deceased1?.dateDied || deceased1?.dateOfDeath);
-        const secondDeceasedDate = formatDate(deceased2?.dateDied || deceased2?.dateOfDeath);
+      // Fallback to parsing the combined address string
+      return formatAddressLinesFromString(entity?.address);
+    };
 
-        // Storage information
-        const storageFrom = formatDate(storage?.fromDate);
-        const storageTo = formatDate(storage?.toDate);
+    // Format address for display (applicant and nominees)
+    const applicantAddressLines = buildAddressLinesFromEntity(applicant || {});
+    const nominee1AddressLines = buildAddressLinesFromEntity(nominee || {});
+    const nominee2AddressLines = buildAddressLinesFromEntity(nominee2 || {});
 
-        // Payment/Invoice information
-        const invoiceNo1 = invoice?.invoiceNo || '';
-        const invoiceNo2 = invoice?.invoiceNo || '';
-        const invoiceDate1 = formatDate(invoice?.invoiceDate);
-        const invoiceDate2 = formatDate(invoice?.invoiceDate);
-        const nicheAmount = invoice?.nicheAmount || invoice?.totalAmount || 0;
-        const taxAmount = invoice?.taxAmount || 0;
-        const totalAmount = invoice?.totalAmount || invoice?.invoicePayingAmount || 0;
-        const paymentMethod = invoice?.paymentMethod || '';
-        const balance = invoice?.balance || 0;
+    // Get consideration sum (total amount) from invoice or niche
+    const considerationSum = niche?.totalAmount || 7000;
 
-        const template = `<html>
+    // Get chapel name and niche number
+    const chapelName = niche?.chapelName || niche?.location?.chapel?.chapelName || '';
+    const nicheNumber = niche?.number || '';
+
+    // Format dates (API returns in dd-MMM-yyyy format, keep as is)
+    const formatDate = (dateStr: string | null | undefined): string => {
+      return dateStr || '';
+    };
+
+    // Get agreement date for signature
+    const footerAgreementDate = formatDate(agreementDate || appliedDate);
+
+    // Convenience variables for main parties
+    const applicantName = applicant?.name || '';
+    const applicantIdNo = applicant?.idNo || '';
+    const applicantMobileNo = applicant?.mobileNo || '';
+    const applicantEmail = applicant?.email || '';
+    const applicantIsCatholicText = applicant?.isCatholic ? 'Yes' : 'No';
+
+    // Beneficiaries shown in the header block (up to 2)
+    const beneficiary1 = (beneficiaries && beneficiaries[0]) || null;
+    const beneficiary2 = (beneficiaries && beneficiaries[1]) || null;
+
+    // Deceased information
+    const deceased1 = deceased?.deceased1 || null;
+    const deceased2 = deceased?.deceased2 || null;
+    const firstIntermentDate = formatDate(deceased1?.internmentDate);
+    const secondIntermentDate = formatDate(deceased2?.internmentDate);
+    const firstDeceasedName = deceased1?.name || '';
+    const secondDeceasedName = deceased2?.name || '';
+    const firstDeceasedDeathCert = deceased1?.deathCertificateNo || '';
+    const secondDeceasedDeathCert = deceased2?.deathCertificateNo || '';
+    // Backend sends 'dateDied', not 'dateOfDeath'
+    const firstDeceasedDate = formatDate(deceased1?.dateDied || deceased1?.dateOfDeath);
+    const secondDeceasedDate = formatDate(deceased2?.dateDied || deceased2?.dateOfDeath);
+
+    // Storage information
+    const storageFrom = formatDate(storage?.fromDate);
+    const storageTo = formatDate(storage?.toDate);
+
+    // Payment/Invoice information
+    const invoiceNo1 = invoice?.invoiceNo || '';
+    const invoiceNo2 = invoice?.invoiceNo || '';
+    const invoiceDate1 = formatDate(invoice?.invoiceDate);
+    const invoiceDate2 = formatDate(invoice?.invoiceDate);
+    const nicheAmount = invoice?.nicheAmount || invoice?.totalAmount || 0;
+    const taxAmount = invoice?.taxAmount || 0;
+    const totalAmount = invoice?.totalAmount || invoice?.invoicePayingAmount || 0;
+    const paymentMethod = invoice?.paymentMethod || '';
+    const balance = invoice?.balance || 0;
+
+    const template = `<html>
 <STYLE> 
  .pdf24_ sup {
 	vertical-align: baseline;
@@ -1136,100 +1142,100 @@ img { max-width: 100%; height: auto; }
 </body>
 </html>`;
 
-        // Normalize header images to a single shared base64 asset (no UI/layout change)
-        // Note: the raw template contains duplicated/legacy base64 strings.
-        const headerImg = (className: string) =>
-            `<img src="${PDF_ASSETS.headerImageBase64}" alt="" class="${className}" />`;
+    // Normalize header images to a single shared base64 asset (no UI/layout change)
+    // Note: the raw template contains duplicated/legacy base64 strings.
+    const headerImg = (className: string) =>
+      `<img src="${PDF_ASSETS.headerImageBase64}" alt="" class="${className}" />`;
 
-        const normalizedTemplate = template
-            // Page 0 header image
-            .replace(
-                /<img\s+src="[^"]*"\s+alt=""\s+class="pdf24_04"\s*\/>/,
-                headerImg('pdf24_04')
-            )
-            // Page 1 header image
-            .replace(
-                /<img\s+src="[^"]*"\s+alt=""\s+class="pdf24_34"\s*\/>/,
-                headerImg('pdf24_34')
-            );
+    const normalizedTemplate = template
+      // Page 0 header image
+      .replace(
+        /<img\s+src="[^"]*"\s+alt=""\s+class="pdf24_04"\s*\/>/,
+        headerImg('pdf24_04')
+      )
+      // Page 1 header image
+      .replace(
+        /<img\s+src="[^"]*"\s+alt=""\s+class="pdf24_34"\s*\/>/,
+        headerImg('pdf24_34')
+      );
 
-        return normalizedTemplate;
-    },
+    return normalizedTemplate;
+  },
 
-    // Generate Invoice PDF Template
-    generateInvoiceTemplate: (data: any): string => {
-        const {
-            applicationNumber,
-            applicant,
-            niche,
-            invoice,
-            printReady
-        } = data;
+  // Generate Invoice PDF Template
+  generateInvoiceTemplate: (data: any): string => {
+    const {
+      applicationNumber,
+      applicant,
+      niche,
+      invoice,
+      printReady
+    } = data;
 
-        // Helper to format currency
-        const formatCurrency = (amount: any) => {
-            const num = parseFloat(amount || 0);
-            return num.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        };
+    // Helper to format currency
+    const formatCurrency = (amount: any) => {
+      const num = parseFloat(amount || 0);
+      return num.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
 
-        // Helper to format date
-        const formatDate = (dateString: string) => {
-            if (!dateString) return '';
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
-        };
+    // Helper to format date
+    const formatDate = (dateString: string) => {
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+    };
 
-        // Derived values
-        const subTotal = invoice?.receiptAmount ? parseFloat(invoice.receiptAmount) : 0;
-        const gstTotal = invoice?.taxAmount ? parseFloat(invoice.taxAmount) : 0;
-        const totalAmount = invoice?.invoicePayingAmount ? parseFloat(invoice.invoicePayingAmount) : 0;
+    // Derived values
+    const subTotal = invoice?.receiptAmount ? parseFloat(invoice.receiptAmount) : 0;
+    const gstTotal = invoice?.taxAmount ? parseFloat(invoice.taxAmount) : 0;
+    const totalAmount = invoice?.invoicePayingAmount ? parseFloat(invoice.invoicePayingAmount) : 0;
 
-        // Calculate GST Rate
-        const calculatedGstRate = subTotal > 0 ? (gstTotal / subTotal) * 100 : 9.0;
-        const gstRateDisplay = calculatedGstRate.toFixed(1);
+    // Calculate GST Rate
+    const calculatedGstRate = subTotal > 0 ? (gstTotal / subTotal) * 100 : 9.0;
+    const gstRateDisplay = calculatedGstRate.toFixed(1);
 
-        // Construct Reference String (e.g. "St Agnes 3791 -")
-        const referenceInfo = [niche?.wallName, niche?.number].filter(Boolean).join(' ');
+    // Construct Reference String (e.g. "St Agnes 3791 -")
+    const referenceInfo = [niche?.wallName, niche?.number].filter(Boolean).join(' ');
 
-        // Number to words converter
-        const numberToWords = (n: any): string => {
-            const num = Math.floor(parseFloat(n || 0));
-            if (num === 0) return "Zero";
+    // Number to words converter
+    const numberToWords = (n: any): string => {
+      const num = Math.floor(parseFloat(n || 0));
+      if (num === 0) return "Zero";
 
-            const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
-            const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+      const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+      const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
-            const convertGroup = (val: number): string => {
-                if (val >= 100) {
-                    return a[Math.floor(val / 100)] + "Hundred " + (val % 100 !== 0 ? convertGroup(val % 100) : "");
-                } else if (val >= 20) {
-                    return b[Math.floor(val / 10)] + (val % 10 !== 0 ? "-" + a[val % 10].trim() + " " : " ");
-                } else {
-                    return a[val];
-                }
-            };
+      const convertGroup = (val: number): string => {
+        if (val >= 100) {
+          return a[Math.floor(val / 100)] + "Hundred " + (val % 100 !== 0 ? convertGroup(val % 100) : "");
+        } else if (val >= 20) {
+          return b[Math.floor(val / 10)] + (val % 10 !== 0 ? "-" + a[val % 10].trim() + " " : " ");
+        } else {
+          return a[val];
+        }
+      };
 
-            const toWords = (amount: number): string => {
-                if (amount === 0) return "";
-                let str = "";
-                if (amount >= 1000000) {
-                    str += convertGroup(Math.floor(amount / 1000000)) + "Million ";
-                    amount %= 1000000;
-                }
-                if (amount >= 1000) {
-                    str += convertGroup(Math.floor(amount / 1000)) + "Thousand ";
-                    amount %= 1000;
-                }
-                str += convertGroup(amount);
-                return str.trim();
-            };
+      const toWords = (amount: number): string => {
+        if (amount === 0) return "";
+        let str = "";
+        if (amount >= 1000000) {
+          str += convertGroup(Math.floor(amount / 1000000)) + "Million ";
+          amount %= 1000000;
+        }
+        if (amount >= 1000) {
+          str += convertGroup(Math.floor(amount / 1000)) + "Thousand ";
+          amount %= 1000;
+        }
+        str += convertGroup(amount);
+        return str.trim();
+      };
 
-            return toWords(num);
-        };
+      return toWords(num);
+    };
 
-        const amountInWords = numberToWords(totalAmount);
+    const amountInWords = numberToWords(totalAmount);
 
-        const template = `
+    const template = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1545,325 +1551,325 @@ img { max-width: 100%; height: auto; }
 </body>
 </html>`;
 
-        return template;
-    },
+    return template;
+  },
 
-    // Generate PDF blob from agreement template (using html2canvas + jsPDF)
-    generateAgreementPdfBlob: async (data: any, baseUrl?: string): Promise<Blob> => {
-        let element: HTMLIFrameElement | null = null;
-        let container: HTMLDivElement | null = null;
-        
-        try {
-            console.log('[generateAgreementPdfBlob] Starting PDF generation...');
-            const startTime = Date.now();
-            
-            // Generate HTML template
-            const htmlContent = pdfTemplateService.generateAgreementTemplate(data, baseUrl);
-            console.log('[generateAgreementPdfBlob] HTML template generated, length:', htmlContent.length);
-            
-            // Create a container for the iframe
-            container = document.createElement('div');
-            container.style.position = 'absolute';
-            container.style.left = '-10000px';
-            container.style.top = '0';
-            container.style.width = '794px'; // 210mm = 794px at 96 DPI
-            container.style.height = '1123px'; // 297mm = 1123px at 96 DPI
-            container.style.backgroundColor = '#fff';
-            container.style.overflow = 'hidden';
-            
-            // Create an iframe to render the full HTML document
-            element = document.createElement('iframe');
-            element.style.width = '794px';
-            element.style.height = '1123px';
-            element.style.border = 'none';
-            element.style.margin = '0';
-            element.style.padding = '0';
-            
-            container.appendChild(element);
-            document.body.appendChild(container);
-            
-            console.log('[generateAgreementPdfBlob] Iframe created, writing HTML content...');
-            
-            // Write the full HTML to the iframe
-            const iframeDoc = element.contentDocument || element.contentWindow?.document;
-            if (!iframeDoc) {
-                throw new Error('Cannot access iframe document');
+  // Generate PDF blob from agreement template (using html2canvas + jsPDF)
+  generateAgreementPdfBlob: async (data: any, baseUrl?: string): Promise<Blob> => {
+    let element: HTMLIFrameElement | null = null;
+    let container: HTMLDivElement | null = null;
+
+    try {
+      console.log('[generateAgreementPdfBlob] Starting PDF generation...');
+      const startTime = Date.now();
+
+      // Generate HTML template
+      const htmlContent = pdfTemplateService.generateAgreementTemplate(data, baseUrl);
+      console.log('[generateAgreementPdfBlob] HTML template generated, length:', htmlContent.length);
+
+      // Create a container for the iframe
+      container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.left = '-10000px';
+      container.style.top = '0';
+      container.style.width = '794px'; // 210mm = 794px at 96 DPI
+      container.style.height = '1123px'; // 297mm = 1123px at 96 DPI
+      container.style.backgroundColor = '#fff';
+      container.style.overflow = 'hidden';
+
+      // Create an iframe to render the full HTML document
+      element = document.createElement('iframe');
+      element.style.width = '794px';
+      element.style.height = '1123px';
+      element.style.border = 'none';
+      element.style.margin = '0';
+      element.style.padding = '0';
+
+      container.appendChild(element);
+      document.body.appendChild(container);
+
+      console.log('[generateAgreementPdfBlob] Iframe created, writing HTML content...');
+
+      // Write the full HTML to the iframe
+      const iframeDoc = element.contentDocument || element.contentWindow?.document;
+      if (!iframeDoc) {
+        throw new Error('Cannot access iframe document');
+      }
+
+      iframeDoc.open();
+      iframeDoc.write(htmlContent);
+      iframeDoc.close();
+
+      console.log('[generateAgreementPdfBlob] HTML written to iframe, waiting for render...');
+
+      // Wait for iframe to load and render
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          console.warn('[generateAgreementPdfBlob] Iframe load timeout, proceeding anyway...');
+          resolve(true);
+        }, 5000);
+
+        element!.onload = () => {
+          clearTimeout(timeout);
+          console.log('[generateAgreementPdfBlob] Iframe loaded');
+          resolve(true);
+        };
+
+        element!.onerror = (error) => {
+          clearTimeout(timeout);
+          console.error('[generateAgreementPdfBlob] Iframe load error:', error);
+          reject(new Error('Iframe failed to load'));
+        };
+
+        // Also wait a bit for content to render
+        setTimeout(() => {
+          clearTimeout(timeout);
+          resolve(true);
+        }, 2000);
+      });
+
+      // Additional wait for styles and layout
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Verify iframe content
+      const iframeBody = iframeDoc.body;
+      if (!iframeBody || iframeBody.innerHTML.trim().length === 0) {
+        console.error('[generateAgreementPdfBlob] Iframe body is empty:', iframeBody?.innerHTML);
+        throw new Error('Iframe content is empty');
+      }
+
+      console.log('[generateAgreementPdfBlob] Iframe body content length:', iframeBody.innerHTML.length);
+      console.log('[generateAgreementPdfBlob] Iframe body preview:', iframeBody.innerHTML.substring(0, 200));
+
+      // Get iframe body dimensions
+      const height = iframeBody.scrollHeight || iframeBody.offsetHeight;
+      const width = iframeBody.scrollWidth || iframeBody.offsetWidth;
+      console.log('[generateAgreementPdfBlob] Iframe body dimensions:', { width, height });
+
+      if (height === 0 || width === 0) {
+        throw new Error(`Iframe content did not render properly - dimensions are zero (width: ${width}, height: ${height})`);
+      }
+
+      // Update iframe height to match content
+      element.style.height = `${Math.max(height, 1123)}px`;
+      container.style.height = `${Math.max(height, 1123)}px`;
+
+      // Wait for logo image to load in iframe
+      const logoImg = iframeDoc.querySelector('.header-logo') as HTMLImageElement;
+      if (logoImg && logoImg.src) {
+        console.log('[generateAgreementPdfBlob] Waiting for logo to load...');
+        await new Promise((resolve) => {
+          if (logoImg.complete && logoImg.naturalHeight > 0) {
+            console.log('[generateAgreementPdfBlob] Logo already loaded');
+            resolve(true);
+          } else {
+            let resolved = false;
+            const timeout = setTimeout(() => {
+              if (!resolved) {
+                console.warn('[generateAgreementPdfBlob] Logo load timeout, continuing...');
+                resolved = true;
+                resolve(true);
+              }
+            }, 5000); // 5 second timeout
+
+            logoImg.onload = () => {
+              if (!resolved) {
+                console.log('[generateAgreementPdfBlob] Logo loaded successfully');
+                resolved = true;
+                clearTimeout(timeout);
+                resolve(true);
+              }
+            };
+            logoImg.onerror = () => {
+              if (!resolved) {
+                console.warn('[generateAgreementPdfBlob] Logo failed to load, continuing...');
+                resolved = true;
+                clearTimeout(timeout);
+                resolve(true); // Continue even if logo fails
+              }
+            };
+          }
+        });
+      }
+
+      // Use html2canvas to convert iframe body to canvas
+      const html2canvas = (await import('html2canvas')).default;
+      console.log('[generateAgreementPdfBlob] Starting html2canvas conversion on iframe body...');
+      console.log('[generateAgreementPdfBlob] Iframe body dimensions:', {
+        width: iframeBody.scrollWidth || iframeBody.offsetWidth,
+        height: iframeBody.scrollHeight || iframeBody.offsetHeight
+      });
+
+      const canvas = await html2canvas(iframeBody, {
+        scale: 2,
+        useCORS: true,
+        logging: true, // Enable logging to debug
+        width: iframeBody.scrollWidth || 794,
+        height: iframeBody.scrollHeight || 1123,
+        windowWidth: iframeBody.scrollWidth || 794,
+        windowHeight: iframeBody.scrollHeight || 1123,
+        backgroundColor: '#ffffff',
+        removeContainer: false,
+        allowTaint: false,
+        imageTimeout: 30000,
+        foreignObjectRendering: true, // Better for iframes
+        onclone: (clonedDoc, clonedElement) => {
+          console.log('[generateAgreementPdfBlob] Cloned element:', clonedElement);
+          // Ensure all images are loaded in cloned document
+          const clonedImgs = clonedDoc.querySelectorAll('img');
+          console.log('[generateAgreementPdfBlob] Found images in clone:', clonedImgs.length);
+          clonedImgs.forEach((img: HTMLImageElement) => {
+            if (img.src && !img.complete) {
+              // Force reload if not complete
+              const src = img.src;
+              img.src = '';
+              img.src = src;
             }
-            
-            iframeDoc.open();
-            iframeDoc.write(htmlContent);
-            iframeDoc.close();
-            
-            console.log('[generateAgreementPdfBlob] HTML written to iframe, waiting for render...');
-            
-            // Wait for iframe to load and render
-            await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    console.warn('[generateAgreementPdfBlob] Iframe load timeout, proceeding anyway...');
-                    resolve(true);
-                }, 5000);
-                
-                element!.onload = () => {
-                    clearTimeout(timeout);
-                    console.log('[generateAgreementPdfBlob] Iframe loaded');
-                    resolve(true);
-                };
-                
-                element!.onerror = (error) => {
-                    clearTimeout(timeout);
-                    console.error('[generateAgreementPdfBlob] Iframe load error:', error);
-                    reject(new Error('Iframe failed to load'));
-                };
-                
-                // Also wait a bit for content to render
-                setTimeout(() => {
-                    clearTimeout(timeout);
-                    resolve(true);
-                }, 2000);
-            });
-            
-            // Additional wait for styles and layout
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Verify iframe content
-            const iframeBody = iframeDoc.body;
-            if (!iframeBody || iframeBody.innerHTML.trim().length === 0) {
-                console.error('[generateAgreementPdfBlob] Iframe body is empty:', iframeBody?.innerHTML);
-                throw new Error('Iframe content is empty');
-            }
-            
-            console.log('[generateAgreementPdfBlob] Iframe body content length:', iframeBody.innerHTML.length);
-            console.log('[generateAgreementPdfBlob] Iframe body preview:', iframeBody.innerHTML.substring(0, 200));
-            
-            // Get iframe body dimensions
-            const height = iframeBody.scrollHeight || iframeBody.offsetHeight;
-            const width = iframeBody.scrollWidth || iframeBody.offsetWidth;
-            console.log('[generateAgreementPdfBlob] Iframe body dimensions:', { width, height });
-            
-            if (height === 0 || width === 0) {
-                throw new Error(`Iframe content did not render properly - dimensions are zero (width: ${width}, height: ${height})`);
-            }
-            
-            // Update iframe height to match content
-            element.style.height = `${Math.max(height, 1123)}px`;
-            container.style.height = `${Math.max(height, 1123)}px`;
-            
-            // Wait for logo image to load in iframe
-            const logoImg = iframeDoc.querySelector('.header-logo') as HTMLImageElement;
-            if (logoImg && logoImg.src) {
-                console.log('[generateAgreementPdfBlob] Waiting for logo to load...');
-                await new Promise((resolve) => {
-                    if (logoImg.complete && logoImg.naturalHeight > 0) {
-                        console.log('[generateAgreementPdfBlob] Logo already loaded');
-                        resolve(true);
-                    } else {
-                        let resolved = false;
-                        const timeout = setTimeout(() => {
-                            if (!resolved) {
-                                console.warn('[generateAgreementPdfBlob] Logo load timeout, continuing...');
-                                resolved = true;
-                                resolve(true);
-                            }
-                        }, 5000); // 5 second timeout
-                        
-                        logoImg.onload = () => {
-                            if (!resolved) {
-                                console.log('[generateAgreementPdfBlob] Logo loaded successfully');
-                                resolved = true;
-                                clearTimeout(timeout);
-                                resolve(true);
-                            }
-                        };
-                        logoImg.onerror = () => {
-                            if (!resolved) {
-                                console.warn('[generateAgreementPdfBlob] Logo failed to load, continuing...');
-                                resolved = true;
-                                clearTimeout(timeout);
-                                resolve(true); // Continue even if logo fails
-                            }
-                        };
-                    }
-                });
-            }
-            
-            // Use html2canvas to convert iframe body to canvas
-            const html2canvas = (await import('html2canvas')).default;
-            console.log('[generateAgreementPdfBlob] Starting html2canvas conversion on iframe body...');
-            console.log('[generateAgreementPdfBlob] Iframe body dimensions:', {
-                width: iframeBody.scrollWidth || iframeBody.offsetWidth,
-                height: iframeBody.scrollHeight || iframeBody.offsetHeight
-            });
-            
-            const canvas = await html2canvas(iframeBody, {
-                scale: 2,
-                useCORS: true,
-                logging: true, // Enable logging to debug
-                width: iframeBody.scrollWidth || 794,
-                height: iframeBody.scrollHeight || 1123,
-                windowWidth: iframeBody.scrollWidth || 794,
-                windowHeight: iframeBody.scrollHeight || 1123,
-                backgroundColor: '#ffffff',
-                removeContainer: false,
-                allowTaint: false,
-                imageTimeout: 30000,
-                foreignObjectRendering: true, // Better for iframes
-                onclone: (clonedDoc, clonedElement) => {
-                    console.log('[generateAgreementPdfBlob] Cloned element:', clonedElement);
-                    // Ensure all images are loaded in cloned document
-                    const clonedImgs = clonedDoc.querySelectorAll('img');
-                    console.log('[generateAgreementPdfBlob] Found images in clone:', clonedImgs.length);
-                    clonedImgs.forEach((img: HTMLImageElement) => {
-                        if (img.src && !img.complete) {
-                            // Force reload if not complete
-                            const src = img.src;
-                            img.src = '';
-                            img.src = src;
-                        }
-                    });
-                }
-            });
-            
-            console.log('[generateAgreementPdfBlob] Canvas created:', {
-                width: canvas.width,
-                height: canvas.height
-            });
-            
-            // Validate canvas
-            if (!canvas || canvas.width === 0 || canvas.height === 0) {
-                throw new Error(`Canvas is invalid: width=${canvas.width}, height=${canvas.height}`);
-            }
-            
-            // Check if canvas has content (not blank)
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                const imageData = ctx.getImageData(0, 0, Math.min(100, canvas.width), Math.min(100, canvas.height));
-                const hasContent = imageData.data.some((pixel, index) => {
-                    // Check if pixel is not white (RGB 255,255,255)
-                    if (index % 4 === 3) return false; // Skip alpha channel
-                    return pixel < 255;
-                });
-                
-                if (!hasContent) {
-                    console.warn('[generateAgreementPdfBlob] Canvas appears to be blank/white, but continuing...');
-                }
-            }
-            
-            console.log('[generateAgreementPdfBlob] Canvas validated, converting to PDF...');
-            const canvasTime = Date.now() - startTime;
-            
-            // Convert canvas to image
-            const imgData = canvas.toDataURL('image/jpeg', 0.95);
-            
-            if (!imgData || imgData.length < 100) {
-                throw new Error('Canvas to image conversion failed - image data is too small');
-            }
-            
-            console.log('[generateAgreementPdfBlob] Image data created, length:', imgData.length);
-            
-            // Create PDF document
-            const pdfDoc = new jsPDF({
-                unit: 'mm',
-                format: 'a4',
-                orientation: 'portrait',
-                compress: true
-            });
-            
-            const imgWidth = 210; // A4 width in mm
-            const pageHeight = 297; // A4 height in mm
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
-            let heightLeft = imgHeight;
-            let position = 0;
-            
-            // Add first page
-            pdfDoc.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-            heightLeft -= pageHeight;
-            
-            // Add additional pages if needed
-            while (heightLeft >= 0) {
-                position = heightLeft - imgHeight;
-                pdfDoc.addPage();
-                pdfDoc.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-                heightLeft -= pageHeight;
-            }
-            
-            const blob = pdfDoc.output('blob');
-            const totalTime = Date.now() - startTime;
-            
-            // Validate PDF blob
-            if (!blob || blob.size === 0) {
-                throw new Error('Generated PDF blob is empty');
-            }
-            
-            // Check if blob is actually a PDF (should start with %PDF)
-            const blobArrayBuffer = await blob.arrayBuffer();
-            const blobStart = new Uint8Array(blobArrayBuffer.slice(0, 4));
-            const pdfHeader = String.fromCharCode(...blobStart);
-            
-            if (!pdfHeader.startsWith('%PDF')) {
-                console.warn('[generateAgreementPdfBlob] PDF header check failed, but continuing...');
-                // This might be okay if jsPDF uses a different format
-            }
-            
-            console.log(`[generateAgreementPdfBlob] PDF generated successfully in ${totalTime}ms (canvas: ${canvasTime}ms, blob size: ${(blob.size / 1024).toFixed(2)}KB)`);
-            console.log(`[generateAgreementPdfBlob] PDF blob validation:`, {
-                size: blob.size,
-                type: blob.type,
-                header: pdfHeader.substring(0, 10)
-            });
-            
-            // Clean up temporary elements
-            if (container && container.parentNode) {
-                try {
-                    document.body.removeChild(container);
-                } catch (cleanupError) {
-                    console.warn('[generateAgreementPdfBlob] Error removing container:', cleanupError);
-                }
-            }
-            container = null;
-            element = null;
-            
-            return blob;
-        } catch (error: any) {
-            // Clean up on error
-            if (container && container.parentNode) {
-                try {
-                    document.body.removeChild(container);
-                } catch (cleanupError) {
-                    console.warn('[generateAgreementPdfBlob] Error during cleanup:', cleanupError);
-                }
-            }
-            container = null;
-            element = null;
-            console.error('[generateAgreementPdfBlob] Error generating PDF:', {
-                message: error.message,
-                stack: error.stack,
-                name: error.name
-            });
-            throw new NicheAgreementError(`Failed to generate PDF: ${error.message || 'Unknown error'}. Please check console for details.`);
+          });
         }
-    },
+      });
 
-    // Open PDF in new tab with generated template (HTML view with print/download options)
-    openPdfInNewTab: (template: string, title: string = 'Document', enablePdfGeneration: boolean = false, data?: any, baseUrl?: string): void => {
+      console.log('[generateAgreementPdfBlob] Canvas created:', {
+        width: canvas.width,
+        height: canvas.height
+      });
+
+      // Validate canvas
+      if (!canvas || canvas.width === 0 || canvas.height === 0) {
+        throw new Error(`Canvas is invalid: width=${canvas.width}, height=${canvas.height}`);
+      }
+
+      // Check if canvas has content (not blank)
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const imageData = ctx.getImageData(0, 0, Math.min(100, canvas.width), Math.min(100, canvas.height));
+        const hasContent = imageData.data.some((pixel, index) => {
+          // Check if pixel is not white (RGB 255,255,255)
+          if (index % 4 === 3) return false; // Skip alpha channel
+          return pixel < 255;
+        });
+
+        if (!hasContent) {
+          console.warn('[generateAgreementPdfBlob] Canvas appears to be blank/white, but continuing...');
+        }
+      }
+
+      console.log('[generateAgreementPdfBlob] Canvas validated, converting to PDF...');
+      const canvasTime = Date.now() - startTime;
+
+      // Convert canvas to image
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+
+      if (!imgData || imgData.length < 100) {
+        throw new Error('Canvas to image conversion failed - image data is too small');
+      }
+
+      console.log('[generateAgreementPdfBlob] Image data created, length:', imgData.length);
+
+      // Create PDF document
+      const pdfDoc = new jsPDF({
+        unit: 'mm',
+        format: 'a4',
+        orientation: 'portrait',
+        compress: true
+      });
+
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 297; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // Add first page
+      pdfDoc.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Add additional pages if needed
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdfDoc.addPage();
+        pdfDoc.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const blob = pdfDoc.output('blob');
+      const totalTime = Date.now() - startTime;
+
+      // Validate PDF blob
+      if (!blob || blob.size === 0) {
+        throw new Error('Generated PDF blob is empty');
+      }
+
+      // Check if blob is actually a PDF (should start with %PDF)
+      const blobArrayBuffer = await blob.arrayBuffer();
+      const blobStart = new Uint8Array(blobArrayBuffer.slice(0, 4));
+      const pdfHeader = String.fromCharCode(...blobStart);
+
+      if (!pdfHeader.startsWith('%PDF')) {
+        console.warn('[generateAgreementPdfBlob] PDF header check failed, but continuing...');
+        // This might be okay if jsPDF uses a different format
+      }
+
+      console.log(`[generateAgreementPdfBlob] PDF generated successfully in ${totalTime}ms (canvas: ${canvasTime}ms, blob size: ${(blob.size / 1024).toFixed(2)}KB)`);
+      console.log(`[generateAgreementPdfBlob] PDF blob validation:`, {
+        size: blob.size,
+        type: blob.type,
+        header: pdfHeader.substring(0, 10)
+      });
+
+      // Clean up temporary elements
+      if (container && container.parentNode) {
         try {
-            const blob = new Blob([template], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
-            const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+          document.body.removeChild(container);
+        } catch (cleanupError) {
+          console.warn('[generateAgreementPdfBlob] Error removing container:', cleanupError);
+        }
+      }
+      container = null;
+      element = null;
 
-            if (!newWindow) {
-                throw new Error('Popup blocked. Please allow popups for this site.');
-            }
+      return blob;
+    } catch (error: any) {
+      // Clean up on error
+      if (container && container.parentNode) {
+        try {
+          document.body.removeChild(container);
+        } catch (cleanupError) {
+          console.warn('[generateAgreementPdfBlob] Error during cleanup:', cleanupError);
+        }
+      }
+      container = null;
+      element = null;
+      console.error('[generateAgreementPdfBlob] Error generating PDF:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      throw new NicheAgreementError(`Failed to generate PDF: ${error.message || 'Unknown error'}. Please check console for details.`);
+    }
+  },
 
-            // Set the title
-            newWindow.document.title = title;
-            
-            // Add print and download buttons if PDF generation is enabled
-            if (enablePdfGeneration && data) {
-                // Wait for window to load
-                newWindow.onload = () => {
-                    try {
-                        const style = newWindow.document.createElement('style');
-                        style.textContent = `
+  // Open PDF in new tab with generated template (HTML view with print/download options)
+  openPdfInNewTab: (template: string, title: string = 'Document', enablePdfGeneration: boolean = false, data?: any, baseUrl?: string): void => {
+    try {
+      const blob = new Blob([template], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+
+      if (!newWindow) {
+        throw new Error('Popup blocked. Please allow popups for this site.');
+      }
+
+      // Set the title
+      newWindow.document.title = title;
+
+      // Add print and download buttons if PDF generation is enabled
+      if (enablePdfGeneration && data) {
+        // Wait for window to load
+        newWindow.onload = () => {
+          try {
+            const style = newWindow.document.createElement('style');
+            style.textContent = `
                             .pdf-controls {
                                 position: fixed;
                                 top: 10px;
@@ -1891,57 +1897,57 @@ img { max-width: 100%; height: auto; }
                                 .pdf-controls { display: none; }
                             }
                         `;
-                        newWindow.document.head.appendChild(style);
-                        
-                        const controls = newWindow.document.createElement('div');
-                        controls.className = 'pdf-controls';
-                        
-                        const printBtn = newWindow.document.createElement('button');
-                        printBtn.className = 'pdf-btn';
-                        printBtn.textContent = 'Print';
-                        printBtn.onclick = () => newWindow.print();
-                        
-                        const downloadBtn = newWindow.document.createElement('button');
-                        downloadBtn.className = 'pdf-btn';
-                        downloadBtn.textContent = 'Download PDF';
-                        downloadBtn.onclick = async () => {
-                            try {
-                                downloadBtn.textContent = 'Generating...';
-                                downloadBtn.disabled = true;
-                                const pdfBlob = await pdfTemplateService.generateAgreementPdfBlob(data, baseUrl);
-                                const pdfUrl = URL.createObjectURL(pdfBlob);
-                                const link = newWindow.document.createElement('a');
-                                link.href = pdfUrl;
-                                link.download = `${title.replace(/\s+/g, '_')}.pdf`;
-                                link.click();
-                                URL.revokeObjectURL(pdfUrl);
-                                downloadBtn.textContent = 'Download PDF';
-                                downloadBtn.disabled = false;
-                            } catch (err: any) {
-                                alert(`Failed to generate PDF: ${err.message}`);
-                                downloadBtn.textContent = 'Download PDF';
-                                downloadBtn.disabled = false;
-                            }
-                        };
-                        
-                        controls.appendChild(printBtn);
-                        controls.appendChild(downloadBtn);
-                        newWindow.document.body.appendChild(controls);
-                    } catch (err) {
-                        console.error('Error adding PDF controls:', err);
-                    }
-                };
-            }
+            newWindow.document.head.appendChild(style);
 
-            // Clean up the URL after a delay
-            setTimeout(() => {
-                URL.revokeObjectURL(url);
-            }, 1000);
+            const controls = newWindow.document.createElement('div');
+            controls.className = 'pdf-controls';
 
-        } catch (error) {
-            throw new NicheAgreementError('Failed to open PDF. Please check if popups are blocked.');
-        }
+            const printBtn = newWindow.document.createElement('button');
+            printBtn.className = 'pdf-btn';
+            printBtn.textContent = 'Print';
+            printBtn.onclick = () => newWindow.print();
+
+            const downloadBtn = newWindow.document.createElement('button');
+            downloadBtn.className = 'pdf-btn';
+            downloadBtn.textContent = 'Download PDF';
+            downloadBtn.onclick = async () => {
+              try {
+                downloadBtn.textContent = 'Generating...';
+                downloadBtn.disabled = true;
+                const pdfBlob = await pdfTemplateService.generateAgreementPdfBlob(data, baseUrl);
+                const pdfUrl = URL.createObjectURL(pdfBlob);
+                const link = newWindow.document.createElement('a');
+                link.href = pdfUrl;
+                link.download = `${title.replace(/\s+/g, '_')}.pdf`;
+                link.click();
+                URL.revokeObjectURL(pdfUrl);
+                downloadBtn.textContent = 'Download PDF';
+                downloadBtn.disabled = false;
+              } catch (err: any) {
+                alert(`Failed to generate PDF: ${err.message}`);
+                downloadBtn.textContent = 'Download PDF';
+                downloadBtn.disabled = false;
+              }
+            };
+
+            controls.appendChild(printBtn);
+            controls.appendChild(downloadBtn);
+            newWindow.document.body.appendChild(controls);
+          } catch (err) {
+            console.error('Error adding PDF controls:', err);
+          }
+        };
+      }
+
+      // Clean up the URL after a delay
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+    } catch (error) {
+      throw new NicheAgreementError('Failed to open PDF. Please check if popups are blocked.');
     }
+  }
 };
 
 export default pdfTemplateService;

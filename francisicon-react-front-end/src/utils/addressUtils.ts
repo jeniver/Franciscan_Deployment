@@ -22,45 +22,52 @@ export const addressUtils = {
     buildAddressLines: (entity: AddressEntity): string[] => {
         if (!entity) return [];
 
+        // Check if there is any meaningful address data
+        const hasData = !!(entity.addressNo || entity.addressLine1 || entity.addressLine2 || entity.addressCity || entity.addressState);
+        if (!hasData) return [];
+
         const lines: string[] = [];
 
-        // Line 1: Block/House No + Street
-        const line1Parts: string[] = [];
-        if (entity.addressNo) line1Parts.push(entity.addressNo.trim());
-        if (entity.addressLine1) line1Parts.push(entity.addressLine1.trim());
-
-        if (line1Parts.length > 0) {
-            lines.push(line1Parts.join(' '));
+        // Line 1: Block/House No
+        let blockPart = '';
+        if (entity.addressNo) {
+            const val = entity.addressNo.trim();
+            const upper = val.toUpperCase();
+            if (upper.startsWith('NO') || upper.startsWith('BLK') || upper.startsWith('BLOCK')) {
+                // Already has prefix, but normalize "Block" to "Blk" if needed? 
+                // Let's just keep as is or map if it's exactly "Block"
+                if (upper === 'BLOCK') blockPart = 'Blk';
+                else blockPart = val;
+            } else {
+                blockPart = 'No ' + val;
+            }
         }
+        lines.push(blockPart);
 
-        // Line 2: Building/Unit/Additional
-        if (entity.addressLine2 && entity.addressLine2.trim()) {
-            lines.push(entity.addressLine2.trim());
-        }
+        // Line 2: Street Name
+        lines.push(entity.addressLine1 ? entity.addressLine1.trim() : '');
 
-        // Line 3: City/Country/Postal Code
+        // Line 3: Unit + Singapore + Postal
         const line3Parts: string[] = [];
-        if (entity.addressCity) line3Parts.push(entity.addressCity.trim());
-        if (entity.addressState) line3Parts.push(entity.addressState.trim());
-        if (entity.addressCountry) line3Parts.push(entity.addressCountry.trim());
-
-        let line3 = line3Parts.join(' ').trim();
-
-        // Ensure "Singapore" is present if it's likely a SG address (no country specified or SG specified)
-        const isSg = !entity.addressCountry ||
-            entity.addressCountry.toLowerCase().includes('singapore') ||
-            entity.addressCity?.toLowerCase().includes('singapore') ||
-            /^\d{6}$/.test(entity.addressCity || '') || // Postal code format
-            /^\d{6}$/.test(entity.addressState || '');
-
-        if (isSg && !line3.toLowerCase().includes('singapore')) {
-            if (line3) line3 += ', Singapore';
-            else line3 = 'Singapore';
+        if (entity.addressLine2) {
+            let unit = entity.addressLine2.trim();
+            if (unit && !unit.startsWith('#') && (unit.includes('-') || /^\d+/.test(unit))) {
+                unit = '#' + unit;
+            }
+            line3Parts.push(unit);
         }
 
-        if (line3) {
-            lines.push(line3);
+        line3Parts.push('Singapore');
+
+        const postal = (entity.addressCity || entity.addressState || '').trim();
+        if (postal) {
+            line3Parts.push(postal);
         }
+
+        lines.push(line3Parts.join(' '));
+
+        // Ensure we always have 3 elements for the template to access reliably
+        while (lines.length < 3) lines.push('');
 
         return lines;
     },

@@ -60,13 +60,20 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
     const currentReceipt = fullReceiptData || receipt;
     // Calculate address with comprehensive fallback using unified utility
     const getAddress = () => {
+      const receiptAny = currentReceipt as any;
+      const invoiceAny = receiptAny.invoice || {};
+
+      const rawAddressNo = currentReceipt.addressNo || receiptAny.AddressNo || invoiceAny.addressNo || invoiceAny.AddressNo;
+      const isBlock = rawAddressNo === 'Blk' || rawAddressNo === 'Block';
+      const blockValue = isBlock ? 'Block' : (rawAddressNo === 'No' ? 'No' : '');
+
       return formatAddress({
-        block: currentReceipt.addressNo || (currentReceipt as any).AddressNo || (currentReceipt as any).invoice?.addressNo || (currentReceipt as any).invoice?.AddressNo === 'Blk' ? 'Block' : '',
-        blockNo: currentReceipt.address || (currentReceipt as any).Address || (currentReceipt as any).addressLine1 || (currentReceipt as any).invoice?.address || (currentReceipt as any).invoice?.Address || (currentReceipt as any).invoice?.addressLine1,
-        streetName: currentReceipt.address2 || (currentReceipt as any).Address2 || (currentReceipt as any).addressLine2 || (currentReceipt as any).invoice?.address2 || (currentReceipt as any).invoice?.Address2 || (currentReceipt as any).invoice?.addressLine2,
-        unitNo: currentReceipt.addressCity || (currentReceipt as any).AddressCity || (currentReceipt as any).invoice?.addressCity || (currentReceipt as any).invoice?.AddressCity,
-        postalCode: (currentReceipt as any).districtCode || (currentReceipt as any).DistrictCode || (currentReceipt as any).addressState || (currentReceipt as any).invoice?.districtCode || (currentReceipt as any).invoice?.DistrictCode,
-        country: currentReceipt.country || (currentReceipt as any).Country || (currentReceipt as any).invoice?.country || (currentReceipt as any).invoice?.Country
+        block: blockValue,
+        blockNo: currentReceipt.address || receiptAny.Address || receiptAny.addressLine1 || invoiceAny.address || invoiceAny.Address || invoiceAny.addressLine1,
+        streetName: currentReceipt.address2 || receiptAny.Address2 || receiptAny.addressLine2 || invoiceAny.address2 || invoiceAny.Address2 || invoiceAny.addressLine2,
+        unitNo: currentReceipt.addressCity || receiptAny.AddressCity || invoiceAny.addressCity || invoiceAny.AddressCity,
+        postalCode: receiptAny.districtCode || receiptAny.DistrictCode || receiptAny.addressState || invoiceAny.districtCode || invoiceAny.DistrictCode,
+        country: currentReceipt.country || receiptAny.Country || invoiceAny.country || invoiceAny.Country
       });
     };
 
@@ -351,13 +358,20 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
   // Pre-calculate address for the React component with comprehensive fallback using unified utility
   const getDisplayAddress = () => {
     if (!receipt) return 'N/A';
+    const receiptAny = receipt as any;
+    const invoiceAny = receiptAny.invoice || {};
+
+    const rawAddressNo = receipt.addressNo || receiptAny.AddressNo || invoiceAny.addressNo || invoiceAny.AddressNo;
+    const isBlock = rawAddressNo === 'Blk' || rawAddressNo === 'Block';
+    const blockValue = isBlock ? 'Block' : (rawAddressNo === 'No' ? 'No' : '');
+
     return formatAddress({
-      block: receipt.addressNo || (receipt as any).AddressNo || (receipt as any).invoice?.addressNo || (receipt as any).invoice?.AddressNo === 'Blk' ? 'Block' : '',
-      blockNo: receipt.address || (receipt as any).Address || (receipt as any).addressLine1 || (receipt as any).invoice?.address || (receipt as any).invoice?.Address || (receipt as any).invoice?.addressLine1,
-      streetName: receipt.address2 || (receipt as any).Address2 || (receipt as any).addressLine2 || (receipt as any).invoice?.address2 || (receipt as any).invoice?.Address2 || (receipt as any).invoice?.addressLine2,
-      unitNo: receipt.addressCity || (receipt as any).AddressCity || (receipt as any).invoice?.addressCity || (receipt as any).invoice?.AddressCity,
-      postalCode: (receipt as any).districtCode || (receipt as any).DistrictCode || (receipt as any).addressState || (receipt as any).invoice?.districtCode || (receipt as any).invoice?.DistrictCode,
-      country: receipt.country || (receipt as any).Country || (receipt as any).invoice?.country || (receipt as any).invoice?.Country
+      block: blockValue,
+      blockNo: receipt.address || receiptAny.Address || receiptAny.addressLine1 || invoiceAny.address || invoiceAny.Address || invoiceAny.addressLine1,
+      streetName: receipt.address2 || receiptAny.Address2 || receiptAny.addressLine2 || invoiceAny.address2 || invoiceAny.Address2 || invoiceAny.addressLine2,
+      unitNo: receipt.addressCity || receiptAny.AddressCity || invoiceAny.addressCity || invoiceAny.AddressCity,
+      postalCode: receiptAny.districtCode || receiptAny.DistrictCode || receiptAny.addressState || invoiceAny.districtCode || invoiceAny.DistrictCode,
+      country: receipt.country || receiptAny.Country || invoiceAny.country || invoiceAny.Country
     });
   };
 

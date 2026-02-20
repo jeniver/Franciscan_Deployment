@@ -84,11 +84,14 @@ export function InvoiceViewerModal({
   // Function to map API response to InvoiceTemplateData interface
   const mapToInvoiceTemplateData = (apiData: any): InvoiceTemplateData => {
     // Calculate address string from available address fields
-    const addrNo = apiData.addressNo || apiData.AddressNo;
+    const rawAddressNo = apiData.addressNo || apiData.AddressNo;
+    const isBlock = rawAddressNo === 'Blk' || rawAddressNo === 'Block';
+    const blockValue = isBlock ? 'Block' : (rawAddressNo === 'No' ? 'No' : '');
+
     const customerAddress = formatAddress({
-      block: (addrNo === 'Blk' || addrNo === 'Block') ? 'Block' : (addrNo === 'No' ? 'No' : addrNo),
+      block: blockValue,
       blockNo: apiData.address || apiData.Address || apiData.addressLine1 || apiData.AddressLine1,
-      streetName: apiData.address2 || apiData.Address2 || apiData.addressLine2 || apiData.AddressLine1, // Line1 fallback if Line2 missing
+      streetName: apiData.address2 || apiData.Address2 || apiData.addressLine2 || apiData.AddressLine2,
       unitNo: apiData.addressCity || apiData.AddressCity,
       postalCode: apiData.districtCode || apiData.DistrictCode || apiData.addressState || apiData.AddressState || apiData.state,
       country: apiData.country || apiData.Country || 'Singapore'

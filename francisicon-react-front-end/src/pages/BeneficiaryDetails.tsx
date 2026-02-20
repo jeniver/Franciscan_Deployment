@@ -61,8 +61,13 @@ export function BeneficiaryDetails({
     if (processed.dateOfBirth === '' || processed.dateOfBirth === 'null') {
       processed.dateOfBirth = null;
     }
-    if (processed.birthYear === '' || processed.birthYear === 'null') {
+    if (processed.birthYear === '' || processed.birthYear === 'null' || processed.birthYear === undefined) {
       processed.birthYear = null;
+    } else if (typeof processed.birthYear === 'boolean') {
+      processed.birthYear = null;
+    } else if (typeof processed.birthYear === 'string') {
+      const parsed = parseInt(processed.birthYear, 10);
+      processed.birthYear = isNaN(parsed) ? null : parsed;
     }
 
     // If we have a birthYear but no dateOfBirth, don't automatically set dateOfBirth to Jan 1st
