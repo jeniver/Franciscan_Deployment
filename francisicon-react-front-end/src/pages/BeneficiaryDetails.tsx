@@ -200,25 +200,47 @@ export function BeneficiaryDetails({
           processBeneficiaryData,
         )
         const currentBeneficiaries = beneficiariesRef.current
+
+        // Comprehensive deep comparison to prevent unnecessary updates
         const hasChanges =
           currentBeneficiaries.length !== processedBeneficiaries.length ||
           currentBeneficiaries.some((current, index) => {
             const formDataBen = processedBeneficiaries[index]
             if (!formDataBen) return true
+
+            // Check all relevant fields
             return (
               current.id !== formDataBen.id ||
-              (current.name || '') !== (formDataBen.name || '') ||
-              (current.idNo || '') !== (formDataBen.idNo || '') ||
-              (current.dateOfBirth || '') !== (formDataBen.dateOfBirth || '')
+              current.name !== formDataBen.name ||
+              current.idNo !== formDataBen.idNo ||
+              current.dateOfBirth !== formDataBen.dateOfBirth ||
+              current.birthYear !== formDataBen.birthYear ||
+              current.relationshipToApplicant !== formDataBen.relationshipToApplicant ||
+              current.isCatholic !== formDataBen.isCatholic ||
+              current.isMale !== formDataBen.isMale ||
+              current.status !== formDataBen.status ||
+              current.relationshipToNominee1 !== formDataBen.relationshipToNominee1 ||
+              current.relationshipToNominee2 !== formDataBen.relationshipToNominee2
             )
           })
+
         if (hasChanges) {
-          setBeneficiaries([...processedBeneficiaries])
-          beneficiariesRef.current = [...processedBeneficiaries]
+          // Use a function update to ensure we don't have stale state issues
+          // although we are replacing it entirely here
+          setBeneficiaries(processedBeneficiaries)
+          beneficiariesRef.current = processedBeneficiaries
         }
       } else if (beneficiariesRef.current.length > 0) {
-        setBeneficiaries([])
-        beneficiariesRef.current = []
+        // Only clear if we actually have beneficiaries locally
+        // and formData.beneficiaries is strictly missing/invalid (not just empty array, which is valid)
+        // If formData.beneficiaries is undefined, it might mean it just hasn't loaded yet.
+        // But if we have local beneficiaries, we should probably keep them unless we are sure?
+        // Actually, if formData is empty, we should reflect that.
+        // But let's be careful about 'undefined' vs '[]'.
+        if (formData.beneficiaries !== undefined) {
+          setBeneficiaries([])
+          beneficiariesRef.current = []
+        }
       }
     } else {
       isUpdatingFromComponent.current = false

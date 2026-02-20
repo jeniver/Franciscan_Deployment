@@ -1,6 +1,6 @@
 import type { CreateNichiApplicationRequest } from '../services/nichiApplicationService';
 import type { DeceasedDetail } from '../store/nichibookingSlice';
-import { mapComponentToBackendFields } from './addressMapper';
+import { mapComponentToBackendFields, formatAddress } from './addressMapper';
 import { paymentModeToCode, paymentModeToLabel } from './paymentMode';
 
 /**
@@ -439,7 +439,6 @@ export function mapNichiApplicationToFormData(
     formData.applicantEmail = applicationData.applicant.email || '';
     formData.applicantPhone = applicationData.applicant.mobileNo || '';
     // Prefer structured address parts when present, but keep legacy address string
-    formData.applicantAddress = applicationData.applicant.address || '';
     if (applicationData.applicant.addressNo ||
       applicationData.applicant.addressLine1 ||
       applicationData.applicant.addressLine2 ||
@@ -452,6 +451,18 @@ export function mapNichiApplicationToFormData(
       formData.applicantUnitNo = applicationData.applicant.addressCity || '';
       formData.applicantPostalCode = applicationData.applicant.addressState || '';
       formData.applicantCountry = applicationData.applicant.addressCountry || 'Singapore';
+
+      // Reconstruct address string using new format
+      formData.applicantAddress = formatAddress({
+        block: formData.applicantBlock,
+        blockNo: formData.applicantBlockNo,
+        streetName: formData.applicantStreetName,
+        unitNo: formData.applicantUnitNo,
+        postalCode: formData.applicantPostalCode,
+        country: formData.applicantCountry
+      });
+    } else {
+      formData.applicantAddress = applicationData.applicant.address || '';
     }
     formData.applicantHomeTel = applicationData.applicant.homeTelNo || '';
     formData.applicantOfficeTel = applicationData.applicant.officeTelNo || '';
@@ -472,7 +483,6 @@ export function mapNichiApplicationToFormData(
     formData.nomineeIdNo = applicationData.nominee.idNo || '';
     formData.nomineeEmail = applicationData.nominee.email || '';
     formData.nomineePhone = applicationData.nominee.mobileNo || '';
-    formData.nomineeAddress = applicationData.nominee.address || '';
     formData.nomineeRelationship = applicationData.nominee.relationship || '';
     formData.nomineeHomeTel = applicationData.nominee.homeTelNo || '';
     formData.nomineeOfficeTel = applicationData.nominee.officeTelNo || '';
@@ -489,6 +499,18 @@ export function mapNichiApplicationToFormData(
       formData.nomineeUnitNo = applicationData.nominee.addressCity || '';
       formData.nomineePostalCode = applicationData.nominee.addressState || '';
       formData.nomineeCountry = applicationData.nominee.addressCountry || formData.applicantCountry || 'Singapore';
+
+      // Reconstruct address string using new format
+      formData.nomineeAddress = formatAddress({
+        block: formData.nomineeBlock,
+        blockNo: formData.nomineeBlockNo,
+        streetName: formData.nomineeStreetName,
+        unitNo: formData.nomineeUnitNo,
+        postalCode: formData.nomineePostalCode,
+        country: formData.nomineeCountry
+      });
+    } else {
+      formData.nomineeAddress = applicationData.nominee.address || '';
     }
   }
 
@@ -498,7 +520,6 @@ export function mapNichiApplicationToFormData(
     formData.nomineeIdNo2 = applicationData.nominee2.idNo || '';
     formData.nomineeEmail2 = applicationData.nominee2.email || '';
     formData.nomineePhone2 = applicationData.nominee2.mobileNo || '';
-    formData.nomineeAddress2 = applicationData.nominee2.address || '';
     formData.nomineeRelationship2 = applicationData.nominee2.relationship || '';
     formData.nomineeHomeTel2 = applicationData.nominee2.homeTelNo || '';
     formData.nomineeOfficeTel2 = applicationData.nominee2.officeTelNo || '';
@@ -515,6 +536,18 @@ export function mapNichiApplicationToFormData(
       formData.nomineeUnitNo2 = applicationData.nominee2.addressCity || '';
       formData.nomineePostalCode2 = applicationData.nominee2.addressState || '';
       formData.nomineeCountry2 = applicationData.nominee2.addressCountry || formData.applicantCountry || 'Singapore';
+
+      // Reconstruct address string using new format
+      formData.nomineeAddress2 = formatAddress({
+        block: formData.nomineeBlock2,
+        blockNo: formData.nomineeBlockNo2,
+        streetName: formData.nomineeStreetName2,
+        unitNo: formData.nomineeUnitNo2,
+        postalCode: formData.nomineePostalCode2,
+        country: formData.nomineeCountry2
+      });
+    } else {
+      formData.nomineeAddress2 = applicationData.nominee2.address || '';
     }
   }
 
@@ -935,12 +968,12 @@ function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<st
         relationship: formData[`${fieldPrefix}Relationship`] ||
           formData[fieldPrefix]?.relationship ||
           formData[fieldPrefix]?.relationshipToApplicant || '',
-          dateOfBirth: formData[`${fieldPrefix}DateOfBirth`] ??
-            formData[fieldPrefix]?.dateOfBirth ??
-            null,
-          birthYear: formData[`${fieldPrefix}BirthYear`] ??
-            formData[fieldPrefix]?.birthYear ??
-            null,
+        dateOfBirth: formData[`${fieldPrefix}DateOfBirth`] ??
+          formData[fieldPrefix]?.dateOfBirth ??
+          null,
+        birthYear: formData[`${fieldPrefix}BirthYear`] ??
+          formData[fieldPrefix]?.birthYear ??
+          null,
         status: formData[`${fieldPrefix}Status`] ||
           formData[fieldPrefix]?.status ||
           'Not Occupied',

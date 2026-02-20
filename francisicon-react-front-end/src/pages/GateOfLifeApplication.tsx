@@ -855,7 +855,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                 <div className="grid gap-6">
                   <div className="space-y-6">
                     <AddressInput
-                      fieldPrefix="applicant"
+
                       onAddressChange={handleAddressChange}
                       autoSync={false}
                       initialValues={{

@@ -453,6 +453,22 @@ const pickFirst = (...values) => {
 };
 
 /**
+ * Same as pickFirst but includes empty strings as valid values.
+ * Used for update operations where clearing a field (setting to empty string) is desired.
+ */
+const pickFirstIncludeEmpty = (...values) => {
+  for (const value of values) {
+    if (value !== undefined && value !== null) {
+      if (typeof value === 'string') {
+        return value.trim();
+      }
+      return value;
+    }
+  }
+  return undefined;
+};
+
+/**
  * Build a de‑duplication key for a person using the strongest identifier
  * available (ID/NRIC > email > phone > name).
  * This is used to detect duplicate nominees/beneficiaries within a single
@@ -2052,66 +2068,75 @@ class NicheApplicationService {
         incomingValue === undefined ? currentValue : incomingValue
       );
 
+      // Helper to pick the first non-undefined value, allowing null/empty string to be picked
+      const pickFirstIncludeEmpty = (...args) => args.find(arg => arg !== undefined);
+
+      // 3. Prepare application update data
+      // Use pickFirstIncludeEmpty to allow clearing fields (e.g. removing a second nominee or contact info)
       const applicationData = {
-        ...existing,
-        // Applicant data mapping
-        applicantName: pickUpdateValue(pickFirst(applicantData.name, data.applicantName), existing.applicantName),
-        applicantEmailID: pickUpdateValue(pickFirst(applicantData.email, data.applicantEmailID, data.applicantEmail), existing.applicantEmailID),
-        applicantMobileNo: pickUpdateValue(pickFirst(applicantData.phone, applicantData.mobileNo, data.applicantMobileNo, data.applicantPhone), existing.applicantMobileNo),
-        applicantHomeTelNo: pickUpdateValue(pickFirst(applicantData.homeTel, applicantData.homeTelNo, data.applicantHomeTelNo, data.applicantHomeTel), existing.applicantHomeTelNo),
-        applicantOfficeTelNo: pickUpdateValue(pickFirst(applicantData.officeTel, applicantData.officeTelNo, data.applicantOfficeTelNo, data.applicantOfficeTel), existing.applicantOfficeTelNo),
-        applicantIDNo: pickUpdateValue(pickFirst(applicantData.idNo, data.applicantIDNo), existing.applicantIDNo),
-        applicantIsCatholic: applicantData.isCatholic !== undefined ? applicantData.isCatholic : existing.applicantIsCatholic,
+        ...existing, // Preserve existing fields not explicitly updated
+        // Applicant
+        applicantName: pickUpdateValue(pickFirstIncludeEmpty(applicantData.name, data.applicantName), existing.applicantName),
+        applicantIDNo: pickUpdateValue(pickFirstIncludeEmpty(applicantData.idNo, data.applicantIDNo), existing.applicantIDNo),
+        applicantEmailID: pickUpdateValue(pickFirstIncludeEmpty(applicantData.email, data.applicantEmailID, data.applicantEmail), existing.applicantEmailID),
+        applicantMobileNo: pickUpdateValue(pickFirstIncludeEmpty(applicantData.mobileNo, data.applicantMobileNo), existing.applicantMobileNo),
+        applicantHomeTelNo: pickUpdateValue(pickFirstIncludeEmpty(applicantData.homeTelNo, data.applicantHomeTelNo), existing.applicantHomeTelNo),
+        applicantOfficeTelNo: pickUpdateValue(pickFirstIncludeEmpty(applicantData.officeTelNo, data.applicantOfficeTelNo), existing.applicantOfficeTelNo),
+        applicantIsCatholic: applicantData.isCatholic !== undefined ? applicantData.isCatholic : (data.applicantIsCatholic !== undefined ? data.applicantIsCatholic : existing.applicantIsCatholic),
 
-        // Applicant address mapping
-        applicantAddressNo: pickUpdateValue(pickFirst(applicantData.address?.no, data.applicantAddressNo), existing.applicantAddressNo),
-        applicantAddressLine1: pickUpdateValue(pickFirst(applicantData.address?.line1, data.applicantAddressLine1), existing.applicantAddressLine1),
-        applicantAddressLine2: pickUpdateValue(pickFirst(applicantData.address?.line2, data.applicantAddressLine2), existing.applicantAddressLine2),
-        applicantAddressCity: pickUpdateValue(pickFirst(applicantData.address?.city, data.applicantAddressCity), existing.applicantAddressCity),
-        applicantAddressState: pickUpdateValue(pickFirst(applicantData.address?.state, data.applicantAddressState), existing.applicantAddressState),
-        applicantAddressCountry: pickUpdateValue(pickFirst(applicantData.address?.country, data.applicantAddressCountry), existing.applicantAddressCountry),
+        // Applicant Address
+        applicantAddressNo: pickUpdateValue(pickFirstIncludeEmpty(applicantData.address?.no, data.applicantAddressNo), existing.applicantAddressNo),
+        applicantAddressLine1: pickUpdateValue(pickFirstIncludeEmpty(applicantData.address?.line1, data.applicantAddressLine1), existing.applicantAddressLine1),
+        applicantAddressLine2: pickUpdateValue(pickFirstIncludeEmpty(applicantData.address?.line2, data.applicantAddressLine2), existing.applicantAddressLine2),
+        applicantAddressCity: pickUpdateValue(pickFirstIncludeEmpty(applicantData.address?.city, data.applicantAddressCity), existing.applicantAddressCity),
+        applicantAddressState: pickUpdateValue(pickFirstIncludeEmpty(applicantData.address?.state, data.applicantAddressState), existing.applicantAddressState),
+        applicantAddressCountry: pickUpdateValue(pickFirstIncludeEmpty(applicantData.address?.country, data.applicantAddressCountry), existing.applicantAddressCountry),
 
-        // Primary nominee mapping
-        nomineeName: pickUpdateValue(pickFirst(nomineeData.name, data.nomineeName), existing.nomineeName),
-        nomineeEmailID: pickUpdateValue(pickFirst(nomineeData.email, data.nomineeEmailID, data.nomineeEmail), existing.nomineeEmailID),
-        nomineeMobileNo: pickUpdateValue(pickFirst(nomineeData.phone, nomineeData.mobileNo, data.nomineeMobileNo, data.nomineePhone), existing.nomineeMobileNo),
-        nomineeHomeTelNo: pickUpdateValue(pickFirst(nomineeData.homeTel, nomineeData.homeTelNo, data.nomineeHomeTelNo, data.nomineeHomeTel), existing.nomineeHomeTelNo),
-        nomineeOfficeTelNo: pickUpdateValue(pickFirst(nomineeData.officeTel, nomineeData.officeTelNo, data.nomineeOfficeTelNo, data.nomineeOfficeTel), existing.nomineeOfficeTelNo),
-        nomineeIDNo: pickUpdateValue(pickFirst(nomineeData.idNo, data.nomineeIDNo), existing.nomineeIDNo),
-        nomineeRelationship: pickUpdateValue(pickFirst(nomineeData.relationship, data.nomineeRelationship), existing.nomineeRelationship),
-        nomineeIsCatholic: nomineeData.isCatholic !== undefined ? nomineeData.isCatholic : existing.nomineeIsCatholic,
+        // Nominee 1
+        nomineeName: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.name, data.nomineeName), existing.nomineeName),
+        nomineeIDNo: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.idNo, data.nomineeIDNo), existing.nomineeIDNo),
+        nomineeRelationship: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.relationship, data.nomineeRelationship), existing.nomineeRelationship),
+        nomineeEmailID: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.email, data.nomineeEmailID, data.nomineeEmail), existing.nomineeEmailID),
+        nomineeMobileNo: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.mobileNo, data.nomineeMobileNo, data.nomineePhone), existing.nomineeMobileNo),
+        nomineeHomeTelNo: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.homeTelNo, data.nomineeHomeTelNo), existing.nomineeHomeTelNo),
+        nomineeOfficeTelNo: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.officeTelNo, data.nomineeOfficeTelNo), existing.nomineeOfficeTelNo),
+        nomineeIsCatholic: nomineeData.isCatholic !== undefined ? nomineeData.isCatholic : (data.nomineeIsCatholic !== undefined ? data.nomineeIsCatholic : existing.nomineeIsCatholic),
 
-        // Primary nominee address mapping
-        nomineeAddressNo: pickUpdateValue(pickFirst(nomineeData.address?.no, data.nomineeAddressNo), existing.nomineeAddressNo),
-        nomineeAddressLine1: pickUpdateValue(pickFirst(nomineeData.address?.line1, data.nomineeAddressLine1), existing.nomineeAddressLine1),
-        nomineeAddressLine2: pickUpdateValue(pickFirst(nomineeData.address?.line2, data.nomineeAddressLine2), existing.nomineeAddressLine2),
-        nomineeAddressCity: pickUpdateValue(pickFirst(nomineeData.address?.city, data.nomineeAddressCity), existing.nomineeAddressCity),
-        nomineeAddressState: pickUpdateValue(pickFirst(nomineeData.address?.state, data.nomineeAddressState), existing.nomineeAddressState),
-        nomineeAddressCountry: pickUpdateValue(pickFirst(nomineeData.address?.country, data.nomineeAddressCountry), existing.nomineeAddressCountry),
+        // Nominee 1 Address
+        nomineeAddressNo: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.address?.no, data.nomineeAddressNo), existing.nomineeAddressNo),
+        nomineeAddressLine1: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.address?.line1, data.nomineeAddressLine1), existing.nomineeAddressLine1),
+        nomineeAddressLine2: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.address?.line2, data.nomineeAddressLine2), existing.nomineeAddressLine2),
+        nomineeAddressCity: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.address?.city, data.nomineeAddressCity), existing.nomineeAddressCity),
+        nomineeAddressState: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.address?.state, data.nomineeAddressState), existing.nomineeAddressState),
+        nomineeAddressCountry: pickUpdateValue(pickFirstIncludeEmpty(nomineeData.address?.country, data.nomineeAddressCountry), existing.nomineeAddressCountry),
 
-        // Secondary nominee mapping
-        nomineeName2: pickUpdateValue(pickFirst(nominee2Data.name, data.nomineeName2), existing.nomineeName2),
-        nomineeEmailID2: pickUpdateValue(pickFirst(nominee2Data.email, data.nomineeEmailID2, data.nomineeEmail2), existing.nomineeEmailID2),
-        nomineeMobileNo2: pickUpdateValue(pickFirst(nominee2Data.phone, nominee2Data.mobileNo, data.nomineeMobileNo2, data.nomineePhone2), existing.nomineeMobileNo2),
-        nomineeHomeTelNo2: pickUpdateValue(pickFirst(nominee2Data.homeTel, nominee2Data.homeTelNo, data.nomineeHomeTelNo2, data.nomineeHomeTel2), existing.nomineeHomeTelNo2),
-        nomineeOfficeTelNo2: pickUpdateValue(pickFirst(nominee2Data.officeTel, nominee2Data.officeTelNo, data.nomineeOfficeTelNo2, data.nomineeOfficeTel2), existing.nomineeOfficeTelNo2),
-        nomineeIDNo2: pickUpdateValue(pickFirst(nominee2Data.idNo, data.nomineeIDNo2), existing.nomineeIDNo2),
-        nomineeRelationship2: pickUpdateValue(pickFirst(nominee2Data.relationship, data.nomineeRelationship2), existing.nomineeRelationship2),
-        nomineeIsCatholic2: nominee2Data.isCatholic !== undefined ? nominee2Data.isCatholic : existing.nomineeIsCatholic2,
+        // Nominee 2 (Optional)
+        nomineeName2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.name, data.nomineeName2), existing.nomineeName2),
+        nomineeIDNo2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.idNo, data.nomineeIDNo2), existing.nomineeIDNo2),
+        nomineeRelationship2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.relationship, data.nomineeRelationship2), existing.nomineeRelationship2),
+        nomineeEmailID2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.email, data.nomineeEmailID2, data.nomineeEmail2), existing.nomineeEmailID2),
+        nomineeMobileNo2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.mobileNo, data.nomineeMobileNo2, data.nomineePhone2), existing.nomineeMobileNo2),
+        nomineeHomeTelNo2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.homeTelNo, data.nomineeHomeTelNo2), existing.nomineeHomeTelNo2),
+        nomineeOfficeTelNo2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.officeTelNo, data.nomineeOfficeTelNo2), existing.nomineeOfficeTelNo2),
+        nomineeIsCatholic2: nominee2Data.isCatholic !== undefined ? nominee2Data.isCatholic : (data.nomineeIsCatholic2 !== undefined ? data.nomineeIsCatholic2 : existing.nomineeIsCatholic2),
 
-        // Secondary nominee address mapping
-        nomineeAddressNo2: pickUpdateValue(pickFirst(nominee2Data.address?.no, data.nomineeAddressNo2), existing.nomineeAddressNo2),
-        nomineeAddressLine12: pickUpdateValue(pickFirst(nominee2Data.address?.line1, data.nomineeAddressLine12), existing.nomineeAddressLine12),
-        nomineeAddressLine22: pickUpdateValue(pickFirst(nominee2Data.address?.line2, data.nomineeAddressLine22), existing.nomineeAddressLine22),
-        nomineeAddressCity2: pickUpdateValue(pickFirst(nominee2Data.address?.city, data.nomineeAddressCity2), existing.nomineeAddressCity2),
-        nomineeAddressState2: pickUpdateValue(pickFirst(nominee2Data.address?.state, data.nomineeAddressState2), existing.nomineeAddressState2),
-        nomineeAddressCountry2: pickUpdateValue(pickFirst(nominee2Data.address?.country, data.nomineeAddressCountry2), existing.nomineeAddressCountry2),
+        // Nominee 2 Address
+        nomineeAddressNo2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.address?.no, data.nomineeAddressNo2), existing.nomineeAddressNo2),
+        nomineeAddressLine12: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.address?.line1, data.nomineeAddressLine12), existing.nomineeAddressLine12),
+        nomineeAddressLine22: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.address?.line2, data.nomineeAddressLine22), existing.nomineeAddressLine22),
+        nomineeAddressCity2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.address?.city, data.nomineeAddressCity2), existing.nomineeAddressCity2),
+        nomineeAddressState2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.address?.state, data.nomineeAddressState2), existing.nomineeAddressState2),
+        nomineeAddressCountry2: pickUpdateValue(pickFirstIncludeEmpty(nominee2Data.address?.country, data.nomineeAddressCountry2), existing.nomineeAddressCountry2),
 
         // Remarks
-        remarks: pickUpdateValue(data.remarks, existing.remarks),
+        remarks: pickUpdateValue(pickFirstIncludeEmpty(data.remarks), existing.remarks),
 
         // Contact info object (for state/UI preservation)
-        contact: pickUpdateValue(data.contact, existing.contact),
+        contact: pickUpdateValue(pickFirstIncludeEmpty(data.contact), existing.contact),
+
+        // Other top-level fields
+        status: pickUpdateValue(data.status, existing.status),
+        agreementDate: pickUpdateValue(data.agreementDate, existing.agreementDate),
 
         // Preserve IDs
         nicheApplicationId: existing.nicheApplicationId,
@@ -2260,6 +2285,8 @@ class NicheApplicationService {
         }
       });
 
+      /*
+      // Duplicate beneficiary validation removed to allow same person as multiple beneficiaries
       if (updateDuplicateBeneficiaryDescriptions.size > 0) {
         const errors = [];
         if (updateDuplicateBeneficiaryDescriptions.size > 0) {
@@ -2276,6 +2303,7 @@ class NicheApplicationService {
           }
         };
       }
+      */
 
       // Validate
       const appValidation = application.validate();

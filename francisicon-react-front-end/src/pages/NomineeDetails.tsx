@@ -87,125 +87,6 @@ export function NomineeDetails({
         status: nominee.status === 'Non-Active' || nominee.status === 'Inactive' ? 'Non-Active' : 'Active'
       }));
       setNominees(prev => (nomineesAreEqual(normalized, prev) ? prev : normalized));
-
-      // Update form data with structured address fields when nominees are loaded
-      const allNomineeData: any = {
-        nominees: normalized,
-      };
-
-      // Update fields for all nominees (up to 2 for now)
-      normalized.forEach((nominee: Nominee, index: number) => {
-        const nomineeIndex = index + 1;
-        allNomineeData[`nominee${nomineeIndex}Name`] = nominee.fullName || '';
-        allNomineeData[`nominee${nomineeIndex}IDNo`] = nominee.nric || '';
-        allNomineeData[`nominee${nomineeIndex}Relationship`] = nominee.relationship || '';
-        allNomineeData[`nominee${nomineeIndex}Address`] = nominee.address || '';
-        allNomineeData[`nominee${nomineeIndex}BlockNo`] = nominee.blockNo || '';
-        allNomineeData[`nominee${nomineeIndex}StreetName`] = nominee.streetName || '';
-        allNomineeData[`nominee${nomineeIndex}UnitNo`] = nominee.unitNo || '';
-        allNomineeData[`nominee${nomineeIndex}PostalCode`] = nominee.postalCode || '';
-        allNomineeData[`nominee${nomineeIndex}Country`] = nominee.country || 'Singapore';
-        allNomineeData[`nominee${nomineeIndex}Phone`] = nominee.contactNumber || '';
-        allNomineeData[`nominee${nomineeIndex}Email`] = nominee.email || '';
-        allNomineeData[`nominee${nomineeIndex}Status`] = nominee.status || 'Active';
-
-        // Add structured address fields for backend mapping
-        const isBlock = nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block';
-        const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== ''
-          ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`)
-          : '';
-
-        // Use backend-appropriate field naming: first nominee uses base names, second uses '2' suffix
-        if (nomineeIndex === 1) {
-          allNomineeData[`nomineeAddressNo`] = isBlock ? 'Blk' : 'No';
-          allNomineeData[`nomineeAddressLine1`] = nominee.blockNo || '';
-          allNomineeData[`nomineeAddressLine2`] = nominee.streetName || '';
-          allNomineeData[`nomineeAddressCity`] = unitNoNormalized;
-          allNomineeData[`nomineeAddressState`] = nominee.postalCode || '';
-          allNomineeData[`nomineeAddressCountry`] = nominee.country || 'Singapore';
-
-          // Create structured nominee object
-          allNomineeData.nominee = buildNomineeObject(nominee, index);
-        } else {
-          // For second nominee, use '2' suffix as expected by backend
-          allNomineeData[`nomineeAddressNo2`] = isBlock ? 'Blk' : 'No';
-          allNomineeData[`nomineeAddressLine12`] = nominee.blockNo || '';
-          allNomineeData[`nomineeAddressLine22`] = nominee.streetName || '';
-          allNomineeData[`nomineeAddressCity2`] = unitNoNormalized;
-          allNomineeData[`nomineeAddressState2`] = nominee.postalCode || '';
-          allNomineeData[`nomineeAddressCountry2`] = nominee.country || 'Singapore';
-
-          // Also set the nominee2Address field as fallback for backend
-          allNomineeData[`nominee2Address`] = nominee.address || '';
-
-          // Create structured nominee2 object
-          allNomineeData.nominee2 = buildNomineeObject(nominee, index);
-        }
-      });
-
-      // Clear second nominee fields if there's no second nominee
-      if (normalized.length < 2) {
-        allNomineeData[`nominee2Address`] = '';
-        allNomineeData[`nomineeAddressNo2`] = '';
-        allNomineeData[`nomineeAddressLine12`] = '';
-        allNomineeData[`nomineeAddressLine22`] = '';
-        allNomineeData[`nomineeAddressCity2`] = '';
-        allNomineeData[`nomineeAddressState2`] = '';
-        allNomineeData[`nomineeAddressCountry2`] = '';
-      }
-
-      // Maintain backward compatibility with first nominee fields
-      const firstNominee = normalized[0];
-      allNomineeData.nomineeName = firstNominee?.fullName || '';
-      allNomineeData.nomineeIDNo = firstNominee?.nric || '';
-      allNomineeData.nomineeRelationship = firstNominee?.relationship || '';
-      allNomineeData.nomineeAddress = firstNominee?.address || '';
-      allNomineeData.nomineeBlockNo = firstNominee?.blockNo || '';
-      allNomineeData.nomineeStreetName = firstNominee?.streetName || '';
-      allNomineeData.nomineeUnitNo = firstNominee?.unitNo || '';
-      allNomineeData.nomineePostalCode = firstNominee?.postalCode || '';
-      allNomineeData.nomineeCountry = firstNominee?.country || 'Singapore';
-      allNomineeData.nomineePhone = firstNominee?.contactNumber || '';
-      allNomineeData.nomineeEmail = firstNominee?.email || '';
-      allNomineeData.nomineeStatus = firstNominee?.status || 'Active';
-
-      // Add structured address fields for first nominee (primary nominee)
-      if (firstNominee) {
-        const isBlock = firstNominee.block === 'Block' || firstNominee.block?.toLowerCase() === 'block';
-        const unitNoNormalized = firstNominee.unitNo && firstNominee.unitNo.trim() !== ''
-          ? (firstNominee.unitNo.trim().startsWith('#') ? firstNominee.unitNo.trim() : `#${firstNominee.unitNo.trim()}`)
-          : '';
-
-        allNomineeData.nomineeAddressNo = isBlock ? 'Blk' : 'No';
-        allNomineeData.nomineeAddressLine1 = firstNominee.blockNo || '';
-        allNomineeData.nomineeAddressLine2 = firstNominee.streetName || '';
-        allNomineeData.nomineeAddressCity = unitNoNormalized;
-        allNomineeData.nomineeAddressState = firstNominee.postalCode || '';
-        allNomineeData.nomineeAddressCountry = firstNominee.country || 'Singapore';
-      }
-
-      // Preserve existing consolidated address fields to avoid conflicts
-      const preservedFields = {
-        // First nominee consolidated fields
-        nomineeAddressNo: formData.nomineeAddressNo || allNomineeData.nomineeAddressNo,
-        nomineeAddressLine1: formData.nomineeAddressLine1 || allNomineeData.nomineeAddressLine1,
-        nomineeAddressLine2: formData.nomineeAddressLine2 || allNomineeData.nomineeAddressLine2,
-        nomineeAddressCity: formData.nomineeAddressCity || allNomineeData.nomineeAddressCity,
-        nomineeAddressState: formData.nomineeAddressState || allNomineeData.nomineeAddressState,
-        nomineeAddressCountry: formData.nomineeAddressCountry || allNomineeData.nomineeAddressCountry,
-        // Second nominee consolidated fields
-        nomineeAddressNo2: formData.nomineeAddressNo2 || allNomineeData.nomineeAddressNo2,
-        nomineeAddressLine12: formData.nomineeAddressLine12 || allNomineeData.nomineeAddressLine12,
-        nomineeAddressLine22: formData.nomineeAddressLine22 || allNomineeData.nomineeAddressLine22,
-        nomineeAddressCity2: formData.nomineeAddressCity2 || allNomineeData.nomineeAddressCity2,
-        nomineeAddressState2: formData.nomineeAddressState2 || allNomineeData.nomineeAddressState2,
-        nomineeAddressCountry2: formData.nomineeAddressCountry2 || allNomineeData.nomineeAddressCountry2,
-      };
-
-      // Merge preserved fields with the new data
-      const finalNomineeData = { ...allNomineeData, ...preservedFields };
-
-      setFormData(finalNomineeData);
     }
   }, [JSON.stringify(formData.nominees)]);
 
@@ -309,30 +190,8 @@ export function NomineeDetails({
     };
   };
 
-  const handleAddNominee = () => {
-    const newNominee: Nominee = {
-      id: Date.now(),
-      fullName: '',
-      nric: '',
-      relationship: '',
-      dateOfBirth: '',
-      contactNumber: '',
-      address: '',
-      block: 'Block',
-      blockNo: '',
-      streetName: '',
-      unitNo: '',
-      postalCode: '',
-      country: 'Singapore',
-      officeTelNo: '',
-      homeTelNo: '',
-      email: '',
-      status: 'Active'
-    };
-    const updatedNominees = [...nominees, newNominee];
-    setNominees(updatedNominees);
-
-    // Update all nominee fields for API compatibility
+  // Helper to update form data efficiently with all nominee fields
+  const updateNicheFormData = useCallback((updatedNominees: Nominee[]) => {
     const allNomineeData: any = {
       nominees: updatedNominees,
     };
@@ -387,16 +246,39 @@ export function NomineeDetails({
       }
     });
 
-    // Clear second nominee fields if there's no second nominee
-    if (updatedNominees.length < 2) {
-      allNomineeData[`nominee2Address`] = '';
-      allNomineeData[`nomineeAddressNo2`] = '';
-      allNomineeData[`nomineeAddressLine12`] = '';
-      allNomineeData[`nomineeAddressLine22`] = '';
-      allNomineeData[`nomineeAddressCity2`] = '';
-      allNomineeData[`nomineeAddressState2`] = '';
-      allNomineeData[`nomineeAddressCountry2`] = '';
-      allNomineeData.nominee2 = null;
+    // Clear fields for missing nominees (up to 5 to be safe against previous duplications)
+    for (let i = updatedNominees.length + 1; i <= 5; i++) {
+      allNomineeData[`nominee${i}Name`] = '';
+      allNomineeData[`nominee${i}IDNo`] = '';
+      allNomineeData[`nominee${i}Relationship`] = '';
+      allNomineeData[`nominee${i}Address`] = '';
+      allNomineeData[`nominee${i}BlockNo`] = '';
+      allNomineeData[`nominee${i}StreetName`] = '';
+      allNomineeData[`nominee${i}UnitNo`] = '';
+      allNomineeData[`nominee${i}PostalCode`] = '';
+      allNomineeData[`nominee${i}Country`] = 'Singapore';
+      allNomineeData[`nominee${i}Phone`] = '';
+      allNomineeData[`nominee${i}Email`] = '';
+      allNomineeData[`nominee${i}Status`] = 'Active';
+      // Clear structured address fields
+      if (i === 1) {
+        allNomineeData[`nomineeAddressNo`] = '';
+        allNomineeData[`nomineeAddressLine1`] = '';
+        allNomineeData[`nomineeAddressLine2`] = '';
+        allNomineeData[`nomineeAddressCity`] = '';
+        allNomineeData[`nomineeAddressState`] = '';
+        allNomineeData[`nomineeAddressCountry`] = 'Singapore';
+        allNomineeData.nominee = null;
+      } else if (i === 2) {
+        allNomineeData[`nomineeAddressNo2`] = '';
+        allNomineeData[`nomineeAddressLine12`] = '';
+        allNomineeData[`nomineeAddressLine22`] = '';
+        allNomineeData[`nomineeAddressCity2`] = '';
+        allNomineeData[`nomineeAddressState2`] = '';
+        allNomineeData[`nomineeAddressCountry2`] = 'Singapore';
+        allNomineeData[`nominee2Address`] = '';
+        allNomineeData.nominee2 = null;
+      }
     }
 
     // Maintain backward compatibility with first nominee fields
@@ -415,6 +297,31 @@ export function NomineeDetails({
     allNomineeData.nomineeStatus = firstNominee?.status || 'Active';
 
     setFormData(allNomineeData);
+  }, [setFormData]);
+
+  const handleAddNominee = () => {
+    const newNominee: Nominee = {
+      id: Date.now(),
+      fullName: '',
+      nric: '',
+      relationship: '',
+      dateOfBirth: '',
+      contactNumber: '',
+      address: '',
+      block: 'Block',
+      blockNo: '',
+      streetName: '',
+      unitNo: '',
+      postalCode: '',
+      country: 'Singapore',
+      officeTelNo: '',
+      homeTelNo: '',
+      email: '',
+      status: 'Active'
+    };
+    const updatedNominees = [...nominees, newNominee];
+    setNominees(updatedNominees);
+    updateNicheFormData(updatedNominees);
   };
 
   // NEW: Function to map nominee data from API response to frontend format
@@ -488,225 +395,12 @@ export function NomineeDetails({
       [field]: value
     } : n);
     setNominees(updated);
-
-    // Update all nominee fields for API compatibility
-    const allNomineeData: any = {
-      nominees: updated,
-    };
-
-    // Update fields for all nominees (up to 2 for now)
-    updated.forEach((nominee: Nominee, index: number) => {
-      const nomineeIndex = index + 1;
-      allNomineeData[`nominee${nomineeIndex}Name`] = nominee.fullName || '';
-      allNomineeData[`nominee${nomineeIndex}IDNo`] = nominee.nric || '';
-      allNomineeData[`nominee${nomineeIndex}Relationship`] = nominee.relationship || '';
-      allNomineeData[`nominee${nomineeIndex}Address`] = nominee.address || '';
-      allNomineeData[`nominee${nomineeIndex}BlockNo`] = nominee.blockNo || '';
-      allNomineeData[`nominee${nomineeIndex}StreetName`] = nominee.streetName || '';
-      allNomineeData[`nominee${nomineeIndex}UnitNo`] = nominee.unitNo || '';
-      allNomineeData[`nominee${nomineeIndex}PostalCode`] = nominee.postalCode || '';
-      allNomineeData[`nominee${nomineeIndex}Country`] = nominee.country || 'Singapore';
-      allNomineeData[`nominee${nomineeIndex}Phone`] = nominee.contactNumber || '';
-      allNomineeData[`nominee${nomineeIndex}Email`] = nominee.email || '';
-      allNomineeData[`nominee${nomineeIndex}Status`] = nominee.status || 'Active';
-
-      // Add structured address fields for backend mapping
-      const isBlock = nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block';
-      const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== ''
-        ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`)
-        : '';
-
-      // Use backend-appropriate field naming: first nominee uses base names, second uses '2' suffix
-      if (nomineeIndex === 1) {
-        allNomineeData[`nomineeAddressNo`] = isBlock ? 'Blk' : 'No';
-        allNomineeData[`nomineeAddressLine1`] = nominee.blockNo || '';
-        allNomineeData[`nomineeAddressLine2`] = nominee.streetName || '';
-        allNomineeData[`nomineeAddressCity`] = unitNoNormalized;
-        allNomineeData[`nomineeAddressState`] = nominee.postalCode || '';
-        allNomineeData[`nomineeAddressCountry`] = nominee.country || 'Singapore';
-
-        // Create structured nominee object
-        allNomineeData.nominee = buildNomineeObject(nominee, index);
-      } else {
-        // For second nominee, use '2' suffix as expected by backend
-        allNomineeData[`nomineeAddressNo2`] = isBlock ? 'Blk' : 'No';
-        allNomineeData[`nomineeAddressLine12`] = nominee.blockNo || '';
-        allNomineeData[`nomineeAddressLine22`] = nominee.streetName || '';
-        allNomineeData[`nomineeAddressCity2`] = unitNoNormalized;
-        allNomineeData[`nomineeAddressState2`] = nominee.postalCode || '';
-        allNomineeData[`nomineeAddressCountry2`] = nominee.country || 'Singapore';
-
-        // Also set the nominee2Address field as fallback for backend
-        allNomineeData[`nominee2Address`] = nominee.address || '';
-
-        // Create structured nominee2 object
-        allNomineeData.nominee2 = buildNomineeObject(nominee, index);
-      }
-    });
-
-    // Clear second nominee fields if there's no second nominee
-    if (updated.length < 2) {
-      allNomineeData[`nominee2Address`] = '';
-      allNomineeData[`nomineeAddressNo2`] = '';
-      allNomineeData[`nomineeAddressLine12`] = '';
-      allNomineeData[`nomineeAddressLine22`] = '';
-      allNomineeData[`nomineeAddressCity2`] = '';
-      allNomineeData[`nomineeAddressState2`] = '';
-      allNomineeData[`nomineeAddressCountry2`] = '';
-      allNomineeData.nominee2 = null;
-    }
-
-    // Maintain backward compatibility with first nominee fields
-    const firstNominee = updated[0];
-    allNomineeData.nomineeName = firstNominee?.fullName || '';
-    allNomineeData.nomineeIDNo = firstNominee?.nric || '';
-    allNomineeData.nomineeRelationship = firstNominee?.relationship || '';
-    allNomineeData.nomineeAddress = firstNominee?.address || '';
-    allNomineeData.nomineeBlockNo = firstNominee?.blockNo || '';
-    allNomineeData.nomineeStreetName = firstNominee?.streetName || '';
-    allNomineeData.nomineeUnitNo = firstNominee?.unitNo || '';
-    allNomineeData.nomineePostalCode = firstNominee?.postalCode || '';
-    allNomineeData.nomineeCountry = firstNominee?.country || 'Singapore';
-    allNomineeData.nomineePhone = firstNominee?.contactNumber || '';
-    allNomineeData.nomineeEmail = firstNominee?.email || '';
-    allNomineeData.nomineeStatus = firstNominee?.status || 'Active';
-
-    setFormData(allNomineeData);
+    updateNicheFormData(updated);
   };
   const handleRemoveNominee = (id: number) => {
     const updated = nominees.filter(n => n.id !== id);
     setNominees(updated);
-
-    // Update all nominee fields for API compatibility
-    const allNomineeData: any = {
-      nominees: updated,
-    };
-
-    // Update fields for all nominees (up to 2 for now)
-    updated.forEach((nominee, index) => {
-      const nomineeIndex = index + 1;
-      allNomineeData[`nominee${nomineeIndex}Name`] = nominee.fullName || '';
-      allNomineeData[`nominee${nomineeIndex}IDNo`] = nominee.nric || '';
-      allNomineeData[`nominee${nomineeIndex}Relationship`] = nominee.relationship || '';
-      allNomineeData[`nominee${nomineeIndex}Address`] = nominee.address || '';
-      allNomineeData[`nominee${nomineeIndex}BlockNo`] = nominee.blockNo || '';
-      allNomineeData[`nominee${nomineeIndex}StreetName`] = nominee.streetName || '';
-      allNomineeData[`nominee${nomineeIndex}UnitNo`] = nominee.unitNo || '';
-      allNomineeData[`nominee${nomineeIndex}PostalCode`] = nominee.postalCode || '';
-      allNomineeData[`nominee${nomineeIndex}Country`] = nominee.country || 'Singapore';
-      allNomineeData[`nominee${nomineeIndex}Phone`] = nominee.contactNumber || '';
-      allNomineeData[`nominee${nomineeIndex}Email`] = nominee.email || '';
-      allNomineeData[`nominee${nomineeIndex}Status`] = nominee.status || 'Active';
-
-      // Add structured address fields for backend mapping
-      const isBlock = nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block';
-      const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== ''
-        ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`)
-        : '';
-
-      // Use backend-appropriate field naming: first nominee uses base names, second uses '2' suffix
-      if (nomineeIndex === 1) {
-        allNomineeData[`nomineeAddressNo`] = isBlock ? 'Blk' : 'No';
-        allNomineeData[`nomineeAddressLine1`] = nominee.blockNo || '';
-        allNomineeData[`nomineeAddressLine2`] = nominee.streetName || '';
-        allNomineeData[`nomineeAddressCity`] = unitNoNormalized;
-        allNomineeData[`nomineeAddressState`] = nominee.postalCode || '';
-        allNomineeData[`nomineeAddressCountry`] = nominee.country || 'Singapore';
-
-        // Create structured nominee object
-        allNomineeData.nominee = buildNomineeObject(nominee, index);
-      } else {
-        // For second nominee, use '2' suffix as expected by backend
-        allNomineeData[`nomineeAddressNo2`] = isBlock ? 'Blk' : 'No';
-        allNomineeData[`nomineeAddressLine12`] = nominee.blockNo || '';
-        allNomineeData[`nomineeAddressLine22`] = nominee.streetName || '';
-        allNomineeData[`nomineeAddressCity2`] = unitNoNormalized;
-        allNomineeData[`nomineeAddressState2`] = nominee.postalCode || '';
-        allNomineeData[`nomineeAddressCountry2`] = nominee.country || 'Singapore';
-
-        // Also set the nominee2Address field as fallback for backend
-        allNomineeData[`nominee2Address`] = nominee.address || '';
-
-        // Create structured nominee2 object
-        allNomineeData.nominee2 = buildNomineeObject(nominee, index);
-      }
-    });
-
-    // Clear fields for missing nominees (when removing a nominee)
-    for (let i = updated.length + 1; i <= 2; i++) {
-      allNomineeData[`nominee${i}Name`] = '';
-      allNomineeData[`nominee${i}IDNo`] = '';
-      allNomineeData[`nominee${i}Relationship`] = '';
-      allNomineeData[`nominee${i}Address`] = '';
-      allNomineeData[`nominee${i}BlockNo`] = '';
-      allNomineeData[`nominee${i}StreetName`] = '';
-      allNomineeData[`nominee${i}UnitNo`] = '';
-      allNomineeData[`nominee${i}PostalCode`] = '';
-      allNomineeData[`nominee${i}Country`] = 'Singapore';
-      allNomineeData[`nominee${i}Phone`] = '';
-      allNomineeData[`nominee${i}Email`] = '';
-      allNomineeData[`nominee${i}Status`] = 'Active';
-      // Clear structured address fields
-      allNomineeData[`nominee${i}AddressNo`] = '';
-      allNomineeData[`nominee${i}AddressLine1`] = '';
-      allNomineeData[`nominee${i}AddressLine2`] = '';
-      allNomineeData[`nominee${i}AddressCity`] = '';
-      allNomineeData[`nominee${i}AddressState`] = '';
-      allNomineeData[`nominee${i}AddressCountry`] = 'Singapore';
-    }
-
-    // Clear second nominee fields if there's no second nominee
-    if (updated.length < 2) {
-      allNomineeData[`nominee2Address`] = '';
-      allNomineeData[`nomineeAddressNo2`] = '';
-      allNomineeData[`nomineeAddressLine12`] = '';
-      allNomineeData[`nomineeAddressLine22`] = '';
-      allNomineeData[`nomineeAddressCity2`] = '';
-      allNomineeData[`nomineeAddressState2`] = '';
-      allNomineeData[`nomineeAddressCountry2`] = 'Singapore';
-      allNomineeData.nominee2 = null;
-    }
-
-    // Maintain backward compatibility with first nominee fields
-    const firstNominee = updated[0];
-    allNomineeData.nomineeName = firstNominee?.fullName || '';
-    allNomineeData.nomineeIDNo = firstNominee?.nric || '';
-    allNomineeData.nomineeRelationship = firstNominee?.relationship || '';
-    allNomineeData.nomineeAddress = firstNominee?.address || '';
-    allNomineeData.nomineeBlockNo = firstNominee?.blockNo || '';
-    allNomineeData.nomineeStreetName = firstNominee?.streetName || '';
-    allNomineeData.nomineeUnitNo = firstNominee?.unitNo || '';
-    allNomineeData.nomineePostalCode = firstNominee?.postalCode || '';
-    allNomineeData.nomineeCountry = firstNominee?.country || 'Singapore';
-    allNomineeData.nomineePhone = firstNominee?.contactNumber || '';
-    allNomineeData.nomineeEmail = firstNominee?.email || '';
-    allNomineeData.nomineeStatus = firstNominee?.status || 'Active';
-
-    // Add structured address fields for first nominee (primary nominee)
-    if (firstNominee) {
-      const isBlock = firstNominee.block === 'Block' || firstNominee.block?.toLowerCase() === 'block';
-      const unitNoNormalized = firstNominee.unitNo && firstNominee.unitNo.trim() !== ''
-        ? (firstNominee.unitNo.trim().startsWith('#') ? firstNominee.unitNo.trim() : `#${firstNominee.unitNo.trim()}`)
-        : '';
-
-      allNomineeData.nomineeAddressNo = isBlock ? 'Blk' : 'No';
-      allNomineeData.nomineeAddressLine1 = firstNominee.blockNo || '';
-      allNomineeData.nomineeAddressLine2 = firstNominee.streetName || '';
-      allNomineeData.nomineeAddressCity = unitNoNormalized;
-      allNomineeData.nomineeAddressState = firstNominee.postalCode || '';
-      allNomineeData.nomineeAddressCountry = firstNominee.country || 'Singapore';
-    } else {
-      // Clear first nominee structured address fields if no nominees
-      allNomineeData.nomineeAddressNo = '';
-      allNomineeData.nomineeAddressLine1 = '';
-      allNomineeData.nomineeAddressLine2 = '';
-      allNomineeData.nomineeAddressCity = '';
-      allNomineeData.nomineeAddressState = '';
-      allNomineeData.nomineeAddressCountry = 'Singapore';
-      allNomineeData.nominee = null;
-    }
-
-    setFormData(allNomineeData);
+    updateNicheFormData(updated);
   };
 
   const handleSelectPerson = useCallback((person: PersonData, index: number) => {
@@ -732,10 +426,7 @@ export function NomineeDetails({
     if (nomineeToUpdate) {
       const updatedNominees = nominees.map((n, i) => i === index ? { ...n, ...updatedNominee } : n);
       setNominees(updatedNominees);
-
-      // Re-trigger the massive formData update logic
-      // Note: we can just call handleUpdateNominee with a dummy field to trigger the full update
-      // but it's cleaner to just update the local state and let the useEffect handle the REST sync
+      updateNicheFormData(updatedNominees);
     }
 
     setShowSearchResults(false);
@@ -890,7 +581,7 @@ export function NomineeDetails({
           <div className="mt-4">
             <div>
               <AddressInput
-                fieldPrefix="nominee"
+
                 initialValues={{
                   // For both nominees, try to use structured fields from nominee object first, then fall back to formData
                   block: nominee.block || (index === 0 ? (formData.nomineeBlock || 'Block') : 'Block'),
@@ -920,90 +611,7 @@ export function NomineeDetails({
                   // Update all nominee fields for API compatibility
                   const updated = nominees.map(n => n.id === nominee.id ? updatedNominee : n);
                   setNominees(updated);
-
-                  // Update all nominee fields for API compatibility
-                  const allNomineeData: any = {
-                    nominees: updated,
-                  };
-
-                  // Update fields for all nominees (up to 2 for now)
-                  updated.forEach((nominee, index) => {
-                    const nomineeIndex = index + 1;
-                    allNomineeData[`nominee${nomineeIndex}Name`] = nominee.fullName || '';
-                    allNomineeData[`nominee${nomineeIndex}IDNo`] = nominee.nric || '';
-                    allNomineeData[`nominee${nomineeIndex}Relationship`] = nominee.relationship || '';
-                    allNomineeData[`nominee${nomineeIndex}Address`] = nominee.address || '';
-                    allNomineeData[`nominee${nomineeIndex}BlockNo`] = nominee.blockNo || '';
-                    allNomineeData[`nominee${nomineeIndex}StreetName`] = nominee.streetName || '';
-                    allNomineeData[`nominee${nomineeIndex}UnitNo`] = nominee.unitNo || '';
-                    allNomineeData[`nominee${nomineeIndex}PostalCode`] = nominee.postalCode || '';
-                    allNomineeData[`nominee${nomineeIndex}Country`] = nominee.country || 'Singapore';
-                    allNomineeData[`nominee${nomineeIndex}Phone`] = nominee.contactNumber || '';
-                    allNomineeData[`nominee${nomineeIndex}Email`] = nominee.email || '';
-                    allNomineeData[`nominee${nomineeIndex}Status`] = nominee.status || 'Active';
-
-                    // Add structured address fields for backend mapping
-                    const isBlock = nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block';
-                    const unitNoNormalized = nominee.unitNo && nominee.unitNo.trim() !== ''
-                      ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`)
-                      : '';
-
-                    // Use backend-appropriate field naming: first nominee uses base names, second uses '2' suffix
-                    if (nomineeIndex === 1) {
-                      allNomineeData[`nomineeAddressNo`] = isBlock ? 'Blk' : 'No';
-                      allNomineeData[`nomineeAddressLine1`] = nominee.blockNo || '';
-                      allNomineeData[`nomineeAddressLine2`] = nominee.streetName || '';
-                      allNomineeData[`nomineeAddressCity`] = unitNoNormalized;
-                      allNomineeData[`nomineeAddressState`] = nominee.postalCode || '';
-                      allNomineeData[`nomineeAddressCountry`] = nominee.country || 'Singapore';
-
-                      // Create structured nominee object
-                      allNomineeData.nominee = buildNomineeObject(nominee, index);
-                    } else {
-                      // For second nominee, use '2' suffix as expected by backend
-                      allNomineeData[`nomineeAddressNo2`] = isBlock ? 'Blk' : 'No';
-                      allNomineeData[`nomineeAddressLine12`] = nominee.blockNo || '';
-                      allNomineeData[`nomineeAddressLine22`] = nominee.streetName || '';
-                      allNomineeData[`nomineeAddressCity2`] = unitNoNormalized;
-                      allNomineeData[`nomineeAddressState2`] = nominee.postalCode || '';
-                      allNomineeData[`nomineeAddressCountry2`] = nominee.country || 'Singapore';
-
-                      // Also set the nominee2Address field as fallback for backend
-                      allNomineeData[`nominee2Address`] = nominee.address || '';
-
-                      // Create structured nominee2 object
-                      allNomineeData.nominee2 = buildNomineeObject(nominee, index);
-                    }
-                  });
-
-                  // Clear second nominee fields if there's no second nominee
-                  if (updated.length < 2) {
-                    allNomineeData[`nominee2Address`] = '';
-                    allNomineeData[`nomineeAddressNo2`] = '';
-                    allNomineeData[`nomineeAddressLine12`] = '';
-                    allNomineeData[`nomineeAddressLine22`] = '';
-                    allNomineeData[`nomineeAddressCity2`] = '';
-                    allNomineeData[`nomineeAddressState2`] = '';
-                    allNomineeData[`nomineeAddressCountry2`] = '';
-                    allNomineeData.nominee2 = null;
-                  }
-
-                  // Maintain backward compatibility with first nominee fields
-                  const firstNominee = updated[0];
-                  allNomineeData.nomineeName = firstNominee?.fullName || '';
-                  allNomineeData.nomineeIDNo = firstNominee?.nric || '';
-                  allNomineeData.nomineeRelationship = firstNominee?.relationship || '';
-                  allNomineeData.nomineeAddress = firstNominee?.address || '';
-                  allNomineeData.nomineeBlockNo = firstNominee?.blockNo || '';
-                  allNomineeData.nomineeStreetName = firstNominee?.streetName || '';
-                  allNomineeData.nomineeUnitNo = firstNominee?.unitNo || '';
-                  allNomineeData.nomineePostalCode = firstNominee?.postalCode || '';
-                  allNomineeData.nomineeCountry = firstNominee?.country || 'Singapore';
-                  allNomineeData.nomineePhone = firstNominee?.contactNumber || '';
-                  allNomineeData.nomineeEmail = firstNominee?.email || '';
-                  allNomineeData.nomineeStatus = firstNominee?.status || 'Active';
-
-                  setFormData(allNomineeData);
+                  updateNicheFormData(updated);
                 }}
                 isReadOnly={isReadOnly}
                 // Reuse nomineeAddress validation error if present
