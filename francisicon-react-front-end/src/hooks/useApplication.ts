@@ -245,74 +245,17 @@ export const useApplication = () => {
   // Ref to track if a request is in progress to prevent multiple simultaneous requests
   const requestInProgressRef = useRef(false);
 
-  // Handle View button click with proper error handling and routing
-  // Works the same way as handleViewApplicationFromTable - switches to view mode
+  // Handle View button click - Navigates to view route to let App.tsx effect handle state
   const handleViewApplication = useCallback(async () => {
     if (!applicationNumber.trim()) {
       dispatch(clearError());
       return;
     }
 
-    // Prevent multiple simultaneous requests
-    if (requestInProgressRef.current) {
-      console.log('Request already in progress, skipping...');
-      return;
-    }
-
-    requestInProgressRef.current = true;
-
-    try {
-      // Switch to view mode and form view
-      dispatch(setViewModeAction(true));
-      dispatch(setApplicationViewMode('form'));
-      dispatch(setCurrentStep(1)); // Start at niche details for viewing
-
-      // Set a timeout to prevent the request from hanging indefinitely
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
-      });
-
-      const action = await Promise.race([
-        loadApplication(applicationNumber.trim()),
-        timeoutPromise
-      ]) as any;
-
-      if (action?.type?.endsWith('/fulfilled')) {
-        // Success - data loaded
-        console.log('Application data loaded successfully for viewing');
-      } else if (action?.type?.endsWith('/rejected')) {
-        // Handle different error types
-        const errorData = (action?.payload || {}) as { message: string; type: string; statusCode: number };
-
-        if (errorData.type === 'auth') {
-          // Authentication error - redirect to login
-          console.warn('Authentication error, redirecting to login');
-          dispatch(clearViewEditMode());
-          navigate('/login', { replace: true });
-          return;
-        } else if (errorData.type === 'network') {
-          // Network error - show retry option
-          console.error('Network error:', errorData.message);
-          dispatch(clearViewEditMode());
-        } else {
-          // Other errors - show error message
-          console.error('Application load error:', errorData.message);
-          dispatch(clearViewEditMode());
-        }
-      }
-    } catch (error: any) {
-      if (error.message === 'Request timeout') {
-        console.error('Request timed out after 30 seconds');
-        dispatch(clearError());
-        dispatch(clearViewEditMode());
-      } else {
-        console.error('Unexpected error in handleViewApplication:', error);
-        dispatch(clearViewEditMode());
-      }
-    } finally {
-      requestInProgressRef.current = false;
-    }
-  }, [applicationNumber, dispatch, navigate, loadApplication]);
+    // Navigate to the view route
+    // This will trigger the useEffect in App.tsx which calls handleViewApplicationFromTable
+    navigate(`/niche/view/${applicationNumber.trim()}`);
+  }, [applicationNumber, navigate, dispatch]);
 
   // Handle View Application from table (loads and shows in view mode)
   const handleViewApplicationFromTable = useCallback(async (applicationCode: string, navigate?: (path: string) => void, skipNavigation?: boolean) => {
@@ -337,14 +280,49 @@ export const useApplication = () => {
       dispatch(setApplicationViewMode('form'));
       dispatch(setCurrentStep(1)); // Start at niche details for viewing
 
-      const action = await loadApplication(applicationCode.trim());
+      // Set a timeout to prevent the request from hanging indefinitely
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
+      });
 
-      if (action.type.endsWith('/fulfilled')) {
+      const action = await Promise.race([
+        loadApplication(applicationCode.trim()),
+        timeoutPromise
+      ]) as any;
+
+      if (action?.type?.endsWith('/fulfilled')) {
         console.log('Application loaded for viewing');
+      } else if (action?.type?.endsWith('/rejected')) {
+        // Handle different error types
+        const errorData = (action?.payload || {}) as { message: string; type: string; statusCode: number };
+
+        if (errorData.type === 'auth') {
+          // Authentication error - redirect to login
+          console.warn('Authentication error, redirecting to login');
+          dispatch(clearViewEditMode());
+          if (navigate) {
+            navigate('/login');
+          }
+          return;
+        } else if (errorData.type === 'network') {
+          // Network error 
+          console.error('Network error:', errorData.message);
+          dispatch(clearViewEditMode());
+        } else {
+          // Other errors
+          console.error('Application load error:', errorData.message);
+          dispatch(clearViewEditMode());
+        }
       }
     } catch (error: any) {
-      console.error('Error loading application for viewing:', error);
-      dispatch(clearViewEditMode());
+      if (error.message === 'Request timeout') {
+        console.error('Request timed out after 30 seconds');
+        dispatch(clearError());
+        dispatch(clearViewEditMode());
+      } else {
+        console.error('Error loading application for viewing:', error);
+        dispatch(clearViewEditMode());
+      }
     } finally {
       requestInProgressRef.current = false;
     }

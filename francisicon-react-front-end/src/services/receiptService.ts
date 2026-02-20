@@ -1,5 +1,5 @@
 import api from './api';
-import receiptPdfService from './receiptPdfService';
+import { receiptPdfService } from './receiptPdfService';
 import { paymentModeToLabel } from '../utils/paymentMode';
 
 // Custom error class for receipt operations

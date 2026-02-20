@@ -458,7 +458,7 @@ export function ContactPersonDetails({
       {/* Address Component */}
 
       <AddressInput
-        fieldPrefix="applicant"
+
         onAddressChange={handleAddressChange}
         autoSync={false}
         initialValues={{

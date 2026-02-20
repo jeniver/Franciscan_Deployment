@@ -3,10 +3,14 @@ const ReceiptRepository = require('../repositories/ReceiptRepository');
 const Receipt = require('../models/Receipt');
 const logger = require('../utils/logger');
 const BaseController = require('./BaseController');
+const ChurchService = require('../services/ChurchService');
+const ChurchRepository = require('../repositories/ChurchRepository');
 
 // Initialize service with repository
 const receiptRepository = new ReceiptRepository();
 const receiptService = new ReceiptService(receiptRepository);
+const churchRepository = new ChurchRepository();
+const churchService = new ChurchService(churchRepository);
 
 /**
  * Receipt Controller
@@ -57,6 +61,26 @@ class ReceiptController extends BaseController {
         return res.status(400).json(result);
       }
 
+      // Fetch church details to include in the response for the frontend receipt template
+      try {
+        const churchInfo = await churchService.getById(user.churchId);
+        if (churchInfo) {
+          result.data = {
+            ...result.data,
+            churchInfo: {
+              name: churchInfo.Name,
+              address: churchInfo.Address,
+              phone: churchInfo.Phone,
+              email: churchInfo.Email,
+              registrationNo: churchInfo.RegistrationNo || churchInfo.UEN // Fallback if UEN is used
+            }
+          };
+        }
+      } catch (err) {
+        logger.warn(`Controller: Could not fetch church details for churchId=${user.churchId}`, err);
+        // Continue without church info if it fails, don't break the receipt view
+      }
+
       return res.status(200).json(result);
     } catch (error) {
       logger.error('Controller: Failed to get receipt:', error);
@@ -102,10 +126,28 @@ class ReceiptController extends BaseController {
         return res.status(400).json(result);
       }
 
+      // Fetch church details to include in the response
+      let churchInfo = null;
+      try {
+        const churchData = await churchService.getById(user.churchId);
+        if (churchData) {
+          churchInfo = {
+            name: churchData.Name,
+            address: churchData.Address,
+            phone: churchData.Phone,
+            email: churchData.Email,
+            registrationNo: churchData.RegistrationNo || churchData.UEN
+          };
+        }
+      } catch (err) {
+        logger.warn(`Controller: Could not fetch church details for churchId=${user.churchId}`, err);
+      }
+
       return res.status(201).json({
         success: true,
         code: result.data.code,
-        message: result.data.message || 'Receipt created successfully'
+        message: result.data.message || 'Receipt created successfully',
+        churchInfo
       });
     } catch (error) {
       logger.error('Controller: Failed to create receipt:', error);
@@ -166,11 +208,29 @@ class ReceiptController extends BaseController {
         return res.status(400).json(result);
       }
 
+      // Fetch church details to include in the response
+      let churchInfo = null;
+      try {
+        const churchData = await churchService.getById(user.churchId);
+        if (churchData) {
+          churchInfo = {
+            name: churchData.Name,
+            address: churchData.Address,
+            phone: churchData.Phone,
+            email: churchData.Email,
+            registrationNo: churchData.RegistrationNo || churchData.UEN
+          };
+        }
+      } catch (err) {
+        logger.warn(`Controller: Could not fetch church details for churchId=${user.churchId}`, err);
+      }
+
       return res.status(201).json({
         success: true,
         code: result.data.code,
         receiptId: result.data.receiptId,
-        message: result.data.message || 'Receipt created successfully from invoice'
+        message: result.data.message || 'Receipt created successfully from invoice',
+        churchInfo
       });
     } catch (error) {
       logger.error('Controller: Failed to create receipt from invoice:', error);
@@ -380,6 +440,23 @@ class ReceiptController extends BaseController {
           } catch (e) { logger.warn('Invoice check failed:', e.message); }
         }
 
+        // Fetch church details to include in the response
+        let churchInfo = null;
+        try {
+          const churchData = await churchService.getById(user.churchId);
+          if (churchData) {
+            churchInfo = {
+              name: churchData.Name,
+              address: churchData.Address,
+              phone: churchData.Phone,
+              email: churchData.Email,
+              registrationNo: churchData.RegistrationNo || churchData.UEN
+            };
+          }
+        } catch (err) {
+          logger.warn(`Controller: Could not fetch church details for churchId=${user.churchId}`, err);
+        }
+
         return res.status(201).json({
           success: true,
           code: result.data.code,
@@ -391,7 +468,8 @@ class ReceiptController extends BaseController {
             canCreateInvoice: !hasInvoice,
             canCreateReceipt: false
           },
-          message: 'Individual receipt created successfully'
+          message: 'Individual receipt created successfully',
+          churchInfo
         });
       } else {
         return this.sendError(res, result.error?.message || 'Failed to create receipt', 400);

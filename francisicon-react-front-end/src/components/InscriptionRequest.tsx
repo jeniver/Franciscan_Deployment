@@ -390,7 +390,7 @@ export function InscriptionRequest() { // Removed props parameter since they wer
             </div>
 
             <AddressInput
-              fieldPrefix="applicant"
+
               onAddressChange={handleAddressChange}
               autoSync={false}
               initialValues={{

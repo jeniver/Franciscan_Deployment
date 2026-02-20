@@ -108,6 +108,7 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
       const html = receiptPdfService.generateReceiptHtml(payload, {
         requestedCode: currentReceipt.receiptCode || (currentReceipt as any).code,
         applicationCode,
+        churchInfo: currentReceipt.churchInfo
       });
       setHtmlContent(html);
     } catch (err) {
@@ -431,12 +432,7 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
                       dollarsInWords={convertToDollarsInWords(totalAmt)}
                       paymentMethod={currentReceipt.paymentMode || (currentReceipt as any).paymentMethod || (currentReceipt as any).PaymentMode || 'Cash'}
                       paymentModeDocNo={currentReceipt.paymentModeDocNo || (currentReceipt as any).PaymentModeDocNo || ''}
-                      items={((currentReceipt.invoiceDetails || (currentReceipt as any).details || []).map((d: any) => ({
-                        description: d.description || d.itemName || d.ItemName || '',
-                        quantity: d.quantity || d.Quantity || 1,
-                        unitPrice: d.unitPrice || d.UnitPrice || d.unitAmount || d.UnitAmount || d.payingAmount || d.PayingAmount || 0,
-                        amount: d.amount || d.Amount || d.lineTotalAmount || d.LineTotalAmount || d.totalPayingAmount || d.TotalPayingAmount || 0,
-                      })))}
+                      churchInfo={currentReceipt.churchInfo}
                     />
                   );
                 })()}
