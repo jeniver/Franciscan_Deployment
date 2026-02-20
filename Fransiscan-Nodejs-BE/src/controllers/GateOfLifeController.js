@@ -1,4 +1,5 @@
 const GateOfLifeService = require('../services/GateOfLifeService');
+const { clearCache } = require('../middleware/responseCache');
 const logger = require('../utils/logger');
 
 class GateOfLifeController {
@@ -129,6 +130,11 @@ class GateOfLifeController {
         return res.status(400).json(result);
       }
 
+      try {
+        clearCache('response');
+      } catch (cacheErr) {
+        logger.warn('Failed to clear response cache after Gate of Life update:', cacheErr.message);
+      }
       return res.status(200).json(result);
     } catch (error) {
       logger.error('GateOfLifeController: Failed to update application', error);

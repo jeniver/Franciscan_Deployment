@@ -59,7 +59,7 @@ router.post(
   '/:code/confirm-booking',
   authenticateToken,
   (req, res) => NicheApplicationController.confirmBooking(req, res)
-);;
+);
 
 /**
  * @route   DELETE /api/niche-applications/:code

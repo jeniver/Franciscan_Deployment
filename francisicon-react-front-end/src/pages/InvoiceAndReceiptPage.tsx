@@ -6,7 +6,7 @@ import { useReceipt } from '../hooks/useReceipt';
 import { useToast } from '../contexts/ToastContext';
 import { useApplicationItems } from '../hooks/useApplicationItems';
 import { addressService } from '../services/addressService';
-import { parseRawAddress } from '../components/AddressInput';
+import { parseRawAddress } from '../utils/addressMapper';
 import api from '../services/api';
 import { PrinterIcon, EyeIcon, LoaderIcon, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
 import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
@@ -1342,7 +1342,7 @@ export function InvoiceAndReceiptPage() {
                       disabled={
                         (!invoiceNumber.trim() && !currentData?.code) ||
                         viewingInvoiceCode !== null ||
-                        (currentData && currentData.hasInvoice === false && !isNewRoute)
+                        !!(currentData && currentData.hasInvoice === false && !isNewRoute)
                       }
                       className="px-6 py-2.5 bg-gradient-to-r from-[#a52a2a] to-[#c93535] text-white rounded-lg font-semibold hover:from-[#c93535] hover:to-[#a52a2a] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       title="Print Invoice PDF"
@@ -1364,11 +1364,13 @@ export function InvoiceAndReceiptPage() {
                       disabled={
                         (!receiptCode.trim() && !currentData?.receipt?.receiptCode) ||
                         viewingReceiptCode !== null ||
-                        (currentData && currentData.hasReceipt === false && !isNewRoute)
+                        !!(currentData && currentData.hasReceipt === false && !isNewRoute)
                       }
                       className="px-6 py-2.5 bg-gradient-to-r from-[#a52a2a] to-[#c93535] text-white rounded-lg font-semibold hover:from-[#c93535] hover:to-[#a52a2a] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       title="Print Receipt PDF"
                     >
+
+
                       {viewingReceiptCode ? (
                         <>
                           <LoaderIcon className="w-4 h-4 animate-spin" />

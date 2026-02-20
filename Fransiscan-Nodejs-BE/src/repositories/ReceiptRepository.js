@@ -727,51 +727,14 @@ class ReceiptRepository extends BaseRepository {
       }
       const codes = Array.from(codeSet);
 
+      const AddressUtils = require('../utils/AddressUtils');
+
       // Helper to process row and add robust fallback address
       const processRow = async (row) => {
-        const isInvalid = (val) => {
-          if (val === null || val === undefined) return true;
-          const s = String(val).trim().toLowerCase();
-          return s === '' || s === 'null' || s === 'undefined';
-        };
+        const fullAddress = AddressUtils.formatAddress(row);
 
-        // Robust field-by-field fallback for address components
-        if (isInvalid(row.AddressNo) && !isInvalid(row.Invoice_AddressNo)) row.AddressNo = row.Invoice_AddressNo;
-        if (isInvalid(row.Address) && !isInvalid(row.Invoice_Address)) row.Address = row.Invoice_Address;
-        if (isInvalid(row.Address2) && !isInvalid(row.Invoice_Address2)) row.Address2 = row.Invoice_Address2;
-        if (isInvalid(row.AddressCity) && !isInvalid(row.Invoice_AddressCity)) row.AddressCity = row.Invoice_AddressCity;
-        if (isInvalid(row.DistrictCode) && !isInvalid(row.Invoice_DistrictCode)) row.DistrictCode = row.Invoice_DistrictCode;
-        if (isInvalid(row.Country) && !isInvalid(row.Invoice_Country)) row.Country = row.Invoice_Country;
-
-        // Build a deduplicated full address string for the model if needed
-        const addressPartsRaw = [
-          row.AddressNo, row.Address, row.Address2,
-          row.AddressCity, row.DistrictCode, row.Country
-        ].map(p => String(p || '').trim())
-          .filter(p => p && p.toLowerCase() !== 'null' && p.toLowerCase() !== 'undefined' && p !== '');
-
-        const uniqueParts = [];
-        const seenNormalized = new Set();
-        for (const part of addressPartsRaw) {
-          const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
-          if (!normalized) continue;
-          let exists = false;
-          for (const seen of seenNormalized) {
-            if (seen.includes(normalized) || normalized.includes(seen)) {
-              exists = true;
-              break;
-            }
-          }
-          if (!exists) {
-            uniqueParts.push(part);
-            seenNormalized.add(normalized);
-          }
-        }
-
-        // Inject the deduplicated address back into the row if we built a better one
-        if (uniqueParts.length > 0) {
-          row.CustomerAddress = uniqueParts.join(', ');
-        }
+        // Inject the deduplicated address back into the row
+        row.CustomerAddress = fullAddress;
 
         const receipt = new Receipt(row);
         let details = [];
@@ -798,6 +761,7 @@ class ReceiptRepository extends BaseRepository {
             UserId: row.Invoice_UserId,
             AddressNo: row.Invoice_AddressNo,
             Address: row.Invoice_Address,
+
             Address2: row.Invoice_Address2,
             AddressCity: row.Invoice_AddressCity,
             DistrictCode: row.Invoice_DistrictCode,

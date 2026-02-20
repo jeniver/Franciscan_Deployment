@@ -1,11 +1,13 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { XIcon, DownloadIcon, PrinterIcon } from 'lucide-react';
-import { Receipt } from '../services/receiptService';
+import { Receipt, receiptService } from '../services/receiptService';
 import { receiptPdfService } from '../services/receiptPdfService';
 import { useToast } from '../contexts/ToastContext';
 import { ReceiptTemplate } from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { formatAddress } from '../utils/addressMapper';
+
 
 interface ReceiptDetailModalProps {
   isOpen: boolean;
@@ -56,61 +58,18 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
     if (!receipt) return;
 
     const currentReceipt = fullReceiptData || receipt;
-    // Calculate address with comprehensive fallback
+    // Calculate address with comprehensive fallback using unified utility
     const getAddress = () => {
-      // Check for an existing single address string first
-      const existingAddress = (currentReceipt as any).customerAddress ||
-        (currentReceipt as any).address ||
-        (currentReceipt as any).customer?.address ||
-        (currentReceipt as any).invoice?.customerAddress ||
-        (currentReceipt as any).invoice?.address ||
-        (currentReceipt as any).payeeAddress;
-
-      const parts = [
-        currentReceipt.addressNo || (currentReceipt as any).AddressNo || (currentReceipt as any).invoice?.addressNo || (currentReceipt as any).invoice?.AddressNo,
-        currentReceipt.address || (currentReceipt as any).Address || (currentReceipt as any).addressLine1 || (currentReceipt as any).invoice?.address || (currentReceipt as any).invoice?.Address || (currentReceipt as any).invoice?.addressLine1,
-        currentReceipt.address2 || (currentReceipt as any).Address2 || (currentReceipt as any).addressLine2 || (currentReceipt as any).invoice?.address2 || (currentReceipt as any).invoice?.Address2 || (currentReceipt as any).invoice?.addressLine2,
-        currentReceipt.addressCity || (currentReceipt as any).AddressCity || (currentReceipt as any).invoice?.addressCity || (currentReceipt as any).invoice?.AddressCity,
-        (currentReceipt as any).districtCode || (currentReceipt as any).DistrictCode || (currentReceipt as any).addressState || (currentReceipt as any).invoice?.districtCode || (currentReceipt as any).invoice?.DistrictCode,
-        currentReceipt.country || (currentReceipt as any).Country || (currentReceipt as any).invoice?.country || (currentReceipt as any).invoice?.Country
-      ].filter(part =>
-        part &&
-        part !== 'undefined' &&
-        part !== 'null' &&
-        typeof part === 'string' &&
-        part.trim() !== ''
-      );
-
-      // Deduplicate parts to avoid repeats like #65686, #65686
-      const uniqueParts: string[] = [];
-      const seenNormalized = new Set<string>();
-
-      for (const part of parts) {
-        const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (!normalized) continue;
-
-        let exists = false;
-        for (const seen of seenNormalized) {
-          if (seen.includes(normalized) || normalized.includes(seen)) {
-            exists = true;
-            break;
-          }
-        }
-
-        if (!exists) {
-          uniqueParts.push(part);
-          seenNormalized.add(normalized);
-        }
-      }
-
-      const fullAddress = uniqueParts.join(', ');
-
-      if (uniqueParts.length > 1) {
-        return fullAddress;
-      }
-
-      return (existingAddress && existingAddress !== 'N/A' && existingAddress !== 'null') ? existingAddress : (uniqueParts[0] || 'N/A');
+      return formatAddress({
+        block: currentReceipt.addressNo || (currentReceipt as any).AddressNo || (currentReceipt as any).invoice?.addressNo || (currentReceipt as any).invoice?.AddressNo === 'Blk' ? 'Block' : '',
+        blockNo: currentReceipt.address || (currentReceipt as any).Address || (currentReceipt as any).addressLine1 || (currentReceipt as any).invoice?.address || (currentReceipt as any).invoice?.Address || (currentReceipt as any).invoice?.addressLine1,
+        streetName: currentReceipt.address2 || (currentReceipt as any).Address2 || (currentReceipt as any).addressLine2 || (currentReceipt as any).invoice?.address2 || (currentReceipt as any).invoice?.Address2 || (currentReceipt as any).invoice?.addressLine2,
+        unitNo: currentReceipt.addressCity || (currentReceipt as any).AddressCity || (currentReceipt as any).invoice?.addressCity || (currentReceipt as any).invoice?.AddressCity,
+        postalCode: (currentReceipt as any).districtCode || (currentReceipt as any).DistrictCode || (currentReceipt as any).addressState || (currentReceipt as any).invoice?.districtCode || (currentReceipt as any).invoice?.DistrictCode,
+        country: currentReceipt.country || (currentReceipt as any).Country || (currentReceipt as any).invoice?.country || (currentReceipt as any).invoice?.Country
+      });
     };
+
 
     const fullAddress = getAddress();
 
@@ -203,9 +162,9 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
       }
       // Create PDF
       const pdf = new jsPDF({
-        orientation: 'portrait',
+        orientation: 'landscape',
         unit: 'mm',
-        format: 'a4',
+        format: 'a5',
       })
       // Process each page
       for (let i = 0; i < targetPages.length; i++) {
@@ -220,14 +179,14 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
           allowTaint: true,
           backgroundColor: '#ffffff',
           logging: false,
-          windowWidth: pageElement.scrollWidth,
+          windowWidth: 794, // Approx px for 210mm at 96dpi (A5 landscape width)
           windowHeight: pageElement.scrollHeight,
         })
         // Restore styles
         pageElement.style.boxShadow = originalBoxShadow
         // Add page to PDF (except for the first one which is created by default)
         if (i > 0) {
-          pdf.addPage()
+          pdf.addPage('a5', 'landscape')
         }
         const imgData = canvas.toDataURL('image/png', 1.0)
         const pdfWidth = pdf.internal.pageSize.getWidth()
@@ -307,8 +266,8 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
         },
         jsPDF: {
           unit: 'mm',
-          format: 'a4',
-          orientation: 'portrait',
+          format: 'a5',
+          orientation: 'landscape',
         },
         pagebreak: {
           mode: ['avoid-all', 'css', 'legacy'],
@@ -388,72 +347,19 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
     return result;
   };
 
-  // Pre-calculate address for the React component with comprehensive fallback
+  // Pre-calculate address for the React component with comprehensive fallback using unified utility
   const getDisplayAddress = () => {
     if (!receipt) return 'N/A';
-
-    // Check various common field names for address
-    const address = (receipt as any).customerAddress ||
-      (receipt as any).address ||
-      (receipt as any).customer?.address ||
-      (receipt as any).invoice?.customerAddress ||
-      (receipt as any).invoice?.address ||
-      (receipt as any).payeeAddress ||
-      '';
-
-    if (address && address !== 'N/A' && address !== 'null') return address;
-
-    // Attempt to build from components
-    // Attempt to build from components
-    const parts = [
-      receipt.addressNo || (receipt as any).AddressNo || (receipt as any).invoice?.addressNo || (receipt as any).invoice?.AddressNo,
-      receipt.address || (receipt as any).Address || (receipt as any).addressLine1 || (receipt as any).invoice?.address || (receipt as any).invoice?.Address || (receipt as any).invoice?.addressLine1,
-      receipt.address2 || (receipt as any).Address2 || (receipt as any).addressLine2 || (receipt as any).invoice?.address2 || (receipt as any).invoice?.Address2 || (receipt as any).invoice?.addressLine2,
-      receipt.addressCity || (receipt as any).AddressCity || (receipt as any).invoice?.addressCity || (receipt as any).invoice?.AddressCity,
-      (receipt as any).districtCode || (receipt as any).DistrictCode || (receipt as any).addressState || (receipt as any).invoice?.districtCode || (receipt as any).invoice?.DistrictCode,
-      receipt.country || (receipt as any).Country || (receipt as any).invoice?.country || (receipt as any).invoice?.Country
-    ].filter(part =>
-      part &&
-      part !== 'undefined' &&
-      part !== 'null' &&
-      typeof part === 'string' &&
-      part.trim() !== ''
-    );
-
-    // Deduplicate parts to avoid repeats like #65686, #65686
-    const uniqueParts: string[] = [];
-    const seenNormalized = new Set<string>();
-
-    for (const part of parts) {
-      const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (!normalized) continue;
-
-      let exists = false;
-      for (const seen of seenNormalized) {
-        if (seen.includes(normalized) || normalized.includes(seen)) {
-          exists = true;
-          break;
-        }
-      }
-
-      if (!exists) {
-        uniqueParts.push(part);
-        seenNormalized.add(normalized);
-      }
-    }
-
-    const fullAddress = uniqueParts.join(', ');
-
-    // If we have multiple parts, it's better to show the full joined address
-    if (uniqueParts.length > 1) {
-      return fullAddress;
-    }
-
-    // Otherwise use the single address field IF it's not empty, or fallback to the single part
-    if (address && address !== 'N/A' && address !== 'null') return address;
-
-    return uniqueParts[0] || 'N/A';
+    return formatAddress({
+      block: receipt.addressNo || (receipt as any).AddressNo || (receipt as any).invoice?.addressNo || (receipt as any).invoice?.AddressNo === 'Blk' ? 'Block' : '',
+      blockNo: receipt.address || (receipt as any).Address || (receipt as any).addressLine1 || (receipt as any).invoice?.address || (receipt as any).invoice?.Address || (receipt as any).invoice?.addressLine1,
+      streetName: receipt.address2 || (receipt as any).Address2 || (receipt as any).addressLine2 || (receipt as any).invoice?.address2 || (receipt as any).invoice?.Address2 || (receipt as any).invoice?.addressLine2,
+      unitNo: receipt.addressCity || (receipt as any).AddressCity || (receipt as any).invoice?.addressCity || (receipt as any).invoice?.AddressCity,
+      postalCode: (receipt as any).districtCode || (receipt as any).DistrictCode || (receipt as any).addressState || (receipt as any).invoice?.districtCode || (receipt as any).invoice?.DistrictCode,
+      country: receipt.country || (receipt as any).Country || (receipt as any).invoice?.country || (receipt as any).invoice?.Country
+    });
   };
+
 
   const displayAddress = getDisplayAddress();
 
@@ -524,6 +430,7 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
                       totalAmount={totalAmt}
                       dollarsInWords={convertToDollarsInWords(totalAmt)}
                       paymentMethod={currentReceipt.paymentMode || (currentReceipt as any).paymentMethod || (currentReceipt as any).PaymentMode || 'Cash'}
+                      paymentModeDocNo={currentReceipt.paymentModeDocNo || (currentReceipt as any).PaymentModeDocNo || ''}
                       items={((currentReceipt.invoiceDetails || (currentReceipt as any).details || []).map((d: any) => ({
                         description: d.description || d.itemName || d.ItemName || '',
                         quantity: d.quantity || d.Quantity || 1,
@@ -546,10 +453,12 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
   function formatDate(dateString?: string) {
     if (!dateString) return 'N/A';
     try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      return date.toLocaleDateString('en-GB', {
         day: 'numeric',
+        month: 'short',
+        year: 'numeric',
       });
     } catch {
       return dateString;

@@ -449,7 +449,7 @@ const pickFirst = (...values) => {
 
     return value;
   }
-  return null;
+  return undefined;
 };
 
 /**
@@ -2107,8 +2107,13 @@ class NicheApplicationService {
         nomineeAddressState2: pickUpdateValue(pickFirst(nominee2Data.address?.state, data.nomineeAddressState2), existing.nomineeAddressState2),
         nomineeAddressCountry2: pickUpdateValue(pickFirst(nominee2Data.address?.country, data.nomineeAddressCountry2), existing.nomineeAddressCountry2),
 
-        // Keep other fields from payload or existing
-        ...data,
+        // Remarks
+        remarks: pickUpdateValue(data.remarks, existing.remarks),
+
+        // Contact info object (for state/UI preservation)
+        contact: pickUpdateValue(data.contact, existing.contact),
+
+        // Preserve IDs
         nicheApplicationId: existing.nicheApplicationId,
         code: existing.code
       };

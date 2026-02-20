@@ -146,6 +146,7 @@ export interface UpdateGateOfLifeRequest {
   applicantAddressState?: string;
   applicantAddressCountry?: string;
   donationAmount?: number;
+  requestSameBrick?: boolean;
   details?: Array<{
     nameToEngrave: string;
   }>;
@@ -358,27 +359,26 @@ export const gateOfLifeService = {
       if (error.response?.status === 401) {
         throw new GateOfLifeError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 400) {
-        // Parse validation error response
         const errorData = error.response?.data;
+        const err = errorData?.error;
         let errorMessage = 'Invalid application data';
-
-        if (errorData?.error?.message) {
-          errorMessage = errorData.error.message;
-        } else if (errorData?.error?.details && Array.isArray(errorData.error.details)) {
-          errorMessage = errorData.error.details.join(', ');
-        } else if (errorData?.message) {
-          errorMessage = errorData.message;
-        }
-
+        if (typeof err === 'string') errorMessage = err;
+        else if (err?.message) errorMessage = err.message;
+        else if (Array.isArray(err?.details)) errorMessage = err.details.join(', ');
+        else if (errorData?.message) errorMessage = errorData.message;
         throw new GateOfLifeError(errorMessage, 'validation', 400);
       } else if (error.response?.status === 404) {
-        throw new GateOfLifeError('Gate of life application not found', 'validation', 404);
+        const err = error.response?.data?.error;
+        const msg = typeof err === 'object' && err?.message ? err.message : 'Gate of life application not found';
+        throw new GateOfLifeError(msg, 'validation', 404);
       } else if (error.response?.status >= 500) {
         throw new GateOfLifeError('Server error occurred', 'server', error.response.status);
       } else if (error.code === 'NETWORK_ERROR' || !error.response) {
         throw new GateOfLifeError('Network error. Please check your connection.', 'network');
       } else {
-        throw new GateOfLifeError(error.response?.data?.message || 'Failed to update gate of life application');
+        const err = error.response?.data?.error;
+        const msg = typeof err === 'object' && err?.message ? err.message : (error.response?.data?.message || 'Failed to update gate of life application');
+        throw new GateOfLifeError(msg, 'server', error.response?.status);
       }
     }
   },

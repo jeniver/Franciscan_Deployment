@@ -1,5 +1,9 @@
 const NicheRepository = require('../repositories/NicheRepository');
 const logger = require('../utils/logger');
+const { cache } = require('../utils/cache');
+
+const CHAPEL_CACHE_PREFIX = 'chapels:';
+const CHAPEL_CACHE_TTL = 300; // 5 minutes - chapel data rarely changes
 
 class NicheService {
   constructor() {
@@ -7,17 +11,24 @@ class NicheService {
   }
 
   /**
-   * Get all chapels for a church
+   * Get all chapels for a church (cached for 5 min to reduce DB load)
    * @param {number} churchId - Church ID
    * @returns {Promise<Object>} Response with chapels list
    */
   async getChapelsForChurch(churchId) {
     try {
+      const cacheKey = `${CHAPEL_CACHE_PREFIX}${churchId}`;
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        logger.debug(`Chapel cache hit for church ${churchId}`);
+        return cached;
+      }
+
       logger.info(`Getting chapels for church ${churchId}`);
 
       const chapels = await this.nicheRepository.getChapelsByChurch(churchId);
 
-      return {
+      const result = {
         success: true,
         data: {
           churchId,
@@ -25,6 +36,12 @@ class NicheService {
           chapels: chapels.map(c => c.toJSON())
         }
       };
+      try {
+        cache.set(cacheKey, result, CHAPEL_CACHE_TTL);
+      } catch (e) {
+        logger.warn('Failed to cache chapels:', e?.message);
+      }
+      return result;
     } catch (error) {
       // Check if it's a database connection/timeout error
       const isDatabaseError = 

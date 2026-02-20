@@ -1013,7 +1013,7 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
         onClose={() => setIsViewerOpen(false)}
         agreementData={viewerData}
         secoundNomineeAgreement={null}
-        applicationNumber={routeAppCode || ''}
+        applicationNumber={routeAppCode || reduxApplicationCode || ''}
         loading={viewerLoading}
         templateType="gateOfLife"
       />

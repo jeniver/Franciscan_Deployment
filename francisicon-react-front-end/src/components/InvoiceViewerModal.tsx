@@ -5,6 +5,7 @@ import { TaxInvoice } from '../components/InvoiceReceiptTemplate/InvoiceTemplate
 import { ReceiptTemplate } from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { formatAddress } from '../utils/addressMapper';
 
 interface InvoiceViewerModalProps {
   isOpen: boolean;
@@ -83,20 +84,15 @@ export function InvoiceViewerModal({
   // Function to map API response to InvoiceTemplateData interface
   const mapToInvoiceTemplateData = (apiData: any): InvoiceTemplateData => {
     // Calculate address string from available address fields
-    const addressParts = [
-      apiData.addressNo || apiData.AddressNo,
-      apiData.address || apiData.Address || apiData.addressLine1,
-      apiData.address2 || apiData.Address2 || apiData.addressLine2,
-      apiData.addressCity || apiData.AddressCity || apiData.city,
-      apiData.districtCode || apiData.DistrictCode || apiData.state || apiData.addressState,
-      apiData.country || apiData.Country
-    ].filter(part => part &&
-      part !== 'undefined' &&
-      part !== 'null' &&
-      typeof part === 'string' &&
-      part.trim() !== '');
-
-    const customerAddress = addressParts.length > 0 ? addressParts.join(', ') : undefined;
+    const addrNo = apiData.addressNo || apiData.AddressNo;
+    const customerAddress = formatAddress({
+      block: (addrNo === 'Blk' || addrNo === 'Block') ? 'Block' : (addrNo === 'No' ? 'No' : addrNo),
+      blockNo: apiData.address || apiData.Address || apiData.addressLine1 || apiData.AddressLine1,
+      streetName: apiData.address2 || apiData.Address2 || apiData.addressLine2 || apiData.AddressLine1, // Line1 fallback if Line2 missing
+      unitNo: apiData.addressCity || apiData.AddressCity,
+      postalCode: apiData.districtCode || apiData.DistrictCode || apiData.addressState || apiData.AddressState || apiData.state,
+      country: apiData.country || apiData.Country || 'Singapore'
+    });
 
     // Map details to InvoiceTemplateItem format
     const items = (apiData.details || []).map((detail: any) => ({
@@ -111,7 +107,8 @@ export function InvoiceViewerModal({
       invoiceDate: formatDate(apiData.transactionDate || apiData.TransactionDate || apiData.invoiceDate || apiData.InvoiceDate || new Date()),
       customerName: apiData.customerName || apiData.CustomerName || apiData.payeeName || 'N/A',
       customerAddress: apiData.customerAddress || customerAddress || 'N/A',
-      paymentMode: apiData.paymentMode || apiData.PaymentMode || 'N/A',
+      paymentMode: apiData.paymentMode || apiData.PaymentMode || apiData.receipt?.paymentMode || 'N/A',
+      paymentModeDocNo: apiData.paymentModeDocNo || apiData.PaymentModeDocNo || apiData.receipt?.paymentModeDocNo || '',
       totalAmount: apiData.totalAmount || apiData.TotalAmount || apiData.payingAmount || 0,
       taxAmount: apiData.taxAmount || apiData.TaxAmount || 0,
       items: items,
@@ -120,17 +117,15 @@ export function InvoiceViewerModal({
 
   // Function to format dates consistently
   const formatDate = (date: string | Date): string => {
-    if (!date) return new Date().toLocaleDateString('en-SG');
-
+    if (!date) return 'N/A';
     const dateObj = new Date(date);
-    if (isNaN(dateObj.getTime())) {
-      return date.toString(); // Return as-is if it's already formatted
-    }
+    if (isNaN(dateObj.getTime())) return date.toString();
 
-    return dateObj.toLocaleDateString('en-SG', {
-      year: 'numeric',
+    // Format: 20 Feb 2026
+    return dateObj.toLocaleDateString('en-GB', {
+      day: 'numeric',
       month: 'short',
-      day: 'numeric'
+      year: 'numeric'
     });
   };
 
@@ -140,38 +135,49 @@ export function InvoiceViewerModal({
     const getAddress = () => {
       if (!apiData) return 'N/A';
 
-      const existingAddress = apiData.customerAddress ||
-        apiData.address ||
-        apiData.receipt?.address ||
-        apiData.receipt?.payeeAddress;
-
-      // If it's a multi-part address or we don't have a single string, construct it
-      const addressParts = [
-        apiData.addressNo || apiData.receipt?.addressNo || apiData.receipt?.AddressNo,
-        apiData.address || apiData.addressLine1 || apiData.receipt?.address || apiData.receipt?.Address || apiData.receipt?.AddressLine1,
-        apiData.address2 || apiData.addressLine2 || apiData.receipt?.address2 || apiData.receipt?.Address2 || apiData.receipt?.AddressLine2,
-        apiData.addressCity || apiData.receipt?.addressCity || apiData.receipt?.AddressCity,
-        apiData.districtCode || apiData.receipt?.districtCode || apiData.receipt?.DistrictCode || apiData.receipt?.AddressState,
-        apiData.country || apiData.receipt?.country || apiData.receipt?.Country
-      ].filter(part => part &&
-        part !== 'undefined' &&
-        part !== 'null' &&
-        typeof part === 'string' &&
-        part.trim() !== '');
-
-      if (addressParts.length > 1) {
-        return addressParts.join(', ');
+      // Use pre-formatted address if available
+      if (apiData.customerAddress && typeof apiData.customerAddress === 'string' && apiData.customerAddress !== 'N/A') {
+        return apiData.customerAddress;
       }
 
-      return (existingAddress && existingAddress !== 'N/A' && existingAddress !== 'null') ? existingAddress : (addressParts[0] || 'N/A');
+      // Heuristic: if 'address' is a long string (likely full address) and not just a block number
+      if (apiData.address && typeof apiData.address === 'string' && apiData.address.length > 20) {
+        return apiData.address;
+      }
+
+      const addrNo = apiData.addressNo || apiData.receipt?.addressNo || apiData.receipt?.AddressNo || apiData.AddressNo;
+      return formatAddress({
+        block: (addrNo === 'Blk' || addrNo === 'Block') ? 'Block' : (addrNo === 'No' ? 'No' : addrNo),
+        blockNo: apiData.address || apiData.addressLine1 || apiData.receipt?.address || apiData.receipt?.Address || apiData.Address || apiData.AddressLine1,
+        streetName: apiData.address2 || apiData.addressLine2 || apiData.receipt?.address2 || apiData.receipt?.Address2 || apiData.Address2 || apiData.AddressLine2,
+        unitNo: apiData.addressCity || apiData.receipt?.addressCity || apiData.AddressCity || apiData.receipt?.AddressCity,
+        postalCode: apiData.districtCode || apiData.receipt?.districtCode || apiData.DistrictCode || (apiData as any).addressState || (apiData as any).AddressState,
+        country: apiData.country || apiData.Country || apiData.receipt?.country || apiData.receipt?.Country || 'Singapore'
+      });
     };
 
     const customerAddress = getAddress();
 
-    // Calculate description from details
-    const description = (apiData.details || [])
-      .map((detail: any) => detail.itemName || detail.description || detail.ItemName || detail.Description || '')
-      .filter((desc: string) => desc && desc.trim() !== '')
+    // Map items for receipt
+    const items = (apiData.details || []).map((detail: any) => {
+      const itemName = detail.itemName || detail.ItemName || '';
+      const desc = detail.description || detail.Description || '';
+      const combinedDescription = itemName && desc && itemName !== desc
+        ? `${itemName} - ${desc}`
+        : (itemName || desc || 'Service Item');
+
+      return {
+        description: combinedDescription,
+        quantity: detail.quantity || detail.Quantity || 1,
+        unitPrice: detail.unitAmount || detail.UnitAmount || detail.unitPrice || 0,
+        amount: detail.totalPayingAmount || detail.TotalPayingAmount || detail.lineTotalAmount || detail.amount || 0,
+        referenceNo: detail.refDocNumber || detail.RefDocNumber || ''
+      };
+    });
+
+    // Calculate description from details if items not used
+    const description = items
+      .map((item: any) => item.description + (item.referenceNo ? ` (${item.referenceNo})` : ''))
       .join(', ');
 
     // Handle receipt totals with broad compatibility
@@ -190,22 +196,43 @@ export function InvoiceViewerModal({
       receivedFrom: apiData.receipt?.payeeName || apiData.receipt?.PayeeName || apiData.customerName || apiData.CustomerName || apiData.payeeName || 'N/A',
       address: customerAddress,
       invoiceNo: apiData.code || apiData.invoiceCode || apiData.Code || apiData.invoiceNo || 'N/A',
+      refDocNo: apiData.refDocNumber || apiData.RefDocNumber || apiData.invoice?.refDocNumber || apiData.invoice?.RefDocNumber || '',
       description: description || 'Services Rendered',
       totalAmount: totalAmount,
       dollarsInWords: amountToWords(totalAmount),
       paymentMethod: apiData.receipt?.paymentMode || apiData.receipt?.PaymentMode || apiData.paymentMode || apiData.PaymentMode || 'Cash',
+      paymentModeDocNo: apiData.paymentModeDocNo || apiData.PaymentModeDocNo || apiData.receipt?.paymentModeDocNo || '',
+      items: items
     };
   };
 
   // Function to map API data to InvoiceTemplate interface for TaxInvoice component
   const mapToTaxInvoiceProps = (apiData: any) => {
-    // Calculate address string from available address fields
+    // Check various common field names for address
+    const getAddress = () => {
+      if (!apiData) return 'N/A';
 
-    const address = apiData.customerAddress || 'N/A';
-    // Handle both direct items array and details mapping
+      if (apiData.customerAddress && typeof apiData.customerAddress === 'string' && apiData.customerAddress !== 'N/A') {
+        return apiData.customerAddress;
+      }
+      if (apiData.address && typeof apiData.address === 'string' && apiData.address.length > 20) {
+        return apiData.address;
+      }
+
+      const addrNo = apiData.addressNo || apiData.receipt?.addressNo || apiData.receipt?.AddressNo || apiData.AddressNo;
+      return formatAddress({
+        block: (addrNo === 'Blk' || addrNo === 'Block') ? 'Block' : (addrNo === 'No' ? 'No' : addrNo),
+        blockNo: apiData.address || apiData.addressLine1 || apiData.receipt?.address || apiData.receipt?.Address || apiData.Address || apiData.AddressLine1,
+        streetName: apiData.address2 || apiData.addressLine2 || apiData.receipt?.address2 || apiData.receipt?.Address2 || apiData.Address2 || apiData.AddressLine2,
+        unitNo: apiData.addressCity || apiData.receipt?.addressCity || apiData.AddressCity || apiData.receipt?.AddressCity,
+        postalCode: apiData.districtCode || apiData.receipt?.districtCode || apiData.DistrictCode || (apiData as any).addressState || (apiData as any).AddressState,
+        country: apiData.country || apiData.Country || apiData.receipt?.country || apiData.receipt?.Country || 'Singapore'
+      });
+    };
+
+    const address = getAddress();
     let items: any[] = [];
 
-    // If apiData already has items array (from template data), use it directly
     if (Array.isArray(apiData.items) && apiData.items.length > 0) {
       items = apiData.items.map((item: any) => ({
         description: item.description || 'Item',
@@ -216,7 +243,6 @@ export function InvoiceViewerModal({
         amount: item.amount || 0
       }));
     } else {
-      // Otherwise map from details array (from API response)
       items = (apiData.details || []).map((detail: any) => ({
         description: detail.itemName || detail.description || detail.ItemName || detail.Description || 'Item',
         referenceNo: detail.refDocNumber || detail.RefDocNumber || detail.ReferenceNo || 'N/A',
@@ -227,7 +253,6 @@ export function InvoiceViewerModal({
       }));
     }
 
-    // Calculate subTotal
     const subTotal = apiData.summary?.subtotal || apiData.subtotal || (apiData.totalAmount || 0) - (apiData.taxAmount || 0);
 
     return {
@@ -240,6 +265,8 @@ export function InvoiceViewerModal({
       gstTotal: apiData.taxAmount || apiData.TaxAmount || 0,
       total: apiData.totalAmount || apiData.TotalAmount || 0,
       dollarsInWords: amountToWords(apiData.totalAmount || apiData.TotalAmount || 0),
+      paymentMode: apiData.paymentMode || apiData.PaymentMode || apiData.receipt?.paymentMode || 'Cash',
+      paymentModeDocNo: apiData.paymentModeDocNo || apiData.PaymentModeDocNo || apiData.receipt?.paymentModeDocNo || '',
     };
   };
 
@@ -278,75 +305,46 @@ export function InvoiceViewerModal({
     if (!contentRef.current) return
     setIsGeneratingPdf(true)
     try {
-      // Check if html2pdf is already loaded
       let html2pdf = (window as any).html2pdf
       if (!html2pdf) {
-        // Dynamically load html2pdf from CDN
         await new Promise<void>((resolve, reject) => {
           const script = document.createElement('script')
-          script.src =
-            'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
           script.onload = () => resolve()
           script.onerror = () => reject(new Error('Failed to load PDF library'))
           document.head.appendChild(script)
         })
         html2pdf = (window as any).html2pdf
       }
-      // Clone with all computed styles
       const styledClone = cloneWithStyles(contentRef.current)
-      // Create a container with proper dimensions
       const container = document.createElement('div')
       container.style.position = 'absolute'
       container.style.left = '-9999px'
       container.style.top = '0'
+      const isReceipt = !!invoiceData?.receipt;
       container.style.width = '210mm'
       container.style.backgroundColor = 'white'
       container.appendChild(styledClone)
       document.body.appendChild(container)
-      // Wait a bit for styles to apply
       await new Promise((resolve) => setTimeout(resolve, 100))
 
-      const fileName = invoiceData?.receipt
+      const fileName = isReceipt
         ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'Document'}.pdf`
         : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'Document'}.pdf`;
 
-      // PDF options
       const opt = {
-        margin: [5, 5, 5, 5],
+        margin: isReceipt ? [10, 10, 10, 10] : [5, 5, 5, 5],
         filename: fileName,
-        image: {
-          type: 'jpeg',
-          quality: 0.98,
-        },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          letterRendering: true,
-          allowTaint: true,
-        },
-        jsPDF: {
-          unit: 'mm',
-          format: 'a4',
-          orientation: 'portrait',
-        },
-        pagebreak: {
-          mode: ['avoid-all', 'css', 'legacy'],
-        },
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false, letterRendering: true, allowTaint: true },
+        jsPDF: { unit: 'mm', format: isReceipt ? 'a5' : 'a4', orientation: isReceipt ? 'landscape' : 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
       }
-      // Generate and save PDF
       await html2pdf().set(opt).from(container).save()
-      // Cleanup
-      setTimeout(() => {
-        if (document.body.contains(container)) {
-          document.body.removeChild(container)
-        }
-      }, 1000)
+      setTimeout(() => { if (document.body.contains(container)) document.body.removeChild(container) }, 1000)
     } catch (error: any) {
       console.error('Error generating PDF:', error)
-      alert(
-        'PDF generation failed. Please try the Print option and save as PDF.',
-      )
+      alert('PDF generation failed. Please try the Print option and save as PDF.')
     } finally {
       setIsGeneratingPdf(false)
     }
@@ -356,64 +354,44 @@ export function InvoiceViewerModal({
     if (!contentRef.current || isGenerating) return
     setIsGenerating(true)
     try {
-      // Find all page elements
       const pages = contentRef.current.querySelectorAll('[data-pdf-page]')
-      // If no marked pages, fallback to contentRef itself (or wrap it) based on logic
-      // The user snippet throws error if 0, but current code handled fallback. 
-      // We will try to be robust. if pages length is 0, treat contentRef as one page if acceptable, 
-      // OR better yet, ensure our template renders [data-pdf-page]
-      const targetPages = pages.length > 0 ? pages : [contentRef.current];
+      const targetPages = pages.length > 0 ? Array.from(pages) : [contentRef.current];
+      const isReceipt = !!invoiceData?.receipt;
 
-      if (targetPages.length === 0) {
-        throw new Error('No pages found to print')
-      }
-      // Create PDF
       const pdf = new jsPDF({
-        orientation: 'portrait',
+        orientation: isReceipt ? 'landscape' : 'portrait',
         unit: 'mm',
-        format: 'a4',
+        format: isReceipt ? 'a5' : 'a4',
       })
-      // Process each page
+
       for (let i = 0; i < targetPages.length; i++) {
         const pageElement = targetPages[i] as HTMLElement
-        // Temporarily remove shadow for clean capture
         const originalBoxShadow = pageElement.style.boxShadow
         pageElement.style.boxShadow = 'none'
-        // Capture the page
+
         const canvas = await html2canvas(pageElement, {
           scale: 2,
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
           logging: false,
-          windowWidth: pageElement.scrollWidth,
-          windowHeight: pageElement.scrollHeight,
+          windowWidth: 794,
         })
-        // Restore styles
         pageElement.style.boxShadow = originalBoxShadow
-        // Add page to PDF (except for the first one which is created by default)
-        if (i > 0) {
-          pdf.addPage()
-        }
+        if (i > 0) pdf.addPage(isReceipt ? 'a5' : 'a4', isReceipt ? 'landscape' : 'portrait')
         const imgData = canvas.toDataURL('image/png', 1.0)
-        const pdfWidth = pdf.internal.pageSize.getWidth()
-        const pdfHeight = pdf.internal.pageSize.getHeight()
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+        pdf.addImage(imgData, 'PNG', 0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight())
       }
-      // Generate blob and open in new tab
       const pdfBlob = pdf.output('blob')
       const blobUrl = URL.createObjectURL(pdfBlob)
       const newTab = window.open(blobUrl, '_blank')
 
-      const fileName = invoiceData?.receipt
-        ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'Document'}.pdf`
-        : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'Document'}.pdf`;
-
       if (!newTab) {
-        // Fallback: download the file if popup blocked
         const link = document.createElement('a')
         link.href = blobUrl
-        link.download = fileName
+        link.download = isReceipt
+          ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'Document'}.pdf`
+          : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'Document'}.pdf`;
         link.click()
         setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
       } else {
@@ -427,113 +405,57 @@ export function InvoiceViewerModal({
     }
   }
 
-  const handlePrint = () => {
-    handleGeneratePDF();
-  };
-
-  const toggleFullscreen = () => {
-    setIsFullscreen(!isFullscreen);
-  };
+  const handlePrint = () => handleGeneratePDF();
+  const toggleFullscreen = () => setIsFullscreen(!isFullscreen);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black bg-opacity-75 transition-opacity"
-        onClick={onClose}
-      />
-
-      {/* Modal Container */}
-      <div
-        className={`fixed inset-0 flex items-center justify-center p-4 transition-all ${isFullscreen ? 'p-0' : ''
-          }`}
-      >
-        <div
-          className={`relative bg-white rounded-lg shadow-2xl flex flex-col transition-all ${isFullscreen ? 'w-full h-full rounded-none' : 'w-full max-w-6xl h-[90vh]'
-            }`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
+      <div className="fixed inset-0 bg-black bg-opacity-75 transition-opacity" onClick={onClose} />
+      <div className={`fixed inset-0 flex items-center justify-center p-4 transition-all ${isFullscreen ? 'p-0' : ''}`}>
+        <div className={`relative bg-white rounded-lg shadow-2xl flex flex-col transition-all ${isFullscreen ? 'w-full h-full rounded-none' : 'w-full max-w-6xl h-[90vh]'}`} onClick={(e) => e.stopPropagation()}>
           <div className="sticky top-0 bg-gradient-to-r from-blue-700 to-blue-900 px-6 py-4 rounded-t-lg flex items-center justify-between z-10">
             <h2 className="text-xl font-bold text-white">
               {invoiceData?.receipt ? 'Receipt' : 'Invoice'} {invoiceData?.code || invoiceData?.invoiceCode || ''}
             </h2>
             <div className="flex items-center gap-2">
-              <button
-                onClick={toggleFullscreen}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
-                title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-              >
-                {isFullscreen ? (
-                  <Minimize2Icon className="w-5 h-5" />
-                ) : (
-                  <Maximize2Icon className="w-5 h-5" />
-                )}
+              <button onClick={toggleFullscreen} className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors">
+                {isFullscreen ? <Minimize2Icon className="w-5 h-5" /> : <Maximize2Icon className="w-5 h-5" />}
               </button>
-              <button
-                onClick={handlePrint}
-                disabled={isGenerating || isGeneratingPdf || loading || !invoiceData}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Print Document"
-              >
+              <button onClick={handlePrint} disabled={isGenerating || isGeneratingPdf || loading || !invoiceData} className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50">
                 <PrinterIcon className={`w-5 h-5 ${isGenerating || isGeneratingPdf || loading ? 'animate-pulse' : ''}`} />
               </button>
-              <button
-                onClick={handleDownloadPdf}
-                disabled={isGenerating || isGeneratingPdf || loading || !invoiceData}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Download PDF"
-              >
+              <button onClick={handleDownloadPdf} disabled={isGenerating || isGeneratingPdf || loading || !invoiceData} className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50">
                 <DownloadIcon className={`w-5 h-5 ${isGenerating || isGeneratingPdf || loading ? 'animate-pulse' : ''}`} />
               </button>
-              <button
-                onClick={onClose}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
-              >
+              <button onClick={onClose} className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors">
                 <XIcon className="w-5 h-5" />
               </button>
             </div>
           </div>
-
-          {/* Content */}
           <div className="flex-1 overflow-auto relative bg-gray-50">
             {loading && !htmlContent ? (
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mb-4" />
-                  <p className="text-gray-600">Loading document...</p>
-                </div>
+                <div className="text-center"><div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mb-4" /><p className="text-gray-600">Loading document...</p></div>
               </div>
             ) : htmlContent ? (
               <div className="p-4 relative min-h-full">
                 {(isGenerating || isGeneratingPdf) && (
                   <div className="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-75 z-20">
-                    <div className="text-center">
-                      <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mb-4"></div>
-                      <p className="text-gray-600">Generating PDF...</p>
-                    </div>
+                    <div className="text-center"><div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mb-4"></div><p className="text-gray-600">Generating PDF...</p></div>
                   </div>
                 )}
                 <div ref={contentRef}>
                   {invoiceData?.receipt ? (
-                    <div data-pdf-page>
-                      <ReceiptTemplate {...mapToReceiptTemplateData(invoiceData)} />
-                    </div>
+                    <div data-pdf-page><ReceiptTemplate {...mapToReceiptTemplateData(invoiceData)} /></div>
                   ) : (
-                    <div data-pdf-page>
-                      <TaxInvoice {...mapToTaxInvoiceProps(invoiceData)} />
-                    </div>
+                    <div data-pdf-page><TaxInvoice {...mapToTaxInvoiceProps(invoiceData)} /></div>
                   )}
                 </div>
               </div>
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center p-8">
-                  <p className="text-gray-600">No document data available</p>
-                </div>
-              </div>
+              <div className="absolute inset-0 flex items-center justify-center"><p className="text-gray-600">No document data available</p></div>
             )}
           </div>
         </div>

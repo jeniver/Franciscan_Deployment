@@ -151,6 +151,18 @@ ELSE
     PRINT '⏭️ Index IX_NicheRow_NicheWallId already exists';
 GO
 
+-- Index 7b: Speed up chapel lookups by church (for /api/niches/chapels/:churchId)
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Chapel_ChurchId' AND object_id = OBJECT_ID('Chapel'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_Chapel_ChurchId
+    ON Chapel(ChurchId)
+    INCLUDE (ChapelId, Code, Name, Description);
+    PRINT '✅ Created index: IX_Chapel_ChurchId (for chapel list performance)';
+END
+ELSE
+    PRINT '⏭️ Index IX_Chapel_ChurchId already exists';
+GO
+
 -- Index 8: Speed up niche wall lookups
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_NicheWall_ChapelId' AND object_id = OBJECT_ID('NicheWall'))
 BEGIN

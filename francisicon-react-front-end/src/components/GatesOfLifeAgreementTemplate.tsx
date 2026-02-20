@@ -23,7 +23,7 @@ export function GatesOfLifeAgreementTemplate({ data }: GatesOfLifeAgreementTempl
     const fDate = (d: any) => d ? formatDate(d) : '';
 
     return (
-        <div className="w-full max-w-[210mm] mx-auto bg-white p-12 shadow-lg text-black font-serif print:shadow-none print:p-0" id="gol-agreement-template">
+        <div data-pdf-page className="w-full max-w-[210mm] mx-auto bg-white p-12 shadow-lg text-black font-serif print:shadow-none print:p-0" id="gol-agreement-template">
             {/* Increased font size for visibility for older persons */}
             <div className="text-[14px] leading-snug">
 

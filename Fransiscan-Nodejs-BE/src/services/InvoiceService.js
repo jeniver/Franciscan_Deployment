@@ -348,6 +348,54 @@ class InvoiceService extends BaseService {
         };
       }
 
+      // 3b. INCR restriction: Niche application must be Booked (3) or Completed (4) for inscription invoices
+      const invoiceRefDocName = invoiceData.refDocName || firstDetail.refDocName;
+      const normalizedRefDocName = invoiceRefDocName ? String(invoiceRefDocName).trim().toUpperCase() : null;
+      if (normalizedRefDocName === 'INCR') {
+        const { executeQuery } = require('../config/database');
+        const incrCode = String(refDocNumber).trim();
+        try {
+          const statusQuery = `
+            SELECT TOP 1 na.Status AS status
+            FROM NicheInscriptionRequest nir WITH (NOLOCK)
+            INNER JOIN NicheBooking nb WITH (NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+            INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+            WHERE nir.Code = @incrCode
+          `;
+          const statusResult = await executeQuery(statusQuery, { incrCode });
+          if (statusResult.recordset && statusResult.recordset.length > 0) {
+            const status = Number(statusResult.recordset[0].status);
+            if (status !== 3 && status !== 4) {
+              const statusLabel = status === 1 ? 'Draft' : status === 2 ? 'Pending' : 'Unknown';
+              return {
+                success: false,
+                error: {
+                  code: 'NICHE_APPLICATION_NOT_BOOKED',
+                  message: `Invoice cannot be created. Niche application must be Booked before creating an inscription invoice. Current status: ${statusLabel}.`
+                }
+              };
+            }
+          } else {
+            return {
+              success: false,
+              error: {
+                code: 'NICHE_APPLICATION_NOT_BOOKED',
+                message: 'Inscription must be linked to a booked niche application. The niche application is not found or not yet booked.'
+              }
+            };
+          }
+        } catch (statusErr) {
+          logger.warn('INCR status check failed:', statusErr.message);
+          return {
+            success: false,
+            error: {
+              code: 'NICHE_APPLICATION_NOT_BOOKED',
+              message: 'Unable to verify niche application status. Invoice creation for inscription is restricted until the niche is booked.'
+            }
+          };
+        }
+      }
+
       // 4. Check for existing receipt (Requirement: Invoices cannot be created if a receipt exists for an application)
       // DISABLED per user request to allow more flexibility in invoice/receipt creation flow
       /*
@@ -377,8 +425,7 @@ class InvoiceService extends BaseService {
 
       // 6. Prepare Invoice object
       // CRITICAL: Use baseRefDocNumber for invoice header (not detail RefDocNumber which might be "I-NAPP-XX")
-      const invoiceRefDocName = invoiceData.refDocName || firstDetail.refDocName;
-      const normalizedInvoiceRefDocName = invoiceRefDocName ? String(invoiceRefDocName).trim().toUpperCase() : null;
+      const normalizedInvoiceRefDocName = normalizedRefDocName;
 
       const invoice = new Invoice({
         code: invoiceCode,

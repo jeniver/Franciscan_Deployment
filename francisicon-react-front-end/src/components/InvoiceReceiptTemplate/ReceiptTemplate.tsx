@@ -1,4 +1,3 @@
-import React from 'react'
 import { PDF_ASSETS } from '../common/FranciscanLogo'
 
 interface ReceiptTemplateProps {
@@ -7,15 +6,18 @@ interface ReceiptTemplateProps {
   receivedFrom?: string
   address?: string
   invoiceNo?: string
+  refDocNo?: string
   description?: string
   totalAmount?: number
   dollarsInWords?: string
   paymentMethod?: string
+  paymentModeDocNo?: string
   items?: Array<{
     description: string
     quantity: number
     unitPrice: number
     amount: number
+    referenceNo?: string
   }>
 }
 
@@ -25,10 +27,12 @@ export function ReceiptTemplate({
   receivedFrom = 'Jacqueline Lim Poh Choo',
   address = 'Blk:,,,Singapore,undefined',
   invoiceNo = '53204',
+  refDocNo = '',
   description = 'St Bernadine 5585',
   totalAmount = 8305.8,
   dollarsInWords = 'Eight Thousand Three Hundred Five, And Eighty Cents Only',
   paymentMethod = 'Cash',
+  paymentModeDocNo = '',
   items = [],
 }: ReceiptTemplateProps) {
   const formattedAmount = (amt: number) =>
@@ -38,76 +42,81 @@ export function ReceiptTemplate({
     })
 
   return (
-    <div className="w-full max-w-[950px] bg-white p-12 mx-auto text-black font-sans leading-relaxed shadow-lg border border-gray-200">
+    <div className="w-full max-w-[800px] bg-white p-4 md:p-6 pb-12 mx-auto text-black font-sans leading-tight">
       {/* Header Section */}
-      <div className="flex justify-between items-start mb-10">
-        <div className="flex items-start gap-6">
+      <div className="flex justify-between items-start mb-6">
+        <div className="flex items-start gap-5">
           <img
             src={PDF_ASSETS.headerImageUrl}
             alt="Franciscan Logo"
-            className="w-28 h-28 object-contain"
+            className="w-20 h-20 object-contain"
           />
-          <div className="flex flex-col pt-2">
-            <h1 className="text-4xl font-bold tracking-wider leading-none">OFFICIAL</h1>
-            <h1 className="text-4xl font-bold tracking-wider leading-none mt-1">RECEIPT</h1>
+          <div className="flex flex-col pt-1">
+            <h1 className="text-3xl font-bold tracking-[0.1em] leading-none text-gray-900">OFFICIAL</h1>
+            <h1 className="text-3xl font-bold tracking-[0.1em] leading-none mt-1 text-gray-900">RECEIPT</h1>
           </div>
         </div>
 
-        <div className="text-right text-[12px] leading-tight max-w-[450px]">
-          <h2 className="text-[22px] font-bold mb-1 tracking-tight">THE ORDER OF FRIARS MINOR (S) LTD</h2>
-          <p className="mb-0.5">Co & GST Reg No. 201016236M</p>
-          <p className="mb-0.5">Franciscan Columbarium</p>
-          <p className="mb-0.5">5 Bukit Batok East Avenue 2 Singapore 659918</p>
-          <p className="mb-0.5">Tel: 6560-6361, HP: 9774-7053,</p>
-          <p className="mb-0.5">email: Franciscan.columbarium@gmail.com</p>
+        <div className="text-right text-[10px] leading-tight max-w-[400px]">
+          <h2 className="text-[15px] font-bold mb-0.5 tracking-tight">THE ORDER OF FRIARS MINOR (S) LTD</h2>
+          <p className="mb-0.5 font-medium">Co & GST Reg No. 201016236M</p>
+          <p className="mb-0.5 font-medium">Franciscan Columbarium</p>
+          <p className="mb-0.5 font-medium">5 Bukit Batok East Avenue 2 Singapore 659918</p>
+          <p className="mb-0.5 font-medium">Tel: 6560-6361, HP: 9774-7053</p>
+          <p className="mb-0.5 font-medium">email: franciscan.columbarium@gmail.com</p>
 
-          <div className="mt-8 flex flex-col items-end text-[14px]">
-            <div className="grid grid-cols-[auto_140px] gap-y-1">
+          <div className="mt-4 flex flex-col items-end text-[12px]">
+            <div className="grid grid-cols-[auto_110px] gap-y-0.5">
               <span className="pr-4">Receipt No:</span>
-              <span className="text-right font-medium">{receiptNo}</span>
+              <span className="text-right font-bold">{receiptNo}</span>
               <span className="pr-4">Date :</span>
               <span className="text-right font-medium">{date}</span>
+
             </div>
           </div>
         </div>
       </div>
 
       {/* Received From and Address */}
-      <div className="space-y-4 mb-12 text-[15px]">
-        <div className="flex gap-1">
-          <span className="w-[140px] shrink-0">Received From :</span>
-          <span className="font-medium underline decoration-gray-300 underline-offset-4">{receivedFrom}</span>
+      <div className="space-y-3 mb-8 text-[14px]">
+        <div className="flex gap-2 items-baseline">
+          <span className="w-[110px] shrink-0 font-bold">Received From :</span>
+          <span className="font-semibold flex-1 uppercase">{receivedFrom}</span>
         </div>
-        <div className="flex gap-1">
-          <span className="w-[140px] shrink-0">Address:</span>
-          <span className="font-medium flex-1 underline decoration-gray-300 underline-offset-4">{address}</span>
+        <div className="flex gap-2 items-start">
+          <span className="w-[110px] shrink-0 font-bold">Address :</span>
+          <div className="font-medium flex-1 text-[13px] leading-snug whitespace-pre-wrap">
+            {address}
+          </div>
         </div>
       </div>
 
       {/* Invoice Details Table */}
-      <div className="mb-10">
-        <div className="grid grid-cols-[120px_1fr_180px] gap-4 mb-4">
-          <div className="font-bold underline underline-offset-8 decoration-1">Invoice</div>
-          <div className="font-bold underline underline-offset-8 decoration-1 pl-4">Description</div>
-          <div className="font-bold underline underline-offset-8 decoration-1 text-right">Total Amount</div>
+      <div className="mb-4">
+        <div className="grid grid-cols-[110px_1fr_150px] gap-4 mb-2 pb-1 border-b-2 border-black">
+          <div className="font-bold text-[13px] underline underline-offset-2">Invoice</div>
+          <div className="font-bold text-[13px] underline underline-offset-2 pl-2">Description</div>
+          <div className="font-bold text-[13px] underline underline-offset-2 text-right">Total Amount</div>
         </div>
 
-        <div className="space-y-3 min-h-[100px]">
+        <div className="space-y-2 min-h-[50px]">
           {items && items.length > 0 ? (
             items.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-[120px_1fr_180px] gap-4 text-[15px]">
-                <div className="py-1">{invoiceNo}</div>
-                <div className="pl-4 py-1 whitespace-pre-line">{item.description}</div>
-                <div className="text-right py-1 font-medium">
+              <div key={idx} className="grid grid-cols-[110px_1fr_150px] gap-4 text-[13px] items-start">
+                <div className="py-0.5">{invoiceNo}</div>
+                <div className="pl-2 py-0.5 whitespace-pre-line leading-relaxed uppercase">
+                  {item.description}
+                </div>
+                <div className="text-right py-0.5 font-medium">
                   $ {formattedAmount(item.amount)}
                 </div>
               </div>
             ))
           ) : (
-            <div className="grid grid-cols-[120px_1fr_180px] gap-4 text-[15px]">
-              <div className="py-1">{invoiceNo}</div>
-              <div className="pl-4 py-1 whitespace-pre-line">{description}</div>
-              <div className="text-right py-1 font-medium">
+            <div className="grid grid-cols-[110px_1fr_150px] gap-4 text-[13px] items-start uppercase">
+              <div className="py-0.5">{invoiceNo}</div>
+              <div className="pl-2 py-0.5 whitespace-pre-line leading-relaxed">{description}</div>
+              <div className="text-right py-0.5 font-medium">
                 $ {formattedAmount(totalAmount)}
               </div>
             </div>
@@ -115,34 +124,43 @@ export function ReceiptTemplate({
         </div>
 
         {/* Total Row */}
-        <div className="flex justify-end mt-8">
-          <div className="flex items-center gap-16 font-bold text-[16px]">
-            <span>Total :</span>
-            <div className="min-w-[180px] text-right">
-              <div className="border-t-2 border-black pt-2 pb-1">
+        <div className="flex justify-end mt-4">
+          <div className="flex items-start gap-10 font-bold text-[15px]">
+            <span className="pt-1">Total :</span>
+            <div className="min-w-[150px] text-right">
+              <div className="border-t-2 border-black pt-2 pb-1 pr-1 font-extrabold">
                 $ {formattedAmount(totalAmount)}
               </div>
-              <div className="border-t-2 border-b border-black h-1 -mt-0.5"></div>
+              <div className="border-t border-b border-black h-[4px] mt-0.5"></div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Amount in Words */}
-      <div className="flex gap-4 mb-32 text-[15px]">
-        <span className="w-[100px] shrink-0">Dollars :</span>
-        <span className="flex-1 font-medium italic underline decoration-gray-300 underline-offset-4 leading-relaxed">
-          {dollarsInWords}
-        </span>
+      <div className="mb-10 text-[14px] flex gap-4 border-t border-gray-100 pt-4">
+        <span className="font-bold italic">Dollars :</span>
+        <span className="italic font-medium border-b border-gray-300 flex-1 pb-1.5">{dollarsInWords}</span>
       </div>
 
       {/* Footer / Signature lines */}
-      <div className="flex justify-between items-end">
-        <div className="w-[350px] border-t border-black pt-3">
-          <span className="text-[14px] uppercase tracking-wide">{paymentMethod}</span>
+      <div className="flex justify-between items-start text-[12px] mt-12">
+        <div className="w-[300px]">
+          <div className="border-t border-black pt-2 font-bold uppercase tracking-wide">
+            {paymentMethod}{paymentModeDocNo ? ` (${paymentModeDocNo})` : ''}
+          </div>
+          {refDocNo && (
+            <div className="mt-1">
+              <span className="pr-4 italic text-gray-600">Ref Doc No:</span>
+              <span className="font-medium">{refDocNo}</span>
+            </div>
+          )}
         </div>
-        <div className="w-[350px] border-t border-black pt-3 text-right">
-          <span className="text-[14px]">The Order of Friars Minor (S) Ltd</span>
+        <div className="w-[300px] text-right">
+          <div className="border-t border-black pt-2 font-bold">
+            The Order of Friars Minor (S) Ltd
+          </div>
+          <div className="text-[9px] text-gray-500 mt-1 italic font-medium">Computer Generated Receipt - No Signature Required</div>
         </div>
       </div>
     </div>

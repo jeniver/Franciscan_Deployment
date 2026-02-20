@@ -5,7 +5,7 @@ import { Layout } from '../components/Layout';
 import { useToast } from '../contexts/ToastContext';
 import { useApplicationItems } from '../hooks/useApplicationItems';
 import { useReceipt } from '../hooks/useReceipt';
-import { EyeIcon, LoaderIcon, AlertTriangle, CheckCircle, SaveIcon, PrinterIcon, FileTextIcon } from 'lucide-react';
+import { EyeIcon, LoaderIcon, AlertTriangle, CheckCircle, SaveIcon, PrinterIcon, FileTextIcon, CreditCardIcon } from 'lucide-react';
 import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
 import { AgreementViewerModal } from '../components/AgreementViewerModal';
 import { InvoiceTemplateData } from '../services/invoiceTemplateService';
@@ -18,6 +18,7 @@ import {
 import { resetReceiptState } from '../store/receiptSlice';
 import { InvoiceItemTable, InvoiceItem } from '../components/common/InvoiceItemTable';
 import { AddressInput } from '../components/AddressInput';
+import { formatAddress } from '../utils/addressMapper';
 
 
 export function CreateInvoicePage() {
@@ -55,7 +56,7 @@ export function CreateInvoicePage() {
     const [addressUnit, setAddressUnit] = useState('');
     const [addressPostalCode, setAddressPostalCode] = useState('');
     const [addressCountry, setAddressCountry] = useState('Singapore');
-    const [paymentMode] = useState('Cash');
+    const [paymentMode, setPaymentMode] = useState('Cash');
     const [refDocumentNo, setRefDocumentNo] = useState('');
     const [items, setItems] = useState<InvoiceItem[]>([]);
 
@@ -181,16 +182,25 @@ export function CreateInvoicePage() {
             const resolvedName = currentData.customerName || currentDataAny.payeeName || currentDataAny.applicant?.name || '';
             setPayeeName(resolvedName);
 
-            // Map Address
-            if (currentData.addressNo || currentData.address || currentData.address2 || currentData.addressCity || currentData.country) {
-                if (currentData.addressNo) setAddressNumber(currentData.addressNo);
-                if (currentData.address) setAddressStreet(currentData.address);
-                if (currentData.address2) setAddressUnit(currentData.address2);
-                if (currentData.addressCity) setAddressPostalCode(currentData.addressCity);
-                if (currentData.country) setAddressCountry(currentData.country);
-            } else if (currentData.address) {
-                // Simple fallback if no address parser
-                setAddressStreet(currentData.address);
+            // Map Address with standardized mapping
+            const addressNo = currentData.addressNo || (currentData as any).AddressNo;
+            if (addressNo) {
+                setAddressBlock(addressNo === 'Blk' ? 'Block' : (addressNo === 'No' ? 'No' : addressNo));
+            }
+            if (currentData.address || (currentData as any).Address) {
+                setAddressNumber(currentData.address || (currentData as any).Address);
+            }
+            if (currentData.address2 || (currentData as any).Address2) {
+                setAddressStreet(currentData.address2 || (currentData as any).Address2 || '');
+            }
+            if (currentData.addressCity || (currentData as any).AddressCity) {
+                setAddressUnit(currentData.addressCity || (currentData as any).AddressCity || '');
+            }
+            if (currentData.districtCode || (currentData as any).DistrictCode || (currentData as any).addressState) {
+                setAddressPostalCode(currentData.districtCode || (currentData as any).DistrictCode || (currentData as any).addressState || '');
+            }
+            if (currentData.country || (currentData as any).Country) {
+                setAddressCountry(currentData.country || (currentData as any).Country || 'Singapore');
             }
 
             // Map Items
@@ -305,7 +315,7 @@ export function CreateInvoicePage() {
     const availableItems = useMemo(() =>
         receiptItems.length > 0
             ? receiptItems.map(item => item.itemName || item.description || '').filter(Boolean)
-            : ['Level 3 Niche', 'Niche Inscription Both Name', 'Urn', 'Other'],
+            : ['Level 3 Niche', 'Niche Inscription Both Name', 'Urn (Marble)', 'Other'],
         [receiptItems]
     );
 
@@ -362,10 +372,10 @@ export function CreateInvoicePage() {
                 taxPercentage: 9,
                 taxCode: null,
                 nicheApplicationId: currentData?.nicheApplicationId,
-                addressNo: addressNumber,
-                address: addressStreet,
-                address2: addressUnit,
-                addressCity: addressPostalCode,
+                addressNo: addressBlock === 'Block' ? 'Blk' : addressBlock, // Save 'Blk' to DB if 'Block' selected
+                address: addressNumber,
+                address2: addressStreet,
+                addressCity: addressUnit,
                 districtCode: addressPostalCode,
                 country: addressCountry,
                 paymentMode: paymentMode,
@@ -402,7 +412,14 @@ export function CreateInvoicePage() {
             invoiceCode: codeToUse,
             invoiceDate: new Date().toLocaleDateString('en-SG', { year: 'numeric', month: 'long', day: 'numeric' }),
             customerName: payeeName,
-            customerAddress: `${addressBlock} ${addressNumber} ${addressStreet} ${addressUnit} ${addressPostalCode} ${addressCountry}`.trim(),
+            customerAddress: formatAddress({
+                block: addressBlock,
+                blockNo: addressNumber,
+                streetName: addressStreet,
+                unitNo: addressUnit,
+                postalCode: addressPostalCode,
+                country: addressCountry
+            }),
             paymentMode: paymentMode,
             totalAmount: totals.total,
             taxAmount: totals.tax,
@@ -539,6 +556,43 @@ export function CreateInvoicePage() {
                                 />
                             </div>
 
+                            {/* Payment & Document Section */}
+                            {/* <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center">
+                                        <CreditCardIcon className="w-4 h-4 text-emerald-600" />
+                                    </div>
+                                    <h2 className="text-lg font-bold text-gray-900">Payment & Document</h2>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Payment Mode</label>
+                                        <select
+                                            value={paymentMode}
+                                            onChange={(e) => setPaymentMode(e.target.value)}
+                                            className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/10 focus:border-teal-500 outline-none font-semibold text-gray-700 transition-all text-sm"
+                                        >
+                                            <option value="Cash">Cash</option>
+                                            <option value="Cheque">Cheque</option>
+                                            <option value="NETS">NETS</option>
+                                            <option value="PayNow">PayNow</option>
+                                            <option value="Bank Transfer">Bank Transfer</option>
+                                            <option value="Credit Card">Credit Card</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Ref Doc No / Cheque No</label>
+                                        <input
+                                            type="text"
+                                            value={refDocumentNo}
+                                            onChange={(e) => setRefDocumentNo(e.target.value)}
+                                            className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/10 focus:border-teal-500 outline-none font-semibold text-gray-700 transition-all text-sm"
+                                            placeholder="e.g. CHQ-123456"
+                                        />
+                                    </div>
+                                </div>
+                            </div> */}
+
                             {/* Items Table */}
                             <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
                                 <div className="flex items-center gap-2 mb-4">
@@ -559,6 +613,8 @@ export function CreateInvoicePage() {
                         {/* Sidebar / Actions */}
                         <div className="space-y-5 sticky top-[110px] self-start">
                             <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 space-y-4">
+
+
                                 <button
                                     onClick={handleCreateInvoice}
                                     disabled={creatingInvoice || currentData?.hasInvoice}

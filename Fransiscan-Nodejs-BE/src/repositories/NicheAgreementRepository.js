@@ -4,6 +4,9 @@ const logger = require('../utils/logger');
 const NicheAgreement = require('../models/NicheAgreement');
 const NicheConcentForm = require('../models/NicheConcentForm');
 
+// Schema check cache - COL_LENGTH results don't change at runtime, avoid 2 extra queries per request
+let _schemaCache = { hasBookingStorageFrom: null, hasInscriptionStorageFrom: null };
+
 /**
  * Niche Agreement repository - ULTRA SIMPLIFIED VERSION
  * Gets data directly from NicheApplication table (no JOINs)
@@ -35,9 +38,6 @@ class NicheAgreementRepository extends BaseRepository {
       // Step 1: Get application data first (fast, indexed lookup)
       const useIndexHints = process.env.USE_INDEX_HINTS === 'true';
       const indexHint = useIndexHints ? 'WITH (NOLOCK, INDEX(IX_NicheApplication_Code))' : 'WITH (NOLOCK)';
-
-      // BYPASS CACHE FOR DEBUGGING
-      const bypassCache = true;
 
       const applicationQuery = `
         SELECT TOP 1 na.*
@@ -120,7 +120,6 @@ class NicheAgreementRepository extends BaseRepository {
       };
 
       logger.info(`Found application: ${mergedData.Code} in Chapel: ${mergedData.ChapelCode || 'N/A'}, Wall: ${mergedData.WallCode || 'N/A'}`);
-      console.log("Adresss finder", mergedData)
 
       // Prefer application-level storage/deceased values before inscription exists.
       // This ensures agreement APIs return storageFrom for pre-inscription records.
@@ -650,17 +649,17 @@ class NicheAgreementRepository extends BaseRepository {
    */
   async addDeceasedAndStorageInfo(nicheApplicationId, nicheAgreement) {
     try {
-      const hasBookingStorageFromResult = await executeQuery(
-        `
-          SELECT CASE
-            WHEN COL_LENGTH('NicheBooking', 'StorageFrom') IS NOT NULL THEN 1
-            ELSE 0
-          END AS HasStorageFrom
-        `,
-        {},
-        { timeout: 5000 }
-      );
-      const hasBookingStorageFrom = Boolean(hasBookingStorageFromResult.recordset?.[0]?.HasStorageFrom);
+      // Use cached schema checks - these never change at runtime (2 queries saved per request)
+      let hasBookingStorageFrom = _schemaCache.hasBookingStorageFrom;
+      if (hasBookingStorageFrom === null) {
+        const hasBookingStorageFromResult = await executeQuery(
+          `SELECT CASE WHEN COL_LENGTH('NicheBooking', 'StorageFrom') IS NOT NULL THEN 1 ELSE 0 END AS HasStorageFrom`,
+          {},
+          { timeout: 5000 }
+        );
+        hasBookingStorageFrom = Boolean(hasBookingStorageFromResult.recordset?.[0]?.HasStorageFrom);
+        _schemaCache.hasBookingStorageFrom = hasBookingStorageFrom;
+      }
 
       // Step 1: Get booking info first (Foundational)
       const bookingQuery = hasBookingStorageFrom ? `
@@ -694,17 +693,16 @@ class NicheAgreementRepository extends BaseRepository {
         nicheAgreement.storageFrom = bookingRow.StorageFrom;
       }
 
-      const hasInscriptionStorageFromResult = await executeQuery(
-        `
-          SELECT CASE
-            WHEN COL_LENGTH('NicheInscriptionRequest', 'StorageFrom') IS NOT NULL THEN 1
-            ELSE 0
-          END AS HasStorageFrom
-        `,
-        {},
-        { timeout: 5000 }
-      );
-      const hasInscriptionStorageFrom = Boolean(hasInscriptionStorageFromResult.recordset?.[0]?.HasStorageFrom);
+      let hasInscriptionStorageFrom = _schemaCache.hasInscriptionStorageFrom;
+      if (hasInscriptionStorageFrom === null) {
+        const hasInscriptionStorageFromResult = await executeQuery(
+          `SELECT CASE WHEN COL_LENGTH('NicheInscriptionRequest', 'StorageFrom') IS NOT NULL THEN 1 ELSE 0 END AS HasStorageFrom`,
+          {},
+          { timeout: 5000 }
+        );
+        hasInscriptionStorageFrom = Boolean(hasInscriptionStorageFromResult.recordset?.[0]?.HasStorageFrom);
+        _schemaCache.hasInscriptionStorageFrom = hasInscriptionStorageFrom;
+      }
 
       // Step 2: Get Inscription Request info
       const inscriptionQuery = hasInscriptionStorageFrom ? `
@@ -856,9 +854,8 @@ class NicheAgreementRepository extends BaseRepository {
         SELECT 
           idl.InvoiceDetailId,
           idl.ItemId,
-          idl.Description,
           idl.Quantity,
-          idl.UnitPrice,
+          idl.UnitAmount,
           idl.LineTaxAmount,
           idl.TotalPayingAmount as LineTotal,
           idl.PayingAmount as LineNet,
@@ -874,11 +871,10 @@ class NicheAgreementRepository extends BaseRepository {
       if (detailsResult.recordset.length > 0) {
         nicheAgreement.invoiceDetails = detailsResult.recordset.map(detail => ({
           itemId: detail.ItemId,
-          itemName: detail.ItemName || detail.Description || 'Service Item',
+          itemName: detail.ItemName || 'Service Item',
           itemCode: detail.ItemCode,
-          description: detail.Description,
           quantity: detail.Quantity || 1,
-          unitPrice: detail.UnitPrice || 0,
+          unitPrice: detail.UnitAmount || detail.UnitPrice || 0,
           taxAmount: detail.LineTaxAmount || 0,
           lineTotal: detail.LineTotal || 0,
           lineNet: detail.LineNet || 0

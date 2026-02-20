@@ -1310,7 +1310,7 @@ SELECT TOP 2
             if (inscriptionResult.recordset && inscriptionResult.recordset.length > 0) {
               const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
               // Keep enrichment best-effort and bounded so invoice API never blocks for long.
-              const enrichmentTasks = inscriptionResult.recordset.map(async(inscrRecord) => {
+              const enrichmentTasks = inscriptionResult.recordset.map(async (inscrRecord) => {
                 const inscriptionCode = inscrRecord.InscriptionCode;
                 logger.info(`[getInvoiceByCode] Found inscription for NAPP ${invoiceResponse.refDocNumber}: ${inscriptionCode} `);
                 try {
@@ -1390,6 +1390,9 @@ SELECT TOP 2
 
       // Log successful retrieval with summary
       logger.info(`Invoice retrieved successfully: InvoiceId = ${invoiceResponse.invoiceId}, Code = ${invoiceResponse.code}, RefDocNumber = "${invoiceResponse.refDocNumber}", Details = ${detailsSummary.totalItems} items, Total = ${detailsSummary.grandTotal} `);
+
+      const AddressUtils = require('../utils/AddressUtils');
+      invoiceResponse.customerAddress = AddressUtils.formatAddress(invoiceResponse);
 
       return invoiceResponse;
     } catch (error) {

@@ -185,7 +185,7 @@ class ApplicationService {
             [{ name: '_ForInscription', value: '1' }, { name: '_ForUrn', value: '0' }],
             churchId
           );
-          const filteredMappedItems = (mappedItems || []).filter((item) => item && item.ItemId !== 10);
+          const filteredMappedItems = (mappedItems || []).filter((item) => item);
 
           if (filteredMappedItems.length > 0) {
             items = filteredMappedItems.map((item) => {

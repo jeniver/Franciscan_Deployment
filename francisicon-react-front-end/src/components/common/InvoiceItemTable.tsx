@@ -105,24 +105,22 @@ export function InvoiceItemTable({
                     }
                 }
 
-                const qty = Math.max(0, toNumber(updatedItem.quantity));
-                const price = Math.max(0, toNumber(updatedItem.amountPaying));
+                const qty = Math.max(1, toNumber(updatedItem.quantity)); // Default to 1 to avoid div by zero
                 const taxPercent = Math.max(0, toNumber(updatedItem.taxPercent));
                 const taxRate = taxPercent / 100;
-                const hasManualTotalEdit = Object.prototype.hasOwnProperty.call(updates, 'totalAmount');
 
-                // If user edits Amount directly, preserve it and back-calculate unit price.
-                if (hasManualTotalEdit) {
-                    const totalAmount = Math.max(0, toNumber(updatedItem.totalAmount));
-                    const totalNoTax = taxRate > 0 ? totalAmount / (1 + taxRate) : totalAmount;
-                    const taxAmount = totalAmount - totalNoTax;
+                const hasManualTotalNoTaxEdit = Object.prototype.hasOwnProperty.call(updates, 'totalNoTax');
 
-                    updatedItem.totalAmount = totalAmount;
+                if (hasManualTotalNoTaxEdit) {
+                    // If user edits "Amount" directly
+                    const totalNoTax = Math.max(0, toNumber(updatedItem.totalNoTax));
                     updatedItem.totalNoTax = totalNoTax;
-                    updatedItem.taxAmount = taxAmount;
-                    updatedItem.amountPaying = qty > 0 ? totalNoTax / qty : totalNoTax;
+                    updatedItem.amountPaying = totalNoTax / qty;
+                    updatedItem.taxAmount = totalNoTax * taxRate;
+                    updatedItem.totalAmount = totalNoTax + updatedItem.taxAmount;
                 } else {
-                    // Standard calculation flow for qty/unit price/gst edits.
+                    // Standard calculation flow for qty/unit price/gst edits
+                    const price = Math.max(0, toNumber(updatedItem.amountPaying));
                     updatedItem.totalNoTax = qty * price;
                     updatedItem.taxAmount = updatedItem.totalNoTax * taxRate;
                     updatedItem.totalAmount = updatedItem.totalNoTax + updatedItem.taxAmount;
@@ -151,12 +149,12 @@ export function InvoiceItemTable({
             <table className="w-full text-sm">
                 <thead className="bg-gray-100 text-gray-600 uppercase text-xs">
                     <tr>
-                        <th className="px-3 py-2 text-left">Item Name</th>
-                        <th className="px-3 py-2 text-left">Ref No</th>
-                        <th className="px-3 py-2 text-right w-24">Qty</th>
+                        <th className="px-3 py-2 text-left w-64">Item Name</th>
+                        <th className="px-3 py-2 text-left w-40">Ref No</th>
+                        <th className="px-3 py-2 text-right w-20">Qty</th>
                         <th className="px-3 py-2 text-right w-32">Unit Price</th>
-                        <th className="px-3 py-2 text-right w-20">GST %</th>
                         <th className="px-3 py-2 text-right w-32">Amount</th>
+                        <th className="px-3 py-2 text-right w-24">GST %</th>
                         <th className="px-1 py-2 w-10"></th>
                     </tr>
                 </thead>
@@ -182,7 +180,7 @@ export function InvoiceItemTable({
                                     onChange={(e) => handleUpdateItem(item.id, { reference: e.target.value })}
                                     disabled={disabled}
                                     className="w-full px-2 py-1 border border-gray-300 rounded focus:border-[#4b3621] outline-none text-xs"
-                                    placeholder="Ref (e.g. 1-234)"
+                                    placeholder="Reference"
                                 />
                             </td>
                             <td className="px-2 py-2">
@@ -207,13 +205,27 @@ export function InvoiceItemTable({
                                     value={item.amountPaying}
                                     onChange={(e) => {
                                         const val = e.target.value;
-                                        // Allow numbers and a single decimal point
                                         if (val === '' || /^\d*\.?\d*$/.test(val)) {
                                             handleUpdateItem(item.id, { amountPaying: val === '' ? 0 : Number(val) });
                                         }
                                     }}
                                     disabled={disabled}
                                     className="w-full px-2 py-1 border border-gray-300 rounded focus:border-[#4b3621] outline-none text-right"
+                                />
+                            </td>
+                            <td className="px-2 py-2">
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={item.totalNoTax.toFixed(2)}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                            handleUpdateItem(item.id, { totalNoTax: val === '' ? 0 : Number(val) });
+                                        }
+                                    }}
+                                    disabled={disabled}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded focus:border-[#4b3621] outline-none text-right font-medium"
                                 />
                             </td>
                             <td className="px-2 py-2">
@@ -227,21 +239,6 @@ export function InvoiceItemTable({
                                         <option key={rate} value={rate}>{rate}%</option>
                                     ))}
                                 </select>
-                            </td>
-                            <td className="px-2 py-2">
-                                <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={item.totalAmount}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                                            handleUpdateItem(item.id, { totalAmount: val === '' ? 0 : Number(val) });
-                                        }
-                                    }}
-                                    disabled={disabled}
-                                    className="w-full px-2 py-1 border border-gray-300 rounded focus:border-[#4b3621] outline-none text-right font-medium"
-                                />
                             </td>
                             <td className="px-1 py-2 text-center">
                                 <button
@@ -274,8 +271,8 @@ export function InvoiceItemTable({
                         <td></td>
                     </tr>
                     <tr className="text-lg text-[#4b3621] bg-[#4b3621]/5">
-                        <td colSpan={5} className="px-3 py-3 text-right">Total Payable:</td>
-                        <td className="px-3 py-3 text-right font-bold">${totals.totalPayable.toFixed(2)}</td>
+                        <td colSpan={5} className="px-3 py-3 text-right font-bold">Total Payable:</td>
+                        <td className="px-3 py-3 text-right font-extrabold">${totals.totalPayable.toFixed(2)}</td>
                         <td></td>
                     </tr>
                 </tfoot>

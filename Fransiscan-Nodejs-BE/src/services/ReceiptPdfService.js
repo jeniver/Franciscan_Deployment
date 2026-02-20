@@ -77,7 +77,7 @@ class ReceiptPdfService {
     return `/${relative}`;
   }
 
-  async renderPdf(html, filePath) {
+  async renderPdf(html, filePath, options = {}) {
     const browser = await puppeteer.launch({
       headless: 'new',
       args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -88,13 +88,14 @@ class ReceiptPdfService {
       await page.setContent(html, { waitUntil: 'networkidle0' });
       await page.pdf({
         path: filePath,
-        format: 'A4',
+        format: options.format || 'A4',
         printBackground: true,
-        margin: {
-          top: '20mm',
-          right: '15mm',
-          bottom: '20mm',
-          left: '15mm'
+        landscape: options.landscape || false,
+        margin: options.margin || {
+          top: '10mm',
+          right: '10mm',
+          bottom: '10mm',
+          left: '10mm'
         }
       });
     } finally {
@@ -123,7 +124,16 @@ class ReceiptPdfService {
       logoBase64
     });
 
-    await this.renderPdf(html, filePath);
+    await this.renderPdf(html, filePath, {
+      format: 'A5',
+      landscape: true, // A5 Landscape for receipts often looks better or is requested
+      margin: {
+        top: '10mm',
+        right: '10mm',
+        bottom: '10mm',
+        left: '10mm'
+      }
+    });
 
     logger.info(`Generated receipt PDF: ${fileName}`);
 
@@ -260,44 +270,43 @@ class ReceiptPdfService {
   <meta charset="UTF-8">
   <title>Receipt ${this.sanitize(this.getField(receipt, 'code', 'Code'))}</title>
   <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; color: #000; font-size: 14px; margin: 0; padding: 0; }
-    .container { padding: 40px; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #000; font-size: 12px; margin: 0; padding: 0; }
+    .container { padding: 25px; }
     
     /* Header Section */
-    .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
-    .logo-section { display: flex; align-items: center; gap: 15px; }
-    .logo-img { width: 80px; height: auto; }
-    .receipt-title { font-size: 24px; font-weight: normal; text-transform: uppercase; line-height: 1.2; }
+    .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 25px; }
+    .logo-section { display: flex; align-items: center; gap: 10px; }
+    .logo-img { width: 60px; height: auto; }
+    .receipt-title { font-size: 20px; font-weight: bold; text-transform: uppercase; line-height: 1.1; }
     
-    .company-details { text-align: right; font-size: 12px; line-height: 1.4; }
-    .company-name { font-weight: bold; font-size: 14px; text-transform: uppercase; margin-bottom: 4px; }
+    .company-details { text-align: right; font-size: 10px; line-height: 1.3; }
+    .company-name { font-weight: bold; font-size: 12px; text-transform: uppercase; margin-bottom: 2px; }
     
-    /* Receipt Info (Right aligned below company info usually, or separate) */
-    .receipt-meta { display: flex; justify-content: flex-end; margin-top: 10px; }
-    .meta-table { text-align: right; font-size: 14px; }
-    .meta-table td { padding: 2px 0 2px 20px; }
+    .receipt-meta { display: flex; justify-content: flex-end; margin-top: 5px; }
+    .meta-table { text-align: right; font-size: 12px; }
+    .meta-table td { padding: 1px 0 1px 15px; }
     
     /* Customer Info */
-    .customer-section { margin-bottom: 30px; margin-top: 20px; }
-    .info-row { display: flex; margin-bottom: 8px; }
-    .info-label { width: 120px; font-weight: normal; }
-    .info-value { flex: 1; }
+    .customer-section { margin-bottom: 20px; margin-top: 10px; }
+    .info-row { display: flex; margin-bottom: 6px; }
+    .info-label { width: 100px; font-weight: bold; }
+    .info-value { flex: 1; border-bottom: 1px solid #ddd; padding-bottom: 2px; }
     
     /* Main Table */
-    .items-table { width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; }
-    .items-table th { text-align: left; border-bottom: 2px solid #000; padding: 8px 0; font-weight: bold; text-transform: uppercase; font-size: 13px; }
-    .items-table td { padding: 12px 0; border: none; }
-    .total-row td { border-top: 2px solid #000; border-bottom: 2px double #000; padding: 10px 0; font-weight: bold; font-size: 15px; }
+    .items-table { width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 15px; }
+    .items-table th { text-align: left; border-bottom: 2px solid #000; padding: 6px 0; font-weight: bold; text-transform: uppercase; font-size: 11px; }
+    .items-table td { padding: 8px 0; border: none; font-size: 12px; }
+    .total-row td { border-top: 1.5px solid #000; border-bottom: 3px double #000; padding: 8px 0; font-weight: bold; font-size: 13px; }
     
     /* Words */
-    .amount-words-row { display: flex; margin-top: 20px; margin-bottom: 40px; }
-    .words-label { width: 80px; }
-    .words-value { flex: 1; }
+    .amount-words-row { display: flex; margin-top: 15px; margin-bottom: 30px; font-size: 12px; font-style: italic; }
+    .words-label { width: 70px; font-weight: bold; font-style: normal; }
+    .words-value { flex: 1; border-bottom: 1px solid #ddd; }
     
     /* Footer */
-    .footer-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 60px; }
-    .signature-line { width: 250px; border-top: 1px solid #000; padding-top: 8px; }
-    .disclaimer { text-align: right; font-size: 11px; color: #333; }
+    .footer-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 40px; }
+    .signature-line { width: 200px; border-top: 1px solid #000; padding-top: 5px; text-align: center; }
+    .disclaimer { text-align: right; font-size: 10px; color: #444; }
   </style>
 </head>
 <body>
@@ -314,14 +323,13 @@ class ReceiptPdfService {
         <div>Co & GST Reg No. 201016236M</div>
         <div>Franciscan Columbarium</div>
         <div>5 Bukit Batok East Avenue 2 Singapore 659918</div>
-        <div>Tel: 6560-6361, HP: 9774-7053,</div>
-        <div>email:franciscan.columbarium@gmail.com</div>
+        <div>Tel: 6560-6361, HP: 9774-7053</div>
         
         <div class="receipt-meta">
           <table class="meta-table">
             <tr>
               <td>Receipt No:</td>
-              <td>${this.sanitize(this.getField(receipt, 'code', 'Code'))}</td>
+              <td><strong>${this.sanitize(this.getField(receipt, 'code', 'Code'))}</strong></td>
             </tr>
             <tr>
               <td>Date :</td>
@@ -335,7 +343,7 @@ class ReceiptPdfService {
     <div class="customer-section">
       <div class="info-row">
         <div class="info-label">Received From :</div>
-        <div class="info-value">${this.sanitize(this.getField(receipt, 'customerName', 'CustomerName', 'payeeName', 'PayeeName'))}</div>
+        <div class="info-value"><strong>${this.sanitize(this.getField(receipt, 'customerName', 'CustomerName', 'payeeName', 'PayeeName'))}</strong></div>
       </div>
       <div class="info-row">
         <div class="info-label">Address:</div>
@@ -348,7 +356,7 @@ class ReceiptPdfService {
         <tr>
           <th style="width: 25%;">Invoice</th>
           <th style="width: 50%;">Description</th>
-          <th style="width: 25%; text-align: right;">Total Amount</th>
+          <th style="width: 25%; text-align: right;">Amount</th>
         </tr>
       </thead>
       <tbody>
@@ -356,7 +364,7 @@ class ReceiptPdfService {
         
         <tr class="total-row">
           <td></td>
-          <td style="text-align: right; padding-right: 20px;">Total :</td>
+          <td style="text-align: right; padding-right: 15px;">Total SGD:</td>
           <td style="text-align: right;">$ ${this.formatCurrency(totalAmount)}</td>
         </tr>
       </tbody>
@@ -370,9 +378,11 @@ class ReceiptPdfService {
     <div class="footer-row">
       <div class="signature-section">
         <div class="signature-line">${paymentMode}</div>
+        <div style="font-size: 10px; margin-top: 2px;">Payment Method</div>
       </div>
       <div class="disclaimer">
-        The Order of Friars Minor (S) Ltd
+        The Order of Friars Minor (S) Ltd<br>
+        <span style="font-size: 9px;">Computer generated, no signature required</span>
       </div>
     </div>
   </div>

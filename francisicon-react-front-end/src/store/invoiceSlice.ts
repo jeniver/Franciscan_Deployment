@@ -278,7 +278,9 @@ export const createInvoice = createAsyncThunk<
       if (error.response?.status === 409) {
         return rejectWithValue('Duplicate invoice - invoice already exists for this application');
       }
-      return rejectWithValue(error.response?.data?.message || 'Failed to create invoice');
+      const errData = error.response?.data;
+      const msg = typeof errData?.error === 'object' ? errData?.error?.message : (errData?.error ?? errData?.message);
+      return rejectWithValue(typeof msg === 'string' ? msg : 'Failed to create invoice');
     }
   }
 );
@@ -321,7 +323,9 @@ export const createIndividualInvoice = createAsyncThunk<
         invoiceDetails: response.data.data?.invoiceDetails || null
       };
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to create individual invoice');
+      const errData = error.response?.data;
+      const msg = typeof errData?.error === 'object' ? errData?.error?.message : (errData?.error ?? errData?.message);
+      return rejectWithValue(typeof msg === 'string' ? msg : 'Failed to create individual invoice');
     }
   }
 );
