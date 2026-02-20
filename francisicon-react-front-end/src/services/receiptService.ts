@@ -36,11 +36,13 @@ export interface Receipt {
   address?: string;
   address2?: string;
   addressCity?: string;
+  districtCode?: string;
   country?: string;
   description?: string;
   invoice?: {
     code?: string;
   };
+  paymentModeDocNo?: string;
 }
 
 export interface InvoiceDetail {
@@ -137,6 +139,7 @@ export interface Invoice {
   taxPercentage?: number;
   refDocNumber?: string;
   districtCode?: string;
+  paymentModeDocNo?: string;
 }
 
 export interface ReceiptItem {
@@ -433,8 +436,9 @@ export const receiptService = {
         } else if (status >= 500) {
           throw new ReceiptError('Server error occurred', 'server', status);
         } else {
+          const msg = error.response.data?.error ?? error.response.data?.message ?? error.response.data?.error?.message ?? 'Failed to create individual receipt';
           throw new ReceiptError(
-            error.response.data?.message || 'Failed to create individual receipt',
+            typeof msg === 'string' ? msg : 'Failed to create individual receipt',
             'server',
             status
           );

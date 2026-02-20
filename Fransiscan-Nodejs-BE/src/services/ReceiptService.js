@@ -459,54 +459,19 @@ class ReceiptService extends BaseService {
 
       let items = Array.isArray(report.data) ? [...report.data] : [];
 
+      const AddressUtils = require('../utils/AddressUtils');
+
       // Map PaymentMode to labels, build full CustomerAddress, and ensure Receipt No
       items = items.map(item => {
         // Map Payment Mode to Label (1=Cash, 2=Cheque, 3=TT, 4=Others)
         const rawMode = item.PaymentMode || item.paymentMode;
         const modeLabel = Receipt.paymentModeToString(rawMode);
 
-        // Build Full Customer Address from components if available
-        // Fallback to Invoice address components if Receipt components are missing
-        const addrNo = item.AddressNo || item.addressNo || item.Invoice_AddressNo || '';
-        const addr1 = item.Address || item.address || item.Invoice_Address || '';
-        const addr2 = item.Address2 || item.address2 || item.Invoice_Address2 || '';
-        const city = item.AddressCity || item.addressCity || item.Invoice_AddressCity || '';
-        const dist = item.DistrictCode || item.districtCode || item.Invoice_DistrictCode || '';
-        const country = item.Country || item.country || item.Invoice_Country || '';
-
-        const addressPartsRaw = [addrNo, addr1, addr2, city, dist, country]
-          .map(p => String(p || '').trim())
-          .filter(p => p && p.toLowerCase() !== 'null' && p.toLowerCase() !== 'undefined' && p !== '');
-
-        // Deduplicate parts to avoid repeats like "#65686, #65686"
-        const uniqueParts = [];
-        const seenNormalized = new Set();
-        for (const part of addressPartsRaw) {
-          // Normalize: lowercase and remove non-alphanumeric
-          const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
-          if (!normalized) continue;
-
-          // Check if this normalized part or something containing it was already seen
-          let exists = false;
-          for (const seen of seenNormalized) {
-            if (seen.includes(normalized) || normalized.includes(seen)) {
-              exists = true;
-              break;
-            }
-          }
-
-          if (!exists) {
-            uniqueParts.push(part);
-            seenNormalized.add(normalized);
-          }
-        }
-
-        const fullAddress = uniqueParts.length > 0
-          ? uniqueParts.join(', ')
-          : (item.CustomerAddress || item.customerAddress || item.address || 'N/A');
+        const fullAddress = AddressUtils.formatAddress(item);
 
         // Robust Receipt No handling
         const receiptNo = item.Code || item.code || item.ReceiptCode || item.receiptCode || item.ReceiptNo || item.receiptNo || 'N/A';
+
 
         return {
           ...item,

@@ -558,12 +558,15 @@ class NicheApplicationController {
       const { code } = req.params;
       const { body, user } = req;
 
+      logger.info(`[NicheApplication] PUT update request for code: ${code}, hasUser: ${!!user}, churchId: ${user?.churchId}`);
+
       if (!user || !user.churchId) {
+        logger.warn(`[NicheApplication] PUT ${code} rejected: missing user or churchId`);
         return res.status(401).json({
           success: false,
           error: {
             code: 'UNAUTHORIZED',
-            message: 'Authentication required with church ID'
+            message: 'Authentication required. Ensure you are logged in and your token includes churchId.'
           }
         });
       }

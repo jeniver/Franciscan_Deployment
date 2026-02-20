@@ -426,7 +426,9 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
         <div className="border border-black p-4 mt-12 text-xs">
           <div className="grid grid-cols-2 gap-12">
             <div>
-              <p className="mb-12 font-semibold">The Applicant Personally :</p>
+              <div className="min-h-[2.5rem] flex items-end mb-9">
+                <p className="mb-2 font-semibold">The Applicant Personally :</p>
+              </div>
               <div className="border-b border-black mb-3"></div>
               <div className="flex mb-2">
                 <span className="w-32 font-medium">Name :</span>
@@ -438,12 +440,14 @@ export function NomineeAgreement({ data, ...legacyProps }: NomineeAgreementProps
               </div>
             </div>
             <div>
-              <p className="mb-2 italic text-gray-600">For and on Behalf of</p>
-              <p className="mb-10 font-bold">
-                The Order of Friars Minor (Singapore) Limited
-              </p>
+              <div className="min-h-[2.5rem] flex flex-col justify-end mb-9">
+                <p className="mb-0 italic text-gray-600">For and on Behalf of</p>
+                <p className="mb-2 font-bold">
+                  The Order of Friars Minor (Singapore) Limited
+                </p>
+              </div>
               <div className="border-b border-black mb-3"></div>
-              <div className="mb-1 font-bold">Fr Gerard Victor</div>
+              <div className="mb-1 font-bold">{finalData.type?.includes('Signed') || finalData.documentTitle?.includes('Signed') ? 'Fr Gerard Victor' : 'Fr Gerard Victor'}</div>
               <div className="text-gray-600 italic">Friar - Manager</div>
             </div>
           </div>

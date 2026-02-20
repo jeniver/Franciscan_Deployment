@@ -765,6 +765,7 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
   const beneficiaries = buildCleanBeneficiaries(formData);
 
   // Create the clean optimized payload
+  // Include BOTH nested applicant AND flat applicant fields so backend can use either path
   const optimizedPayload = {
     // Core information
     chapel,
@@ -776,6 +777,24 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
     applicant,
     nominees,
     beneficiaries,
+
+    // Flat applicant fields (backup for backend pickFirst - ensures Contact Person updates persist)
+    applicantName: applicant.name,
+    applicantIDNo: applicant.idNo,
+    applicantEmail: applicant.email,
+    applicantEmailID: applicant.email,
+    applicantPhone: applicant.phone,
+    applicantMobileNo: applicant.mobileNo,
+    applicantHomeTel: applicant.homeTel || applicant.homeTelNo,
+    applicantOfficeTel: applicant.officeTel || applicant.officeTelNo,
+    applicantAddressNo: applicant.address?.no,
+    applicantAddressLine1: applicant.address?.line1,
+    applicantAddressLine2: applicant.address?.line2,
+    applicantAddressCity: applicant.address?.city,
+    applicantAddressState: applicant.address?.state,
+    applicantAddressCountry: applicant.address?.country,
+    applicantIsCatholic: applicant.isCatholic,
+    applicantReligion: applicant.religion,
 
     // Contact info (minimal duplicate for compatibility)
     contact: {

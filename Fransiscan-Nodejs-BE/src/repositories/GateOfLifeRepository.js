@@ -216,6 +216,7 @@ class GateOfLifeRepository {
 
       insertRequest.input('DonationAmount', sql.Decimal(18, 2), application.donationAmount ?? null);
       insertRequest.input('DefaultDonationAmount', sql.Decimal(18, 2), application.defaultDonationAmount ?? null);
+      insertRequest.input('RequestSameBrick', sql.Bit, application.requestSameBrick ? 1 : 0);
       insertRequest.input('ChurchId', sql.Int, application.churchId);
       insertRequest.input('UserId', sql.Int, application.userId || null);
       insertRequest.input('RefDocType', sql.VarChar(10), application.refDocType || 'GOLA');
@@ -259,6 +260,7 @@ class GateOfLifeRepository {
           @ApplicantAddressCountry,
           @DonationAmount,
           @DefaultDonationAmount,
+          @RequestSameBrick,
           @ChurchId,
           @UserId,
           @RefDocType
@@ -316,6 +318,7 @@ class GateOfLifeRepository {
 
       updateRequest.input('DonationAmount', sql.Decimal(18, 2), application.donationAmount ?? null);
       updateRequest.input('DefaultDonationAmount', sql.Decimal(18, 2), application.defaultDonationAmount ?? null);
+      updateRequest.input('RequestSameBrick', sql.Bit, application.requestSameBrick ? 1 : 0);
       updateRequest.input('BookingDate', sql.DateTime, application.bookingDate || new Date());
 
       const updateQuery = `
@@ -335,6 +338,7 @@ class GateOfLifeRepository {
           ApplicantAddressCountry = @ApplicantAddressCountry,
           DonationAmount = @DonationAmount,
           DefaultDonationAmount = @DefaultDonationAmount,
+          RequestSameBrick = @RequestSameBrick,
           BookingDate = @BookingDate
         WHERE EngraveWallApplicationId = @ApplicationId
           AND ChurchId = @ChurchId
@@ -435,6 +439,7 @@ class GateOfLifeRepository {
           ewa.ApplicantAddressCountry,
           ewa.DonationAmount,
           ewa.DefaultDonationAmount,
+          ewa.RequestSameBrick,
           ewa.ChurchId,
           ewa.UserId
         FROM EngraveWallApplication ewa WITH (NOLOCK)

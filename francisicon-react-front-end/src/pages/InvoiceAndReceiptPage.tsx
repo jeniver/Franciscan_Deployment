@@ -6,8 +6,7 @@ import { useReceipt } from '../hooks/useReceipt';
 import { useToast } from '../contexts/ToastContext';
 import { useApplicationItems } from '../hooks/useApplicationItems';
 import { addressService } from '../services/addressService';
-import { parseRawAddress } from '../components/AddressInput';
-import { formatAddressLinesForInvoiceReceipt, joinAddressLines } from '../utils/addressUtils';
+import { parseRawAddress } from '../utils/addressMapper';
 import api from '../services/api';
 import { PrinterIcon, EyeIcon, LoaderIcon, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
 import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
@@ -722,17 +721,25 @@ export function InvoiceAndReceiptPage() {
     return String(lastReceiptNumber);
   };
 
-  // Build customer address string (multi-line format: Block, Street, Unit, Singapore)
+  // Build customer address string from address fields
   const buildCustomerAddress = useCallback(() => {
-    const lines = formatAddressLinesForInvoiceReceipt({
-      block: addressBlock,
-      blockNo: addressNumber,
-      street: addressStreet,
-      unit: addressUnit,
-      postalCode: addressPostalCode,
-      country: addressCountry || 'Singapore',
-    });
-    return joinAddressLines(lines, '\n') || '';
+    const parts: string[] = [];
+    if (addressBlock && addressNumber) {
+      parts.push(`${addressBlock} ${addressNumber}`);
+    }
+    if (addressStreet) {
+      parts.push(addressStreet);
+    }
+    if (addressUnit) {
+      parts.push(addressUnit);
+    }
+    if (addressPostalCode) {
+      parts.push(addressPostalCode);
+    }
+    if (addressCountry) {
+      parts.push(addressCountry);
+    }
+    return parts.join(', ') || '';
   }, [addressBlock, addressNumber, addressStreet, addressUnit, addressPostalCode, addressCountry]);
 
   // Calculate totals
@@ -959,17 +966,42 @@ export function InvoiceAndReceiptPage() {
 
       setViewingInvoiceCode(codeToUse);
 
-      // Build customer address (multi-line: Block, Street, Unit, Singapore) - avoid duplicate Block/Blk
-      const addressParams = {
-        block: addressBlock,
-        blockNo: addressNumber || currentData?.addressNo,
-        street: addressStreet || currentData?.address,
-        unit: addressUnit || currentData?.address2,
-        postalCode: addressPostalCode || currentData?.addressCity,
-        country: addressCountry || currentData?.country || 'Singapore',
-      };
-      const customerAddressLines = formatAddressLinesForInvoiceReceipt(addressParams);
-      const customerAddress = joinAddressLines(customerAddressLines, '\n') || '';
+      // Build invoice template data from form state
+      // Build customer address string - prioritize form state, fallback to currentData
+      const customerAddressParts: string[] = [];
+
+      // Try to build from form state first
+      if (addressBlock && addressNumber) {
+        customerAddressParts.push(`${addressBlock} ${addressNumber}`);
+      }
+      if (addressStreet) {
+        customerAddressParts.push(addressStreet);
+      }
+      if (addressUnit) {
+        customerAddressParts.push(addressUnit);
+      }
+      if (addressPostalCode) {
+        customerAddressParts.push(addressPostalCode);
+      }
+      if (addressCountry) {
+        customerAddressParts.push(addressCountry);
+      }
+
+      // Also add any missing address fields from currentData to complement form state
+      if (currentData) {
+        // Add addressNo if not already in form state
+        if (!addressNumber && currentData.addressNo) customerAddressParts.push(currentData.addressNo);
+        // Add address if not already in form state
+        if (!addressStreet && currentData.address) customerAddressParts.push(currentData.address);
+        // Add address2 if not already in form state
+        if (!addressUnit && currentData.address2) customerAddressParts.push(currentData.address2);
+        // Add addressCity if not already in form state
+        if (!addressPostalCode && currentData.addressCity) customerAddressParts.push(currentData.addressCity);
+        // Add country if not already in form state
+        if (!addressCountry && currentData.country) customerAddressParts.push(currentData.country);
+      }
+
+      const customerAddress = customerAddressParts.join(', ') || '';
 
       // Format transaction date (convert from DD-MM-YYYY to proper date format)
       let formattedDate = transactionDate;
@@ -1108,6 +1140,7 @@ export function InvoiceAndReceiptPage() {
           address: addressStreet || currentData?.address || undefined,
           address2: addressUnit || currentData?.address2 || undefined,
           addressCity: addressPostalCode || currentData?.addressCity || undefined,
+          districtCode: addressPostalCode || currentData?.districtCode || undefined,
           country: addressCountry || currentData?.country || 'Singapore',
         };
       }
@@ -1309,7 +1342,7 @@ export function InvoiceAndReceiptPage() {
                       disabled={
                         (!invoiceNumber.trim() && !currentData?.code) ||
                         viewingInvoiceCode !== null ||
-                        (currentData && currentData.hasInvoice === false && !isNewRoute)
+                        !!(currentData && currentData.hasInvoice === false && !isNewRoute)
                       }
                       className="px-6 py-2.5 bg-gradient-to-r from-[#a52a2a] to-[#c93535] text-white rounded-lg font-semibold hover:from-[#c93535] hover:to-[#a52a2a] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       title="Print Invoice PDF"
@@ -1331,11 +1364,13 @@ export function InvoiceAndReceiptPage() {
                       disabled={
                         (!receiptCode.trim() && !currentData?.receipt?.receiptCode) ||
                         viewingReceiptCode !== null ||
-                        (currentData && currentData.hasReceipt === false && !isNewRoute)
+                        !!(currentData && currentData.hasReceipt === false && !isNewRoute)
                       }
                       className="px-6 py-2.5 bg-gradient-to-r from-[#a52a2a] to-[#c93535] text-white rounded-lg font-semibold hover:from-[#c93535] hover:to-[#a52a2a] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       title="Print Receipt PDF"
                     >
+
+
                       {viewingReceiptCode ? (
                         <>
                           <LoaderIcon className="w-4 h-4 animate-spin" />

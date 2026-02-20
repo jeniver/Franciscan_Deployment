@@ -172,7 +172,10 @@ class NicheApplication {
       churchId: this.churchId,
       userId: this.userId,
       remarks: this.remarks,
-      refDocType: this.refDocType
+      refDocType: this.refDocType,
+
+      // Contact Person Details
+      contact: this.contact
     };
   }
 

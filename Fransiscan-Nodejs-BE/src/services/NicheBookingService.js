@@ -2023,7 +2023,9 @@ class NicheBookingService {
               bookingData.hasInscription !== false; // Default to true if not explicitly false
 
             if (hasInscription) {
-              const inscriptionItem = await getItemById(12, churchId); // "Niche Inscription 1st Name"
+              const deceasedCount = (bookingData.beneficiaries || []).length;
+              const targetItemId = deceasedCount >= 2 ? 14 : 12; // 14: Both Name, 12: 1st Name
+              const inscriptionItem = await getItemById(targetItemId, churchId);
               if (inscriptionItem) {
                 const inscriptionAmount = Number(inscriptionItem.Price || 400) || 0;
                 const taxPercent = 9;

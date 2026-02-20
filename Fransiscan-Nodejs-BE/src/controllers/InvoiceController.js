@@ -117,7 +117,8 @@ class InvoiceController extends BaseController {
       if (!result.success) {
         const statusCode = result.error.code === 'DUPLICATE_INVOICE' ? 409 :
           result.error.code === 'INVALID_REF_DOCUMENT' ? 400 :
-            result.error.code === 'VALIDATION_ERROR' ? 400 : 400;
+            result.error.code === 'VALIDATION_ERROR' ? 400 :
+              result.error.code === 'NICHE_APPLICATION_NOT_BOOKED' ? 400 : 400;
 
         return res.status(statusCode).json({
           success: false,

@@ -167,8 +167,28 @@ class GateOfLifeService {
 
   async updateApplication(code, body, churchId) {
     try {
+      // Normalize body: flatten applicant object if present so it overrides existing
+      const normalizedBody = { ...(body || {}) };
+      if (normalizedBody.applicant && typeof normalizedBody.applicant === 'object') {
+        const a = normalizedBody.applicant;
+        const addr = a.address || {};
+        if (a.name != null) normalizedBody.applicantName = a.name;
+        if (a.idNo != null) normalizedBody.applicantIDNo = a.idNo;
+        if (a.email != null) normalizedBody.applicantEmailID = a.email;
+        if (a.mobileNo != null) normalizedBody.applicantMobileNo = a.mobileNo;
+        if (a.homeTelNo != null) normalizedBody.applicantHomeTelNo = a.homeTelNo;
+        if (a.officeTelNo != null) normalizedBody.applicantOfficeTelNo = a.officeTelNo;
+        if (addr.no != null) normalizedBody.applicantAddressNo = addr.no;
+        if (addr.line1 != null) normalizedBody.applicantAddressLine1 = addr.line1;
+        if (addr.line2 != null) normalizedBody.applicantAddressLine2 = addr.line2;
+        if (addr.city != null) normalizedBody.applicantAddressCity = addr.city;
+        if (addr.state != null) normalizedBody.applicantAddressState = addr.state;
+        if (addr.country != null) normalizedBody.applicantAddressCountry = addr.country;
+      }
+
       const existing = await this._findApplicationByCode(code, churchId);
       if (!existing) {
+        logger.warn(`[updateApplication] Application not found: code=${code}, churchId=${churchId}`);
         return {
           success: false,
           error: {
@@ -178,28 +198,59 @@ class GateOfLifeService {
         };
       }
 
-      const normalizedDetails = this._normalizeDetailsInput(body);
-      const fallbackDetails = existing.details?.map(detail => detail.toJSON ? detail.toJSON() : detail) || [];
-      const hasExplicitDetailsInput =
-        Object.prototype.hasOwnProperty.call(body || {}, 'details')
-        || Object.prototype.hasOwnProperty.call(body || {}, 'EngraveWallApplicationDetailList')
-        || Object.prototype.hasOwnProperty.call(body || {}, 'engravings')
-        || Object.prototype.hasOwnProperty.call(body || {}, 'namesToEngrave')
-        || Object.prototype.hasOwnProperty.call(body || {}, 'engraveNames')
-        || Object.prototype.hasOwnProperty.call(body || {}, 'names');
-      const merged = new GateOfLifeApplication({
-        ...existing,
-        ...body,
-        code: existing.code,
-        // Respect explicit payload intent; if client sends details (even empty),
-        // don't silently keep old names from the existing record.
-        details: hasExplicitDetailsInput
-          ? normalizedDetails
-          : (normalizedDetails.length ? normalizedDetails : fallbackDetails),
+      logger.info(`[updateApplication] Updating code=${code}, churchId=${churchId}`, {
+        applicantName: normalizedBody.applicantName,
+        hasDetails: Array.isArray(normalizedBody.details) && normalizedBody.details.length
+      });
+
+      // Build plain object from existing to avoid class instance spread issues
+      const existingPlain = {
         applicationId: existing.applicationId,
-        churchId,
-        userId: body.userId || existing.userId,
-        bookingDate: body.bookingDate || body.BookingDate || existing.bookingDate
+        code: existing.code,
+        churchId: existing.churchId,
+        userId: existing.userId,
+        applicantName: existing.applicantName,
+        applicantIDNo: existing.applicantIDNo,
+        applicantEmailID: existing.applicantEmailID,
+        applicantMobileNo: existing.applicantMobileNo,
+        applicantHomeTelNo: existing.applicantHomeTelNo,
+        applicantOfficeTelNo: existing.applicantOfficeTelNo,
+        applicantAddressNo: existing.applicantAddressNo,
+        applicantAddressLine1: existing.applicantAddressLine1,
+        applicantAddressLine2: existing.applicantAddressLine2,
+        applicantAddressCity: existing.applicantAddressCity,
+        applicantAddressState: existing.applicantAddressState,
+        applicantAddressCountry: existing.applicantAddressCountry,
+        donationAmount: existing.donationAmount,
+        defaultDonationAmount: existing.defaultDonationAmount,
+        requestSameBrick: existing.requestSameBrick,
+        bookingDate: existing.bookingDate
+      };
+
+      const normalizedDetails = this._normalizeDetailsInput(normalizedBody);
+      const fallbackDetails = (existing.details || []).map(detail =>
+        (typeof detail.toJSON === 'function') ? detail.toJSON() : detail
+      ).filter(d => d && (d.nameToEngrave || d.NameToEngrave));
+      const hasExplicitDetailsInput =
+        Object.prototype.hasOwnProperty.call(normalizedBody, 'details')
+        || Object.prototype.hasOwnProperty.call(normalizedBody, 'EngraveWallApplicationDetailList')
+        || Object.prototype.hasOwnProperty.call(normalizedBody, 'engravings')
+        || Object.prototype.hasOwnProperty.call(normalizedBody, 'namesToEngrave')
+        || Object.prototype.hasOwnProperty.call(normalizedBody, 'engraveNames')
+        || Object.prototype.hasOwnProperty.call(normalizedBody, 'names');
+      const mergedDetails = hasExplicitDetailsInput
+        ? normalizedDetails
+        : (normalizedDetails.length ? normalizedDetails : fallbackDetails);
+
+      const merged = new GateOfLifeApplication({
+        ...existingPlain,
+        ...normalizedBody,
+        code: existing.code,
+        applicationId: existing.applicationId,
+        churchId: churchId,
+        userId: normalizedBody.userId ?? existing.userId,
+        bookingDate: normalizedBody.bookingDate || normalizedBody.BookingDate || existing.bookingDate,
+        details: mergedDetails
       });
 
       merged.ensureDefaultDetail();

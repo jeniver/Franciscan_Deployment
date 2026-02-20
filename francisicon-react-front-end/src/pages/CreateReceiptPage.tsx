@@ -98,21 +98,25 @@ export function CreateReceiptPage() {
         }
 
         try {
-            // Only try to look up as an invoice
+            // Try look up as invoice first
             const invoiceResult = await dispatch(fetchInvoiceByCode(code.trim())).unwrap();
-
             if (invoiceResult) {
-                // Fetch application items for the invoice's reference if available
-                if (invoiceResult.refDocNumber) {
-                    fetchApplicationItems(invoiceResult.refDocNumber);
-                }
-                if (routeCode !== code.trim()) {
-                    navigate(`/create-receipt/${code.trim()}`, { replace: true });
-                }
+                if (invoiceResult.refDocNumber) fetchApplicationItems(invoiceResult.refDocNumber);
+                if (routeCode !== code.trim()) navigate(`/create-receipt/${code.trim()}`, { replace: true });
                 return;
             }
         } catch (err) {
-            showError('Error', 'No invoice found with this code. Please enter a valid Invoice Code.');
+            // Next try as receipt if invoice fails
+            try {
+                const receiptResult = await receiptService.getReceiptByCode(code.trim());
+                if (receiptResult) {
+                    dispatch(setSelectedReceipt(receiptResult));
+                    setIsDetailModalOpen(true);
+                    return;
+                }
+            } catch (rErr) {
+                showError('Error', 'No invoice or receipt found with this code.');
+            }
         }
     };
 
@@ -120,12 +124,19 @@ export function CreateReceiptPage() {
     useEffect(() => {
         if (selectedInvoice) {
             setPayeeName(selectedInvoice.customerName || '');
-            setAddressNumber(selectedInvoice.addressNo || '');
-            setAddressStreet(selectedInvoice.address || '');
-            setAddressUnit(selectedInvoice.address2 || '');
-            setAddressPostalCode(selectedInvoice.districtCode || selectedInvoice.addressCity || '');
-            setAddressCountry(selectedInvoice.country || 'Singapore');
-            setPaymentMode(selectedInvoice.paymentMode || 'Cash');
+
+            const addressNo = selectedInvoice.addressNo || (selectedInvoice as any).AddressNo;
+            if (addressNo) {
+                setAddressBlock(addressNo === 'Blk' ? 'Block' : (addressNo === 'No' ? 'No' : addressNo));
+            }
+            setAddressNumber(selectedInvoice.address || (selectedInvoice as any).Address || '');
+            setAddressStreet(selectedInvoice.address2 || (selectedInvoice as any).Address2 || '');
+            setAddressUnit(selectedInvoice.addressCity || (selectedInvoice as any).AddressCity || '');
+            setAddressPostalCode(selectedInvoice.districtCode || (selectedInvoice as any).DistrictCode || (selectedInvoice as any).addressState || '');
+            setAddressCountry(selectedInvoice.country || (selectedInvoice as any).Country || 'Singapore');
+
+            setPaymentMode(selectedInvoice.paymentMode || (selectedInvoice as any).PaymentMode || 'Cash');
+            setRefDocumentNo((selectedInvoice as any).paymentModeDocNo || (selectedInvoice as any).PaymentModeDocNo || '');
 
             if (selectedInvoice.invoiceDetails && selectedInvoice.invoiceDetails.length > 0) {
                 const mappedItems: InvoiceItem[] = selectedInvoice.invoiceDetails.map((detail: any) => ({
@@ -185,7 +196,7 @@ export function CreateReceiptPage() {
     const availableItems = useMemo(() =>
         receiptItems.length > 0
             ? receiptItems.map(item => item.itemName || item.description || '').filter(Boolean)
-            : ['Level 3 Niche', 'Niche Inscription', 'Urn', 'Other'],
+            : ['Level 3 Niche', 'Niche Inscription', 'Urn (Marble)', 'Other'],
         [receiptItems]
     );
 
@@ -219,10 +230,11 @@ export function CreateReceiptPage() {
             payingAmount: totals.total,
             paymentMode: paymentMode,
             paymentModeDocNo: refDocumentNo,
-            addressNo: addressNumber,
-            address: addressStreet,
-            address2: addressUnit,
-            addressCity: addressPostalCode,
+            addressNo: addressBlock === 'Block' ? 'Blk' : addressBlock,
+            address: addressNumber,
+            address2: addressStreet,
+            addressCity: addressUnit,
+            districtCode: addressPostalCode,
             country: addressCountry,
             receiptDetails: receiptDetails,
             invoiceCode: selectedInvoice?.invoiceCode || selectedInvoice?.invoiceCode || (lookupCode.startsWith('INV') ? lookupCode : ''),

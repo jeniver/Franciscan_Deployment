@@ -618,9 +618,11 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
 
         {/* Signatures */}
         <div className="border border-black p-3 mt-auto text-xs">
-          <div className="grid grid-cols-2 gap-4 ">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="mb-8 font-medium">The Applicant Personally :</p>
+              <div className="min-h-[2.5rem] flex items-end mb-9">
+                <p className="mb-2 font-medium">The Applicant Personally :</p>
+              </div>
               <div className="border-b border-black mb-2"></div>
               <div className="flex mb-1">
                 <span className="w-24">Name :</span>
@@ -632,12 +634,14 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
               </div>
             </div>
             <div>
-              <p className="mb-1">For and on Behalf of</p>
-              <p className="mb-8 font-medium">
-                The Order of Friars Minor (Singapore) Limited
-              </p>
+              <div className="min-h-[2.5rem] flex flex-col justify-end mb-9">
+                <p className="mb-0">For and on Behalf of</p>
+                <p className="mb-2 font-medium">
+                  The Order of Friars Minor (Singapore) Limited
+                </p>
+              </div>
               <div className="border-b border-black mb-2"></div>
-              <div className="mb-1">Fr Gerard Victor</div>
+              <div className="mb-1">{statusText.includes('Signed') || data.agreement?.status === 'signed' ? (data.agreement?.signedBy || 'Fr Gerard Victor') : 'Fr Gerard Victor'}</div>
               <div>Friar - Manager</div>
             </div>
           </div>

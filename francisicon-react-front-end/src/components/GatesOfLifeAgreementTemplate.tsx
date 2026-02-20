@@ -1,5 +1,6 @@
 import React from 'react'
 import { formatDate } from '../utils/dateUtils'
+import { formatAddressLinesForInvoiceReceipt } from '../utils/addressUtils'
 import { PDF_ASSETS } from './common/FranciscanLogo';
 
 interface GatesOfLifeAgreementTemplateProps {
@@ -22,8 +23,24 @@ export function GatesOfLifeAgreementTemplate({ data }: GatesOfLifeAgreementTempl
     // Format date helper
     const fDate = (d: any) => d ? formatDate(d) : '';
 
+    // Format address as multi-line (Block 450D, Street, Unit, Singapore, Postal: 650450) to match reference
+    const addr = applicant.addressDetails ?? applicant.address ?? {};
+    const no = (addr.no || '').toString().trim();
+    const line1 = (addr.line1 || '').toString().trim();
+    const blockNo = /^(block|blk)\s/i.test(no) ? no : (no || line1);
+    const block = blockNo && !/^(block|blk)\s/i.test(blockNo) ? 'Block' : null;
+    const addressLines = formatAddressLinesForInvoiceReceipt({
+        block,
+        blockNo: blockNo || undefined,
+        street: addr.line2,
+        unit: addr.city,
+        postalCode: addr.state,
+        country: addr.country || 'Singapore'
+    });
+    const hasPostal = (addr.state || '').toString().trim();
+
     return (
-        <div className="w-full max-w-[210mm] mx-auto bg-white p-12 shadow-lg text-black font-serif print:shadow-none print:p-0" id="gol-agreement-template">
+        <div data-pdf-page className="w-full max-w-[210mm] mx-auto bg-white p-12 shadow-lg text-black font-sans print:shadow-none print:p-0" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }} id="gol-agreement-template">
             {/* Increased font size for visibility for older persons */}
             <div className="text-[14px] leading-snug">
 
@@ -240,7 +257,7 @@ export function GatesOfLifeAgreementTemplate({ data }: GatesOfLifeAgreementTempl
 
                 {/* Consent and Signature */}
                 <div className="space-y-10">
-                    <p className="text-sm text-justify italic font-serif leading-tight text-gray-700">
+                    <p className="text-sm text-justify italic font-sans leading-tight text-gray-700" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
                         By submitting this form, I consent to my personal data being
                         collected, used or disclosed by the Order of Friars Minor (S) Ltd in
                         accordance with its Personal Data Protection Policy Statement which

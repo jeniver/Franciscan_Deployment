@@ -64,15 +64,16 @@ export function MiscReceiptCreatePage() {
     const availableItems = useMemo(() =>
         receiptItems.length > 0
             ? receiptItems.map(item => item.itemName || item.description || '').filter(Boolean)
-            : ['Level 3 Niche', 'Niche Inscription', 'Urn', 'Admin Fee', 'Others'],
+            : ['Level 3 Niche', 'Niche Inscription', 'Urn (Marble)', 'Admin Fee', 'Others'],
         [receiptItems]
     );
 
     const calculateTotals = () => {
         return items.reduce((acc, item) => ({
-            total: acc.total + item.totalAmount,
-            tax: acc.tax + item.taxAmount
-        }), { total: 0, tax: 0 });
+            subtotal: acc.subtotal + item.totalNoTax,
+            tax: acc.tax + item.taxAmount,
+            total: acc.total + item.totalAmount
+        }), { subtotal: 0, tax: 0, total: 0 });
     };
 
     const handleCreateReceipt = async () => {
@@ -117,12 +118,12 @@ export function MiscReceiptCreatePage() {
             payingAmount: total,
             paymentMode: paymentMode,
             paymentModeDocNo: paymentDocNo,
-            addressNo: addressNumber,
-            address: addressStreet,
-            address2: addressUnit,
-            addressCity: addressPostalCode,
-            country: addressCountry,
+            addressNo: addressBlock === 'Block' ? 'Blk' : addressBlock,
+            address: addressNumber,
+            address2: addressStreet,
+            addressCity: addressUnit,
             districtCode: addressPostalCode,
+            country: addressCountry,
             receiptDetails: receiptDetailsArr,
         };
 
@@ -305,7 +306,7 @@ export function MiscReceiptCreatePage() {
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-center text-slate-300">
                                         <span className="text-xs font-medium">Subtotal</span>
-                                        <span className="font-bold text-sm">${totals.total.toFixed(2)}</span>
+                                        <span className="font-bold text-sm">${totals.subtotal.toFixed(2)}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-slate-300">
                                         <span className="text-xs font-medium">GST (9%)</span>
@@ -314,7 +315,7 @@ export function MiscReceiptCreatePage() {
                                     <div className="pt-3 border-t border-slate-800">
                                         <div className="flex justify-between items-center">
                                             <span className="text-md font-bold text-teal-400">Total Payable</span>
-                                            <span className="text-xl font-bold text-teal-400">${(totals.total + totals.tax).toFixed(2)}</span>
+                                            <span className="text-xl font-bold text-teal-400">${totals.total.toFixed(2)}</span>
                                         </div>
                                     </div>
                                 </div>

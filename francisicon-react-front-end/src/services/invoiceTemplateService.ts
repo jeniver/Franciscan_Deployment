@@ -1,159 +1,159 @@
 // Simple HTML invoice template generator for popup viewing/printing
 
 export interface InvoiceTemplateItem {
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  amount: number;
+	description: string;
+	quantity: number;
+	unitPrice: number;
+	amount: number;
 }
 
 export interface InvoiceTemplateData {
-  invoiceCode: string;
-  invoiceDate: string;
-  customerName: string;
-  customerAddress?: string;
-  paymentMode?: string;
-  totalAmount: number;
-  taxAmount?: number;
-  items?: InvoiceTemplateItem[];
-  /**
-   * Optional background image source for the invoice page.
-   * Use a full data URL (e.g. "data:image/png;base64,...") or an absolute/relative URL.
-   * This allows us to exactly match the original PDF/HTML design without embedding
-   * a huge base64 blob directly in the code.
-   */
-  backgroundImageSrc?: string;
+	invoiceCode: string;
+	invoiceDate: string;
+	customerName: string;
+	customerAddress?: string;
+	paymentMode?: string;
+	paymentModeDocNo?: string;
+	totalAmount: number;
+	taxAmount?: number;
+	items?: InvoiceTemplateItem[];
+	/**
+	 * Optional background image source for the invoice page.
+	 * Use a full data URL (e.g. "data:image/png;base64,...") or an absolute/relative URL.
+	 * This allows us to exactly match the original PDF/HTML design without embedding
+	 * a huge base64 blob directly in the code.
+	 */
+	backgroundImageSrc?: string;
 }
 
 export const invoiceTemplateService = {
-  generateInvoiceTemplate: (data: InvoiceTemplateData): string => {
-    const escapeHtml = (value: string | undefined | null): string => {
-      if (!value) return '';
-      return value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    };
+	generateInvoiceTemplate: (data: InvoiceTemplateData): string => {
+		const escapeHtml = (value: string | undefined | null): string => {
+			if (!value) return '';
+			return value
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#39;');
+		};
 
-    const formatCurrency = (amount: number | undefined | null) => {
-      const num = typeof amount === 'number' ? amount : 0;
-      return num.toLocaleString('en-SG', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
-    };
+		const formatCurrency = (amount: number | undefined | null) => {
+			const num = typeof amount === 'number' ? amount : 0;
+			return num.toLocaleString('en-SG', {
+				minimumFractionDigits: 2,
+				maximumFractionDigits: 2,
+			});
+		};
 
-    const today = new Date().toLocaleDateString('en-SG');
+		const today = new Date().toLocaleDateString('en-SG');
 
-    const amountToWords = (amount: number): string => {
-      // Very simple integer-only converter, Singapore dollars
-      const ones = [
-        'Zero',
-        'One',
-        'Two',
-        'Three',
-        'Four',
-        'Five',
-        'Six',
-        'Seven',
-        'Eight',
-        'Nine',
-        'Ten',
-        'Eleven',
-        'Twelve',
-        'Thirteen',
-        'Fourteen',
-        'Fifteen',
-        'Sixteen',
-        'Seventeen',
-        'Eighteen',
-        'Nineteen',
-      ];
-      const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+		const amountToWords = (amount: number): string => {
+			// Very simple integer-only converter, Singapore dollars
+			const ones = [
+				'Zero',
+				'One',
+				'Two',
+				'Three',
+				'Four',
+				'Five',
+				'Six',
+				'Seven',
+				'Eight',
+				'Nine',
+				'Ten',
+				'Eleven',
+				'Twelve',
+				'Thirteen',
+				'Fourteen',
+				'Fifteen',
+				'Sixteen',
+				'Seventeen',
+				'Eighteen',
+				'Nineteen',
+			];
+			const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
-      const toWordsUnderThousand = (n: number): string => {
-        let result = '';
-        if (n >= 100) {
-          result += ones[Math.floor(n / 100)] + ' Hundred';
-          n = n % 100;
-          if (n > 0) result += ' ';
-        }
-        if (n >= 20) {
-          result += tens[Math.floor(n / 10)];
-          n = n % 10;
-          if (n > 0) result += '-' + ones[n];
-        } else if (n > 0) {
-          result += ones[n];
-        }
-        return result || ones[0];
-      };
+			const toWordsUnderThousand = (n: number): string => {
+				let result = '';
+				if (n >= 100) {
+					result += ones[Math.floor(n / 100)] + ' Hundred';
+					n = n % 100;
+					if (n > 0) result += ' ';
+				}
+				if (n >= 20) {
+					result += tens[Math.floor(n / 10)];
+					n = n % 10;
+					if (n > 0) result += '-' + ones[n];
+				} else if (n > 0) {
+					result += ones[n];
+				}
+				return result || ones[0];
+			};
 
-      const integer = Math.floor(Math.max(0, amount));
-      if (integer === 0) return 'Zero Only';
+			const integer = Math.floor(Math.max(0, amount));
+			if (integer === 0) return 'Zero Only';
 
-      const parts: string[] = [];
-      const billions = Math.floor(integer / 1_000_000_000);
-      const millions = Math.floor((integer % 1_000_000_000) / 1_000_000);
-      const thousands = Math.floor((integer % 1_000_000) / 1_000);
-      const remainder = integer % 1_000;
+			const parts: string[] = [];
+			const billions = Math.floor(integer / 1_000_000_000);
+			const millions = Math.floor((integer % 1_000_000_000) / 1_000_000);
+			const thousands = Math.floor((integer % 1_000_000) / 1_000);
+			const remainder = integer % 1_000;
 
-      if (billions) parts.push(toWordsUnderThousand(billions) + ' Billion');
-      if (millions) parts.push(toWordsUnderThousand(millions) + ' Million');
-      if (thousands) parts.push(toWordsUnderThousand(thousands) + ' Thousand');
-      if (remainder) parts.push(toWordsUnderThousand(remainder));
+			if (billions) parts.push(toWordsUnderThousand(billions) + ' Billion');
+			if (millions) parts.push(toWordsUnderThousand(millions) + ' Million');
+			if (thousands) parts.push(toWordsUnderThousand(thousands) + ' Thousand');
+			if (remainder) parts.push(toWordsUnderThousand(remainder));
 
-      return parts.join(' ') + ' Only';
-    };
+			return parts.join(' ') + ' Only';
+		};
 
-    const taxAmount = data.taxAmount ?? 0;
-    const subTotal = (data.totalAmount || 0) - taxAmount;
+		const taxAmount = data.taxAmount ?? 0;
+		const subTotal = (data.totalAmount || 0) - taxAmount;
 
-    const safeCustomerName = escapeHtml(data.customerName || '');
-    const safeCustomerAddress = escapeHtml(data.customerAddress || '').replace(/\n/g, '<br>');
-    const safeInvoiceCode = escapeHtml(data.invoiceCode || '');
-    const safeInvoiceDate = escapeHtml(data.invoiceDate || today);
+		const safeCustomerName = escapeHtml(data.customerName || '');
+		const safeCustomerAddress = escapeHtml(data.customerAddress || '');
+		const safeInvoiceCode = escapeHtml(data.invoiceCode || '');
+		const safeInvoiceDate = escapeHtml(data.invoiceDate || today);
+		const safePaymentMode = escapeHtml(data.paymentMode || 'Cash');
+		const safePaymentDocNo = escapeHtml(data.paymentModeDocNo || '');
 
-    const item1 = data.items && data.items[0] ? data.items[0] : null;
-    const item2 = data.items && data.items[1] ? data.items[1] : null;
-    const item3 = data.items && data.items[2] ? data.items[2] : null;
-    const item4 = data.items && data.items[3] ? data.items[3] : null;
+		const item1 = data.items && data.items[0] ? data.items[0] : null;
+		const item2 = data.items && data.items[1] ? data.items[1] : null;
+		const item3 = data.items && data.items[2] ? data.items[2] : null;
+		const item4 = data.items && data.items[3] ? data.items[3] : null;
 
-    const gstPercent = taxAmount > 0 && subTotal > 0 ? (taxAmount / subTotal) * 100 : 0;
-    const gstPercentDisplay = gstPercent ? gstPercent.toFixed(2) : '0.00';
+		const gstPercent = taxAmount > 0 && subTotal > 0 ? (taxAmount / subTotal) * 100 : 0;
+		const gstPercentDisplay = gstPercent ? gstPercent.toFixed(2) : '0.00';
 
-    const totalInWords = amountToWords(data.totalAmount || 0);
+		const totalInWords = amountToWords(data.totalAmount || 0);
 
-    const backgroundImageHtml = data.backgroundImageSrc
-      ? `<img class="pdf24_04" src="${escapeHtml(data.backgroundImageSrc)}" alt="" />`
-      : '';
 
-    const formatQty = (item: InvoiceTemplateItem | null) => (item ? item.quantity.toFixed(2) : '');
-    const formatMoneyOrEmpty = (amount: number | undefined | null) =>
-      amount == null ? '' : formatCurrency(amount);
+		const formatQty = (item: InvoiceTemplateItem | null) => (item ? item.quantity.toFixed(2) : '');
+		const formatMoneyOrEmpty = (amount: number | undefined | null) =>
+			amount == null ? '' : formatCurrency(amount);
 
-    const item1Description = item1 ? escapeHtml(item1.description) : '';
-    const item1Qty = formatQty(item1);
-    const item1UnitPrice = item1 ? formatMoneyOrEmpty(item1.unitPrice) : '';
-    const item1Amount = item1 ? formatMoneyOrEmpty(item1.amount) : '';
+		const item1Description = item1 ? escapeHtml(item1.description) : '';
+		const item1Qty = formatQty(item1);
+		const item1UnitPrice = item1 ? formatMoneyOrEmpty(item1.unitPrice) : '';
+		const item1Amount = item1 ? formatMoneyOrEmpty(item1.amount) : '';
 
-    const item2Description = item2 ? escapeHtml(item2.description) : '';
-    const item2Qty = formatQty(item2);
-    const item2UnitPrice = item2 ? formatMoneyOrEmpty(item2.unitPrice) : '';
-    const item2Amount = item2 ? formatMoneyOrEmpty(item2.amount) : '';
+		const item2Description = item2 ? escapeHtml(item2.description) : '';
+		const item2Qty = formatQty(item2);
+		const item2UnitPrice = item2 ? formatMoneyOrEmpty(item2.unitPrice) : '';
+		const item2Amount = item2 ? formatMoneyOrEmpty(item2.amount) : '';
 
-    const item3Description = item3 ? escapeHtml(item3.description) : '';
-    const item3Qty = formatQty(item3);
-    const item3UnitPrice = item3 ? formatMoneyOrEmpty(item3.unitPrice) : '';
-    const item3Amount = item3 ? formatMoneyOrEmpty(item3.amount) : '';
+		const item3Description = item3 ? escapeHtml(item3.description) : '';
+		const item3Qty = formatQty(item3);
+		const item3UnitPrice = item3 ? formatMoneyOrEmpty(item3.unitPrice) : '';
+		const item3Amount = item3 ? formatMoneyOrEmpty(item3.amount) : '';
 
-    const item4Description = item4 ? escapeHtml(item4.description) : '';
-    const item4Qty = formatQty(item4);
-    const item4UnitPrice = item4 ? formatMoneyOrEmpty(item4.unitPrice) : '';
-    const item4Amount = item4 ? formatMoneyOrEmpty(item4.amount) : '';
+		const item4Description = item4 ? escapeHtml(item4.description) : '';
+		const item4Qty = formatQty(item4);
+		const item4UnitPrice = item4 ? formatMoneyOrEmpty(item4.unitPrice) : '';
+		const item4Amount = item4 ? formatMoneyOrEmpty(item4.amount) : '';
 
-    return `<!DOCTYPE html><!--[if IE]>  <html class="pdf24_ie"> <![endif]-->
+		return `<!DOCTYPE html><!--[if IE]>  <html class="pdf24_ie"> <![endif]-->
 <html>
 	<head>
 		<meta charset="utf-8" />
@@ -465,6 +465,8 @@ export const invoiceTemplateService = {
 					<div class="pdf24_01" style="left:26.3125em;top:17.654em;"><span class="pdf24_10 pdf24_11 pdf24_13" style="word-spacing:0.0001em;">Date : &nbsp;</span></div>
 					<div class="pdf24_01" style="left:39.2917em;top:16.0873em;"><span class="pdf24_10 pdf24_11 pdf24_17">${safeInvoiceCode} &nbsp;</span></div>
 					<div class="pdf24_01" style="left:37.3083em;top:17.5248em;"><span class="pdf24_10 pdf24_11 pdf24_12">${safeInvoiceDate} &nbsp;</span></div>
+					<div class="pdf24_01" style="left:26.3125em;top:19.0em;"><span class="pdf24_10 pdf24_11 pdf24_13" style="word-spacing:0.0001em;">Payment : &nbsp;</span></div>
+					<div class="pdf24_01" style="left:37.3083em;top:19.0em;"><span class="pdf24_10 pdf24_11 pdf24_12">${safePaymentMode}${safePaymentDocNo ? ' (' + safePaymentDocNo + ')' : ''} &nbsp;</span></div>
 					<div class="pdf24_01" style="left:2.125em;top:17.8292em;"><span class="pdf24_23 pdf24_19 pdf24_24" style="word-spacing:0.0106em;">Address : &nbsp;</span></div>
 					<div class="pdf24_01" style="left:4.75em;top:21.5915em;"><span class="pdf24_25 pdf24_11 pdf24_13">Description &nbsp;</span></div>
 					<div class="pdf24_01" style="left:2.25em;top:23.0181em;"><span class="pdf24_26 pdf24_08 pdf24_13" style="word-spacing:0.0002em;">${item1Description} &nbsp;</span></div>
@@ -526,5 +528,5 @@ export const invoiceTemplateService = {
 	</body>
 </html>
 `;
-  },
+	},
 };

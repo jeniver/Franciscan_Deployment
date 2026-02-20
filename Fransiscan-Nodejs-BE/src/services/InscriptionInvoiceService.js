@@ -50,6 +50,66 @@ class InscriptionInvoiceService {
   }
 
   /**
+   * Check if inscription (INCR) can create invoice or receipt.
+   * Returns { allowed: true } or { allowed: false, error: { code, message } }.
+   * @param {string} incrCode - INCR/inscription code (e.g. I-1617-0)
+   * @returns {Promise<{ allowed: boolean, error?: { code: string, message: string } }>}
+   */
+  async canInscriptionCreateInvoiceOrReceipt(incrCode) {
+    const nicheAppStatus = await this._getNicheApplicationStatusForInscription(incrCode);
+    if (!nicheAppStatus) {
+      return {
+        allowed: false,
+        error: {
+          code: 'NICHE_APPLICATION_NOT_BOOKED',
+          message: 'Inscription must be linked to a booked niche application. The niche application is not found or not yet booked.'
+        }
+      };
+    }
+    const allowedStatuses = [3, 4]; // 3=Booked, 4=Completed
+    if (!allowedStatuses.includes(Number(nicheAppStatus.status))) {
+      const statusLabel = nicheAppStatus.status === 1 ? 'Draft' : nicheAppStatus.status === 2 ? 'Pending' : 'Unknown';
+      return {
+        allowed: false,
+        error: {
+          code: 'NICHE_APPLICATION_NOT_BOOKED',
+          message: `Niche application must be Booked before creating inscription invoice or receipt. Current status: ${statusLabel}.`
+        }
+      };
+    }
+    return { allowed: true };
+  }
+
+  /**
+   * Get the linked NicheApplication status for an inscription (INCR) code.
+   * Inscription is linked via: NicheInscriptionRequest -> NicheBooking -> NicheApplication.
+   * @param {string} incrCode - INCR/inscription code (e.g. I-1617-0)
+   * @returns {Promise<{ status: number, code: string }|null>} NicheApplication status (1=Draft, 2=Pending, 3=Booked, 4=Completed) and code, or null if not found
+   */
+  async _getNicheApplicationStatusForInscription(incrCode) {
+    if (!incrCode) return null;
+    const normalizedCode = String(incrCode).trim();
+    try {
+      const query = `
+        SELECT TOP 1 na.Status AS status, na.Code AS code
+        FROM NicheInscriptionRequest nir WITH (NOLOCK)
+        INNER JOIN NicheBooking nb WITH (NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+        INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+        WHERE nir.Code = @incrCode
+      `;
+      const result = await executeQuery(query, { incrCode: normalizedCode });
+      if (result.recordset && result.recordset.length > 0) {
+        const row = result.recordset[0];
+        return { status: row.status, code: row.code };
+      }
+      return null;
+    } catch (e) {
+      logger.warn('Failed to get NicheApplication status for inscription:', e.message);
+      return null;
+    }
+  }
+
+  /**
    * Resolve an inscription application (NicheInscriptionRequest) by code.
    *
    * @param {string} code
@@ -295,7 +355,22 @@ class InscriptionInvoiceService {
             );
 
             // Filter out Urn (Marble)
-            let filteredItems = (items || []).filter(item => item.ItemId !== 10);
+            let filteredItems = (items || []);
+
+            // Dynamic inscription item selection based on deceased count (empty for niche app fallback)
+            // Default to 1st Name (12) if no deceased details yet
+            const targetItemId = 12;
+
+            const hasTargetItem = filteredItems.some(item => item.ItemId === targetItemId);
+            if (!hasTargetItem) {
+              const ItemRepository = require('../repositories/ItemRepository');
+              const itemRepo = new ItemRepository();
+              const targetItem = await itemRepo.getItemById(targetItemId, churchId);
+              if (targetItem) {
+                filteredItems = filteredItems.filter(item => item.ItemId !== 12 && item.ItemId !== 14);
+                filteredItems.push(targetItem);
+              }
+            }
 
             // Fallback: if no mapped items, try to find any inscription item
             if (filteredItems.length === 0) {
@@ -348,13 +423,32 @@ class InscriptionInvoiceService {
     }
 
     // Process found application
-    let items = await this.taskItemMappingRepo.getItemsForTask(
+    const items = await this.taskItemMappingRepo.getItemsForTask(
       this.INSCRIPTION_TASK_ID,
       [{ name: '_ForInscription', value: '1' }, { name: '_ForUrn', value: '0' }],
       churchId
     );
 
-    let filteredItems = (items || []).filter(item => item.ItemId !== 10);
+    let filteredItems = (items || []);
+
+    // Dynamic inscription item selection based on deceased count
+    const deceasedCount = (application.deceasedDetails || []).length;
+    const targetItemId = deceasedCount >= 2 ? 14 : 12; // 14: Both Name, 12: 1st Name
+
+    // Ensure the correct inscription item is present
+    const hasTargetItem = filteredItems.some(item => item.ItemId === targetItemId);
+
+    if (!hasTargetItem) {
+      const ItemRepository = require('../repositories/ItemRepository');
+      const itemRepo = new ItemRepository();
+      const targetItem = await itemRepo.getItemById(targetItemId, churchId);
+
+      if (targetItem) {
+        // Remove existing primary inscription items to avoid duplicates
+        filteredItems = filteredItems.filter(item => item.ItemId !== 12 && item.ItemId !== 14);
+        filteredItems.push(targetItem);
+      }
+    }
 
     // Fallback: if no mapped items, try to find any inscription item
     if (filteredItems.length === 0) {
@@ -482,6 +576,12 @@ class InscriptionInvoiceService {
             message: 'Access denied - Church ID mismatch'
           }
         };
+      }
+
+      // Restrict: Niche application must be Booked (3) or Completed (4) before creating inscription invoice
+      const canCreate = await this.canInscriptionCreateInvoiceOrReceipt(application.code);
+      if (!canCreate.allowed) {
+        return { success: false, error: canCreate.error };
       }
 
       const itemsResult = await this.getInscriptionItems(application.code, churchId);

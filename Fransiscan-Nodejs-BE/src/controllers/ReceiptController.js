@@ -465,6 +465,19 @@ class ReceiptController extends BaseController {
           } else {
             logger.info(`Application resolved: ${application.type} - ${applicationCode}`);
           }
+
+          // Restrict: For INCR, niche application must be Booked before creating receipt
+          const appType = application ? (application.type || application.Type || '').toUpperCase() : '';
+          const codeUpper = String(applicationCode || '').toUpperCase();
+          const isIncr = appType === 'INCR' || codeUpper.startsWith('I-') || codeUpper.startsWith('INCR-');
+          if (isIncr) {
+            const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
+            const incrCode = applicationCode || (application?.code || application?.applicationCode);
+            const canCreate = await InscriptionInvoiceService.canInscriptionCreateInvoiceOrReceipt(incrCode);
+            if (!canCreate.allowed) {
+              return this.sendError(res, canCreate.error?.message || 'Niche application must be Booked before creating inscription receipt', 400);
+            }
+          }
         } catch (appError) {
           logger.error(`Error resolving application ${applicationCode}:`, appError);
           // Continue without application data - we'll use provided values
