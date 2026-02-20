@@ -19,6 +19,7 @@ import { CreateReceiptModal } from '../components/CreateReceiptModal';
 import { ReportViewerModal } from '../components/ReportViewerModal';
 import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
 import { InvoiceTemplateData } from '../services/invoiceTemplateService';
+import { formatAddressLinesForInvoiceReceipt, formatAddressForDisplay, joinAddressLines } from '../utils/addressUtils';
 import { Receipt, receiptService } from '../services/receiptService';
 
 const formatInputDate = (date: Date) => date.toISOString().split('T')[0];
@@ -467,16 +468,20 @@ export function ReceiptPage() {
         amount: d.TotalPayingAmount || d.totalPayingAmount || d.amount || 0,
       })) || [];
 
-      // Extract customer address from invoice data if available
+      // Extract and format customer address (Block, Street, Unit, Singapore - no duplicate Block)
       let customerAddress = '';
-      if (invoice.address || invoice.addressNo || invoice.address2 || invoice.addressCity) {
-        const addressParts: string[] = [];
-        if (invoice.addressNo) addressParts.push(invoice.addressNo);
-        if (invoice.address) addressParts.push(invoice.address);
-        if (invoice.address2) addressParts.push(invoice.address2);
-        if (invoice.addressCity) addressParts.push(invoice.addressCity);
-        if (invoice.country) addressParts.push(invoice.country);
-        customerAddress = addressParts.join(', ');
+      if (invoice.address || invoice.addressNo || invoice.address2 || invoice.addressCity || invoice.customerAddress) {
+        const lines = formatAddressLinesForInvoiceReceipt({
+          blockNo: invoice.addressNo,
+          street: invoice.address,
+          unit: invoice.address2,
+          postalCode: invoice.addressCity,
+          country: invoice.country || 'Singapore',
+        });
+        customerAddress = joinAddressLines(lines, '\n') || formatAddressForDisplay(invoice.customerAddress) || '';
+      }
+      if (!customerAddress && (receipt as any).customerAddress) {
+        customerAddress = formatAddressForDisplay((receipt as any).customerAddress);
       }
 
       // Format invoice date properly

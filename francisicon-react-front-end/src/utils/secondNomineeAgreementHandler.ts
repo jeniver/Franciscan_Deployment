@@ -10,7 +10,7 @@ export const fetchSecondNomineeAgreementData = async (applicationNumber: string)
   if (!applicationNumber || applicationNumber.trim() === '') {
     throw new Error('Application number is required for 2nd nominee agreement PDF generation');
   }
-  
+
   try {
     const response = await nicheAgreementService.getSecondNomineeAgreementPdf(applicationNumber);
     if (response.success && response.data) {
@@ -30,7 +30,7 @@ export const fetchSecondNomineeAgreementDataForViewer = async (applicationNumber
   if (!applicationNumber || applicationNumber.trim() === '') {
     throw new Error('Application number is required for 2nd nominee agreement PDF generation');
   }
-  
+
   try {
     const response = await nicheAgreementService.getSecondNomineeAgreementPdf(applicationNumber);
     if (response.success && response.data) {
@@ -73,7 +73,8 @@ export const transformSecondNomineeDataForViewer = (secondNomineeData: any) => {
       homeTel: secondNomineeData.nominee2?.homeTelNo || '',
       officeTel: secondNomineeData.nominee2?.officeTelNo || '',
       relationshipToApplicant: secondNomineeData.nominee2?.relationship,
-    }
+    },
+    rawData: secondNomineeData
   };
 };
 

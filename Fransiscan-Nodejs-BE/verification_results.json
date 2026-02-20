@@ -1,0 +1,41 @@
+{
+  "person": {
+    "PersonId": 6857,
+    "Status": 1,
+    "Name": "ADELINE TAN SUE LIN",
+    "AddressNo": "Blk",
+    "AddressLine1": "56",
+    "AddressLine2": "CHUA CHU KANG NORTH 6 ",
+    "AddressCity": "#14-31",
+    "AddressState": "689577",
+    "AddressCountry": "Singapore",
+    "EmailID": "test@gmail.com",
+    "IDNo": "0000000000",
+    "MobileNo": "0000000000",
+    "HomeTelNo": "0000000000",
+    "OfficeTelNo": "",
+    "IsCatholic": true,
+    "ChurchId": 1,
+    "RelationshipToApplicant": null,
+    "Remarks": null
+  },
+  "nicheBookings": [
+    {
+      "NicheBookingId": 2239,
+      "NicheId": 3828,
+      "NicheApplicationId": 2244,
+      "ContactPersonId": 6304,
+      "BookedDate": "2011-12-11T18:30:00.000Z",
+      "NomineeId": 6857,
+      "NomineeId2": 7524,
+      "ChurchId": 1,
+      "UserId": 1,
+      "Remarks": "",
+      "BookingStatus": 1,
+      "AppCode": "3828-0"
+    }
+  ],
+  "beneficiaries": [],
+  "applications": [],
+  "invoices": []
+}

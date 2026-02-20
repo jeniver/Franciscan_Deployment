@@ -5,7 +5,7 @@ interface UseApplicationItemsReturn {
   applicationItems: ApplicationItemsResponse | null;
   loading: boolean;
   error: string | null;
-  fetchApplicationItems: (applicationCode: string) => Promise<void>;
+  fetchApplicationItems: (applicationCode: string, type?: string) => Promise<void>;
   clearApplicationItems: () => void;
   getItemsByType: (type: 'niche' | 'inscription') => ApplicationItem[];
   getTotalAmount: () => number;
@@ -18,7 +18,7 @@ export const useApplicationItems = (): UseApplicationItemsReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchApplicationItems = useCallback(async (applicationCode: string) => {
+  const fetchApplicationItems = useCallback(async (applicationCode: string, type?: string) => {
     if (!applicationCode.trim()) {
       clearApplicationItems();
       return;
@@ -30,13 +30,13 @@ export const useApplicationItems = (): UseApplicationItemsReturn => {
     try {
       // ✅ FIX: Use getInvoiceByCode instead of getApplicationItems for inscription codes
       // The getInvoiceByCode endpoint can handle both invoices and applications including inscription codes
-      const invoiceData = await invoiceService.getInvoiceByCode(applicationCode.trim());
-      
+      const invoiceData = await invoiceService.getInvoiceByCode(applicationCode.trim(), type);
+
       // Transform invoice data to application items format if it's application data
       if (invoiceData.isApplicationData) {
         const transformedItems: ApplicationItemsResponse = {
           applicationCode: invoiceData.applicationCode || applicationCode,
-          items: invoiceData.details?.map((detail, index) => ({
+          items: invoiceData.details?.map((detail: any, index: number) => ({
             id: index + 1,
             itemType: detail.refDocName === 'INCR' ? 'inscription' : 'niche',
             description: detail.itemName || 'Item',
@@ -57,18 +57,18 @@ export const useApplicationItems = (): UseApplicationItemsReturn => {
             totalItems: invoiceData.details?.length || 0
           },
           references: {
-            NAPP: invoiceData.details?.filter(d => d.refDocName === 'NAPP').map(d => d.refDocNumber || '') || [],
-            INCR: invoiceData.details?.filter(d => d.refDocName === 'INCR').map(d => d.refDocNumber || '') || []
+            NAPP: invoiceData.details?.filter((d: any) => d.refDocName === 'NAPP').map((d: any) => d.refDocNumber || '') || [],
+            INCR: invoiceData.details?.filter((d: any) => d.refDocName === 'INCR').map((d: any) => d.refDocNumber || '') || []
           },
           totalItems: invoiceData.details?.length || 0
         };
-        
+
         setApplicationItems(transformedItems);
       } else {
         // If it's an invoice, we can still extract items from it
         const transformedItems: ApplicationItemsResponse = {
           applicationCode: invoiceData.refDocNumber || applicationCode,
-          items: invoiceData.details?.map((detail, index) => ({
+          items: invoiceData.details?.map((detail: any, index: number) => ({
             id: index + 1,
             itemType: detail.refDocName === 'INCR' ? 'inscription' : 'niche',
             description: detail.itemName || 'Item',
@@ -89,12 +89,12 @@ export const useApplicationItems = (): UseApplicationItemsReturn => {
             totalItems: invoiceData.details?.length || 0
           },
           references: {
-            NAPP: invoiceData.details?.filter(d => d.refDocName === 'NAPP').map(d => d.refDocNumber || '') || [],
-            INCR: invoiceData.details?.filter(d => d.refDocName === 'INCR').map(d => d.refDocNumber || '') || []
+            NAPP: invoiceData.details?.filter((d: any) => d.refDocName === 'NAPP').map((d: any) => d.refDocNumber || '') || [],
+            INCR: invoiceData.details?.filter((d: any) => d.refDocName === 'INCR').map((d: any) => d.refDocNumber || '') || []
           },
           totalItems: invoiceData.details?.length || 0
         };
-        
+
         setApplicationItems(transformedItems);
       }
     } catch (err: any) {

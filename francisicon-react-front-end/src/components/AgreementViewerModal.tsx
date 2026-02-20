@@ -8,6 +8,9 @@ import {
 } from 'lucide-react'
 import { AgreementPdfTemplate } from './AgreementPdfTemplate'
 import { NomineeAgreement } from './NomineeAgreementPdfView'
+import { GatesOfLifeAgreementTemplate } from './GatesOfLifeAgreementTemplate'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
 interface AgreementViewerModalProps {
   isOpen: boolean
   onClose: () => void
@@ -15,6 +18,7 @@ interface AgreementViewerModalProps {
   secoundNomineeAgreement: any | null
   applicationNumber: string
   loading?: boolean
+  templateType?: 'niche' | 'nominee' | 'gateOfLife'
 }
 export function AgreementViewerModal({
   isOpen,
@@ -23,9 +27,11 @@ export function AgreementViewerModal({
   secoundNomineeAgreement,
   applicationNumber,
   loading = false,
+  templateType = 'niche',
 }: AgreementViewerModalProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
   // Helper function to get all computed styles as inline styles
   const getComputedStylesAsString = (element: Element): string => {
@@ -91,74 +97,137 @@ export function AgreementViewerModal({
   //   }
   // }
 
-  const handlePrint = () => {
-  if (!contentRef.current) return
+  // const handlePrint = () => {
+  //   if (!contentRef.current) return
 
-  const styledClone = cloneWithStyles(contentRef.current)
+  //   const styledClone = cloneWithStyles(contentRef.current)
 
-  const printWindow = window.open('', '_blank', 'width=900,height=1200')
-  if (!printWindow) {
-    alert('Please allow popups to print the document')
-    return
-  }
+  //   const printWindow = window.open('', '_blank', 'width=900,height=1200')
+  //   if (!printWindow) {
+  //     alert('Please allow popups to print the document')
+  //     return
+  //   }
 
-  const printStyles = `
-    * {
-      box-sizing: border-box;
-    }
+  //   const printStyles = `
+  //   * {
+  //     box-sizing: border-box;
+  //   }
 
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: Arial, sans-serif;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
+  //   body {
+  //     margin: 0;
+  //     padding: 0;
+  //     font-family: Arial, sans-serif;
+  //     -webkit-print-color-adjust: exact;
+  //     print-color-adjust: exact;
+  //   }
 
-    /* REAL A4 SIZE */
-    .print-container {
-      width: 210mm;
-      min-height: 297mm;
-      margin: 0 auto;
-      padding: 15mm;
-    }
+  //   /* REAL A4 SIZE */
+  //   .print-container {
+  //     width: 210mm;
+  //     min-height: 297mm;
+  //     margin: 0 auto;
+  //     padding: 15mm;
+  //   }
 
-    @page {
-      size: A4;
-      margin: 0;
-    }
+  //   @page {
+  //     size: A4;
+  //     margin: 0;
+  //   }
 
-    @media print {
-      body {
-        margin: 0;
+  //   @media print {
+  //     body {
+  //       margin: 0;
+  //     }
+  //   }
+  // `
+
+  //   printWindow.document.write(`
+  //   <!DOCTYPE html>
+  //   <html>
+  //     <head>
+  //       <title>Agreement - ${applicationNumber}</title>
+  //       <style>${printStyles}</style>
+  //     </head>
+  //     <body>
+  //       ${styledClone.outerHTML}
+  //     </body>
+  //   </html>
+  // `)
+
+  //   printWindow.document.close()
+
+  //   printWindow.onload = () => {
+  //     setTimeout(() => {
+  //       printWindow.focus()
+  //       printWindow.print()
+  //     }, 300)
+  //   }
+  // }
+  const handleGeneratePDF = async () => {
+    if (!contentRef.current || isGenerating) return
+    setIsGenerating(true)
+    try {
+      // Find all page elements
+      const pages = contentRef.current.querySelectorAll('[data-pdf-page]')
+      if (pages.length === 0) {
+        throw new Error('No pages found to print')
       }
+      // Create PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      })
+      // Process each page
+      for (let i = 0; i < pages.length; i++) {
+        const pageElement = pages[i] as HTMLElement
+        // Temporarily remove shadow for clean capture
+        const originalBoxShadow = pageElement.style.boxShadow
+        pageElement.style.boxShadow = 'none'
+        // Capture the page
+        const canvas = await html2canvas(pageElement, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: pageElement.scrollWidth,
+          windowHeight: pageElement.scrollHeight,
+        })
+        // Restore styles
+        pageElement.style.boxShadow = originalBoxShadow
+        // Add page to PDF (except for the first one which is created by default)
+        if (i > 0) {
+          pdf.addPage()
+        }
+        const imgData = canvas.toDataURL('image/png', 1.0)
+        const pdfWidth = pdf.internal.pageSize.getWidth()
+        const pdfHeight = pdf.internal.pageSize.getHeight()
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+      }
+      // Generate blob and open in new tab
+      const pdfBlob = pdf.output('blob')
+      const blobUrl = URL.createObjectURL(pdfBlob)
+      const newTab = window.open(blobUrl, '_blank')
+      if (!newTab) {
+        // Fallback: download the file if popup blocked
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = `Agreement-${applicationNumber}.pdf`
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
+      } else {
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+      }
+    } catch (error) {
+      console.error('PDF generation failed:', error)
+      alert('Failed to generate PDF. Please try again.')
+    } finally {
+      setIsGenerating(false)
     }
-  `
-
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Agreement - ${applicationNumber}</title>
-        <style>${printStyles}</style>
-      </head>
-      <body>
-        ${styledClone.outerHTML}
-      </body>
-    </html>
-  `)
-
-  printWindow.document.close()
-
-  printWindow.onload = () => {
-    setTimeout(() => {
-      printWindow.focus()
-      printWindow.print()
-    }, 300)
-}
   }
 
-  
+
   const handleDownloadPdf = async () => {
     if (!contentRef.current) return
     setIsGeneratingPdf(true)
@@ -270,8 +339,8 @@ export function AgreementViewerModal({
               </button>
 
               <button
-                onClick={handlePrint}
-                disabled={isGeneratingPdf}
+                onClick={handleGeneratePDF}
+                disabled={isGenerating}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Print Agreement"
               >
@@ -314,12 +383,17 @@ export function AgreementViewerModal({
             ) : secoundNomineeAgreement ? (
               <div ref={contentRef}>
                 <NomineeAgreement
+                  data={secoundNomineeAgreement.rawData || secoundNomineeAgreement}
                   nicheNo={secoundNomineeAgreement.nicheNo}
                   chapelName={secoundNomineeAgreement.chapelName}
                   applicant={secoundNomineeAgreement.applicant}
                   nominee={secoundNomineeAgreement.nominee}
                   agreementDate={secoundNomineeAgreement.agreementDate}
                 />
+              </div>
+            ) : templateType === 'gateOfLife' && agreementData ? (
+              <div ref={contentRef}>
+                <GatesOfLifeAgreementTemplate data={agreementData} />
               </div>
             ) : agreementData ? (
               <div ref={contentRef}>

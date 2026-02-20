@@ -1,0 +1,44 @@
+{
+  "Niche": [
+    "NicheId",
+    "NicheRowlId",
+    "Code",
+    "DefaultAmount",
+    "AppearanceDescription",
+    "Status",
+    "ChurchId"
+  ],
+  "NicheRow": [
+    "NicheRowlId",
+    "NicheWallId",
+    "Code",
+    "Name",
+    "DefaultAmount",
+    "ChurchId",
+    "NicheLevel"
+  ],
+  "NicheWall": [
+    "NicheWallId",
+    "ChapelId",
+    "Code",
+    "Name",
+    "ChurchId"
+  ],
+  "Chapel": [
+    "ChapelId",
+    "ChurchId",
+    "Code",
+    "Name",
+    "Description"
+  ],
+  "WakeRoom": [
+    "WakeRoomId",
+    "Code",
+    "Name",
+    "Remarks",
+    "OpeningTime",
+    "ClossingTime",
+    "ChurchId",
+    "RentingAmount"
+  ]
+}

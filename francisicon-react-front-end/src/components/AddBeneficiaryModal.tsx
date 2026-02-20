@@ -12,12 +12,13 @@ interface AddBeneficiaryModalProps {
 
 export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: AddBeneficiaryModalProps) {
   const [formData, setFormData] = useState({
-    name: beneficiary?.fullName || '',
-    nric: beneficiary?.nric || '',
-    dateOfBirth: formatDateForInput(beneficiary?.dateOfBirth) || '',
-    gender: beneficiary?.sex === 'Male' ? 'Male' : beneficiary?.sex === 'Female' ? 'Female' : 'Male',
-    relationshipToApp: beneficiary?.relationship || '',
-    religiousAffiliation: beneficiary?.religion === 'Non Catholic' ? 'Non Catholic' : 'Catholic',
+    name: beneficiary?.fullName || beneficiary?.name || '',
+    nric: beneficiary?.nric || beneficiary?.idNo || '',
+    dateOfBirth: beneficiary?.dateOfBirth || '',
+    birthYear: beneficiary?.birthYear || '',
+    gender: beneficiary?.sex === 'Male' || beneficiary?.isMale ? 'Male' : beneficiary?.sex === 'Female' || beneficiary?.isMale === false ? 'Female' : 'Male',
+    relationshipToApp: beneficiary?.relationship || beneficiary?.relationshipToApplicant || '',
+    religiousAffiliation: beneficiary?.religion === 'Non Catholic' || beneficiary?.isCatholic === false ? 'Non Catholic' : 'Catholic',
     relationshipToNominee1: beneficiary?.relationshipToNominee1 || '',
     relationshipToNominee2: beneficiary?.relationshipToNominee2 || '',
     status: beneficiary?.status === 'Occupied' ? 'Occupied' : 'Not Occupied'
@@ -27,12 +28,13 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
   useEffect(() => {
     if (beneficiary) {
       setFormData({
-        name: beneficiary.fullName || '',
-        nric: beneficiary.nric || '',
-        dateOfBirth: formatDateForInput(beneficiary.dateOfBirth) || '',
-        gender: beneficiary.sex === 'Male' ? 'Male' : beneficiary.sex === 'Female' ? 'Female' : 'Male',
-        relationshipToApp: beneficiary.relationship || '',
-        religiousAffiliation: beneficiary.religion === 'Non Catholic' ? 'Non Catholic' : 'Catholic',
+        name: beneficiary.fullName || beneficiary.name || '',
+        nric: beneficiary.nric || beneficiary.idNo || '',
+        dateOfBirth: beneficiary.dateOfBirth || '',
+        birthYear: beneficiary.birthYear || '',
+        gender: beneficiary.sex === 'Male' || beneficiary.isMale ? 'Male' : beneficiary.sex === 'Female' || beneficiary.isMale === false ? 'Female' : 'Male',
+        relationshipToApp: beneficiary.relationship || beneficiary.relationshipToApplicant || '',
+        religiousAffiliation: beneficiary.religion === 'Non Catholic' || beneficiary.isCatholic === false ? 'Non Catholic' : 'Catholic',
         relationshipToNominee1: beneficiary.relationshipToNominee1 || '',
         relationshipToNominee2: beneficiary.relationshipToNominee2 || '',
         status: beneficiary.status === 'Occupied' ? 'Occupied' : 'Not Occupied'
@@ -46,8 +48,10 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
       fullName: formData.name,
       nric: formData.nric,
       dateOfBirth: formData.dateOfBirth,
+      birthYear: formData.birthYear,
       sex: formData.gender,
       relationship: formData.relationshipToApp,
+      relationshipToApplicant: formData.relationshipToApp,
       religion: formData.religiousAffiliation,
       relationshipToNominee1: formData.relationshipToNominee1,
       relationshipToNominee2: formData.relationshipToNominee2,
@@ -55,15 +59,16 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
       isMale: formData.gender === 'Male',
       isCatholic: formData.religiousAffiliation === 'Catholic'
     };
-    
+
     onSave(newBeneficiary);
-    
+
     // Reset form after saving (only if not editing)
     if (!beneficiary) {
       setFormData({
         name: '',
         nric: '',
         dateOfBirth: '',
+        birthYear: '',
         gender: 'Male',
         relationshipToApp: '',
         religiousAffiliation: 'Catholic',
@@ -72,7 +77,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
         status: 'Not Occupied'
       });
     }
-    
+
     onClose();
   };
 
@@ -80,12 +85,12 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
     onClose();
   };
 
-  const handleDateOfBirthChange = useCallback((apiDate: string) => {
-    setFormData(prevFormData => ({ ...prevFormData, dateOfBirth: apiDate }));
-  }, [setFormData]);
-
-  const handleDateChange = useCallback((apiDate: string) => {
-    setFormData(prevFormData => ({ ...prevFormData, dateOfBirth: apiDate }));
+  const handleDateChange = useCallback((dateOfBirth: string | null, birthYear: number | null) => {
+    setFormData(prevFormData => ({
+      ...prevFormData,
+      dateOfBirth: dateOfBirth || '',
+      birthYear: birthYear ? String(birthYear) : ''
+    }));
   }, [setFormData]);
 
   if (!isOpen) return null;
@@ -114,7 +119,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <input
               type="text"
               value={formData.name}
-              onChange={(e) => setFormData(prev => ({...prev, name: e.target.value}))}
+              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
               placeholder="Enter beneficiary name"
             />
@@ -128,7 +133,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <input
               type="text"
               value={formData.nric}
-              onChange={(e) => setFormData(prev => ({...prev, nric: e.target.value}))}
+              onChange={(e) => setFormData(prev => ({ ...prev, nric: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
               placeholder="Enter NRIC/Passport number"
             />
@@ -138,11 +143,11 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
           <div>
             <EnhancedBeneficiaryDatePicker
               label="Date Of Birth"
-              value={formData.dateOfBirth}
+              dateOfBirth={formData.dateOfBirth}
+              birthYear={formData.birthYear}
               onChange={handleDateChange}
               minYear={1900}
               maxYear={new Date().getFullYear()}
-              placeholder="Enter date (DD-MM-YYYY) or year only (YYYY)"
             />
           </div>
 
@@ -158,7 +163,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
                   name="gender"
                   value="Male"
                   checked={formData.gender === 'Male'}
-                  onChange={(e) => setFormData(prev => ({...prev, gender: e.target.value}))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value }))}
                   className="mr-2 text-[#8b5a2b] focus:ring-[#8b5a2b]"
                 />
                 <span className="text-sm text-gray-700">Male</span>
@@ -169,7 +174,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
                   name="gender"
                   value="Female"
                   checked={formData.gender === 'Female'}
-                  onChange={(e) => setFormData(prev => ({...prev, gender: e.target.value}))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value }))}
                   className="mr-2 text-[#8b5a2b] focus:ring-[#8b5a2b]"
                 />
                 <span className="text-sm text-gray-700">Female</span>
@@ -185,7 +190,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <input
               type="text"
               value={formData.relationshipToApp}
-              onChange={(e) => setFormData(prev => ({...prev, relationshipToApp: e.target.value}))}
+              onChange={(e) => setFormData(prev => ({ ...prev, relationshipToApp: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
               placeholder="Enter relationship to applicant"
             />
@@ -203,7 +208,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
                   name="religion"
                   value="Catholic"
                   checked={formData.religiousAffiliation === 'Catholic'}
-                  onChange={(e) => setFormData(prev => ({...prev, religiousAffiliation: e.target.value}))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, religiousAffiliation: e.target.value }))}
                   className="mr-2 text-[#8b5a2b] focus:ring-[#8b5a2b]"
                 />
                 <span className="text-sm text-gray-700">Catholic</span>
@@ -214,7 +219,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
                   name="religion"
                   value="Non Catholic"
                   checked={formData.religiousAffiliation === 'Non Catholic'}
-                  onChange={(e) => setFormData(prev => ({...prev, religiousAffiliation: e.target.value}))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, religiousAffiliation: e.target.value }))}
                   className="mr-2 text-[#8b5a2b] focus:ring-[#8b5a2b]"
                 />
                 <span className="text-sm text-gray-700">Non Catholic</span>
@@ -230,7 +235,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <input
               type="text"
               value={formData.relationshipToNominee1}
-              onChange={(e) => setFormData(prev => ({...prev, relationshipToNominee1: e.target.value}))}
+              onChange={(e) => setFormData(prev => ({ ...prev, relationshipToNominee1: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
               placeholder="Enter relationship to nominee 1"
             />
@@ -244,7 +249,7 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
             <input
               type="text"
               value={formData.relationshipToNominee2}
-              onChange={(e) => setFormData(prev => ({...prev, relationshipToNominee2: e.target.value}))}
+              onChange={(e) => setFormData(prev => ({ ...prev, relationshipToNominee2: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent"
               placeholder="Enter relationship to nominee 2"
             />
@@ -255,27 +260,25 @@ export function AddBeneficiaryModal({ isOpen, onClose, onSave, beneficiary }: Ad
         <div className="flex items-center justify-between p-6 border-t border-gray-200">
           <div className="flex space-x-2">
             <button
-              onClick={() => setFormData(prev => ({...prev, status: 'Occupied'}))}
-              className={`px-4 py-2 rounded-md text-sm font-medium ${
-                formData.status === 'Occupied'
+              onClick={() => setFormData(prev => ({ ...prev, status: 'Occupied' }))}
+              className={`px-4 py-2 rounded-md text-sm font-medium ${formData.status === 'Occupied'
                   ? 'bg-[#8b5a2b] text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+                }`}
             >
               Occupied
             </button>
             <button
-              onClick={() => setFormData(prev => ({...prev, status: 'Not Occupied'}))}
-              className={`px-4 py-2 rounded-md text-sm font-medium ${
-                formData.status === 'Not Occupied'
+              onClick={() => setFormData(prev => ({ ...prev, status: 'Not Occupied' }))}
+              className={`px-4 py-2 rounded-md text-sm font-medium ${formData.status === 'Not Occupied'
                   ? 'bg-[#8b5a2b] text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+                }`}
             >
               Not Occupied
             </button>
           </div>
-          
+
           <div className="flex space-x-3">
             <button
               onClick={handleCancel}

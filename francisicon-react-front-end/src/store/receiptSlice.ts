@@ -3,6 +3,7 @@ import receiptService, {
   Receipt,
   CreateReceiptRequest,
   CreateReceiptFromInvoiceRequest,
+  CreateIndividualReceiptRequest,
   ReceiptReport,
   MonthlyList,
   ReceiptListResponse,
@@ -18,31 +19,31 @@ export interface ReceiptState {
   receipts: Receipt[];
   selectedReceipt: Receipt | null;
   currentReceipt: Receipt | null;
-  
+
   // Invoice data
   selectedInvoice: Invoice | null;
-  
+
   // Reports
   receiptReport: ReceiptReport | null;
   goaMonthlyList: MonthlyList | null;
   inscriptionMonthlyList: MonthlyList | null;
   wakeRoomMonthlyList: MonthlyList | null;
-  
+
   // Last numbers
   lastReceiptNumber: string | null;
   lastMiscReceiptNumber: string | null;
-  
+
   // Items
   receiptItems: ReceiptItem[];
   itemsLoading: boolean;
   itemsError: string | null;
-  
+
   // Pagination
   currentPage: number;
   receiptsPerPage: number;
   totalReceipts: number;
   totalPages: number;
-  
+
   // Filters
   filters: {
     fromDate: string | null;
@@ -55,13 +56,13 @@ export interface ReceiptState {
     invoiceId: string;
   };
   reportSummary: ReceiptSummary | null;
-  
+
   // UI State
   loading: boolean;
   error: string | null;
   lastErrorType: 'auth' | 'network' | 'validation' | 'server' | null;
   isDataLoaded: boolean;
-  
+
   // Action states
   isCreating: boolean;
   isFetchingReport: boolean;
@@ -156,6 +157,28 @@ export const createReceiptFromInvoice = createAsyncThunk(
   async (data: CreateReceiptFromInvoiceRequest, { rejectWithValue }) => {
     try {
       const receipt = await receiptService.createReceiptFromInvoice(data);
+      return receipt;
+    } catch (error: any) {
+      if (error instanceof ReceiptError) {
+        return rejectWithValue({
+          message: error.message,
+          type: error.type,
+          statusCode: error.statusCode,
+        });
+      }
+      return rejectWithValue({
+        message: 'An unexpected error occurred',
+        type: 'server' as const,
+      });
+    }
+  }
+);
+
+export const createIndividualReceipt = createAsyncThunk(
+  'receipt/createIndividualReceipt',
+  async (data: CreateIndividualReceiptRequest, { rejectWithValue }) => {
+    try {
+      const receipt = await receiptService.createIndividualReceipt(data);
       return receipt;
     } catch (error: any) {
       if (error instanceof ReceiptError) {
@@ -319,6 +342,7 @@ export const fetchReceiptsByDateRange = createAsyncThunk(
       invoiceId,
       sortBy,
       sortOrder,
+      bypassCache,
     }: {
       fromDate?: string;
       toDate?: string;
@@ -330,6 +354,7 @@ export const fetchReceiptsByDateRange = createAsyncThunk(
       invoiceId?: string;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
+      bypassCache?: boolean;
     },
     { rejectWithValue }
   ) => {
@@ -345,6 +370,7 @@ export const fetchReceiptsByDateRange = createAsyncThunk(
         invoiceId,
         sortBy,
         sortOrder,
+        bypassCache,
       });
       return response;
     } catch (error: any) {
@@ -555,6 +581,26 @@ export const receiptSlice = createSlice({
         state.lastErrorType = null;
       })
       .addCase(createReceiptFromInvoice.rejected, (state, action) => {
+        state.isCreating = false;
+        const errorData = action.payload as { message: string; type: string; statusCode?: number };
+        state.error = errorData.message;
+        state.lastErrorType = errorData.type as 'auth' | 'network' | 'validation' | 'server';
+      })
+      // Create individual receipt
+      .addCase(createIndividualReceipt.pending, (state) => {
+        state.isCreating = true;
+        state.error = null;
+        state.lastErrorType = null;
+      })
+      .addCase(createIndividualReceipt.fulfilled, (state, action) => {
+        state.isCreating = false;
+        state.currentReceipt = action.payload;
+        state.receipts.unshift(action.payload);
+        state.totalReceipts += 1;
+        state.error = null;
+        state.lastErrorType = null;
+      })
+      .addCase(createIndividualReceipt.rejected, (state, action) => {
         state.isCreating = false;
         const errorData = action.payload as { message: string; type: string; statusCode?: number };
         state.error = errorData.message;

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, X, Grid, List, Filter, Hash, User, Home, MapPin, Calendar, Church, Clock, Database, BarChart3 } from 'lucide-react';
 import { useGlobalSearch } from '../hooks/useGlobalSearch';
 import { Button } from './common/Button';
@@ -45,14 +46,15 @@ interface SearchResult {
 }
 
 export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedEntityTypes, setSelectedEntityTypes] = useState<string[]>([
-    'application', 'person', 'church', 'niche', 'date', 
+    'application', 'person', 'church', 'niche', 'date',
     'inscription', 'wake-room', 'invoice', 'gates-of-life'
   ]);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  
+
   const {
     searchResults,
     isSearching,
@@ -72,7 +74,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
 
   const handleSearch = async () => {
     if (!searchTerm.trim()) return;
-    
+
     try {
       await performSearch(searchTerm, selectedEntityTypes);
     } catch (error) {
@@ -87,8 +89,8 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
   };
 
   const toggleEntityType = (type: string) => {
-    setSelectedEntityTypes(prev => 
-      prev.includes(type) 
+    setSelectedEntityTypes(prev =>
+      prev.includes(type)
         ? prev.filter(t => t !== type)
         : [...prev, type]
     );
@@ -142,12 +144,103 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
   const getStatusColor = (status: string | number, isAvailable?: boolean) => {
     if (isAvailable === true) return 'bg-green-100 text-green-800';
     if (isAvailable === false) return 'bg-red-100 text-red-800';
-    
+
     const statusStr = String(status).toLowerCase();
     if (statusStr.includes('draft') || statusStr.includes('pending')) return 'bg-yellow-100 text-yellow-800';
     if (statusStr.includes('booked') || statusStr.includes('completed')) return 'bg-green-100 text-green-800';
     if (statusStr.includes('deleted') || statusStr.includes('cancelled')) return 'bg-red-100 text-red-800';
     return 'bg-gray-100 text-gray-800';
+  };
+
+  const resolveResultId = (result: SearchResult): string | null => {
+    const candidate = result.id ?? result.personId ?? result.PersonId ?? result.code ?? null;
+    if (candidate === null || candidate === undefined) {
+      return null;
+    }
+    const value = String(candidate).trim();
+    return value.length > 0 ? value : null;
+  };
+
+  // Handle navigation when grid item is clicked
+  const handleResultClick = (result: SearchResult) => {
+    // Close the modal first
+    onClose();
+
+    // Navigate to the appropriate page based on entity type
+    switch (result.entityType) {
+      case 'application':
+        // Navigate to view application page
+        if (result.code) {
+          navigate(`/niche/view/${result.code}`);
+        }
+        break;
+
+      case 'inscription':
+        // Navigate to edit inscription page
+        if (result.code) {
+          navigate(`/inscriptions/${result.code}/edit`);
+        } else if (result.id) {
+          navigate(`/inscriptions/${result.id}/edit`);
+        }
+        break;
+
+      case 'wake-room':
+        // Navigate to edit wake room booking
+        if (result.code) {
+          navigate(`/wake-room/edit/${result.code}`);
+        } else if (result.id) {
+          navigate(`/wake-room/edit/${result.id}`);
+        }
+        break;
+
+      case 'person':
+        // Navigate to person profile detail page.
+        // Global search can return id under different keys depending on source.
+        {
+          const personId = resolveResultId(result);
+          if (personId) {
+            navigate(`/person/${personId}`);
+          } else {
+            console.log('Person selected without resolvable id:', result);
+          }
+        }
+        break;
+
+      case 'church':
+        // Navigate to create new niche application
+        navigate('/niche/new');
+        break;
+
+      case 'niche':
+        // Navigate to create new niche application
+        navigate('/niche/new');
+        break;
+
+      case 'date':
+        // For date entities, log selection
+        console.log('Date selected:', result);
+        break;
+
+      case 'invoice':
+        // For invoice entities, navigate to invoice page if code exists
+        if (result.code) {
+          navigate(`/create-invoice/${result.code}`);
+        }
+        break;
+
+      case 'gates-of-life':
+        // For gates-of-life entities, navigate to gates of life page
+        if (result.code) {
+          navigate(`/gate-of-life/edit/${result.code}`);
+        } else {
+          navigate('/gates-of-life');
+        }
+        break;
+
+      default:
+        console.log('Unknown entity type:', result.entityType);
+        break;
+    }
   };
 
   if (!isOpen) return null;
@@ -287,9 +380,10 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                 // Grid View
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {searchResults.map((result, index) => (
-                    <div 
+                    <div
                       key={`${result.entityType}-${result.id}-${index}`}
-                      className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow p-4"
+                      className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all p-4 cursor-pointer hover:border-blue-300 hover:bg-blue-50"
+                      onClick={() => handleResultClick(result)}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2">
@@ -300,20 +394,19 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                             {getEntityTypeLabel(result.entityType)}
                           </span>
                         </div>
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          result.relevance === 'Very High' ? 'bg-green-100 text-green-800' :
-                          result.relevance === 'High' ? 'bg-blue-100 text-blue-800' :
-                          result.relevance === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${result.relevance === 'Very High' ? 'bg-green-100 text-green-800' :
+                            result.relevance === 'High' ? 'bg-blue-100 text-blue-800' :
+                              result.relevance === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-gray-100 text-gray-800'
+                          }`}>
                           {result.relevance}
                         </span>
                       </div>
-                      
+
                       <h3 className="font-semibold text-gray-900 mb-2 truncate">
                         {result.code || result.name || result.applicantName || 'Unknown'}
                       </h3>
-                      
+
                       <div className="space-y-2 text-sm text-gray-600">
                         {result.applicantName && (
                           <div className="flex flex-wrap gap-1">
@@ -328,21 +421,21 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                             )}
                           </div>
                         )}
-                        
+
                         {result.customerName && (
                           <div className="flex flex-wrap gap-1">
                             <span className="font-medium">Customer:</span>
                             <span className="truncate">{result.customerName}</span>
                           </div>
                         )}
-                        
+
                         {result.nameOfDeceased && (
                           <div className="flex flex-wrap gap-1">
                             <span className="font-medium">Deceased:</span>
                             <span className="truncate">{result.nameOfDeceased}</span>
                           </div>
                         )}
-                        
+
                         {result.chapelName && (
                           <div className="flex items-center gap-1">
                             <MapPin className="w-3 h-3 flex-shrink-0" />
@@ -355,39 +448,39 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                             )}
                           </div>
                         )}
-                        
+
                         {result.email && (
                           <div className="truncate">
                             {result.email} {result.mobile && `• ${result.mobile}`}
                           </div>
                         )}
-                        
+
                         {result.paymentMode && (
                           <div className="truncate">
                             <span className="font-medium">Payment:</span> {result.paymentMode}
                           </div>
                         )}
-                        
+
                         {result.deathCertificateNo && (
                           <div className="truncate">
                             <span className="font-medium">Certificate:</span> {result.deathCertificateNo}
                           </div>
                         )}
-                        
+
                         {result.address && (
                           <div className="truncate">{result.address}</div>
                         )}
-                        
+
                         {result.description && (
                           <div className="text-gray-500 truncate">{result.description}</div>
                         )}
                       </div>
-                      
+
                       <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
                         <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(result.status || result.statusText || '', result.isAvailable)}`}>
                           {result.statusText || result.status || (result.isAvailable ? 'Available' : 'Unavailable')}
                         </span>
-                        
+
                         {(result.applicationDate || result.transactionDate || result.usingDate || result.bookingDate || result.dateDied) && (
                           <span className="text-xs text-gray-500">
                             {result.applicationDate && new Date(result.applicationDate).toLocaleDateString()}
@@ -405,15 +498,16 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                 // List View
                 <div className="space-y-3">
                   {searchResults.map((result, index) => (
-                    <div 
+                    <div
                       key={`${result.entityType}-${result.id}-${index}`}
-                      className="bg-white border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                      className="bg-white border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors cursor-pointer hover:border-blue-300"
+                      onClick={() => handleResultClick(result)}
                     >
                       <div className="flex items-start gap-4">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getEntityTypeColor(result.entityType)}`}>
                           {getEntityTypeIcon(result.entityType)}
                         </div>
-                        
+
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 mb-2">
                             <h3 className="text-lg font-medium text-gray-900 truncate">
@@ -422,16 +516,15 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${getEntityTypeColor(result.entityType)}`}>
                               {getEntityTypeLabel(result.entityType)}
                             </span>
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              result.relevance === 'Very High' ? 'bg-green-100 text-green-800' :
-                              result.relevance === 'High' ? 'bg-blue-100 text-blue-800' :
-                              result.relevance === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${result.relevance === 'Very High' ? 'bg-green-100 text-green-800' :
+                                result.relevance === 'High' ? 'bg-blue-100 text-blue-800' :
+                                  result.relevance === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-gray-100 text-gray-800'
+                              }`}>
                               {result.relevance} relevance
                             </span>
                           </div>
-                          
+
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
                             {result.applicantName && (
                               <div>
@@ -444,63 +537,63 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                                 )}
                               </div>
                             )}
-                            
+
                             {result.customerName && (
                               <div>
                                 <span className="font-medium">Customer:</span> {result.customerName}
                               </div>
                             )}
-                            
+
                             {result.nameOfDeceased && (
                               <div>
                                 <span className="font-medium">Deceased:</span> {result.nameOfDeceased}
                               </div>
                             )}
-                            
+
                             {result.chapelName && (
                               <div>
                                 <span className="font-medium">Location:</span> {result.chapelName}
                                 {result.nicheCode && ` • Niche: ${result.nicheCode}`}
                               </div>
                             )}
-                            
+
                             {result.email && (
                               <div>
                                 <span className="font-medium">Contact:</span> {result.email}
                                 {result.mobile && ` • ${result.mobile}`}
                               </div>
                             )}
-                            
+
                             {result.paymentMode && (
                               <div>
                                 <span className="font-medium">Payment:</span> {result.paymentMode}
                               </div>
                             )}
-                            
+
                             {result.deathCertificateNo && (
                               <div>
                                 <span className="font-medium">Certificate:</span> {result.deathCertificateNo}
                               </div>
                             )}
-                            
+
                             {result.address && (
                               <div>
                                 <span className="font-medium">Address:</span> {result.address}
                               </div>
                             )}
-                            
+
                             {(result.amount !== undefined || result.totalAmount !== undefined) && (
                               <div>
                                 <span className="font-medium">Amount:</span> ${(result.amount || result.totalAmount || 0).toLocaleString()}
                               </div>
                             )}
-                            
+
                             {result.description && (
                               <div className="md:col-span-2">
                                 <span className="font-medium">Description:</span> {result.description}
                               </div>
                             )}
-                            
+
                             {(result.applicationDate || result.transactionDate || result.usingDate || result.bookingDate || result.dateDied || result.dateOfBirth) && (
                               <div>
                                 <span className="font-medium">Date:</span>
@@ -512,15 +605,15 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                                 {result.dateOfBirth && ` Born: ${new Date(result.dateOfBirth).toLocaleDateString()}`}
                               </div>
                             )}
-                            
+
                             <div>
-                              <span className="font-medium">Status:</span> 
+                              <span className="font-medium">Status:</span>
                               <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${getStatusColor(result.status || result.statusText || '', result.isAvailable)}`}>
                                 {result.statusText || result.status}
                               </span>
                             </div>
                           </div>
-                          
+
                           {result.matchType && (
                             <div className="mt-3">
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">

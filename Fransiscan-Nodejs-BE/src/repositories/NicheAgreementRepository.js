@@ -2,6 +2,7 @@ const BaseRepository = require('./BaseRepository');
 const { executeQuery } = require('../config/database');
 const logger = require('../utils/logger');
 const NicheAgreement = require('../models/NicheAgreement');
+const NicheConcentForm = require('../models/NicheConcentForm');
 
 /**
  * Niche Agreement repository - ULTRA SIMPLIFIED VERSION
@@ -34,7 +35,10 @@ class NicheAgreementRepository extends BaseRepository {
       // Step 1: Get application data first (fast, indexed lookup)
       const useIndexHints = process.env.USE_INDEX_HINTS === 'true';
       const indexHint = useIndexHints ? 'WITH (NOLOCK, INDEX(IX_NicheApplication_Code))' : 'WITH (NOLOCK)';
-      
+
+      // BYPASS CACHE FOR DEBUGGING
+      const bypassCache = true;
+
       const applicationQuery = `
         SELECT TOP 1 na.*
         FROM NicheApplication na ${indexHint}
@@ -54,7 +58,7 @@ class NicheAgreementRepository extends BaseRepository {
       }
 
       const na = applicationResult.recordset[0];
-      
+
       // Step 2: Get location hierarchy separately (only if NicheId exists)
       // This query runs in parallel with other queries, so it doesn't block
       let locationData = {
@@ -116,34 +120,12 @@ class NicheAgreementRepository extends BaseRepository {
       };
 
       logger.info(`Found application: ${mergedData.Code} in Chapel: ${mergedData.ChapelCode || 'N/A'}, Wall: ${mergedData.WallCode || 'N/A'}`);
-      console.log( "Adresss finder",mergedData)
-      // Helper function to extract street address from full address
-      const extractStreetAddress = (fullAddress) => {
-        if (!fullAddress || typeof fullAddress !== 'string') {
-          return fullAddress;
-        }
-        
-        // Remove "Block" prefix if present
-        let cleanedAddress = fullAddress.replace(/^\s*Block\s+\d+\s*,?\s*/i, '');
-        
-        // Look for unit number patterns like "#floor-unit" or "-floor-unit"
-        const unitPattern = /[#\-]\d+[\-\/]\d+/;
-        const unitMatch = cleanedAddress.match(unitPattern);
-        
-        if (unitMatch) {
-          // Split by the unit number and take the first part (street address)
-          const parts = cleanedAddress.split(unitMatch[0]);
-          cleanedAddress = parts[0].trim();
-        }
-        
-        // Remove postal code if it exists at the end (usually 6 digits)
-        cleanedAddress = cleanedAddress.replace(/\s+\d{6}\s*$/, '').trim();
-        
-        // Remove city name if it ends with "Singapore"
-        cleanedAddress = cleanedAddress.replace(/\s*,?\s*Singapore\s*$/i, '').trim();
-        
-        return cleanedAddress;
-      };
+      console.log("Adresss finder", mergedData)
+
+      // Prefer application-level storage/deceased values before inscription exists.
+      // This ensures agreement APIs return storageFrom for pre-inscription records.
+      const applicationStorageFrom = mergedData.StorageFrom || mergedData.InternmentDate1 || null;
+      const applicationStorageTo = mergedData.StorageTo || mergedData.InternmentDate1 || null;
 
       // Build the niche agreement object using data from NicheApplication
       const nicheAgreement = new NicheAgreement({
@@ -155,7 +137,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Applicant (all data is in NicheApplication table)
         applicantName: mergedData.ApplicantName,
         applicantAddressNo: mergedData.ApplicantAddressNo,
-        applicantAddressLine1:mergedData.ApplicantAddressLine1,
+        applicantAddressLine1: this.extractStreetAddress(mergedData.ApplicantAddressLine1),
         applicantAddressLine2: mergedData.ApplicantAddressLine2,
         applicantAddressCity: mergedData.ApplicantAddressCity,
         applicantAddressCountry: mergedData.ApplicantAddressCountry,
@@ -170,7 +152,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Nominee (all data is in NicheApplication table)
         nomineeName: mergedData.NomineeName,
         nomineeAddressNo: mergedData.NomineeAddressNo,
-        nomineeAddressLine1: mergedData.NomineeAddressLine1,
+        nomineeAddressLine1: this.extractStreetAddress(mergedData.NomineeAddressLine1),
         nomineeAddressLine2: mergedData.NomineeAddressLine2,
         nomineeAddressCity: mergedData.NomineeAddressCity,
         nomineeAddressCountry: mergedData.NomineeAddressCountry,
@@ -185,7 +167,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Second Nominee (all data is in NicheApplication table)
         nominee2Name: mergedData.NomineeName2,
         nominee2AddressNo: mergedData.NomineeAddressNo2,
-        nominee2AddressLine1: extractStreetAddress(mergedData.NomineeAddressLine12),
+        nominee2AddressLine1: this.extractStreetAddress(mergedData.NomineeAddressLine12),
         nominee2AddressLine2: mergedData.NomineeAddressLine22,
         nominee2AddressCity: mergedData.NomineeAddressCity2,
         nominee2AddressCountry: mergedData.NomineeAddressCountry2,
@@ -227,18 +209,34 @@ class NicheAgreementRepository extends BaseRepository {
           }
         },
 
+        // Deceased details from NicheApplication (fallback until inscription is created)
+        nameOfDeceased1: mergedData.NameOfDeceased1 || null,
+        dateDied1: mergedData.DateDied1 || null,
+        internmentDate1: mergedData.InternmentDate1 || null,
+        deathCertificateNo1: mergedData.DeathCertificateNo1 || null,
+        nameOfDeceased2: mergedData.NameOfDeceased2 || null,
+        dateDied2: mergedData.DateDied2 || null,
+        internmentDate2: mergedData.InternmentDate2 || null,
+        deathCertificateNo2: mergedData.DeathCertificateNo2 || null,
+
+        // Storage period from application-level data
+        storageFrom: applicationStorageFrom,
+        storageTo: applicationStorageTo,
+
         // Basic info
         refDocNumber: mergedData.Code
       });
 
       // CRITICAL OPTIMIZATION: Execute all independent queries in parallel
       // This reduces total time from sum of all queries to max of all queries
-      const [beneficiariesResult, nomineeResult, deceasedResult, invoiceResult, inscriptionResult] = await Promise.allSettled([
+      const [beneficiariesResult, nomineeResult, deceasedResult, invoiceResult, inscriptionResult, consentResult, receiptInfoResult] = await Promise.allSettled([
         this.addBeneficiaries(mergedData.NicheApplicationId, nicheAgreement),
         this.addNomineeInfo(mergedData.NicheApplicationId, nicheAgreement),
         this.addDeceasedAndStorageInfo(mergedData.NicheApplicationId, nicheAgreement),
         this.addInvoiceInfo(applicationCode, nicheAgreement),
-        this.addInscriptionInfo(applicationCode, mergedData.NicheApplicationId, nicheAgreement)
+        this.addInscriptionInfo(applicationCode, mergedData.NicheApplicationId, nicheAgreement),
+        this.addConsentFormInfo(applicationCode, nicheAgreement),
+        this.addReceiptInfo(applicationCode, nicheAgreement)
       ]);
 
       // Log any failures (non-critical, as these are optional data)
@@ -257,8 +255,26 @@ class NicheAgreementRepository extends BaseRepository {
       if (inscriptionResult.status === 'rejected') {
         logger.warn('Failed to fetch inscription info:', inscriptionResult.reason?.message);
       }
+      if (consentResult.status === 'rejected') {
+        logger.warn('Failed to fetch consent form info:', consentResult.reason?.message);
+      }
+      if (receiptInfoResult.status === 'rejected') {
+        logger.warn('Failed to fetch standalone receipt info:', receiptInfoResult.reason?.message);
+      }
 
       logger.info(`Successfully retrieved agreement for: ${applicationCode}`);
+
+      // Final fallback for storage dates: if still null, use receipt date or invoice date
+      if (!nicheAgreement.storageFrom) {
+        if (nicheAgreement.receiptDate) {
+          nicheAgreement.storageFrom = nicheAgreement.receiptDate;
+          logger.info(`[getNicheAgreementDetailsCopy] Fallback: Set storageFrom to receiptDate for ${applicationCode}`);
+        } else if (nicheAgreement.invoiceDate) {
+          nicheAgreement.storageFrom = nicheAgreement.invoiceDate;
+          logger.info(`[getNicheAgreementDetailsCopy] Fallback: Set storageFrom to invoiceDate for ${applicationCode}`);
+        }
+      }
+
       return nicheAgreement;
     } catch (error) {
       logger.error(`Error getting niche agreement for ${applicationCode}:`, error.message);
@@ -272,88 +288,44 @@ class NicheAgreementRepository extends BaseRepository {
    * ENHANCED: Better handling of edge cases and logging
    */
   formatDateOfBirth(dbValue) {
-    logger.debug(`[formatDateOfBirth] Input: ${dbValue}, Type: ${typeof dbValue}`);
-    
-    if (!dbValue) {
-      logger.debug(`[formatDateOfBirth] Value is null/undefined/empty`);
-      return null;
-    }
-    
-    // If it's already a Date object (from DATETIME column)
+    if (!dbValue) return null;
+
+    // If it's already a Date object
     if (dbValue instanceof Date) {
-      if (isNaN(dbValue.getTime())) {
-        logger.warn(`[formatDateOfBirth] Invalid Date object: ${dbValue}`);
-        return null;
-      }
-      const isoString = dbValue.toISOString();
-      logger.debug(`[formatDateOfBirth] Date object converted to ISO: ${isoString}`);
-      return isoString;
+      return isNaN(dbValue.getTime()) ? null : dbValue.toISOString();
     }
-    
-    // If it's a string (from NVARCHAR column)
+
     if (typeof dbValue === 'string') {
       const trimmed = dbValue.trim();
-      if (!trimmed || trimmed === 'null' || trimmed === 'NULL' || trimmed === '') {
-        logger.debug(`[formatDateOfBirth] Empty or null string: "${trimmed}"`);
-        return null;
+      if (!trimmed || trimmed.toLowerCase() === 'null') return null;
+
+      // Handle DD-MM-YYYY (Primary format for storage now)
+      const dateParts = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+      if (dateParts) {
+        return trimmed; // Already in desired string format
       }
-      
-      // Try to parse as date
+
+      // Handle ISO strings or other parseable formats
       const parsed = new Date(trimmed);
       if (!isNaN(parsed.getTime())) {
-        const isoString = parsed.toISOString();
-        logger.debug(`[formatDateOfBirth] String "${trimmed}" parsed to ISO: ${isoString}`);
-        return isoString;
+        // Stop 4-digit years from becoming Jan 1st
+        if (/^\d{4}$/.test(trimmed)) return null;
+
+        const day = String(parsed.getDate()).padStart(2, '0');
+        const month = String(parsed.getMonth() + 1).padStart(2, '0');
+        const year = parsed.getFullYear();
+        return `${day}-${month}-${year}`;
       }
-      
-      // Try common date formats
-      // Format: "2012-04-15" (YYYY-MM-DD)
-      const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (ymdMatch) {
-        const [, year, month, day] = ymdMatch;
-        const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
-        if (!isNaN(date.getTime())) {
-          const isoString = date.toISOString();
-          logger.debug(`[formatDateOfBirth] YYYY-MM-DD format "${trimmed}" converted to ISO: ${isoString}`);
-          return isoString;
-        }
-      }
-      
-      // Format: "15-Apr-2012" or "15 Apr 2012" (DD-MMM-YYYY)
-      const dmyMatch = trimmed.match(/^(\d{1,2})[\s-](\w{3})[\s-](\d{4})/i);
-      if (dmyMatch) {
-        const [, day, monthName, year] = dmyMatch;
-        const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-        const monthIndex = months.indexOf(monthName.toLowerCase());
-        if (monthIndex !== -1) {
-          const date = new Date(parseInt(year, 10), monthIndex, parseInt(day, 10));
-          if (!isNaN(date.getTime())) {
-            const isoString = date.toISOString();
-            logger.debug(`[formatDateOfBirth] DD-MMM-YYYY format "${trimmed}" converted to ISO: ${isoString}`);
-            return isoString;
-          }
-        }
-      }
-      
-      logger.warn(`[formatDateOfBirth] Could not parse date string: "${trimmed}"`);
-      // Return as-is if can't parse (might be formatted string that frontend can handle)
+
       return trimmed;
     }
-    
-    // Try to convert to Date
+
     try {
-      const date = new Date(dbValue);
-      if (!isNaN(date.getTime())) {
-        const isoString = date.toISOString();
-        logger.debug(`[formatDateOfBirth] Converted to Date and ISO: ${isoString}`);
-        return isoString;
-      }
+      const d = new Date(dbValue);
+      return isNaN(d.getTime()) ? null : d.toISOString();
     } catch (e) {
-      logger.warn(`[formatDateOfBirth] Error converting to Date:`, e.message);
+      return null;
     }
-    
-    logger.warn(`[formatDateOfBirth] Could not format date value: ${dbValue} (type: ${typeof dbValue})`);
-    return null;
   }
 
   /**
@@ -362,26 +334,26 @@ class NicheAgreementRepository extends BaseRepository {
    */
   formatBirthYear(dbValue) {
     if (dbValue === null || dbValue === undefined) return null;
-    
+
     // If it's already a number
     if (typeof dbValue === 'number') {
       return dbValue;
     }
-    
+
     // If it's a string, try to parse
     if (typeof dbValue === 'string') {
       const trimmed = dbValue.trim();
       if (!trimmed) return null;
-      
+
       const parsed = parseInt(trimmed, 10);
       if (!isNaN(parsed)) {
         return parsed;
       }
-      
+
       // Return as string if can't parse to number
       return trimmed;
     }
-    
+
     return null;
   }
 
@@ -394,7 +366,7 @@ class NicheAgreementRepository extends BaseRepository {
   async addBeneficiaries(nicheApplicationId, nicheAgreement) {
     try {
       logger.info(`[addBeneficiaries] Starting for nicheApplicationId: ${nicheApplicationId}`);
-      
+
       // PRIMARY: Query NicheApplicationBeneficiary first (this is where POST data is saved)
       const primaryQuery = `
         SELECT TOP 2
@@ -426,80 +398,46 @@ class NicheAgreementRepository extends BaseRepository {
         { timeout: 10000 }
       );
 
-      logger.info(`[addBeneficiaries] Primary query returned ${primaryResult.recordset.length} records from NicheApplicationBeneficiary`);
-
       if (primaryResult.recordset.length > 0) {
         const bene1 = primaryResult.recordset[0];
-        logger.info(`[addBeneficiaries] Beneficiary 1 raw data:`, {
-          Name: bene1.Name,
-          DateOfBirth: bene1.DateOfBirth,
-          DateOfBirthType: typeof bene1.DateOfBirth,
-          BirthYear: bene1.BirthYear,
-          BirthYearType: typeof bene1.BirthYear,
-          RelationshipToNominee1: bene1.RelationshipToNominee1,
-          RelationshipToNominee2: bene1.RelationshipToNominee2
-        });
-        
+
         nicheAgreement.beneName_1 = bene1.Name;
         nicheAgreement.beneIDNo_1 = bene1.IDNo;
         nicheAgreement.beneIsCatholic_1 = bene1.IsCatholic;
         nicheAgreement.beneIsMale_1 = bene1.IsMale;
         nicheAgreement.beneRelationshipToApplicant_1 = bene1.RelationshipToApplicant;
-        
+        nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1;
+        nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2;
+
         // ✅ FIX: Format DateOfBirth properly (handles NVARCHAR string)
         nicheAgreement.beneDateOfBirth_1 = this.formatDateOfBirth(bene1.DateOfBirth);
-        
+
         // ✅ FIX: Format BirthYear properly (handles NVARCHAR string)
         nicheAgreement.beneBirthYear_1 = this.formatBirthYear(bene1.BirthYear);
-        
-        logger.info(`[addBeneficiaries] Beneficiary 1 formatted:`, {
-          dateOfBirth: nicheAgreement.beneDateOfBirth_1,
-          birthYear: nicheAgreement.beneBirthYear_1
-        });
-        
-        // ✅ Set nominee relationships from the query result (will be null if columns don't exist)
-        nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1 || null;
-        nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2 || null;
       }
 
       if (primaryResult.recordset.length > 1) {
         const bene2 = primaryResult.recordset[1];
-        logger.info(`[addBeneficiaries] Beneficiary 2 raw data:`, {
-          Name: bene2.Name,
-          DateOfBirth: bene2.DateOfBirth,
-          DateOfBirthType: typeof bene2.DateOfBirth,
-          BirthYear: bene2.BirthYear,
-          BirthYearType: typeof bene2.BirthYear,
-          RelationshipToNominee1: bene2.RelationshipToNominee1,
-          RelationshipToNominee2: bene2.RelationshipToNominee2
-        });
-        
+
         nicheAgreement.beneName_2 = bene2.Name;
         nicheAgreement.beneIDNo_2 = bene2.IDNo;
         nicheAgreement.beneIsCatholic_2 = bene2.IsCatholic;
         nicheAgreement.beneIsMale_2 = bene2.IsMale;
         nicheAgreement.beneRelationshipToApplicant_2 = bene2.RelationshipToApplicant;
-        
+        nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1;
+        nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2;
+
         // ✅ FIX: Format DateOfBirth properly
         nicheAgreement.beneDateOfBirth_2 = this.formatDateOfBirth(bene2.DateOfBirth);
-        
+
         // ✅ FIX: Format BirthYear properly
         nicheAgreement.beneBirthYear_2 = this.formatBirthYear(bene2.BirthYear);
-        
-        logger.info(`[addBeneficiaries] Beneficiary 2 formatted:`, {
-          dateOfBirth: nicheAgreement.beneDateOfBirth_2,
-          birthYear: nicheAgreement.beneBirthYear_2
-        });
-        
-        // ✅ Set nominee relationships from the query result (will be null if columns don't exist)
-        nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1 || null;
-        nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2 || null;
       }
 
       // FALLBACK: If no data found, try NicheBookingBeneficiary (legacy/booking data)
       if (!nicheAgreement.beneName_1 && !nicheAgreement.beneName_2) {
         logger.info(`[addBeneficiaries] No data in NicheApplicationBeneficiary, trying NicheBookingBeneficiary`);
-        
+
         const fallbackQuery = `
           SELECT TOP 2
             Name,
@@ -519,8 +457,6 @@ class NicheAgreementRepository extends BaseRepository {
 
         const fallbackResult = await executeQuery(fallbackQuery, { nicheApplicationId }, { timeout: 10000 });
 
-        logger.info(`[addBeneficiaries] Fallback query returned ${fallbackResult.recordset.length} records from NicheBookingBeneficiary`);
-
         if (fallbackResult.recordset.length > 0) {
           const bene1 = fallbackResult.recordset[0];
           logger.info(`[addBeneficiaries] Fallback Beneficiary 1 raw data:`, {
@@ -530,24 +466,19 @@ class NicheAgreementRepository extends BaseRepository {
             BirthYear: bene1.BirthYear,
             BirthYearType: typeof bene1.BirthYear
           });
-          
+
           nicheAgreement.beneName_1 = bene1.Name;
           nicheAgreement.beneIDNo_1 = bene1.IDNo;
           nicheAgreement.beneIsCatholic_1 = bene1.IsCatholic;
           nicheAgreement.beneIsMale_1 = bene1.IsMale;
           nicheAgreement.beneRelationshipToApplicant_1 = bene1.RelationshipToApplicant;
-          
+
           // ✅ FIX: Format DateOfBirth properly (handles DATETIME)
           nicheAgreement.beneDateOfBirth_1 = this.formatDateOfBirth(bene1.DateOfBirth);
-          
+
           // ✅ FIX: Format BirthYear properly (handles INT)
           nicheAgreement.beneBirthYear_1 = this.formatBirthYear(bene1.BirthYear);
-          
-          logger.info(`[addBeneficiaries] Fallback Beneficiary 1 formatted:`, {
-            dateOfBirth: nicheAgreement.beneDateOfBirth_1,
-            birthYear: nicheAgreement.beneBirthYear_1
-          });
-          
+
           nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1 || null;
           nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2 || null;
         }
@@ -561,41 +492,24 @@ class NicheAgreementRepository extends BaseRepository {
             BirthYear: bene2.BirthYear,
             BirthYearType: typeof bene2.BirthYear
           });
-          
+
           nicheAgreement.beneName_2 = bene2.Name;
           nicheAgreement.beneIDNo_2 = bene2.IDNo;
           nicheAgreement.beneIsCatholic_2 = bene2.IsCatholic;
           nicheAgreement.beneIsMale_2 = bene2.IsMale;
           nicheAgreement.beneRelationshipToApplicant_2 = bene2.RelationshipToApplicant;
-          
+
           // ✅ FIX: Format DateOfBirth properly
           nicheAgreement.beneDateOfBirth_2 = this.formatDateOfBirth(bene2.DateOfBirth);
-          
+
           // ✅ FIX: Format BirthYear properly
           nicheAgreement.beneBirthYear_2 = this.formatBirthYear(bene2.BirthYear);
-          
-          logger.info(`[addBeneficiaries] Fallback Beneficiary 2 formatted:`, {
-            dateOfBirth: nicheAgreement.beneDateOfBirth_2,
-            birthYear: nicheAgreement.beneBirthYear_2
-          });
-          
+
           nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1 || null;
           nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2 || null;
         }
       }
-      
-      logger.info(`[addBeneficiaries] Completed. Final values:`, {
-        bene1: {
-          name: nicheAgreement.beneName_1,
-          dateOfBirth: nicheAgreement.beneDateOfBirth_1,
-          birthYear: nicheAgreement.beneBirthYear_1
-        },
-        bene2: {
-          name: nicheAgreement.beneName_2,
-          dateOfBirth: nicheAgreement.beneDateOfBirth_2,
-          birthYear: nicheAgreement.beneBirthYear_2
-        }
-      });
+
     } catch (error) {
       logger.warn('Could not fetch beneficiaries:', error.message);
       logger.error('[addBeneficiaries] Error details:', error);
@@ -668,12 +582,12 @@ class NicheAgreementRepository extends BaseRepository {
 
       if (result.recordset.length > 0) {
         const row = result.recordset[0];
-        
+
         // Update applicant info from Person table (if available)
         if (row.ApplicantName) {
           nicheAgreement.applicantName = row.ApplicantName;
           nicheAgreement.applicantAddressNo = row.ApplicantAddressNo;
-          nicheAgreement.applicantAddressLine1 = extractStreetAddress(row.ApplicantAddressLine1);
+          nicheAgreement.applicantAddressLine1 = this.extractStreetAddress(row.ApplicantAddressLine1);
           nicheAgreement.applicantAddressLine2 = row.ApplicantAddressLine2;
           nicheAgreement.applicantAddressCity = row.ApplicantAddressCity;
           nicheAgreement.applicantAddressState = row.ApplicantAddressState;
@@ -690,7 +604,7 @@ class NicheAgreementRepository extends BaseRepository {
         if (row.NomineeName) {
           nicheAgreement.nomineeName = row.NomineeName;
           nicheAgreement.nomineeAddressNo = row.NomineeAddressNo;
-          nicheAgreement.nomineeAddressLine1 = extractStreetAddress(row.NomineeAddressLine1);
+          nicheAgreement.nomineeAddressLine1 = this.extractStreetAddress(row.NomineeAddressLine1);
           // CRITICAL FIX: Ensure that if Person table has nominee address data, it overrides the NicheApplication data
           nicheAgreement.nomineeAddressLine2 = row.NomineeAddressLine2 !== null ? row.NomineeAddressLine2 : nicheAgreement.nomineeAddressLine2;
           nicheAgreement.nomineeAddressCity = row.NomineeAddressCity !== null ? row.NomineeAddressCity : nicheAgreement.nomineeAddressCity;
@@ -708,7 +622,7 @@ class NicheAgreementRepository extends BaseRepository {
         if (row.Nominee2Name) {
           nicheAgreement.nominee2Name = row.Nominee2Name;
           nicheAgreement.nominee2AddressNo = row.Nominee2AddressNo;
-          nicheAgreement.nominee2AddressLine1 = extractStreetAddress(row.Nominee2AddressLine1);
+          nicheAgreement.nominee2AddressLine1 = this.extractStreetAddress(row.Nominee2AddressLine1);
           // CRITICAL FIX: Ensure that if Person table has nominee2 address data, it overrides the NicheApplication data
           nicheAgreement.nominee2AddressLine2 = row.Nominee2AddressLine2 !== null ? row.Nominee2AddressLine2 : nicheAgreement.nominee2AddressLine2;
           nicheAgreement.nominee2AddressCity = row.Nominee2AddressCity !== null ? row.Nominee2AddressCity : nicheAgreement.nominee2AddressCity;
@@ -723,7 +637,6 @@ class NicheAgreementRepository extends BaseRepository {
         }
       } else {
         // If no NicheBooking record exists, log this as it might explain why address fields are null
-        logger.info(`No NicheBooking record found for application ID: ${nicheApplicationId}. Using NicheApplication address data only.`);
       }
     } catch (error) {
       logger.warn('Could not fetch nominee info from Person table:', error.message);
@@ -733,44 +646,106 @@ class NicheAgreementRepository extends BaseRepository {
 
   /**
    * Add deceased information and storage period from NicheInscriptionRequest
-   * OPTIMIZED: Combined queries to reduce round trips
+   * OPTIMIZED: Robust query strategy
    */
   async addDeceasedAndStorageInfo(nicheApplicationId, nicheAgreement) {
     try {
-      // CRITICAL OPTIMIZATION: Split into two queries to avoid CTE scanning entire table
-      // Step 1: Get booking and inscription info first (fast lookup)
-      const bookingQuery = `
-        SELECT TOP 1
-          nb.NicheBookingId,
-          nir.StorageFrom,
-          nir.StorageTo,
-          nir.NicheInscriptionRequestId
-        FROM NicheBooking nb WITH (NOLOCK)
-        LEFT JOIN NicheInscriptionRequest nir WITH (NOLOCK) 
-          ON nb.NicheBookingId = nir.NicheBookingId
-        WHERE nb.NicheApplicationId = @nicheApplicationId
-        ORDER BY nir.NicheInscriptionRequestId DESC
-      `;
+      const hasBookingStorageFromResult = await executeQuery(
+        `
+          SELECT CASE
+            WHEN COL_LENGTH('NicheBooking', 'StorageFrom') IS NOT NULL THEN 1
+            ELSE 0
+          END AS HasStorageFrom
+        `,
+        {},
+        { timeout: 5000 }
+      );
+      const hasBookingStorageFrom = Boolean(hasBookingStorageFromResult.recordset?.[0]?.HasStorageFrom);
 
-      const bookingResult = await executeQuery(bookingQuery, { nicheApplicationId }, { timeout: 10000 });
+      // Step 1: Get booking info first (Foundational)
+      const bookingQuery = hasBookingStorageFrom ? `
+        SELECT TOP 1
+          NicheBookingId,
+          StorageFrom
+        FROM NicheBooking WITH (NOLOCK)
+        WHERE NicheApplicationId = @nicheApplicationId
+        ORDER BY NicheBookingId DESC
+      ` : `
+        SELECT TOP 1
+          NicheBookingId
+        FROM NicheBooking WITH (NOLOCK)
+        WHERE NicheApplicationId = @nicheApplicationId
+        ORDER BY NicheBookingId DESC
+      `;
+      const bookingResult = await executeQuery(
+        bookingQuery,
+        { nicheApplicationId },
+        { timeout: 10000 }
+      );
 
       if (!bookingResult.recordset || bookingResult.recordset.length === 0) {
-        logger.info(`No booking found for application: ${nicheApplicationId}`);
         return;
       }
 
       const bookingRow = bookingResult.recordset[0];
-      const inscriptionRequestId = bookingRow.NicheInscriptionRequestId;
+      const nicheBookingId = bookingRow.NicheBookingId;
 
-      // Set storage info if available
-      if (bookingRow.StorageFrom) {
+      if (hasBookingStorageFrom && bookingRow.StorageFrom) {
         nicheAgreement.storageFrom = bookingRow.StorageFrom;
       }
-      if (bookingRow.StorageTo) {
-        nicheAgreement.storageTo = bookingRow.StorageTo;
+
+      const hasInscriptionStorageFromResult = await executeQuery(
+        `
+          SELECT CASE
+            WHEN COL_LENGTH('NicheInscriptionRequest', 'StorageFrom') IS NOT NULL THEN 1
+            ELSE 0
+          END AS HasStorageFrom
+        `,
+        {},
+        { timeout: 5000 }
+      );
+      const hasInscriptionStorageFrom = Boolean(hasInscriptionStorageFromResult.recordset?.[0]?.HasStorageFrom);
+
+      // Step 2: Get Inscription Request info
+      const inscriptionQuery = hasInscriptionStorageFrom ? `
+        SELECT TOP 1
+          NicheInscriptionRequestId,
+          StorageFrom,
+          TranscationDate
+        FROM NicheInscriptionRequest WITH (NOLOCK)
+        WHERE NicheBookingId = @nicheBookingId
+        ORDER BY NicheInscriptionRequestId DESC
+      ` : `
+        SELECT TOP 1
+          NicheInscriptionRequestId,
+          TranscationDate
+        FROM NicheInscriptionRequest WITH (NOLOCK)
+        WHERE NicheBookingId = @nicheBookingId
+        ORDER BY NicheInscriptionRequestId DESC
+      `;
+      const inscriptionResult = await executeQuery(
+        inscriptionQuery,
+        { nicheBookingId },
+        { timeout: 10000 }
+      );
+      let inscriptionRequestId = null;
+
+      if (inscriptionResult.recordset.length > 0) {
+        const insRow = inscriptionResult.recordset[0];
+        inscriptionRequestId = insRow.NicheInscriptionRequestId;
+
+        // Override/Set storage from Inscription if available (it's arguably more recent/specific)
+        if (hasInscriptionStorageFrom && insRow.StorageFrom) {
+          nicheAgreement.storageFrom = insRow.StorageFrom;
+        }
+
+        // If still no StorageFrom, use TranscationDate of inscription as a last-resort fallback for FROM
+        if (!nicheAgreement.storageFrom && insRow.TranscationDate) {
+          nicheAgreement.storageFrom = insRow.TranscationDate;
+        }
       }
 
-      // Step 2: Get deceased details separately (only if inscription exists)
+      // Step 3: Get deceased details (only if inscription exists)
       if (inscriptionRequestId) {
         try {
           const deceasedQuery = `
@@ -796,6 +771,18 @@ class NicheAgreementRepository extends BaseRepository {
             nicheAgreement.dateDied1 = deceased1.DateDied;
             nicheAgreement.internmentDate1 = deceased1.InternmentDate;
             nicheAgreement.deathCertificateNo1 = deceased1.DeathCertificateNo;
+
+            // Set storage from internment date if missing
+            if (!nicheAgreement.storageFrom && deceased1.InternmentDate) {
+              nicheAgreement.storageFrom = deceased1.InternmentDate;
+              logger.info(`[addDeceasedAndStorageInfo] Fallback: Set storageFrom to internmentDate for ${nicheApplicationId}`);
+            }
+            if (!nicheAgreement.storageTo && deceased1.InternmentDate) {
+              // Usually storageTo is 30 years later, but for agreements we often just show the date
+              // User specifically asked to use internmentDate
+              nicheAgreement.storageTo = deceased1.InternmentDate;
+              logger.info(`[addDeceasedAndStorageInfo] Fallback: Set storageTo to internmentDate for ${nicheApplicationId}`);
+            }
           }
 
           if (deceasedResult.recordset.length > 1) {
@@ -807,12 +794,10 @@ class NicheAgreementRepository extends BaseRepository {
           }
         } catch (deceasedError) {
           logger.warn(`Could not fetch deceased details for inscription ${inscriptionRequestId}:`, deceasedError.message);
-          // Continue without deceased details - they're optional
         }
       }
     } catch (error) {
       logger.warn('Could not fetch deceased and storage info:', error.message);
-      // Don't throw - deceased info is optional
     }
   }
 
@@ -822,132 +807,183 @@ class NicheAgreementRepository extends BaseRepository {
    */
   async addInvoiceInfo(applicationCode, nicheAgreement) {
     try {
-      // Simplified query - split into two queries to avoid timeout
-      // First, get invoice details with InvoiceDetails
-      const invoiceQuery = `
+      const trimmedCode = String(applicationCode || '').trim();
+      const prefixedCode = `I-${trimmedCode}`;
+
+      // Find the main invoice linked to this application code
+      const invoiceHeaderQuery = `
         SELECT TOP 1
+          inv.InvoiceId,
           inv.Code as InvoiceNo,
           inv.TransactionDate as InvoiceDate,
-          inv.TaxAmount,
+          inv.TaxAmount as InvoiceTaxAmount,
+          inv.TotalAmount as InvoiceTotalAmount,
           inv.PayingAmount as InvoicePayingAmount,
-          inv.InvoiceId,
-          invdls.TotalPayingAmount as NicheLineAmount,
-          invdls.LineTaxAmount,
-          invdls.PayingAmount as InvoiceDetailPayingAmount
-        FROM InvoiceDetail invdls WITH(NOLOCK)
-        INNER JOIN Invoice inv WITH(NOLOCK) ON invdls.InvoiceId = inv.InvoiceId
-        WHERE invdls.RefDocNumber = @applicationCode
-          AND inv.Status = 1
-          AND invdls.ItemId <= 7
+          inv.PaymentMode,
+          inv.PaymentModeDocNo,
+          inv.Status
+        FROM Invoice inv WITH(NOLOCK)
+        LEFT JOIN InvoiceDetail idl WITH(NOLOCK) ON inv.InvoiceId = idl.InvoiceId
+        WHERE inv.RefDocNumber IN (@applicationCode, @prefixedCode)
+           OR idl.RefDocNumber IN (@applicationCode, @prefixedCode)
         ORDER BY inv.TransactionDate DESC
       `;
 
-      // Reduced timeout - should complete in < 2s with proper index on InvoiceDetail.RefDocNumber
-      const invoiceResult = await executeQuery(invoiceQuery, { applicationCode }, { timeout: 10000 });
+      const headerResult = await executeQuery(
+        invoiceHeaderQuery,
+        { applicationCode: trimmedCode, prefixedCode },
+        { timeout: 10000 }
+      );
 
-      let inv = null;
-      let invoiceId = null;
-
-      if (invoiceResult.recordset.length === 0) {
-        // Try without status filter (for unpaid applications)
-        const invoiceQueryNoStatus = `
-          SELECT TOP 1
-            inv.Code as InvoiceNo,
-            inv.TransactionDate as InvoiceDate,
-            inv.TaxAmount,
-            inv.PayingAmount as InvoicePayingAmount,
-            inv.InvoiceId,
-            invdls.TotalPayingAmount as NicheLineAmount,
-            invdls.LineTaxAmount,
-            invdls.PayingAmount as InvoiceDetailPayingAmount
-          FROM InvoiceDetail invdls WITH(NOLOCK)
-          LEFT JOIN Invoice inv WITH(NOLOCK) ON invdls.InvoiceId = inv.InvoiceId
-          WHERE invdls.RefDocNumber = @applicationCode
-          ORDER BY inv.TransactionDate DESC
-        `;
-        const invoiceResultNoStatus = await executeQuery(invoiceQueryNoStatus, { applicationCode }, { timeout: 10000 });
-        
-        if (invoiceResultNoStatus.recordset.length === 0) {
-          logger.info(`No invoice found for application: ${applicationCode}`);
-          return;
-        }
-        
-        inv = invoiceResultNoStatus.recordset[0];
-        invoiceId = inv.InvoiceId;
-      } else {
-        inv = invoiceResult.recordset[0];
-        invoiceId = inv.InvoiceId;
+      if (headerResult.recordset.length === 0) {
+        return;
       }
 
-      // Set invoice information
+      const inv = headerResult.recordset[0];
+      const invoiceId = inv.InvoiceId;
+
+      // Set header info
       nicheAgreement.invoiceNo = inv.InvoiceNo;
       nicheAgreement.invoiceDate = inv.InvoiceDate;
-      nicheAgreement.taxAmount = inv.LineTaxAmount || inv.TaxAmount || 0;
-      nicheAgreement.invoicePayingAmount = inv.InvoiceDetailPayingAmount || inv.InvoicePayingAmount || 0;
-      nicheAgreement.nicheLineAmount = inv.NicheLineAmount || 0;
-      nicheAgreement.totalAmount = inv.NicheLineAmount || 0;
+      nicheAgreement.taxAmount = inv.InvoiceTaxAmount || 0;
+      nicheAgreement.totalAmount = inv.InvoiceTotalAmount || 0;
+      nicheAgreement.invoicePayingAmount = inv.InvoicePayingAmount || 0;
+      nicheAgreement.paymentMode = inv.PaymentMode;
+      nicheAgreement.paymentModeDocNo = inv.PaymentModeDocNo;
 
-      // Get receipt information separately (optional - won't fail if timeout)
-      try {
-        if (invoiceId) {
-          const receiptQuery = `
-            SELECT TOP 1
-              TotalAmount as ReceiptAmount,
-              Code as ReceiptNo,
-              TransactionDate as ReceiptDate,
-              PaymentMode,
-              PaymentModeDocNo,
-              PayingAmount as ReceiptPayingAmount
-            FROM Receipt WITH(NOLOCK)
-            WHERE InvoiceId = @invoiceId
-            ORDER BY ReceiptId DESC
-          `;
+      // Fetch ALL details for this invoice
+      const detailsQuery = `
+        SELECT 
+          idl.InvoiceDetailId,
+          idl.ItemId,
+          idl.Description,
+          idl.Quantity,
+          idl.UnitPrice,
+          idl.LineTaxAmount,
+          idl.TotalPayingAmount as LineTotal,
+          idl.PayingAmount as LineNet,
+          i.Name as ItemName,
+          i.Code as ItemCode
+        FROM InvoiceDetail idl WITH(NOLOCK)
+        LEFT JOIN Item i WITH(NOLOCK) ON idl.ItemId = i.ItemId
+        WHERE idl.InvoiceId = @invoiceId
+      `;
 
-          const receiptResult = await executeQuery(receiptQuery, { invoiceId }, { timeout: 10000 });
+      const detailsResult = await executeQuery(detailsQuery, { invoiceId }, { timeout: 10000 });
 
-          if (receiptResult.recordset.length > 0) {
-            const rec = receiptResult.recordset[0];
-            nicheAgreement.receiptNo = rec.ReceiptNo;
-            nicheAgreement.receiptDate = rec.ReceiptDate;
-            nicheAgreement.receiptAmount = rec.ReceiptAmount || 0;
-            nicheAgreement.receiptPayingAmount = rec.ReceiptPayingAmount || rec.ReceiptAmount || 0;
-            nicheAgreement.paymentMode = rec.PaymentMode;
-            nicheAgreement.paymentModeDocNo = rec.PaymentModeDocNo;
-          }
+      if (detailsResult.recordset.length > 0) {
+        nicheAgreement.invoiceDetails = detailsResult.recordset.map(detail => ({
+          itemId: detail.ItemId,
+          itemName: detail.ItemName || detail.Description || 'Service Item',
+          itemCode: detail.ItemCode,
+          description: detail.Description,
+          quantity: detail.Quantity || 1,
+          unitPrice: detail.UnitPrice || 0,
+          taxAmount: detail.LineTaxAmount || 0,
+          lineTotal: detail.LineTotal || 0,
+          lineNet: detail.LineNet || 0
+        }));
+
+        // Set nicheLineAmount from the niche item (usually ItemId <= 7)
+        const nicheItem = nicheAgreement.invoiceDetails.find(d => d.itemId <= 7);
+        if (nicheItem) {
+          nicheAgreement.nicheLineAmount = nicheItem.lineNet;
+        } else {
+          nicheAgreement.nicheLineAmount = nicheAgreement.invoiceDetails[0].lineNet;
         }
-      } catch (receiptError) {
-        logger.warn(`Could not fetch receipt info: `, receiptError.message);
-        // Continue without receipt info
       }
 
-      // Get MisalaniousReceiptDetail (priority over Receipt table)
+      // Get receipt information
       try {
-        const miscReceiptQuery = `
+        const receiptQuery = `
           SELECT TOP 1
-            TotalPayingAmount as ReceiptAmount,
-            PayingAmount as ReceiptPayingAmount
-          FROM MisalaniousReceiptDetail WITH(NOLOCK)
-          WHERE RefDocNumber = @applicationCode
-          ORDER BY ReceiptDetailId DESC
+            Code as ReceiptNo,
+            TransactionDate as ReceiptDate,
+            TotalAmount as ReceiptAmount,
+            PayingAmount as ReceiptPayingAmount,
+            PaymentMode,
+            PaymentModeDocNo
+          FROM Receipt WITH(NOLOCK)
+          WHERE InvoiceId = @invoiceId
+            AND Status > 0
+          ORDER BY ReceiptId DESC
         `;
 
-        const miscReceiptResult = await executeQuery(miscReceiptQuery, { applicationCode }, { timeout: 10000 });
+        const receiptResult = await executeQuery(receiptQuery, { invoiceId }, { timeout: 10000 });
 
-        if (miscReceiptResult.recordset.length > 0) {
-          const miscRec = miscReceiptResult.recordset[0];
-          // Override receipt amount with miscellaneous receipt (priority)
-          nicheAgreement.receiptAmount = miscRec.ReceiptAmount || nicheAgreement.receiptAmount || 0;
-          nicheAgreement.receiptPayingAmount = miscRec.ReceiptPayingAmount || nicheAgreement.receiptPayingAmount || 0;
+        if (receiptResult.recordset.length > 0) {
+          const rec = receiptResult.recordset[0];
+          nicheAgreement.receiptNo = rec.ReceiptNo;
+          nicheAgreement.receiptDate = rec.ReceiptDate;
+          nicheAgreement.receiptAmount = rec.ReceiptAmount || 0;
+          nicheAgreement.receiptPayingAmount = rec.ReceiptPayingAmount || rec.ReceiptAmount || 0;
+
+          if (rec.PaymentMode) nicheAgreement.paymentMode = rec.PaymentMode;
+          if (rec.PaymentModeDocNo) nicheAgreement.paymentModeDocNo = rec.PaymentModeDocNo;
         }
-      } catch (miscReceiptError) {
-        logger.warn(`Could not fetch miscellaneous receipt info: `, miscReceiptError.message);
-        // Continue without miscellaneous receipt info
+      } catch (receiptError) {
+        // ignore standalone receipt error
       }
-
-      logger.info(`Invoice info added for ${applicationCode}: ${nicheAgreement.invoiceNo || 'N/A'}`);
     } catch (error) {
-      logger.warn('Could not fetch invoice info:', error.message);
-      // Don't throw - invoice is optional
+      // ignore overall invoice error
+    }
+  }
+
+  /**
+   * Add receipt information (standalone fallback)
+   * This fetches receipts linked via MisalaniousReceiptDetail for individual receipts
+   */
+  async addReceiptInfo(applicationCode, nicheAgreement) {
+    try {
+      const trimmedCode = String(applicationCode || '').trim();
+      const prefixedCode = `I-${trimmedCode}`;
+
+      // Search for standalone receipt linked via Application Code in MisalaniousReceiptDetail
+      // This handles cases where no invoice exists or individual receipts (without InvoiceId)
+      const receiptQuery = `
+        SELECT TOP 1
+          r.Code as ReceiptNo,
+          r.TransactionDate as ReceiptDate,
+          r.TotalAmount as ReceiptAmount,
+          r.PayingAmount as ReceiptPayingAmount,
+          r.PaymentMode,
+          r.PaymentModeDocNo
+        FROM Receipt r WITH(NOLOCK)
+        INNER JOIN MisalaniousReceiptDetail rd WITH(NOLOCK) ON r.ReceiptId = rd.ReceiptId
+        WHERE rd.RefDocNumber IN (@applicationCode, @prefixedCode)
+        AND r.Status > 0
+        ORDER BY r.ReceiptId DESC
+      `;
+
+      const result = await executeQuery(
+        receiptQuery,
+        { applicationCode: trimmedCode, prefixedCode },
+        { timeout: 10000 }
+      );
+
+      if (result.recordset.length > 0) {
+        const rec = result.recordset[0];
+        // Only set if not already set by addInvoiceInfo (to avoid duplicates/conflicts)
+        if (!nicheAgreement.receiptNo) {
+          logger.info(`[addReceiptInfo] Found standalone receipt ${rec.ReceiptNo} for application ${applicationCode}`);
+          nicheAgreement.receiptNo = rec.ReceiptNo;
+          nicheAgreement.receiptDate = rec.ReceiptDate;
+          nicheAgreement.receiptAmount = rec.ReceiptAmount || 0;
+          nicheAgreement.receiptPayingAmount = rec.ReceiptPayingAmount || rec.ReceiptAmount || 0;
+
+          // Use receipt payment mode if not already set
+          if (rec.PaymentMode && !nicheAgreement.paymentMode) {
+            nicheAgreement.paymentMode = rec.PaymentMode;
+          }
+          if (rec.PaymentModeDocNo && !nicheAgreement.paymentModeDocNo) {
+            nicheAgreement.paymentModeDocNo = rec.PaymentModeDocNo;
+          }
+        } else {
+          logger.info(`[addReceiptInfo] Receipt already populated for ${applicationCode}, skipping standalone check`);
+        }
+      }
+    } catch (error) {
+      logger.warn(`[addReceiptInfo] Error fetching standalone receipt info for ${applicationCode}:`, error.message);
     }
   }
 
@@ -979,41 +1015,32 @@ class NicheAgreementRepository extends BaseRepository {
     }
   }
 
-  // Keep the old code structure but update it
-  _oldAddInvoiceInfo_backup(applicationCode, nicheAgreement) {
-    // This is the old version - kept for reference
-    return Promise.resolve();
-  }
-
   /**
    * Add inscription information to the niche agreement
    * This fetches inscription data linked to the application
    */
   async addInscriptionInfo(applicationCode, nicheApplicationId, nicheAgreement) {
     try {
-      logger.info(`[addInscriptionInfo] Starting for applicationCode: ${applicationCode}, nicheApplicationId: ${nicheApplicationId}`);
-      
       // Query for inscription linked to this application via NicheBooking
       const inscriptionQuery = `
         SELECT TOP 1
           nir.Code AS InscriptionCode,
           nir.NicheBookingId,
-          nir.NicheApplicationCode,
           nir.BibleInscriptionChoiceId,
           nir.BibleInscriptionChoiceNo,
           nir.AdditionalInscriptionPhrase,
-          nir.CreatedDate
+          nir.TranscationDate
         FROM NicheInscriptionRequest nir WITH(NOLOCK)
         INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
         WHERE nb.NicheApplicationId = @nicheApplicationId
         ORDER BY nir.NicheInscriptionRequestId DESC
       `;
-      
+
       const inscriptionResult = await executeQuery(inscriptionQuery, { nicheApplicationId }, { timeout: 10000 });
-      
+
       if (inscriptionResult.recordset.length > 0) {
         const inscription = inscriptionResult.recordset[0];
-        
+
         // Store inscription information in the niche agreement object
         nicheAgreement.inscription = {
           code: inscription.InscriptionCode,
@@ -1021,18 +1048,15 @@ class NicheAgreementRepository extends BaseRepository {
           bibleInscriptionChoiceId: inscription.BibleInscriptionChoiceId,
           bibleInscriptionChoiceNo: inscription.BibleInscriptionChoiceNo,
           additionalInscriptionPhrase: inscription.AdditionalInscriptionPhrase,
-          createdDate: inscription.CreatedDate
+          createdDate: inscription.TranscationDate
         };
-        
-        logger.info(`[addInscriptionInfo] Found inscription for application: ${applicationCode}, code: ${inscription.InscriptionCode}`);
-        
+
         // Now fetch inscription items using InscriptionInvoiceService
         try {
           const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
-          const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscription.InscriptionCode, null); // churchId may not be available here
-          
+          const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscription.InscriptionCode, null);
+
           if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
-            // Map inscription items to a format compatible with the response
             const inscriptionItems = inscriptionData.items.map(inscriptionItem => ({
               itemId: inscriptionItem.ItemId || null,
               itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
@@ -1043,31 +1067,78 @@ class NicheAgreementRepository extends BaseRepository {
               unitAmount: inscriptionItem.Price || 0,
               payingAmount: inscriptionItem.Price || 0,
               totalPayingAmount: inscriptionItem.Price || 0,
-              refDocNumber: inscription.InscriptionCode, // Use inscription code as reference
+              refDocNumber: inscription.InscriptionCode,
               refDocName: 'INCR',
               refType: 'INCR',
               outstandingAmount: 0,
               lineTotalAmount: inscriptionItem.Price || 0,
-              lineTaxPercent: 9, // Default 9% GST for inscription items
+              lineTaxPercent: 9,
               lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
             }));
-            
-            // Store inscription items in the niche agreement object
+
             nicheAgreement.inscriptionItems = inscriptionItems;
-            
-            logger.info(`[addInscriptionInfo] Added ${inscriptionItems.length} inscription items to agreement for application: ${applicationCode}`);
           }
         } catch (inscriptionServiceError) {
-          logger.warn(`[addInscriptionInfo] Failed to fetch inscription items (non-critical):`, inscriptionServiceError.message);
-          // Continue without inscription items - non-critical
+          // ignore inscription service error
         }
-      } else {
-        logger.info(`[addInscriptionInfo] No inscription found for application: ${applicationCode}`);
       }
     } catch (error) {
-      logger.warn('Could not fetch inscription info:', error.message);
-      // Don't throw - inscription info is optional
+      // ignore overall inscription info error
     }
+  }
+
+  /**
+   * Add consent form information and beneficiary life status
+   */
+  async addConsentFormInfo(applicationCode, nicheAgreement) {
+    try {
+      const query = `
+        SELECT TOP 1 Status, AgreementDate, AppliedDate
+        FROM NicheConcentForm WITH (NOLOCK)
+        WHERE Code = @applicationCode
+        ORDER BY NicheConcentFormId DESC
+      `;
+
+      const result = await executeQuery(query, { applicationCode }, { timeout: 10000 });
+
+      if (result.recordset && result.recordset.length > 0) {
+        const row = result.recordset[0];
+        const status = row.Status;
+
+        const decoded = NicheConcentForm.decodeConsentSelections(status);
+
+        nicheAgreement.beneLifeStatus_1 = decoded.firstBeneficiary;
+        nicheAgreement.beneLifeStatus_2 = decoded.secondBeneficiary;
+
+        nicheAgreement.consentFormStatus = status;
+        nicheAgreement.consentFormTimestamp = row.AgreementDate || row.AppliedDate || null;
+      }
+    } catch (error) {
+      // ignore consent info error
+    }
+  }
+
+  /**
+   * Helper function to extract street address from full address
+   */
+  extractStreetAddress(fullAddress) {
+    if (!fullAddress || typeof fullAddress !== 'string') {
+      return fullAddress;
+    }
+
+    let cleanedAddress = fullAddress.replace(/^\s*Block\s+\d+\s*,?\s*/i, '');
+    const unitPattern = /[#\-]\d+[\-\/]\d+/;
+    const unitMatch = cleanedAddress.match(unitPattern);
+
+    if (unitMatch) {
+      const parts = cleanedAddress.split(unitMatch[0]);
+      cleanedAddress = parts[0].trim();
+    }
+
+    cleanedAddress = cleanedAddress.replace(/\s+\d{6}\s*$/, '').trim();
+    cleanedAddress = cleanedAddress.replace(/\s*,?\s*Singapore\s*$/i, '').trim();
+
+    return cleanedAddress;
   }
 }
 

@@ -1,7 +1,8 @@
-import { FileTextIcon, CheckCircleIcon, HashIcon, UserIcon } from 'lucide-react';
+import { FileTextIcon, CheckCircleIcon, HashIcon } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { ConsentFormViewerModal } from '../components/ConsernFormAgreement/ConsentFormViewerModal';
+import { useToast } from '../contexts/ToastContext';
 import React, { useState, useCallback } from 'react';
 
 interface Beneficiary {
@@ -22,6 +23,7 @@ export function ConsentForms({
   setFormData,
   isReadOnly = false
 }: ConsentFormsProps) {
+  const { showError } = useToast();
   const [consentFormModalOpen, setConsentFormModalOpen] = useState(false);
   const [consentFormData, setConsentFormData] = useState<any>(null);
 
@@ -37,22 +39,70 @@ export function ConsentForms({
     setFormData(updated);
   };
 
+  // Debug: Log formData structure on component mount
+  React.useEffect(() => {
+    console.log('ConsentForms component mounted with formData keys:', Object.keys(formData || {}));
+    console.log('FormData applicant info:', {
+      applicantName: formData?.applicantName,
+      contactName: formData?.contactName,
+      applicantIDNo: formData?.applicantIDNo,
+      contactNric: formData?.contactNric
+    });
+    console.log('FormData nominee info:', {
+      nomineeName: formData?.nomineeName,
+      nomineeIDNo: formData?.nomineeIDNo,
+      nomineeName2: formData?.nomineeName2,
+      nomineeIDNo2: formData?.nomineeIDNo2
+    });
+    console.log('FormData niche info:', {
+      chapelName: formData?.chapelName,
+      chapel: formData?.chapel,
+      nicheNumber: formData?.nicheNumber,
+      nicheCode: formData?.nicheCode
+    });
+    console.log('FormData beneficiaries:', formData?.beneficiaries);
+  }, [formData]);
+
+  // Function to get beneficiary data by index (handles array or individual fields)
+  const getBeneficiaryData = useCallback((index: number) => {
+    const beneficiaries = formData.beneficiaries || [];
+    if (beneficiaries[index]) {
+      const b = beneficiaries[index];
+      return {
+        name: b.name || b.fullName || b.deceasedName || '',
+        idNo: b.idNo || b.nric || b.deathCertNo || '',
+        relationshipToApplicant: b.relationshipToApplicant || b.relationship || ''
+      };
+    }
+
+    // Fallback: try to get individual beneficiary fields
+    const name = formData[`beneficiary${index + 1}Name`] || (formData as any)[`beneficiary${index + 1}`]?.name || '';
+    if (name) {
+      return {
+        name: name,
+        idNo: formData[`beneficiary${index + 1}IDNo`] || (formData as any)[`beneficiary${index + 1}`]?.idNo || (formData as any)[`beneficiary${index + 1}`]?.nric || '',
+        relationshipToApplicant: formData[`beneficiary${index + 1}Relationship`] || (formData as any)[`beneficiary${index + 1}`]?.relationship || ''
+      };
+    }
+    return null;
+  }, [formData]);
+
   // Function to open consent form for a specific beneficiary and form type
-  const openConsentForm = useCallback((beneficiary: Beneficiary, formType: 'deceased' | 'living' | 'lostCapacity') => {
-    // Extract applicant data from formData
-    const applicantName = formData.applicantName || '';
-    const applicantNric = formData.applicantNRIC || formData.applicantIdNo || '';
-    
-    // Extract nominee data from formData
-    const nominee1Name = formData.nominee1Name || '';
-    const nominee1Nric = formData.nominee1NRIC || formData.nominee1IdNo || '';
-    const nominee2Name = formData.nominee2Name || '';
-    const nominee2Nric = formData.nominee2NRIC || formData.nominee2IdNo || '';
-    
+  const openConsentForm = useCallback((b1: any, b2: any, formType: 'deceased' | 'living' | 'lostCapacity') => {
+    // Extract applicant data from formData - using correct field names
+    const applicantName = formData.applicantName || formData.contactName || '';
+    const applicantNric = formData.applicantIDNo || formData.contactNric || '';
+
+    // Extract nominee data from formData - using correct field names
+    const nominee1Name = formData.nomineeName || '';
+    const nominee1Nric = formData.nomineeIDNo || '';
+    const nominee2Name = formData.nomineeName2 || '';
+    const nominee2Nric = formData.nomineeIDNo2 || '';
+
     // Extract niche/chapel data
-    const chapelName = formData.chapelName || 'Chapel';
-    const nicheNumber = formData.nicheNumber || 'XXXX';
-    
+    const chapelName = formData.chapelName || formData.chapel || 'Chapel';
+    const nicheNumber = formData.nicheNumber || formData.nicheCode || 'XXXX';
+
     // Prepare the consent form data
     const consentData = {
       applicantName,
@@ -63,40 +113,65 @@ export function ConsentForms({
       nominee2Nric,
       chapelName,
       nicheNumber,
-      beneficiary1: {
-        name: beneficiary.name || '',
-        nric: beneficiary.idNo || '',
-        relationship: beneficiary.relationshipToApplicant || '',
-      },
-      beneficiary2: undefined,
+      beneficiary1: b1 ? {
+        name: b1.name,
+        nric: b1.idNo,
+        relationship: b1.relationshipToApplicant,
+        isDeceased: formType === 'deceased',
+        isLiving: formType === 'living',
+        isLostCapacity: formType === 'lostCapacity'
+      } : undefined,
+      beneficiary2: b2 ? {
+        name: b2.name,
+        nric: b2.idNo,
+        relationship: b2.relationshipToApplicant,
+        isDeceased: formType === 'deceased',
+        isLiving: formType === 'living',
+        isLostCapacity: formType === 'lostCapacity'
+      } : undefined,
       formType,
     };
-    
+
+    console.log('Consent form data being prepared:', consentData);
     setConsentFormData(consentData);
     setConsentFormModalOpen(true);
   }, [formData]);
 
   // Function to open consent form with a specific beneficiary (first or second)
-  const openConsentFormForBeneficiary = useCallback((beneficiaryIndex: number, formType: 'deceased' | 'living' | 'lostCapacity') => {
-    const beneficiaries = formData.beneficiaries || [];
-    const beneficiary = beneficiaries[beneficiaryIndex];
-    if (beneficiary) {
-      openConsentForm(beneficiary, formType);
+  const handleOpenForm = useCallback((beneficiaryKey: string, formType: 'deceased' | 'living' | 'lostCapacity') => {
+    console.log('Attempting to open consent form for:', beneficiaryKey);
+
+    if (beneficiaryKey === 'twoBeneficiaries') {
+      const b1 = getBeneficiaryData(0);
+      const b2 = getBeneficiaryData(1);
+      if (b1) {
+        openConsentForm(b1, b2, formType);
+      } else {
+        showError('Error', 'No beneficiary data found');
+      }
+    } else {
+      const index = beneficiaryKey === 'firstBeneficiary' ? 0 : 1;
+      const b = getBeneficiaryData(index);
+      if (b) {
+        openConsentForm(b, undefined, formType);
+      } else {
+        showError('Error', `No data found for ${beneficiaryKey === 'firstBeneficiary' ? '1st' : '2nd'} beneficiary`);
+      }
     }
-  }, [formData, openConsentForm]);
+  }, [getBeneficiaryData, openConsentForm, showError]);
 
   const beneficiaryTypes = [
     {
       key: 'firstBeneficiary',
-      label: '1st Beneficiary'
+      label: '1st Beneficiary',
     },
     {
-      key: 'secondBeneficiary', 
-      label: '2nd Beneficiary'
+      key: 'secondBeneficiary',
+      label: '2nd Beneficiary',
     },
     {
       key: 'twoBeneficiaries',
-      label: '2 Beneficiaries'
+      label: '2 Beneficiaries (Consolidated)',
     }
   ];
 
@@ -108,7 +183,7 @@ export function ConsentForms({
     },
     {
       key: 'deceased',
-      label: 'Deceased', 
+      label: 'Deceased',
       icon: HashIcon
     },
     {
@@ -118,7 +193,7 @@ export function ConsentForms({
     }
   ];
 
-  const allConsented = beneficiaryTypes.every(beneficiary => 
+  const allConsented = beneficiaryTypes.every(beneficiary =>
     formData.consentForms?.[beneficiary.key]
   );
 
@@ -126,7 +201,7 @@ export function ConsentForms({
     <div>
       {/* Header Section */}
       <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 bg-gradient-to-br from-[#8b2828] to-[#7d1f1f] rounded-xl flex items-center justify-center">
+        <div className="w-12 h-12 bg-gradient-to-br from-[#801818] to-[#9a1f1f] rounded-xl flex items-center justify-center">
           <FileTextIcon className="w-6 h-6 text-white" />
         </div>
         <div>
@@ -145,33 +220,35 @@ export function ConsentForms({
               <h4 className="text-base font-semibold text-gray-900 mb-4">
                 {beneficiary.label}
               </h4>
-              
+
               <div className="flex flex-wrap gap-3">
                 {statusOptions.map((status) => {
                   const IconComponent = status.icon;
                   const isSelected = formData.consentForms?.[beneficiary.key] === status.key;
-                  
+
                   return (
                     <React.Fragment key={status.key}>
                       <Button
                         variant={isSelected ? "primary" : "outline"}
                         size="sm"
                         icon={<IconComponent className="w-4 h-4" />}
-                        onClick={() => openConsentFormForBeneficiary(0, status.key as 'deceased' | 'living' | 'lostCapacity')}
+                        onClick={() => {
+                          handleBeneficiaryStatusChange(beneficiary.key, status.key);
+                          handleOpenForm(beneficiary.key, status.key as 'deceased' | 'living' | 'lostCapacity');
+                        }}
                         disabled={isReadOnly}
-                        className={`${
-                          isSelected
-                            ? 'bg-[#8b2828] text-white border-[#8b2828] hover:bg-[#7d1f1f] hover:text-white'
-                            : 'bg-white text-[#8b2828] border-[#8b2828] hover:bg-[#8b2828] hover:text-white'
-                        } transition-all duration-200 ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`${isSelected
+                          ? 'bg-[#801818] text-white border-[#801818] hover:bg-[#9a1f1f] hover:text-white'
+                          : 'bg-white text-[#801818] border-[#801818] hover:bg-[#801818] hover:text-white'
+                          } transition-all duration-200 ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         {status.label}
-                      </Button> 
+                      </Button>
                     </React.Fragment>
                   );
                 })}
               </div>
-              
+
               {formData.consentForms?.[beneficiary.key] && (
                 <div className="mt-3 flex items-center gap-2 text-sm text-emerald-600">
                   <CheckCircleIcon className="w-4 h-4" />
@@ -199,7 +276,7 @@ export function ConsentForms({
           </div>
         </Card>
       )}
-      
+
       {!allConsented && (
         <Card className="bg-amber-50 border-amber-200 mt-6">
           <div className="flex items-center gap-3">

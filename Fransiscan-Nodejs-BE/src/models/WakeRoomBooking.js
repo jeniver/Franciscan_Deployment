@@ -146,38 +146,12 @@ class WakeRoomBooking {
    * @returns {Object} Validation result
    */
   validate() {
-    const errors = [];
-
-    if (!this.wakeRoomId) {
-      errors.push('Wake Room ID is required');
-    }
-
-    if (!this.applicantName || this.applicantName.trim() === '') {
-      errors.push('Applicant name is required');
-    }
-
-    if (!this.nameOfDeceased || this.nameOfDeceased.trim() === '') {
-      errors.push('Name of deceased is required');
-    }
-
-    if (!this.usingTimeFrom) {
-      errors.push('Using time from is required');
-    }
-
-    if (!this.usingTimeTo) {
-      errors.push('Using time to is required');
-    }
-
-    if (!this.churchId) {
-      errors.push('Church ID is required');
-    }
-
+    // Validations removed to support niche application style
     return {
-      isValid: errors.length === 0,
-      errors
+      isValid: true,
+      errors: []
     };
   }
 }
 
 module.exports = WakeRoomBooking;
-

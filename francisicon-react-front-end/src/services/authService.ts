@@ -1,7 +1,7 @@
 import api from './api';
 
 // Vite exposes env vars via import.meta.env.VITE_*
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:3000';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://192.168.1.24:3000';
 
 const COOKIE_NAME_ACCESS = 'fc_access_token';
 const COOKIE_NAME_REFRESH = 'fc_refresh_token';

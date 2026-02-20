@@ -1,0 +1,34 @@
+[
+  {
+    "NicheBookingBeneficiaryId": 3383,
+    "NicheBookingId": 2239,
+    "NicheId": 3828,
+    "BeneficiaryId": 0,
+    "BeneficiaryStatus": 0,
+    "Name": "ANTHONY TAN KIM HUAT",
+    "IDNo": "S0932807F",
+    "IsCatholic": true,
+    "IsMale": true,
+    "RelationshipToApplicant": "Self",
+    "DateOfBirth": "22-Mar-1947",
+    "BirthYear": "",
+    "RelationshipToNominee1": null,
+    "RelationshipToNominee2": null
+  },
+  {
+    "NicheBookingBeneficiaryId": 3835,
+    "NicheBookingId": 2239,
+    "NicheId": 3828,
+    "BeneficiaryId": 0,
+    "BeneficiaryStatus": 0,
+    "Name": "DOLLY CHIN SIEW NGOH",
+    "IDNo": "S0149396E",
+    "IsCatholic": true,
+    "IsMale": false,
+    "RelationshipToApplicant": "Wife",
+    "DateOfBirth": "11-Dec-1950",
+    "BirthYear": "",
+    "RelationshipToNominee1": null,
+    "RelationshipToNominee2": null
+  }
+]

@@ -40,7 +40,7 @@ export const useApplication = () => {
   const dispatch: AppDispatch = useDispatch();
   const navigate = useNavigate();
   const { showError, showSuccess, showInfo } = useToast();
-  
+
   // Select individual properties to avoid typing issues
   const currentStep = useSelector((state: RootState) => state.application.currentStep);
   const formData = useSelector((state: RootState) => state.application.formData);
@@ -102,7 +102,7 @@ export const useApplication = () => {
   const saveStepData = useCallback(async (step: number, data: Record<string, any>) => {
     try {
       console.log(`Saving step ${step} data:`, data);
-      
+
       // For now, we'll just log the data being saved
       // In a real implementation, you might want to save to localStorage or a temporary API endpoint
       const stepData = {
@@ -110,13 +110,13 @@ export const useApplication = () => {
         data,
         timestamp: new Date().toISOString()
       };
-      
+
       // Save to localStorage for persistence
       localStorage.setItem(`niche-application-step-${step}`, JSON.stringify(stepData));
-      
+
       // You could also implement an API call here to save the step data
       // await nicheApplicationService.saveStepData(step, data);
-      
+
       console.log(`Step ${step} data saved successfully`);
     } catch (error) {
       console.error(`Error saving step ${step} data:`, error);
@@ -130,11 +130,11 @@ export const useApplication = () => {
       if (currentStep < 5) {
         // Validate current step data
         const validation = validateStepData(currentStep, formData);
-        
+
         if (validation.isValid) {
           // Save the current step data to Redux
           console.log(`Saving step ${currentStep} data to Redux:`, formData);
-          
+
           // Save the current step data
           await saveStepData(currentStep, formData);
           // Clear validation errors
@@ -222,7 +222,7 @@ export const useApplication = () => {
   const loadSavedStepData = useCallback(() => {
     try {
       const savedData: Record<string, any> = {};
-      
+
       // Load data from all saved steps
       for (let step = 1; step <= 6; step++) {
         const savedStepData = localStorage.getItem(`niche-application-step-${step}`);
@@ -231,7 +231,7 @@ export const useApplication = () => {
           savedData[`step${step}`] = parsedData.data;
         }
       }
-      
+
       if (Object.keys(savedData).length > 0) {
         console.log('Loaded saved step data:', savedData);
         // Merge saved data into form data
@@ -244,7 +244,7 @@ export const useApplication = () => {
 
   // Ref to track if a request is in progress to prevent multiple simultaneous requests
   const requestInProgressRef = useRef(false);
-  
+
   // Handle View button click with proper error handling and routing
   // Works the same way as handleViewApplicationFromTable - switches to view mode
   const handleViewApplication = useCallback(async () => {
@@ -252,38 +252,38 @@ export const useApplication = () => {
       dispatch(clearError());
       return;
     }
-    
+
     // Prevent multiple simultaneous requests
     if (requestInProgressRef.current) {
       console.log('Request already in progress, skipping...');
       return;
     }
-    
+
     requestInProgressRef.current = true;
-    
+
     try {
       // Switch to view mode and form view
       dispatch(setViewModeAction(true));
       dispatch(setApplicationViewMode('form'));
       dispatch(setCurrentStep(1)); // Start at niche details for viewing
-      
+
       // Set a timeout to prevent the request from hanging indefinitely
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
       });
-      
+
       const action = await Promise.race([
         loadApplication(applicationNumber.trim()),
         timeoutPromise
       ]) as any;
-      
+
       if (action?.type?.endsWith('/fulfilled')) {
         // Success - data loaded
         console.log('Application data loaded successfully for viewing');
       } else if (action?.type?.endsWith('/rejected')) {
         // Handle different error types
         const errorData = (action?.payload || {}) as { message: string; type: string; statusCode: number };
-        
+
         if (errorData.type === 'auth') {
           // Authentication error - redirect to login
           console.warn('Authentication error, redirecting to login');
@@ -319,26 +319,26 @@ export const useApplication = () => {
     if (!applicationCode.trim()) {
       return;
     }
-    
+
     if (requestInProgressRef.current) {
       return;
     }
-    
+
     requestInProgressRef.current = true;
-    
+
     try {
       // Navigate to view route if navigate function is provided and not skipping navigation
       if (navigate && !skipNavigation) {
         navigate(`/niche/view/${applicationCode}`);
       }
-      
+
       dispatch(setApplicationNumber(applicationCode));
       dispatch(setViewModeAction(true));
       dispatch(setApplicationViewMode('form'));
       dispatch(setCurrentStep(1)); // Start at niche details for viewing
-      
+
       const action = await loadApplication(applicationCode.trim());
-      
+
       if (action.type.endsWith('/fulfilled')) {
         console.log('Application loaded for viewing');
       }
@@ -355,26 +355,26 @@ export const useApplication = () => {
     if (!applicationCode.trim()) {
       return;
     }
-    
+
     if (requestInProgressRef.current) {
       return;
     }
-    
+
     requestInProgressRef.current = true;
-    
+
     try {
       // Navigate to edit route if navigate function is provided and not skipping navigation
       if (navigate && !skipNavigation) {
         navigate(`/niche/edit/${applicationCode}`);
       }
-      
+
       dispatch(setApplicationNumber(applicationCode));
       dispatch(setEditMode(true));
       dispatch(setApplicationViewMode('form'));
       dispatch(setCurrentStep(1)); // Start at niche details for editing
-      
+
       const action = await loadApplication(applicationCode.trim());
-      
+
       if (action.type.endsWith('/fulfilled')) {
         console.log('Application loaded for editing');
       }
@@ -391,7 +391,7 @@ export const useApplication = () => {
     if (!applicationCode.trim()) {
       return { success: false, error: 'Application code is required' };
     }
-    
+
     try {
       console.log('[useApplication] handleUpdateApplication called with:', {
         applicationCode,
@@ -407,11 +407,11 @@ export const useApplication = () => {
         // Log the actual formData structure
         fullApplicationData: applicationData
       });
-      
+
       // For PUT requests, we need to ensure the payload is in the correct optimized format
       // Check if we already have the optimized structure or need to transform it
       let optimizedPayload;
-      
+
       if (applicationData.applicant && applicationData.nominees && applicationData.beneficiaries) {
         // Already in optimized format, use as-is
         optimizedPayload = applicationData;
@@ -422,14 +422,14 @@ export const useApplication = () => {
         const { generateOptimizedPayload } = await import('../utils/nicheApplicationMapper');
         optimizedPayload = generateOptimizedPayload(applicationData);
       }
-      
+
       console.log('[useApplication] PUT request payload:', JSON.stringify(optimizedPayload, null, 2));
-      
+
       const result = await dispatch(updateNicheApplication({
         applicationCode: applicationCode.trim(),
         applicationData: optimizedPayload
       }));
-      
+
       if (result.type.endsWith('/fulfilled')) {
         return { success: true, data: result.payload };
       } else {
@@ -448,21 +448,21 @@ export const useApplication = () => {
       showError('Error', 'Application code is required');
       return;
     }
-    
+
     if (!window.confirm(`Are you sure you want to delete application ${applicationCode}? This action cannot be undone.`)) {
       return;
     }
-    
+
     try {
       const result = await dispatch(deleteNicheApplication(applicationCode.trim()));
-      
+
       if (result.type.endsWith('/fulfilled')) {
         console.log('Application deleted successfully');
         showSuccess('Success', `Application ${applicationCode} has been deleted successfully`);
-        
+
         // Clear frontend cache to ensure fresh data
         dispatch(clearApplicationListCache());
-        
+
         // Refresh the application list to reflect the deletion
         // Use bypassCache to ensure we get fresh data from backend
         await searchApplicationList({ pagination: { page: 1 } });
@@ -483,11 +483,11 @@ export const useApplication = () => {
       console.warn('No application number provided for agreement viewing');
       return;
     }
-    
+
     try {
       // Fetch agreement data from API
       const response = await nicheAgreementService.getNicheAgreement(applicationNumber.trim());
-      
+
       if (response.success && response.data) {
         // Open modal with agreement data
         dispatch(openAgreementModal(response.data));
@@ -505,20 +505,31 @@ export const useApplication = () => {
     }
   }, [applicationNumber, dispatch]);
 
+  const detectInvoiceType = useCallback((code: string): string => {
+    const upperCode = code.trim().toUpperCase();
+    if (upperCode.startsWith('INCR-') || upperCode.startsWith('I-')) return 'INCR';
+    if (upperCode.startsWith('GOLA-') || upperCode.startsWith('GOL-')) return 'GOLA';
+    if (upperCode.startsWith('WAPP-') || upperCode.startsWith('WR') || upperCode.startsWith('WAKE')) return 'WAPP';
+    if (upperCode.startsWith('NAPP-')) return 'NAPP';
+    // Ambiguous numeric-hyphen codes are most commonly NAPP in current flow.
+    if (/^\d+-\d+$/.test(upperCode)) return 'NAPP';
+    return 'NAPP';
+  }, []);
+
   // Handle Go to Invoice & Receipt button click
-  // Navigates to Invoice & Receipt page
-  const handleGoToInvoice = useCallback(async (code?: string) => {
+  // Navigates to Invoice page with explicit type query
+  const handleGoToInvoice = useCallback(async (code?: string, type?: string) => {
     const appCode = (code ?? applicationNumber).trim();
     if (!appCode) {
       showError('Error', 'Please enter an application number to view the invoice.');
       return;
     }
-    
-    // Navigate to Invoice & Receipt page
-    navigate(`/invoice-receipt/${appCode}`, { 
-      state: { applicationNumber: appCode } 
+
+    const resolvedType = (type || detectInvoiceType(appCode)).toUpperCase();
+    navigate(`/create-invoice/${encodeURIComponent(appCode)}?type=${encodeURIComponent(resolvedType)}`, {
+      state: { applicationNumber: appCode }
     });
-  }, [applicationNumber, navigate, showError]);
+  }, [applicationNumber, navigate, showError, detectInvoiceType]);
 
   // Handle Go to Invoice Only button click
   // Uses actual PDF endpoint that opens in new tab and is downloadable
@@ -527,7 +538,7 @@ export const useApplication = () => {
       console.warn('No application number provided for invoice only PDF generation');
       return;
     }
-    
+
     try {
       // Check if it's a niche application (NAPP-*)
       if (/^NAPP/i.test(applicationNumber.trim())) {
@@ -539,7 +550,7 @@ export const useApplication = () => {
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Invoice only PDF generation timeout')), 15000); // 15 second timeout
         });
-        
+
         await Promise.race([
           nicheAgreementService.openPdfInNewTab(applicationNumber.trim(), 'invoice'),
           timeoutPromise

@@ -10,23 +10,36 @@
  */
 export const formatDateForInput = (dateString: string | Date | null | undefined): string => {
   if (!dateString) return '';
-  
+
   try {
     const date = dateString instanceof Date ? dateString : new Date(dateString);
-    
+
     // Check if date is valid
     if (isNaN(date.getTime())) {
       // If it's already in YYYY-MM-DD format, return as is
       if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
         return dateString;
       }
+
+      // Handle DD-MM-YYYY format
+      if (typeof dateString === 'string' && /^\d{2}-\d{2}-\d{4}$/.test(dateString)) {
+        const [d, m, y] = dateString.split('-');
+        return `${y}-${m}-${d}`;
+      }
+
+      // Handle DD/MM/YYYY format
+      if (typeof dateString === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
+        const [d, m, y] = dateString.split('/');
+        return `${y}-${m}-${d}`;
+      }
+
       return '';
     }
-    
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-    
+
     return `${year}-${month}-${day}`;
   } catch (error) {
     console.error('Error formatting date for input:', dateString, error);
@@ -45,10 +58,10 @@ export const formatDateForInput = (dateString: string | Date | null | undefined)
  */
 export const formatDateTimeForInput = (dateString: string | Date | null | undefined): string => {
   if (!dateString) return '';
-  
+
   try {
     const date = dateString instanceof Date ? dateString : new Date(dateString);
-    
+
     // Check if date is valid
     if (isNaN(date.getTime())) {
       // If it's already in YYYY-MM-DDTHH:mm format, return as is
@@ -57,13 +70,13 @@ export const formatDateTimeForInput = (dateString: string | Date | null | undefi
       }
       return '';
     }
-    
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
-    
+
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   } catch (error) {
     console.error('Error formatting datetime for input:', dateString, error);
@@ -82,10 +95,10 @@ export const formatDateTimeForInput = (dateString: string | Date | null | undefi
  */
 export const formatTimeForInput = (dateString: string | Date | null | undefined): string => {
   if (!dateString) return '';
-  
+
   try {
     const date = dateString instanceof Date ? dateString : new Date(dateString);
-    
+
     // Check if date is valid
     if (isNaN(date.getTime())) {
       // If it's already in HH:mm format, return as is
@@ -94,10 +107,10 @@ export const formatTimeForInput = (dateString: string | Date | null | undefined)
       }
       return '';
     }
-    
+
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
-    
+
     return `${hours}:${minutes}`;
   } catch (error) {
     console.error('Error formatting time for input:', dateString, error);
@@ -124,29 +137,29 @@ export const getTodayDate = (): string => {
  */
 export const formatDateToDDMMYYYY = (dateString: string | null | undefined): string => {
   if (!dateString) return '';
-  
+
   try {
     // If already in dd/mm/yyyy format, return as is
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
       return dateString;
     }
-    
+
     // If in YYYY-MM-DD format, convert to dd/mm/yyyy
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       const [year, month, day] = dateString.split('-');
       return `${day}/${month}/${year}`;
     }
-    
+
     // Try to parse as Date and format
     const date = new Date(dateString);
     if (isNaN(date.getTime())) {
       return '';
     }
-    
+
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
-    
+
     return `${day}/${month}/${year}`;
   } catch (error) {
     console.error('Error formatting date to dd/mm/yyyy:', dateString, error);
@@ -155,19 +168,24 @@ export const formatDateToDDMMYYYY = (dateString: string | null | undefined): str
 };
 
 /**
+ * Alias for formatDateToDDMMYYYY to maintain compatibility
+ */
+export const formatDate = formatDateToDDMMYYYY;
+
+/**
  * Convert dd/mm/yyyy format to YYYY-MM-DD format for API
  * @param dateString - Date string in dd/mm/yyyy format
  * @returns Formatted date string (YYYY-MM-DD) or empty string if invalid
  */
 export const formatDateFromDDMMYYYY = (dateString: string | null | undefined): string => {
   if (!dateString) return '';
-  
+
   try {
     // If already in YYYY-MM-DD format, return as is
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       return dateString;
     }
-    
+
     // If in dd/mm/yyyy format, convert to YYYY-MM-DD
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
       const [day, month, year] = dateString.split('/');
@@ -182,17 +200,17 @@ export const formatDateFromDDMMYYYY = (dateString: string | null | undefined): s
       }
       return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
     }
-    
+
     // Try to parse as Date and format
     const date = new Date(dateString);
     if (isNaN(date.getTime())) {
       return '';
     }
-    
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-    
+
     return `${year}-${month}-${day}`;
   } catch (error) {
     console.error('Error formatting date from dd/mm/yyyy:', dateString, error);
@@ -207,19 +225,19 @@ export const formatDateFromDDMMYYYY = (dateString: string | null | undefined): s
  */
 export const isValidDDMMYYYY = (dateString: string): boolean => {
   if (!dateString) return false;
-  
+
   const pattern = /^\d{2}\/\d{2}\/\d{4}$/;
   if (!pattern.test(dateString)) {
     return false;
   }
-  
+
   const [day, month, year] = dateString.split('/').map(Number);
-  
+
   // Basic validation
   if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1900 || year > 2100) {
     return false;
   }
-  
+
   // Validate actual date
   const date = new Date(year, month - 1, day);
   return date.getDate() === day && date.getMonth() === month - 1 && date.getFullYear() === year;

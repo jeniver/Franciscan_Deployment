@@ -4,6 +4,8 @@
  */
 class GateOfLifeApplicationDetail {
   constructor(data = {}) {
+    if (!data) data = {};
+
     this.detailId = data.detailId
       || data.gateOfLifeApplicationDetailId
       || data.engraveWallApplicationDetailId
@@ -20,9 +22,6 @@ class GateOfLifeApplicationDetail {
       || data.name
       || null;
 
-    this.remarks = data.remarks
-      || data.Remarks
-      || null;
   }
 
   isValid() {
@@ -33,8 +32,7 @@ class GateOfLifeApplicationDetail {
     return {
       detailId: this.detailId,
       applicationId: this.applicationId,
-      nameToEngrave: this.nameToEngrave,
-      remarks: this.remarks
+      nameToEngrave: this.nameToEngrave
     };
   }
 }

@@ -150,22 +150,29 @@ class WakeRoomService {
       }
 
       // Check if at least one search parameter is provided (excluding churchId)
-      const hasSearchCriteria = searchParams.code ||
-                                searchParams.applicantName ||
-                                searchParams.nameOfDeceased ||
-                                searchParams.usingDate ||
-                                searchParams.wakeRoomId;
+      // We now allow empty criteria to support listing all bookings with pagination
+      // const hasSearchCriteria = searchParams.code ||
+      //   searchParams.applicantName ||
+      //   searchParams.nameOfDeceased ||
+      //   searchParams.usingDate ||
+      //   searchParams.wakeRoomId;
 
       // If no search criteria, return empty array instead of error (matches ASP.NET behavior)
-      if (!hasSearchCriteria) {
-        logger.info('No search criteria provided, returning empty results');
-        return [];
-      }
+      // if (!hasSearchCriteria) {
+      //   logger.info('No search criteria provided, returning empty results');
+      //   return [];
+      // }
 
-      const bookings = await this.wakeRoomRepository.searchWakeBookings(searchParams);
+      const result = await this.wakeRoomRepository.searchWakeBookings(searchParams);
 
-      logger.info(`Found ${bookings.length} booking(s)`);
-      return bookings.map(b => b.toJSON());
+      logger.info(`Found ${result.bookings.length} booking(s)`);
+
+      const bookings = result.bookings.map(b => b.toJSON());
+
+      return {
+        ...result,
+        bookings
+      };
     } catch (error) {
       logger.error('Error in searchWakeBookings:', error);
       throw error;
@@ -215,7 +222,7 @@ class WakeRoomService {
       // Parse and normalize dates
       const usingTimeFromDate = parseDate(bookingData.usingTimeFrom);
       const usingTimeToDate = parseDate(bookingData.usingTimeTo);
-      
+
       // Ensure usingDate is set from usingTimeFrom if not provided
       if (!bookingData.usingDate && usingTimeFromDate) {
         const usingDateObj = new Date(usingTimeFromDate);
@@ -244,6 +251,23 @@ class WakeRoomService {
         const massTimeDate = parseDate(bookingData.massTime);
         if (massTimeDate) {
           bookingData.massTime = massTimeDate.toISOString();
+        }
+      }
+
+      // Handle timeOfCremation - if it's time-only (HH:MM), combine with usingDate
+      if (bookingData.timeOfCremation && /^\d{1,2}:\d{2}(:\d{2})?$/.test(bookingData.timeOfCremation.trim())) {
+        const usingDateObj = parseDate(bookingData.usingDate || bookingData.usingTimeFrom);
+        if (usingDateObj) {
+          const [hours, minutes, seconds = '0'] = bookingData.timeOfCremation.trim().split(':');
+          const cremationTimeDate = new Date(usingDateObj);
+          cremationTimeDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), parseInt(seconds, 10), 0);
+          bookingData.timeOfCremation = cremationTimeDate.toISOString();
+        }
+      } else if (bookingData.timeOfCremation) {
+        // Try to parse as full date
+        const cremationTimeDate = parseDate(bookingData.timeOfCremation);
+        if (cremationTimeDate) {
+          bookingData.timeOfCremation = cremationTimeDate.toISOString();
         }
       }
 
@@ -332,24 +356,28 @@ class WakeRoomService {
         throw new Error(`Wake room not found: ${booking.wakeRoomId}`);
       }
 
-      // Get existing bookings count for this wake room and date
-      const existingBookings = await this.wakeRoomRepository.getWakeRoomBookings(
-        booking.wakeRoomId,
-        booking.usingDate
-      );
+      // Generate code: WakeRoomCode-GlobalSequence
+      // Example: 001-721 -> 001-722
+      const wakeRoomCode = wakeRoom.code;
+      const prefix = `${wakeRoomCode}-`;
 
-      const bookingCount = existingBookings.length;
+      const lastCode = await this.wakeRoomRepository.getLastBookingCodeByPrefix(prefix, booking.churchId);
 
-      // Generate code: WakeRoomCode-BookingCount
-      // Example: WR1-0, WR1-1, WR1-2, etc.
-      let code = wakeRoom.code;
+      let nextNum = 1;
 
-      if (bookingCount === 0) {
-        code += '-0';
-      } else {
-        code += `-${bookingCount}`;
+      if (lastCode) {
+        // Extract number from the confirmed pattern
+        const suffix = lastCode.substring(prefix.length);
+        const lastNum = parseInt(suffix, 10);
+
+        if (!isNaN(lastNum)) {
+          nextNum = lastNum + 1;
+        } else {
+          logger.warn(`Last code ${lastCode} has non-numeric suffix '${suffix}'. Starting sequence at 1.`);
+        }
       }
 
+      const code = `${prefix}${nextNum}`;
       logger.info(`Generated booking code: ${code}`);
       return code;
     } catch (error) {

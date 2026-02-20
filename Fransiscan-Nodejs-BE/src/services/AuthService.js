@@ -108,6 +108,9 @@ class AuthService {
       churchId: user.churchId
     };
 
+    console.log('Generating token with payload:', payload);
+    console.log('JWT Secret:', process.env.JWT_SECRET);
+
     return jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || '24h'
     });

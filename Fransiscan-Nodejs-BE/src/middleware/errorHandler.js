@@ -1,159 +1,254 @@
 const logger = require('../utils/logger');
 
 /**
- * Global error handler middleware
- * Enhanced with comprehensive error classification and handling
- * @param {Error} err - Error object
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next function
+ * Global error handling middleware
+ * Provides consistent error responses and logging across all APIs
  */
 const errorHandler = (err, req, res, next) => {
-  // Don't send error response if headers already sent (e.g., timeout already responded)
-  if (res.headersSent || req.timedOut) {
-    if (req.timedOut) {
-      logger.warn('Error occurred after request timeout, not sending error response');
-    } else {
-      logger.warn('Error occurred after response sent, not sending error response');
-    }
-    return;
-  }
-
-  let error = { ...err };
-  error.message = err.message;
-
-  // Enhanced error logging with context
-  logger.error('Error handler:', {
-    message: err.message,
-    code: err.code,
-    name: err.name,
-    statusCode: err.statusCode,
-    path: req.path,
+  // Log the error with context
+  logger.error('API Error:', {
+    error: err.message,
+    stack: err.stack,
+    url: req.url,
     method: req.method,
     userId: req.user?.userId,
     churchId: req.user?.churchId,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    body: req.body,
+    query: req.query,
+    params: req.params
   });
 
-  // Mongoose bad ObjectId
-  if (err.name === 'CastError') {
-    const message = 'Resource not found';
-    error = { message, statusCode: 404 };
-  }
-
-  // Mongoose duplicate key
-  if (err.code === 11000) {
-    const message = 'Duplicate field value entered';
-    error = { message, statusCode: 400 };
-  }
-
-  // Mongoose validation error
-  if (err.name === 'ValidationError') {
-    const message = Object.values(err.errors).map(val => val.message).join(', ');
-    error = { message, statusCode: 400 };
-  }
-
-  // SQL Server connection errors
-  const sqlConnectionErrors = [
-    'ECONNREFUSED',
-    'ETIMEOUT',
-    'ETIMEDOUT',
-    'ESOCKET',
-    'ECONNRESET',
-    'ENOTFOUND',
-    'ELOGIN',
-    'ENOTOPEN',
-    'EPIPE',
-    'EHOSTUNREACH',
-    'EAI_AGAIN'
-  ];
-  
-  if (sqlConnectionErrors.includes(err.code)) {
-    const message = 'Database connection failed. Please try again later.';
-    error = { message, statusCode: 503, code: 'DATABASE_UNAVAILABLE' };
-  }
-
-  // SQL Server specific errors
-  if (err.number === 2) {
-    const message = 'Database server not found';
-    error = { message, statusCode: 503, code: 'DATABASE_NOT_FOUND' };
-  }
-
-  if (err.number === 18456) {
-    const message = 'Database authentication failed';
-    error = { message, statusCode: 401, code: 'DATABASE_AUTH_FAILED' };
-  }
-
-  // SQL Server timeout errors
-  if (err.code === 'EREQUEST' && (err.message?.includes('timeout') || err.message?.includes('Timeout'))) {
-    const message = 'Database query timeout. Please try again with more specific filters.';
-    error = { message, statusCode: 504, code: 'DATABASE_TIMEOUT' };
-  }
-
-  // SQL Server stored procedure not found (expected, not an error)
-  if (err.number === 2812 || err.message?.includes('Could not find stored procedure')) {
-    // This is expected behavior (fallback will be used), don't treat as error
-    // But if it reaches here, something went wrong
-    const message = 'Database operation failed';
-    error = { message, statusCode: 500, code: 'DATABASE_ERROR' };
-  }
-
-  // JWT errors
-  if (err.name === 'JsonWebTokenError') {
-    const message = 'Invalid token';
-    error = { message, statusCode: 401, code: 'INVALID_TOKEN' };
-  }
-
-  if (err.name === 'TokenExpiredError') {
-    const message = 'Token expired';
-    error = { message, statusCode: 401, code: 'TOKEN_EXPIRED' };
-  }
-
-  // Validation errors
-  if (err.name === 'ValidationError' || err.code === 'VALIDATION_FAILED') {
-    const message = err.message || 'Validation failed';
-    error = { message, statusCode: 400, code: 'VALIDATION_ERROR' };
-  }
-
-  // Not found errors
-  if (err.code === 'NOT_FOUND' || err.message?.includes('not found')) {
-    const message = err.message || 'Resource not found';
-    error = { message, statusCode: 404, code: 'NOT_FOUND' };
-  }
-
-  // Access denied errors
-  if (err.code === 'ACCESS_DENIED' || err.code === 'FORBIDDEN' || err.message?.includes('Access denied')) {
-    const message = err.message || 'Access denied';
-    error = { message, statusCode: 403, code: 'ACCESS_DENIED' };
-  }
-
-  // Rate limiting errors
-  if (err.statusCode === 429) {
-    const message = 'Too many requests. Please try again later.';
-    error = { message, statusCode: 429, code: 'RATE_LIMIT_EXCEEDED' };
-  }
-
-  // Check again before sending (race condition protection)
-  if (!res.headersSent && !req.timedOut) {
-    const response = {
-      success: false,
-      error: {
-        message: error.message || 'Server Error',
-        code: error.code || 'INTERNAL_ERROR'
-      }
-    };
-
-    // Add details in development mode
-    if (process.env.NODE_ENV === 'development') {
-      response.error.details = {
-        name: err.name,
-        stack: err.stack,
-        originalMessage: err.message
-      };
+  // Default error response
+  let response = {
+    success: false,
+    error: {
+      message: 'Internal server error',
+      code: 'INTERNAL_ERROR'
     }
+  };
 
-    res.status(error.statusCode || 500).json(response);
+  let statusCode = 500;
+
+  // Handle specific error types
+  if (err.name === 'ValidationError') {
+    response.error.message = err.message;
+    response.error.code = 'VALIDATION_ERROR';
+    response.error.details = err.details || err.errors;
+    statusCode = 400;
+  } else if (err.name === 'UnauthorizedError') {
+    response.error.message = 'Authentication required';
+    response.error.code = 'UNAUTHORIZED';
+    statusCode = 401;
+  } else if (err.name === 'ForbiddenError') {
+    response.error.message = 'Access denied';
+    response.error.code = 'FORBIDDEN';
+    statusCode = 403;
+  } else if (err.name === 'NotFoundError') {
+    response.error.message = err.message || 'Resource not found';
+    response.error.code = 'NOT_FOUND';
+    statusCode = 404;
+  } else if (err.name === 'ConflictError') {
+    response.error.message = err.message || 'Resource conflict';
+    response.error.code = 'CONFLICT';
+    statusCode = 409;
+  } else if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+    response.error.message = 'Database connection failed';
+    response.error.code = 'DATABASE_UNAVAILABLE';
+    statusCode = 503;
+  } else if (err.code === 'ETIMEOUT' || err.code === 'ETIMEDOUT') {
+    response.error.message = 'Request timeout';
+    response.error.code = 'TIMEOUT';
+    statusCode = 408;
+  } else if (err.message && err.message.includes('duplicate')) {
+    response.error.message = 'Duplicate resource';
+    response.error.code = 'DUPLICATE';
+    statusCode = 409;
+  } else if (err.message && err.message.includes('validation')) {
+    response.error.message = err.message;
+    response.error.code = 'VALIDATION_ERROR';
+    statusCode = 400;
   }
+
+  // Include original error message in development
+  if (process.env.NODE_ENV === 'development') {
+    response.error.originalMessage = err.message;
+    response.error.stack = err.stack;
+  }
+
+  res.status(statusCode).json(response);
 };
 
-module.exports = errorHandler;
+/**
+ * 404 handler for undefined routes
+ */
+const notFoundHandler = (req, res, next) => {
+  logger.warn('404 Not Found:', {
+    url: req.url,
+    method: req.method,
+    ip: req.ip
+  });
+
+  res.status(404).json({
+    success: false,
+    error: {
+      message: 'Route not found',
+      code: 'NOT_FOUND'
+    }
+  });
+};
+
+/**
+ * Async wrapper for route handlers
+ * Catches async errors and passes them to error handler
+ */
+const asyncHandler = (fn) => {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+};
+
+/**
+ * Input validation middleware
+ */
+const validateInput = (schema) => {
+  return (req, res, next) => {
+    try {
+      // Validate request body
+      if (schema.body) {
+        const { error, value } = schema.body.validate(req.body);
+        if (error) {
+          logger.warn('Body validation failed:', {
+            error: error.details,
+            userId: req.user?.userId,
+            url: req.url
+          });
+          return res.status(400).json({
+            success: false,
+            error: {
+              message: 'Invalid request body',
+              code: 'VALIDATION_ERROR',
+              details: error.details.map(detail => ({
+                field: detail.path.join('.'),
+                message: detail.message
+              }))
+            }
+          });
+        }
+        req.body = value;
+      }
+
+      // Validate query parameters
+      if (schema.query) {
+        const { error, value } = schema.query.validate(req.query);
+        if (error) {
+          logger.warn('Query validation failed:', {
+            error: error.details,
+            userId: req.user?.userId,
+            url: req.url
+          });
+          return res.status(400).json({
+            success: false,
+            error: {
+              message: 'Invalid query parameters',
+              code: 'VALIDATION_ERROR',
+              details: error.details.map(detail => ({
+                field: detail.path.join('.'),
+                message: detail.message
+              }))
+            }
+          });
+        }
+        req.query = value;
+      }
+
+      // Validate route parameters
+      if (schema.params) {
+        const { error, value } = schema.params.validate(req.params);
+        if (error) {
+          logger.warn('Params validation failed:', {
+            error: error.details,
+            userId: req.user?.userId,
+            url: req.url
+          });
+          return res.status(400).json({
+            success: false,
+            error: {
+              message: 'Invalid route parameters',
+              code: 'VALIDATION_ERROR',
+              details: error.details.map(detail => ({
+                field: detail.path.join('.'),
+                message: detail.message
+              }))
+            }
+          });
+        }
+        req.params = value;
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+};
+
+/**
+ * Rate limiting middleware (basic implementation)
+ */
+const rateLimit = (options = {}) => {
+  const limits = new Map();
+  const windowMs = options.windowMs || 15 * 60 * 1000; // 15 minutes
+  const max = options.max || 100; // limit each IP to 100 requests per windowMs
+  const enabled = options.enabled !== false;
+  const shouldSkip = typeof options.skip === 'function' ? options.skip : () => false;
+
+  return (req, res, next) => {
+    if (!enabled || shouldSkip(req)) {
+      return next();
+    }
+
+    const rawIp = req.ip || req.connection.remoteAddress || 'unknown';
+    const ip = String(rawIp).replace(/^::ffff:/, '');
+    const now = Date.now();
+    const windowStart = now - windowMs;
+
+    // Clean up old entries
+    if (limits.has(ip)) {
+      const requests = limits.get(ip).filter(timestamp => timestamp > windowStart);
+      limits.set(ip, requests);
+    } else {
+      limits.set(ip, []);
+    }
+
+    const requests = limits.get(ip);
+    
+    if (requests.length >= max) {
+      logger.warn('Rate limit exceeded:', {
+        ip: ip,
+        count: requests.length,
+        max: max,
+        windowMs: windowMs
+      });
+
+      return res.status(429).json({
+        success: false,
+        error: {
+          message: 'Too many requests, please try again later',
+          code: 'RATE_LIMIT_EXCEEDED'
+        }
+      });
+    }
+
+    // Add current request
+    requests.push(now);
+    next();
+  };
+};
+
+module.exports = {
+  errorHandler,
+  notFoundHandler,
+  asyncHandler,
+  validateInput,
+  rateLimit
+};

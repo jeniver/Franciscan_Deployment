@@ -2,6 +2,7 @@ const NicheAgreementRepository = require('../repositories/NicheAgreementReposito
 const InscriptionAgreementRepository = require('../repositories/InscriptionAgreementRepository');
 const { cache } = require('../utils/cache');
 const logger = require('../utils/logger');
+const dateService = require('../utils/DateService');
 
 // Cache configuration for niche agreements
 const NICHE_AGREEMENT_CACHE_PREFIX = 'nicheAgreement:';
@@ -23,8 +24,12 @@ class NicheAgreementService {
    * @param {string} applicationNumber - Application number (e.g., "3795-1", "3795", or "3795-")
    * @returns {Promise<Object>} Complete niche agreement data
    */
-  async getNicheAgreementDetails(applicationNumber) {
+  async getNicheAgreementDetails(applicationNumber, options = {}) {
     try {
+      const {
+        includeDeceasedDetails = true
+      } = options;
+
       logger.info(`Getting niche agreement details for application: ${applicationNumber}`);
 
       // Validate input
@@ -34,8 +39,9 @@ class NicheAgreementService {
 
       // CRITICAL OPTIMIZATION: Check cache first
       const cacheKey = `${NICHE_AGREEMENT_CACHE_PREFIX}${applicationNumber.trim()}`;
-      const bypassCache = process.env.BYPASS_CACHE === 'true';
-      
+      // For alternate/minimal payload variants (like second nominee PDF), skip shared cache.
+      const bypassCache = !includeDeceasedDetails;
+
       if (enableCache && !bypassCache) {
         const cached = cache.get(cacheKey);
         if (cached) {
@@ -44,42 +50,8 @@ class NicheAgreementService {
         }
       }
 
-      // Clean the application number
-      let cleanApplicationNumber = applicationNumber.trim();
-
-      // If application number ends with dash but no suffix, try to find it
-      if (cleanApplicationNumber.endsWith('-')) {
-        logger.info(`Application number ends with dash: ${cleanApplicationNumber}, attempting to find matching record`);
-        const suggestions = await this.findApplicationNumberByPrefix(cleanApplicationNumber);
-
-        if (suggestions.length === 0) {
-          throw new Error(`No niche agreement found for application number pattern: ${cleanApplicationNumber}`);
-        }
-
-        if (suggestions.length === 1) {
-          cleanApplicationNumber = suggestions[0];
-          logger.info(`Auto-selected application number: ${cleanApplicationNumber}`);
-        } else {
-          throw new Error(`Multiple applications found for pattern ${cleanApplicationNumber}. Please specify: ${suggestions.join(', ')}`);
-        }
-      }
-
-      // If application number doesn't contain dash, try to find it
-      if (!cleanApplicationNumber.includes('-')) {
-        logger.info(`Application number without dash: ${cleanApplicationNumber}, attempting to find matching record`);
-        const suggestions = await this.findApplicationNumberByPrefix(`${cleanApplicationNumber}-`);
-
-        if (suggestions.length === 0) {
-          throw new Error(`No niche agreement found for application number pattern: ${cleanApplicationNumber}`);
-        }
-
-        if (suggestions.length === 1) {
-          cleanApplicationNumber = suggestions[0];
-          logger.info(`Auto-selected application number: ${cleanApplicationNumber}`);
-        } else {
-          throw new Error(`Multiple applications found for pattern ${cleanApplicationNumber}. Please specify: ${suggestions.join(', ')}`);
-        }
-      }
+      // Clean/resolve the application number
+      const cleanApplicationNumber = await this.resolveApplicationNumber(applicationNumber);
 
       // Get the niche agreement from repository
       const nicheAgreement = await this.nicheAgreementRepository.getNicheAgreementDetailsCopy(cleanApplicationNumber);
@@ -89,7 +61,10 @@ class NicheAgreementService {
       }
 
       // Add additional business logic processing
-      const processedAgreement = await this.processNicheAgreementData(nicheAgreement);
+      const processedAgreement = await this.processNicheAgreementData(
+        nicheAgreement,
+        { includeDeceasedDetails }
+      );
 
       // CRITICAL OPTIMIZATION: Cache the result
       if (enableCache && !bypassCache) {
@@ -107,6 +82,47 @@ class NicheAgreementService {
       logger.error(`Error getting niche agreement details for ${applicationNumber}:`, error);
       throw error;
     }
+  }
+
+  async resolveApplicationNumber(applicationNumber) {
+    // Clean the application number
+    let cleanApplicationNumber = applicationNumber.trim();
+
+    // If application number ends with dash but no suffix, try to find it
+    if (cleanApplicationNumber.endsWith('-')) {
+      logger.info(`Application number ends with dash: ${cleanApplicationNumber}, attempting to find matching record`);
+      const suggestions = await this.findApplicationNumberByPrefix(cleanApplicationNumber);
+
+      if (suggestions.length === 0) {
+        throw new Error(`No niche agreement found for application number pattern: ${cleanApplicationNumber}`);
+      }
+
+      if (suggestions.length === 1) {
+        cleanApplicationNumber = suggestions[0];
+        logger.info(`Auto-selected application number: ${cleanApplicationNumber}`);
+      } else {
+        throw new Error(`Multiple applications found for pattern ${cleanApplicationNumber}. Please specify: ${suggestions.join(', ')}`);
+      }
+    }
+
+    // If application number doesn't contain dash, try to find it
+    if (!cleanApplicationNumber.includes('-')) {
+      logger.info(`Application number without dash: ${cleanApplicationNumber}, attempting to find matching record`);
+      const suggestions = await this.findApplicationNumberByPrefix(`${cleanApplicationNumber}-`);
+
+      if (suggestions.length === 0) {
+        throw new Error(`No niche agreement found for application number pattern: ${cleanApplicationNumber}`);
+      }
+
+      if (suggestions.length === 1) {
+        cleanApplicationNumber = suggestions[0];
+        logger.info(`Auto-selected application number: ${cleanApplicationNumber}`);
+      } else {
+        throw new Error(`Multiple applications found for pattern ${cleanApplicationNumber}. Please specify: ${suggestions.join(', ')}`);
+      }
+    }
+
+    return cleanApplicationNumber;
   }
 
   /**
@@ -128,13 +144,23 @@ class NicheAgreementService {
    * @param {NicheAgreement} nicheAgreement - Raw niche agreement data
    * @returns {Promise<Object>} Processed niche agreement data
    */
-  async processNicheAgreementData(nicheAgreement) {
+  async processNicheAgreementData(nicheAgreement, options = {}) {
     try {
+      const {
+        includeDeceasedDetails = true
+      } = options;
+
       // Convert to JSON format
       const agreementData = nicheAgreement.toJSON();
 
-      // Add consent form status and timestamps
-      agreementData.consentForm = await this.getConsentFormStatus(nicheAgreement.applicationCode);
+      // Add/Update consent form status and timestamps if not already set by repository
+      if (!agreementData.consentForm || !agreementData.consentForm.status || agreementData.consentForm.status === 'pending') {
+        const consentStatus = await this.getConsentFormStatus(nicheAgreement.applicationCode);
+        // Only override if the repository didn't find anything better
+        if (!agreementData.consentForm || !agreementData.consentForm.status) {
+          agreementData.consentForm = consentStatus;
+        }
+      }
 
       // Add agreement status and timestamps
       agreementData.agreement = await this.getAgreementStatus(nicheAgreement.applicationCode);
@@ -144,62 +170,40 @@ class NicheAgreementService {
         generatedAt: new Date().toISOString(),
         applicationNumber: nicheAgreement.applicationCode,
         hasInvoice: !!nicheAgreement.invoiceNo,
-        hasReceipt: !!nicheAgreement.receiptAmount,
+        hasReceipt: !!(nicheAgreement.receiptNo || nicheAgreement.receiptAmount),
         beneficiaryCount: agreementData.beneficiaries.length,
-        nomineeCount: (nicheAgreement.nomineeName ? 1 : 0) + (nicheAgreement.nominee2Name ? 1 : 0)
+        nomineeCount: (nicheAgreement.nomineeName ? 1 : 0) + (nicheAgreement.nominee2Name ? 1 : 0),
+        remarks: nicheAgreement.remarks || nicheAgreement.Remarks || null
       };
 
-      // Add deceased details from inscription if available
-      agreementData.deceased = await this.getDeceasedDetails(nicheAgreement.applicationCode);
+      // Add deceased details from inscription if available.
+      // Keep application-level deceased fields as fallback when inscription is not created yet.
+      if (includeDeceasedDetails) {
+        const inscriptionDeceased = await this.getDeceasedDetails(nicheAgreement.applicationCode);
+        const currentDeceased = agreementData.deceased || {};
 
-      // Helper function to format dates like ASP.NET (dd-MMM-yyyy)
-      // ENHANCED: Handles ISO strings, Date objects, and various date formats
-      const formatDate = (date) => {
-        if (!date) {
-          logger.debug(`[formatDate] Input is null/undefined: ${date}`);
-          return null;
-        }
-        
-        try {
-          // If it's already a Date object
-          let d;
-          if (date instanceof Date) {
-            d = date;
-          } else if (typeof date === 'string') {
-            // Handle ISO strings (e.g., "2012-04-15T00:00:00.000Z")
-            const trimmed = date.trim();
-            if (!trimmed) {
-              logger.debug(`[formatDate] Empty string provided`);
-              return null;
-            }
-            d = new Date(trimmed);
-          } else {
-            // Try to convert to Date
-            d = new Date(date);
+        agreementData.deceased = {
+          deceased1: {
+            name: inscriptionDeceased?.deceased1?.name || currentDeceased?.deceased1?.name || null,
+            dateDied: inscriptionDeceased?.deceased1?.dateDied || currentDeceased?.deceased1?.dateDied || null,
+            internmentDate: inscriptionDeceased?.deceased1?.internmentDate || currentDeceased?.deceased1?.internmentDate || null,
+            deathCertificateNo: inscriptionDeceased?.deceased1?.deathCertificateNo || currentDeceased?.deceased1?.deathCertificateNo || null
+          },
+          deceased2: {
+            name: inscriptionDeceased?.deceased2?.name || currentDeceased?.deceased2?.name || null,
+            dateDied: inscriptionDeceased?.deceased2?.dateDied || currentDeceased?.deceased2?.dateDied || null,
+            internmentDate: inscriptionDeceased?.deceased2?.internmentDate || currentDeceased?.deceased2?.internmentDate || null,
+            deathCertificateNo: inscriptionDeceased?.deceased2?.deathCertificateNo || currentDeceased?.deceased2?.deathCertificateNo || null
           }
-          
-          if (isNaN(d.getTime())) {
-            logger.warn(`[formatDate] Invalid date value: ${date} (type: ${typeof date})`);
-            return null;
-          }
-          
-          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-          const day = String(d.getDate()).padStart(2, '0');
-          const month = months[d.getMonth()];
-          const year = d.getFullYear();
-          const formatted = `${day}-${month}-${year}`;
-          
-          logger.debug(`[formatDate] Formatted ${date} → ${formatted}`);
-          return formatted;
-        } catch (error) {
-          logger.error(`[formatDate] Error formatting date ${date}:`, error.message);
-          return null;
-        }
-      };
+        };
+      }
+
+      // Use central DateService for consistent formatting
+      const formatDate = (date) => dateService.formatForUI(date);
 
       // Process beneficiaries data (from repository)
       agreementData.beneficiaries = [];
-      
+
       // ✅ DEBUG: Log beneficiary data before processing
       logger.info(`[processNicheAgreementData] Beneficiary 1 raw data:`, {
         name: nicheAgreement.beneName_1,
@@ -208,36 +212,35 @@ class NicheAgreementService {
         birthYear: nicheAgreement.beneBirthYear_1,
         birthYearType: typeof nicheAgreement.beneBirthYear_1
       });
-      
+
       if (nicheAgreement.beneName_1) {
-        // ✅ FIX: Try to format date, with fallback to construct from birthYear if dateOfBirth is null
+        // ✅ FIX: Try to format date
         let formattedDateOfBirth = formatDate(nicheAgreement.beneDateOfBirth_1);
-        
-   
-        
-        logger.info(`[processNicheAgreementData] Beneficiary 1 formatted dateOfBirth:`, {
+
+        logger.info(`[processNicheAgreementData] Beneficiary 1 formatted data:`, {
           input: nicheAgreement.beneDateOfBirth_1,
           birthYear: nicheAgreement.beneBirthYear_1,
           output: formattedDateOfBirth
         });
-        
+
         agreementData.beneficiaries.push({
           name: nicheAgreement.beneName_1,
           idNo: nicheAgreement.beneIDNo_1,
           isCatholic: nicheAgreement.beneIsCatholic_1,
           isMale: nicheAgreement.beneIsMale_1,
           relationshipToApplicant: nicheAgreement.beneRelationshipToApplicant_1,
-          dateOfBirth: formattedDateOfBirth, // ✅ Use formatted date (or constructed from birthYear)
+          dateOfBirth: formattedDateOfBirth,
           birthYear: nicheAgreement.beneBirthYear_1,
           relationshipToNominee1: nicheAgreement.ben1_NomineeRelationship,
           relationshipToNominee2: nicheAgreement.ben1_Nominee2Relationship,
-          status: 'Occupied', // Based on the UI showing "Occupied" status
+          status: 'Occupied',
           sex: nicheAgreement.beneIsMale_1 !== null && nicheAgreement.beneIsMale_1 !== undefined
             ? (nicheAgreement.beneIsMale_1 ? 'Male' : 'Female')
-            : null
+            : null,
+          lifeStatus: nicheAgreement.beneLifeStatus_1
         });
       }
-      
+
       if (nicheAgreement.beneName_2) {
         // ✅ DEBUG: Log beneficiary 2 data
         logger.info(`[processNicheAgreementData] Beneficiary 2 raw data:`, {
@@ -247,54 +250,35 @@ class NicheAgreementService {
           birthYear: nicheAgreement.beneBirthYear_2,
           birthYearType: typeof nicheAgreement.beneBirthYear_2
         });
-        
-        const secondIsDistinct =
-          nicheAgreement.beneName_2 !== nicheAgreement.beneName_1 ||
-          (nicheAgreement.beneIDNo_2 && nicheAgreement.beneIDNo_2 !== nicheAgreement.beneIDNo_1) ||
-          nicheAgreement.beneBirthYear_2 !== nicheAgreement.beneBirthYear_1 ||
-          nicheAgreement.beneRelationshipToApplicant_2 !== nicheAgreement.beneRelationshipToApplicant_1;
 
-        if (secondIsDistinct) {
-          // ✅ FIX: Try to format date, with fallback to construct from birthYear if dateOfBirth is null
-          let formattedDateOfBirth2 = formatDate(nicheAgreement.beneDateOfBirth_2);
-          
-          // ✅ FALLBACK: If dateOfBirth is null but birthYear exists, construct a date
-          if (!formattedDateOfBirth2 && nicheAgreement.beneBirthYear_2) {
-            logger.info(`[processNicheAgreementData] Beneficiary 2 dateOfBirth is null but birthYear exists (${nicheAgreement.beneBirthYear_2}), constructing date`);
-            try {
-              // Construct date as January 1st of the birth year
-              const constructedDate = new Date(parseInt(nicheAgreement.beneBirthYear_2, 10), 0, 1);
-              formattedDateOfBirth2 = formatDate(constructedDate);
-              logger.info(`[processNicheAgreementData] Beneficiary 2 constructed date from birthYear: ${formattedDateOfBirth2}`);
-            } catch (e) {
-              logger.warn(`[processNicheAgreementData] Failed to construct date from birthYear for beneficiary 2:`, e.message);
-            }
-          }
-          
-          logger.info(`[processNicheAgreementData] Beneficiary 2 formatted dateOfBirth:`, {
-            input: nicheAgreement.beneDateOfBirth_2,
-            birthYear: nicheAgreement.beneBirthYear_2,
-            output: formattedDateOfBirth2
-          });
-          
-          agreementData.beneficiaries.push({
-            name: nicheAgreement.beneName_2,
-            idNo: nicheAgreement.beneIDNo_2,
-            isCatholic: nicheAgreement.beneIsCatholic_2,
-            isMale: nicheAgreement.beneIsMale_2,
-            relationshipToApplicant: nicheAgreement.beneRelationshipToApplicant_2,
-            dateOfBirth: formattedDateOfBirth2, // ✅ Use formatted date (or constructed from birthYear)
-            birthYear: nicheAgreement.beneBirthYear_2,
-            relationshipToNominee1: nicheAgreement.ben2_NomineeRelationship,
-            relationshipToNominee2: nicheAgreement.ben2_Nominee2Relationship,
-            status: 'Occupied', // Based on the UI showing "Occupied" status
-            sex: nicheAgreement.beneIsMale_2 !== null && nicheAgreement.beneIsMale_2 !== undefined
-              ? (nicheAgreement.beneIsMale_2 ? 'Male' : 'Female')
-              : null
-          });
-        }
+        // SIMPLIFIED: Trust the repository data; if we have a second name, add it
+        // The distinctness check was prone to errors if some fields were null/empty
+        let formattedDateOfBirth2 = formatDate(nicheAgreement.beneDateOfBirth_2);
+
+        logger.info(`[processNicheAgreementData] Beneficiary 2 formatted data:`, {
+          input: nicheAgreement.beneDateOfBirth_2,
+          birthYear: nicheAgreement.beneBirthYear_2,
+          output: formattedDateOfBirth2
+        });
+
+        agreementData.beneficiaries.push({
+          name: nicheAgreement.beneName_2,
+          idNo: nicheAgreement.beneIDNo_2,
+          isCatholic: nicheAgreement.beneIsCatholic_2,
+          isMale: nicheAgreement.beneIsMale_2,
+          relationshipToApplicant: nicheAgreement.beneRelationshipToApplicant_2,
+          dateOfBirth: formattedDateOfBirth2,
+          birthYear: nicheAgreement.beneBirthYear_2,
+          relationshipToNominee1: nicheAgreement.ben2_NomineeRelationship,
+          relationshipToNominee2: nicheAgreement.ben2_Nominee2Relationship,
+          status: 'Occupied',
+          sex: nicheAgreement.beneIsMale_2 !== null && nicheAgreement.beneIsMale_2 !== undefined
+            ? (nicheAgreement.beneIsMale_2 ? 'Male' : 'Female')
+            : null,
+          lifeStatus: nicheAgreement.beneLifeStatus_2
+        });
       }
-      
+
       // ✅ DEBUG: Log final beneficiaries array
       logger.info(`[processNicheAgreementData] Final beneficiaries array:`, JSON.stringify(agreementData.beneficiaries, null, 2));
 
@@ -319,7 +303,7 @@ class NicheAgreementService {
         agreementData.storage.storageFrom = formatDate(agreementData.storage.storageFrom);
         agreementData.storage.storageTo = formatDate(agreementData.storage.storageTo);
       }
-      
+
       // Add inscription data if available
       if (nicheAgreement.inscription) {
         agreementData.inscription = {
@@ -330,7 +314,7 @@ class NicheAgreementService {
           additionalInscriptionPhrase: nicheAgreement.inscription.additionalInscriptionPhrase,
           createdDate: formatDate(nicheAgreement.inscription.createdDate)
         };
-        
+
         // Add inscription items if available
         if (nicheAgreement.inscriptionItems && Array.isArray(nicheAgreement.inscriptionItems)) {
           agreementData.inscriptionItems = nicheAgreement.inscriptionItems.map(item => ({
@@ -353,34 +337,31 @@ class NicheAgreementService {
         }
       }
 
-      // Add inscription data to invoice details if available
-      if (agreementData.invoice && agreementData.inscriptionItems && Array.isArray(agreementData.inscriptionItems)) {
-        // Initialize invoiceDetails array if it doesn't exist
-        if (!agreementData.invoice.invoiceDetails) {
-          agreementData.invoice.invoiceDetails = [];
-        }
-        
-        // Add inscription items to invoice details
-        agreementData.invoice.invoiceDetails.push(...agreementData.inscriptionItems);
-      }
+      // ❌ REMOVED DUPLICATE: Inscription items are now added once at the end of this method
 
       // Add print-ready flags
       agreementData.printReady = {
         agreementReady: !!nicheAgreement.agreementDate,
         invoiceReady: !!nicheAgreement.invoiceNo,
         receiptReady: !!nicheAgreement.receiptAmount,
-        consentFormReady: agreementData.consentForm.status === 'completed'
+        consentFormReady: agreementData.consentForm && agreementData.consentForm.status === 'completed'
       };
-      
+
       // Update invoice data to include inscription items if available
       if (agreementData.invoice && agreementData.inscriptionItems && Array.isArray(agreementData.inscriptionItems)) {
-        // Combine niche items with inscription items in the invoice details
         if (!agreementData.invoice.invoiceDetails) {
           agreementData.invoice.invoiceDetails = [];
         }
-        
-        // Add inscription items to invoice details
-        agreementData.invoice.invoiceDetails.push(...agreementData.inscriptionItems);
+
+        // Add inscription items to invoice details if not already present
+        agreementData.inscriptionItems.forEach(item => {
+          const exists = agreementData.invoice.invoiceDetails.some(d => d.itemCode === item.itemCode && d.itemName === item.itemName);
+          if (!exists) {
+            agreementData.invoice.invoiceDetails.push(item);
+          }
+        });
+
+        logger.info(`[processNicheAgreementData] Merged inscription items. Total invoice details: ${agreementData.invoice.invoiceDetails.length}`);
       }
 
       // CRITICAL FIX: Ensure nominee address data is properly formatted in the response
@@ -509,18 +490,18 @@ class NicheAgreementService {
   async getDeceasedDetails(applicationCode) {
     try {
       logger.info(`[NicheAgreementService.getDeceasedDetails] Getting deceased details for application: ${applicationCode}`);
-      
+
       // First, we need to find the inscription associated with this application
       // This would typically involve querying the database to find inscription requests
       // for the given application code
-      
+
       // For now, let's check if there's an inscription with a code that matches the pattern
       // We'll look for inscriptions that might be related to this application
       const inscriptionCode = `I-${applicationCode}`;
-      
+
       try {
         const inscriptionDetails = await this.inscriptionAgreementRepository.getAgreementDetailsByCode(inscriptionCode);
-        
+
         if (inscriptionDetails && inscriptionDetails.deceasedDetails) {
           // Format the deceased details as requested
           const deceasedData = {
@@ -537,7 +518,7 @@ class NicheAgreementService {
               deathCertificateNo: null
             }
           };
-          
+
           // Populate with actual data if available
           if (inscriptionDetails.deceasedDetails.length > 0) {
             const firstDeceased = inscriptionDetails.deceasedDetails[0];
@@ -546,7 +527,7 @@ class NicheAgreementService {
             deceasedData.deceased1.internmentDate = firstDeceased.internmentDate || null;
             deceasedData.deceased1.deathCertificateNo = firstDeceased.deathCertificateNo || null;
           }
-          
+
           if (inscriptionDetails.deceasedDetails.length > 1) {
             const secondDeceased = inscriptionDetails.deceasedDetails[1];
             deceasedData.deceased2.name = secondDeceased.name || null;
@@ -554,7 +535,7 @@ class NicheAgreementService {
             deceasedData.deceased2.internmentDate = secondDeceased.internmentDate || null;
             deceasedData.deceased2.deathCertificateNo = secondDeceased.deathCertificateNo || null;
           }
-          
+
           logger.info(`[NicheAgreementService.getDeceasedDetails] Found deceased details for application: ${applicationCode}`);
           return deceasedData;
         }
@@ -562,7 +543,7 @@ class NicheAgreementService {
         // If no inscription found, that's okay - just return empty structure
         logger.debug(`[NicheAgreementService.getDeceasedDetails] No inscription found for application: ${applicationCode}`);
       }
-      
+
       // Return default structure with null values
       return {
         deceased1: {

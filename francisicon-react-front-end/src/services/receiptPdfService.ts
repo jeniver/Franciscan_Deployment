@@ -246,16 +246,20 @@ const generateReceiptHtmlTemplate = (payload: ReceiptApiPayload, options: Receip
   });
   
   const totalInWords = numberToWords(totalAmount);
-  const paymentMode = resolvePaymentMode(receiptInfo.paymentMode || invoiceInfo.paymentMode);
+  const pmResolved = resolvePaymentMode(receiptInfo.paymentMode || invoiceInfo.paymentMode);
+  const pmDoc = receiptInfo.paymentModeDocNo || invoiceInfo.paymentModeDocNo;
+  const isCash = String(pmResolved || '').toLowerCase().startsWith('cash');
+  const paymentMode = isCash ? 'Cash' : (pmDoc ? `${pmResolved || ''} (Ref: ${pmDoc})` : pmResolved || '');
   
   // Get invoice details from payload for table rows
   const invoiceDetails = payload.invoice?.details ?? payload.details ?? [];
   
   // Build table rows - receipt shows single row with invoice number and description
   let tableRows = '';
-  // Get description from first detail's refDocName (e.g., "St 5585 Bernadine")
-  const description = invoiceDetails.length > 0 
-    ? (normalizeRefField(invoiceDetails[0].refDocName) || invoiceDetails[0].description || '')
+  // Get description: prefer niche/service ref (refDocName, refDocNumber), then item name, then description
+  const firstDetail = invoiceDetails[0];
+  const description = invoiceDetails.length > 0
+    ? (normalizeRefField(firstDetail.refDocName) || normalizeRefField(firstDetail.refDocNumber) || (firstDetail as any).itemName || (firstDetail as any).ItemName || firstDetail.description || '')
     : (lineItems.length > 0 ? lineItems[0].description : 'Payment received');
   
   const invoiceNo = invoiceInfo.invoiceNo || invoiceInfo.code || '';
@@ -272,7 +276,7 @@ const generateReceiptHtmlTemplate = (payload: ReceiptApiPayload, options: Receip
   const safeReceiptNo = escapeHtml(receiptNo || '');
   const safeReceiptDate = escapeHtml(receiptDate || '');
   const safeCustomerName = escapeHtml(customerName || '');
-  const safeAddress = escapeHtml(address || '');
+  const safeAddress = escapeHtml(address || '').replace(/\n/g, '<br>');
   const safeInvoiceNo = escapeHtml(invoiceNo || '');
   const safeDescription = escapeHtml(description || '');
   const safeTotalAmountDisplay = formatCurrency(totalAmount);

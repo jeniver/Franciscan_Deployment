@@ -49,6 +49,7 @@ export interface InscriptionItemsResponse {
   message?: string;
   data: {
     inscriptionRequestNo: string | null; // null when inscription doesn't exist yet
+    nicheInscriptionRequestId: number | null; // added for agreement generation
     items: InscriptionItem[];
     applicant: {
       name: string;
@@ -80,6 +81,7 @@ export interface InscriptionItemsResponse {
       bibleInscriptionText: string;
       additionalInscriptionPhrase: string;
       remarks: string;
+      crossType?: string;
       nicheApplicationCode: string;
       nicheBookingId: number | null;
     };
@@ -442,6 +444,7 @@ const inscriptionService = {
       bibleInscriptionText: string;
       additionalInscriptionPhrase: string;
       remarks: string;
+      crossType?: string;
       nicheApplicationCode: string;
       nicheBookingId: number | null;
     };
@@ -581,6 +584,7 @@ const inscriptionService = {
         bibleInscriptionText: string;
         additionalInscriptionPhrase: string;
         remarks: string;
+        crossType?: string;
       };
     }
   ): Promise<{ code: string; message: string }> {
@@ -702,10 +706,11 @@ const inscriptionService = {
     toDate?: string;
     page?: number;
     pageSize?: number;
+    bypassCache?: boolean;
   }): Promise<InscriptionSearchResponse['data']> {
     try {
       const params = new URLSearchParams();
-      
+
       if (filters.searchTerm) {
         params.append('searchTerm', filters.searchTerm);
       }
@@ -721,11 +726,21 @@ const inscriptionService = {
       if (filters.pageSize) {
         params.append('pageSize', filters.pageSize.toString());
       }
+      if (filters.bypassCache) {
+        params.append('_t', Date.now().toString());
+      }
 
       const queryString = params.toString();
       const url = `/api/inscriptions${queryString ? `?${queryString}` : ''}`;
-      
-      const response = await api.get<InscriptionSearchResponse>(url);
+
+      const response = await api.get<InscriptionSearchResponse>(url, {
+        ...(filters.bypassCache ? {
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          }
+        } : {})
+      });
 
       if (!response.data.success) {
         throw new InscriptionError(

@@ -15,6 +15,9 @@ import {
 import { FormSelect } from '../components/FormSelect'
 import { EnhancedBeneficiaryDatePicker } from '../components/EnhancedBeneficiaryDatePicker'
 import { UpdateApplicationButton } from '../components/UpdateApplicationButton'
+import { usePersonLookup } from '../hooks/usePersonLookup'
+import { PersonData } from '../services/personService'
+import { Loader2, SearchIcon, CheckCircle2, X } from 'lucide-react'
 interface BeneficiaryDetailsProps {
   formData: any
   setFormData: (data: any) => void
@@ -62,6 +65,19 @@ export function BeneficiaryDetails({
       processed.birthYear = null;
     }
 
+    // If we have a birthYear but no dateOfBirth, don't automatically set dateOfBirth to Jan 1st
+    // This preserves the year-only format when needed
+    if (processed.birthYear && !processed.dateOfBirth) {
+      // Leave as is - birthYear exists but dateOfBirth is null
+    }
+    // If we have a dateOfBirth but no birthYear, extract year from date
+    else if (processed.dateOfBirth && !processed.birthYear && typeof processed.dateOfBirth === 'string' && processed.dateOfBirth.includes('-')) {
+      const parts = processed.dateOfBirth.split('-');
+      if (parts.length === 3) {
+        processed.birthYear = parts[2];
+      }
+    }
+
     // Handle religious affiliation mapping
     if (processed.religion === 'Catholic') {
       processed.isCatholic = true;
@@ -102,19 +118,10 @@ export function BeneficiaryDetails({
   }>({})
   const currentBeneficiariesRef = useRef<Beneficiary[]>([])
 
-  // Helper function to resolve DOB value for display
-  const resolveDOBValue = (
-    dateOfBirth?: string | null,
-    birthYear?: string | number | null
-  ): string => {
-    // Handle empty strings as null values
-    const dob = dateOfBirth === '' || dateOfBirth === 'null' ? null : dateOfBirth;
-    const by = birthYear === '' || birthYear === 'null' ? null : birthYear;
-    
-    if (dob) return dob;
-    if (by) return String(by);
-    return '';
-  }
+  const { searchPerson, searchResults, isSearching, clearResults } = usePersonLookup()
+  const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null)
+  const [showSearchResults, setShowSearchResults] = useState(false)
+
 
 
   // Process beneficiary date fields and other properties
@@ -220,30 +227,33 @@ export function BeneficiaryDetails({
   // Update form data with all beneficiaries
   const updateFormDataWithBeneficiaries = useCallback(
     (updatedBeneficiaries: Beneficiary[]) => {
+      console.log('updateFormDataWithBeneficiaries called with:', updatedBeneficiaries);
       isUpdatingFromComponent.current = true
       const allBeneficiaryData: any = {
         beneficiaries: updatedBeneficiaries,
       }
-      
+
       // Process each beneficiary efficiently
       for (let index = 0; index < updatedBeneficiaries.length; index++) {
         const beneficiary = updatedBeneficiaries[index];
         const i = index + 1
-        
-        let dateOfBirth = beneficiary.dateOfBirth || ''
-        let birthYear: string | number | null = beneficiary.birthYear || null
-        
+
+        const dateOfBirth: string | null = beneficiary.dateOfBirth ?? null
+        let birthYear: string | number | null = beneficiary.birthYear ?? null
+
         if (dateOfBirth && dateOfBirth.includes('-')) {
           const parts = dateOfBirth.split('-')
           if (parts.length === 3) birthYear = parts[2]
         }
-        
+
+        console.log(`Setting beneficiary${i}BirthYear to:`, typeof birthYear === 'number' ? birthYear.toString() : birthYear);
+
         allBeneficiaryData[`beneficiary${i}Name`] = beneficiary.name || ''
         allBeneficiaryData[`beneficiary${i}IDNo`] = beneficiary.idNo || ''
         allBeneficiaryData[`beneficiary${i}Relationship`] =
           beneficiary.relationshipToApplicant || ''
         allBeneficiaryData[`beneficiary${i}DateOfBirth`] = dateOfBirth
-        allBeneficiaryData[`beneficiary${i}BirthYear`] = typeof birthYear === 'number' ? birthYear.toString() : birthYear
+        allBeneficiaryData[`beneficiary${i}BirthYear`] = typeof birthYear === 'number' ? birthYear.toString() : (birthYear ?? null)
         allBeneficiaryData[`beneficiary${i}Gender`] = beneficiary.sex || ''
         allBeneficiaryData[`beneficiary${i}Religion`] =
           beneficiary.religion || ''
@@ -257,14 +267,14 @@ export function BeneficiaryDetails({
           !!beneficiary.isCatholic
         allBeneficiaryData[`beneficiary${i}IsMale`] = !!beneficiary.isMale
       }
-      
+
       // Clear fields for removed beneficiaries
       for (let i = updatedBeneficiaries.length + 1; i <= 5; i++) {
         allBeneficiaryData[`beneficiary${i}Name`] = ''
         allBeneficiaryData[`beneficiary${i}IDNo`] = ''
         allBeneficiaryData[`beneficiary${i}Relationship`] = ''
-        allBeneficiaryData[`beneficiary${i}DateOfBirth`] = ''
-        allBeneficiaryData[`beneficiary${i}BirthYear`] = ''
+        allBeneficiaryData[`beneficiary${i}DateOfBirth`] = null
+        allBeneficiaryData[`beneficiary${i}BirthYear`] = null
         allBeneficiaryData[`beneficiary${i}Gender`] = ''
         allBeneficiaryData[`beneficiary${i}Religion`] = ''
         allBeneficiaryData[`beneficiary${i}Status`] = 'Not Occupied'
@@ -273,7 +283,7 @@ export function BeneficiaryDetails({
         allBeneficiaryData[`beneficiary${i}IsCatholic`] = false
         allBeneficiaryData[`beneficiary${i}IsMale`] = false
       }
-      
+
       setFormData(allBeneficiaryData)
     },
     [setFormData],
@@ -302,7 +312,7 @@ export function BeneficiaryDetails({
         prevValuesRef.current[key] = normalizedValue
         const updated = prev.map((b) => {
           if (b.id === id) {
-            let updatedBeneficiary = {
+            const updatedBeneficiary = {
               ...b,
               [field]: normalizedValue,
             }
@@ -331,14 +341,20 @@ export function BeneficiaryDetails({
               updatedBeneficiary.isMale = value;
             }
 
+            // Only automatically set dateOfBirth from birthYear if dateOfBirth is null AND we want this behavior
+            // To preserve year-only format, we should not automatically convert birthYear to full date
+            // The reverse conversion (full date to extract year) happens when dateOfBirth is set
             if (
-              field === 'birthYear' &&
+              field === 'dateOfBirth' &&
               value &&
-              (typeof value === 'string' || typeof value === 'number') &&
-              (!b.dateOfBirth || b.dateOfBirth === '')
+              typeof value === 'string' &&
+              value.includes('-')
             ) {
-              const yearStr = typeof value === 'number' ? value.toString() : value;
-              updatedBeneficiary.dateOfBirth = `01-Jan-${yearStr}`
+              const parts = value.split('-');
+              if (parts.length === 3) {
+                // Convert to number to maintain consistency with EnhancedDatePicker
+                updatedBeneficiary.birthYear = parseInt(parts[2], 10);
+              }
             }
             return updatedBeneficiary
           }
@@ -388,101 +404,126 @@ export function BeneficiaryDetails({
   )
   // Handle date of birth changes for EnhancedBeneficiaryDatePicker
   const handleEnhancedDateChange = useCallback(
-    (beneficiaryId: number) => {
-      return (value: string) => {
-        // Skip update if we're in a render cycle by checking a flag
-        if (isUpdatingFromComponent.current) {
-          return;
+    (dateOfBirth: string | null, birthYear: number | null, beneficiaryId?: number | string) => {
+      console.log('handleEnhancedDateChange called with:', { dateOfBirth, birthYear, beneficiaryId });
+
+      // Early return checks
+      if (isUpdatingFromComponent.current || beneficiaryId === undefined) {
+        console.log('Early return in handleEnhancedDateChange');
+        return;
+      }
+
+      const id = Number(beneficiaryId);
+      console.log('Processing beneficiary id:', id);
+
+      setBeneficiaries(prevBeneficiaries => {
+        // Check if beneficiary exists
+        const beneficiaryExists = prevBeneficiaries.some(b => b.id === id);
+        if (!beneficiaryExists) {
+          console.warn(`Beneficiary with id ${id} not found`);
+          return prevBeneficiaries; // Return unchanged if beneficiary doesn't exist
         }
 
-        // Handle different input formats
-        const stringValue = String(value || '');
-        if (!stringValue || stringValue.trim() === '' || stringValue === 'null') {
-          // Clear both fields
-          handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', null);
-          handleUpdateBeneficiary(beneficiaryId, 'birthYear', null);
-          return;
-        }
+        console.log('Found beneficiary, updating...');
 
-        // Check if it's a 4-digit year only
-        if (/^\d{4}$/.test(stringValue.trim())) {
-          const yearValue = parseInt(stringValue.trim());
-          if (yearValue >= 1900 && yearValue <= new Date().getFullYear()) {
-            handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', null); // Clear full date
-            handleUpdateBeneficiary(beneficiaryId, 'birthYear', stringValue.trim()); // Set year only
-            return;
-          }
-        }
-
-
-        // Check if it's a full date format (DD-MMM-YYYY or DD-MM-YYYY)
-        if (/^\d{1,2}[-/]\d{1,2}[-/]\d{4}$/.test(stringValue.trim()) ||
-          /^\d{1,2}-[A-Za-z]{3}-\d{4}$/.test(stringValue.trim())) {
-          // Validate the date
-          let dateObj: Date | null = null;
-          let formattedDate: string = stringValue.trim();
-
-          // Try to parse different formats
-          if (stringValue.includes('-')) {
-            const parts = stringValue.split('-');
-            if (parts.length === 3) {
-              const [day, month, year] = parts;
-
-              // Handle month names (MMM format)
-              if (isNaN(parseInt(month))) {
-                const monthNames = [
-                  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-                ];
-                const monthIndex = monthNames.findIndex(m =>
-                  m.toLowerCase() === month.toLowerCase().substring(0, 3)
-                );
-                if (monthIndex !== -1) {
-                  dateObj = new Date(parseInt(year), monthIndex, parseInt(day));
-                  formattedDate = `${day.padStart(2, '0')}-${monthNames[monthIndex]}-${year}`;
-                }
-              } else {
-                // Handle numeric month (MM format)
-                const monthIndex = parseInt(month) - 1;
-                if (monthIndex >= 0 && monthIndex <= 11) {
-                  const monthNames = [
-                    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-                  ];
-                  dateObj = new Date(parseInt(year), monthIndex, parseInt(day));
-                  formattedDate = `${day.padStart(2, '0')}-${monthNames[monthIndex]}-${year}`;
-                }
-              }
-            }
+        const updatedBeneficiaries = prevBeneficiaries.map(beneficiary => {
+          // Only update the matching beneficiary
+          if (beneficiary.id !== id) {
+            return beneficiary;
           }
 
-          // Validate the date object
-          if (dateObj && dateObj instanceof Date && !isNaN(dateObj.getTime())) {
-            const day = dateObj.getDate();
-            const month = dateObj.getMonth();
-            const year = dateObj.getFullYear();
+          // Create updated beneficiary object
+          const updatedBeneficiary = { ...beneficiary };
 
-            // Double-check it's the same date
-            if (dateObj.getDate() === day && dateObj.getMonth() === month && dateObj.getFullYear() === year) {
-              const monthNames = [
-                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-              ];
-              const formattedDate = `${day.toString().padStart(2, '0')}-${monthNames[month]}-${year}`;
-              handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', formattedDate);
-              handleUpdateBeneficiary(beneficiaryId, 'birthYear', null); // Clear year field
-              return;
-            }
+          // Handle mutual exclusivity: if one field has value, clear the other
+          if (dateOfBirth === null && birthYear === null) {
+            // Clear both fields
+            updatedBeneficiary.dateOfBirth = null;
+            updatedBeneficiary.birthYear = null;
+            console.log('Cleared both dateOfBirth and birthYear');
+          } else if (dateOfBirth !== null) {
+            // Full date provided - clear birthYear to enforce mutual exclusivity
+            updatedBeneficiary.dateOfBirth = dateOfBirth;
+            updatedBeneficiary.birthYear = null;
+            console.log('Set dateOfBirth only, cleared birthYear:', { dateOfBirth });
+          } else if (birthYear !== null) {
+            // Year only provided - clear dateOfBirth to enforce mutual exclusivity
+            updatedBeneficiary.dateOfBirth = null;
+            updatedBeneficiary.birthYear = birthYear;
+            console.log('Set birthYear only, cleared dateOfBirth:', birthYear);
           }
-        }
 
-        // For any other format, store as-is in dateOfBirth field
-        handleUpdateBeneficiary(beneficiaryId, 'dateOfBirth', stringValue.trim());
-        handleUpdateBeneficiary(beneficiaryId, 'birthYear', null);
-      };
+          return updatedBeneficiary;
+        });
+
+        // Update form data with all beneficiaries
+        console.log('Calling updateFormDataWithBeneficiaries with updated beneficiaries');
+        updateFormDataWithBeneficiaries(updatedBeneficiaries);
+
+        return updatedBeneficiaries;
+      });
     },
-    [handleUpdateBeneficiary]
+    [updateFormDataWithBeneficiaries]
   );
+
+  // Helper function to extract year from date string
+  const extractYearFromDate = (dateString: string): number | null => {
+    try {
+      // Handle different date formats: YYYY-MM-DD, DD-MM-YYYY, MM-DD-YYYY
+      const date = new Date(dateString);
+
+      if (!isNaN(date.getTime())) {
+        return date.getFullYear();
+      }
+
+      // Fallback: try to parse manually
+      const parts = dateString.split('-');
+      if (parts.length === 3) {
+        // Try DD-MM-YYYY format
+        if (parts[2].length === 4) {
+          return parseInt(parts[2], 10);
+        }
+        // Try YYYY-MM-DD format
+        if (parts[0].length === 4) {
+          return parseInt(parts[0], 10);
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error extracting year from date:', error);
+      return null;
+    }
+  };
+
+  const handleSelectPerson = useCallback((person: PersonData, index: number) => {
+    const updatedBeneficiary: Partial<Beneficiary> = {
+      name: person.name,
+      fullName: person.name,
+      idNo: person.idNo || '',
+      nric: person.idNo || '',
+      isCatholic: person.isCatholic ?? false,
+      religion: person.isCatholic ? 'Catholic' : 'Non Catholic',
+      isMale: true, // Default, not available in PersonData
+      sex: 'Male',
+      gender: 'Male',
+      // map other fields if they exist in PersonData and Beneficiary type
+    };
+
+    const beneficiaryToUpdate = beneficiaries[index];
+    if (beneficiaryToUpdate) {
+      const updatedBeneficiaries = beneficiaries.map((b, i) =>
+        i === index ? { ...b, ...updatedBeneficiary } : b
+      );
+      setBeneficiaries(updatedBeneficiaries);
+      updateFormDataWithBeneficiaries(updatedBeneficiaries);
+    }
+
+    setShowSearchResults(false);
+    setActiveSearchIndex(null);
+    clearResults();
+  }, [beneficiaries, updateFormDataWithBeneficiaries, clearResults]);
+
   const inputBaseClass = `
     w-full px-4 py-2.5 
     border border-gray-300 rounded-lg 
@@ -563,24 +604,61 @@ export function BeneficiaryDetails({
               <div className="p-6 space-y-5">
                 {/* Row 1: Name & NRIC */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
+                  <div className="relative">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Full Name
                     </label>
-                    <input
-                      type="text"
-                      value={beneficiary.name || beneficiary.fullName || ''}
-                      onChange={(e) =>
-                        handleUpdateBeneficiary(
-                          beneficiary.id,
-                          'name',
-                          e.target.value,
-                        )
-                      }
-                      placeholder="Enter full name"
-                      disabled={isReadOnly}
-                      className={`${inputBaseClass} ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={beneficiary.name || beneficiary.fullName || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          handleUpdateBeneficiary(beneficiary.id, 'name', val);
+                          if (val.length >= 3) {
+                            searchPerson(val);
+                            setActiveSearchIndex(index);
+                            setShowSearchResults(true);
+                          } else if (activeSearchIndex === index) {
+                            setShowSearchResults(false);
+                          }
+                        }}
+                        placeholder="Enter full name"
+                        disabled={isReadOnly}
+                        className={`${inputBaseClass} ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+                      />
+                      {!isReadOnly && isSearching && activeSearchIndex === index && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                        </div>
+                      )}
+                    </div>
+
+                    {showSearchResults && activeSearchIndex === index && searchResults.length > 0 && !isReadOnly && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                        <div className="p-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-500 flex items-center justify-between">
+                          <span>MATCHES FOUND</span>
+                          <button onClick={() => setShowSearchResults(false)} className="text-gray-400 hover:text-gray-600">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        {searchResults.map((person) => (
+                          <div
+                            key={person.personId}
+                            className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors group"
+                            onClick={() => handleSelectPerson(person, index)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <span className="font-medium text-gray-900 group-hover:text-blue-700">{person.name}</span>
+                                <span className="text-xs text-gray-500">{person.idNo} • {person.emailID}</span>
+                              </div>
+                              <CheckCircle2 className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -606,11 +684,10 @@ export function BeneficiaryDetails({
                 {/* Row 2: Date of Birth */}
                 <EnhancedBeneficiaryDatePicker
                   label="Date of Birth"
-                  value={resolveDOBValue(
-                    beneficiary.dateOfBirth,
-                    beneficiary.birthYear
-                  )}
-                  onChange={handleEnhancedDateChange(beneficiary.id)}
+                  id={beneficiary.id}
+                  dateOfBirth={beneficiary.dateOfBirth}
+                  birthYear={beneficiary.birthYear}
+                  onChange={handleEnhancedDateChange}
                   disabled={isReadOnly}
                 />
 

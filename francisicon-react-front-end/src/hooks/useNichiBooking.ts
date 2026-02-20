@@ -9,6 +9,7 @@ import {
   setRefDocNumber,
   setLineTaxPercent,
   setItemId,
+  setRemarks,
   setDeceasedDetails,
   addDeceasedDetail,
   removeDeceasedDetail,
@@ -55,6 +56,7 @@ export function useNichiBooking() {
   const refDocNumber = useSelector((state: RootState) => state.nichibooking.refDocNumber);
   const lineTaxPercent = useSelector((state: RootState) => state.nichibooking.lineTaxPercent);
   const itemId = useSelector((state: RootState) => state.nichibooking.itemId);
+  const remarks = useSelector((state: RootState) => state.nichibooking.remarks);
 
   const creatingInvoice = useSelector((state: RootState) => state.nichibooking.creatingInvoice);
   const invoiceError = useSelector((state: RootState) => state.nichibooking.invoiceError);
@@ -117,6 +119,10 @@ export function useNichiBooking() {
 
   const updateItemId = useCallback((value: number) => {
     dispatch(setItemId(value));
+  }, [dispatch]);
+
+  const updateRemarks = useCallback((value: string) => {
+    dispatch(setRemarks(value));
   }, [dispatch]);
 
   // Deceased Details handlers
@@ -278,6 +284,7 @@ export function useNichiBooking() {
           refDocNumber: params?.refDocNumber || refDocNumber,
           lineTaxPercent: params?.lineTaxPercent ?? lineTaxPercent,
           itemId: params?.itemId ?? itemId,
+          remarks: params?.remarks ?? remarks,
           // Niche details
           nicheId: params?.nicheId ?? nicheId,
           nicheNumber: params?.nicheNumber || nicheNumber,
@@ -336,6 +343,7 @@ export function useNichiBooking() {
       refDocNumber,
       lineTaxPercent,
       itemId,
+      remarks,
       nicheId,
       nicheNumber,
       nicheCode,
@@ -476,6 +484,7 @@ export function useNichiBooking() {
     refDocNumber,
     lineTaxPercent,
     itemId,
+    remarks,
     creatingInvoice,
     invoiceError,
     createdInvoice,
@@ -497,6 +506,7 @@ export function useNichiBooking() {
     updateRefDocNumber,
     updateLineTaxPercent,
     updateItemId,
+    updateRemarks,
     handleCreateNichiBookingInvoice,
     handleCreateNichiApplication,
     handleViewNichiApplication,

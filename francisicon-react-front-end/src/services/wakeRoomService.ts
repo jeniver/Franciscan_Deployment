@@ -143,6 +143,14 @@ export interface WakeRoomBookingCreateResponse {
   existingCode?: string;
 }
 
+export interface WakeRoomBookingSearchResponse {
+  bookings: WakeRoomBooking[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface WakeRoomResponse<T = any> {
   success: boolean;
   message: string;
@@ -162,9 +170,11 @@ export interface WakeRoomDropdownOption {
 // Wake Room Service
 export const wakeRoomService = {
   // Get all wake rooms (no church filter)
-  getAllWakeRooms: async (): Promise<WakeRoomResponse<WakeRoom[]>> => {
+  getAllWakeRooms: async (bypassCache: boolean = false): Promise<WakeRoomResponse<WakeRoom[]>> => {
     try {
-      const response = await api.get('/api/wake-rooms/all');
+      const response = await api.get('/api/wake-rooms/all', {
+        params: bypassCache ? { _t: Date.now(), bypassCache: true } : {}
+      });
 
       if (response.data?.success) {
         return response.data;
@@ -198,14 +208,16 @@ export const wakeRoomService = {
   },
 
   // Get all wake rooms by church ID
-  getWakeRoomsByChurch: async (churchId: number): Promise<WakeRoomResponse<WakeRoom[]>> => {
+  getWakeRoomsByChurch: async (churchId: number, bypassCache: boolean = false): Promise<WakeRoomResponse<WakeRoom[]>> => {
     try {
       if (!churchId) {
         throw new WakeRoomError('Church ID is required', 'validation');
       }
 
-      const response = await api.get(`/api/wake-rooms/church/${churchId}`);
-      
+      const response = await api.get(`/api/wake-rooms/church/${churchId}`, {
+        params: bypassCache ? { _t: Date.now(), bypassCache: true } : {}
+      });
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -215,7 +227,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 404) {
@@ -242,7 +254,7 @@ export const wakeRoomService = {
         fromTime,
         toTime
       });
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -252,7 +264,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status >= 500) {
@@ -273,7 +285,7 @@ export const wakeRoomService = {
       }
 
       const response = await api.get(`/api/wake-rooms/${id}`);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -283,7 +295,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 404) {
@@ -310,7 +322,7 @@ export const wakeRoomService = {
         fromDate,
         toDate
       });
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -320,7 +332,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 400) {
@@ -346,7 +358,7 @@ export const wakeRoomService = {
         wakeRoomId,
         dates
       });
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -356,7 +368,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 400) {
@@ -375,7 +387,7 @@ export const wakeRoomService = {
   createBooking: async (bookingData: any): Promise<WakeRoomResponse<WakeRoomBookingCreateResponse>> => {
     try {
       const response = await api.post('/api/wake-room-bookings', bookingData);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -385,7 +397,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 400) {
@@ -408,7 +420,7 @@ export const wakeRoomService = {
       }
 
       const response = await api.get(`/api/wake-room-bookings/${code.trim()}?churchId=${churchId}`);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -418,7 +430,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 404) {
@@ -434,10 +446,12 @@ export const wakeRoomService = {
   },
 
   // Search wake room bookings
-  searchBookings: async (searchCriteria: any): Promise<WakeRoomResponse<WakeRoomBooking[]>> => {
+  searchBookings: async (searchCriteria: any, bypassCache: boolean = false): Promise<WakeRoomResponse<WakeRoomBookingSearchResponse | WakeRoomBooking[]>> => {
     try {
-      const response = await api.post('/api/wake-room-bookings/search', searchCriteria);
-      
+      const response = await api.post('/api/wake-room-bookings/search', searchCriteria, {
+        params: bypassCache ? { _t: Date.now(), bypassCache: true } : {}
+      });
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -447,7 +461,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status >= 500) {
@@ -464,7 +478,7 @@ export const wakeRoomService = {
   updateBooking: async (bookingId: number, bookingData: any): Promise<WakeRoomResponse<WakeRoomBookingCreateResponse>> => {
     try {
       const response = await api.put(`/api/wake-room-bookings/${bookingId}`, bookingData);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -474,7 +488,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 400) {
@@ -495,7 +509,7 @@ export const wakeRoomService = {
   deleteBooking: async (bookingId: number): Promise<WakeRoomResponse<null>> => {
     try {
       const response = await api.delete(`/api/wake-room-bookings/${bookingId}`);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -505,7 +519,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 404) {
@@ -526,7 +540,7 @@ export const wakeRoomService = {
       // Format date as YYYY-MM-DD
       const dateStr = date.includes('T') ? date.split('T')[0] : date;
       const response = await api.get(`/api/wake-rooms/${wakeRoomId}/bookings?date=${dateStr}`);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -536,7 +550,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 404) {
@@ -558,7 +572,7 @@ export const wakeRoomService = {
       const fromDateStr = fromDate.includes('T') ? fromDate.split('T')[0] : fromDate;
       const toDateStr = toDate.includes('T') ? toDate.split('T')[0] : toDate;
       const response = await api.get(`/api/wake-rooms/${wakeRoomId}/bookings-range?fromDate=${fromDateStr}&toDate=${toDateStr}`);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -568,7 +582,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 400) {
@@ -591,7 +605,7 @@ export const wakeRoomService = {
       }
 
       const response = await api.get(`/api/wake-room-bookings/last-number/${churchId}`);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -601,7 +615,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 404) {
@@ -642,17 +656,17 @@ export const wakeRoomService = {
       // Open PDF in new tab
       const pdfUrl = `${API_BASE}${endpoint}`;
       const newWindow = window.open(pdfUrl, '_blank', 'noopener,noreferrer');
-      
+
       if (!newWindow) {
         throw new WakeRoomError('Popup blocked. Please allow popups for this site.');
       }
-      
+
       console.log(`Opening ${type} PDF in new tab:`, pdfUrl);
     } catch (error: any) {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.data?.message) {
         throw new WakeRoomError(error.response.data.message);
       } else {
@@ -667,12 +681,12 @@ export const wakeRoomService = {
       // This would integrate with a PDF generation library like jsPDF or html2pdf.js
       // For now, we'll just log the data that would be used for PDF generation
       console.log(`Generating ${type} PDF from form data:`, formData);
-      
+
       // In a real implementation, you would:
       // 1. Create a PDF template
       // 2. Fill it with the form data
       // 3. Generate and download the PDF
-      
+
       // Example using html2pdf.js (would need to install the package):
       // const element = document.getElementById('pdf-content');
       // const opt = {
@@ -683,7 +697,7 @@ export const wakeRoomService = {
       //   jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
       // };
       // html2pdf().set(opt).from(element).save();
-      
+
       alert(`PDF generation for ${type} would be implemented here`);
     } catch (error: any) {
       if (error instanceof WakeRoomError) {
@@ -704,7 +718,7 @@ export const wakeRoomService = {
       const response = await api.get(`/api/wake-rooms/dropdown`, {
         params: { church: churchId }
       });
-      
+
       if (response.data.success || Array.isArray(response.data)) {
         // Handle both { success: true, data: [...] } and direct array responses
         const data = response.data.success ? response.data.data : response.data;
@@ -720,7 +734,7 @@ export const wakeRoomService = {
       if (error instanceof WakeRoomError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new WakeRoomError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 404) {

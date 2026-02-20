@@ -16,36 +16,42 @@ const parseDate = (value) => {
     return value;
   }
 
-  // // Handle DD-MMM-YYYY format (e.g., "16-Feb-2012")
-  // if (typeof value === 'string' && /^[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}$/.test(value)) {
-  //   const [day, month, year] = value.split('-');
-  //   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  //   const monthIndex = monthNames.indexOf(month);
-  //   if (monthIndex !== -1) {
-  //     const date = new Date(parseInt(year), monthIndex, parseInt(day));
-  //     return Number.isNaN(date.getTime()) ? null : date;
-  //   }
-  // }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.toLowerCase() === 'null') return null;
 
-  // // Handle DD-MM-YYYY format (e.g., "03-04-1996")
-  // if (typeof value === 'string' && /^[0-9]{1,2}-[0-9]{1,2}-[0-9]{4}$/.test(value)) {
-  //   const [day, month, year] = value.split('-');
-  //   const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-  //   return Number.isNaN(date.getTime()) ? null : date;
-  // }
+    // Handle ISO strings (e.g., "1996-04-24T00:00:00.000Z")
+    if (trimmed.includes('T') && trimmed.endsWith('Z')) {
+      const parsed = new Date(trimmed);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
 
-  // // Handle 4-digit year only (e.g., "1994") - return as string for year-only storage
-  // if (typeof value === 'string' && /^[0-9]{4}$/.test(value)) {
-  //   const year = parseInt(value);
-  //   if (year >= 1900 && year <= new Date().getFullYear()) {
-  //     // Return the year as a string for year-only storage
-  //     return value;
-  //   }
-  // }
+    // Handle DD-MM-YYYY format (e.g., "24-04-1996" or "3-4-1996")
+    const dmyMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (dmyMatch) {
+      const [, day, month, year] = dmyMatch;
+      const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
 
-  // Handle standard date parsing
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+    // Handle DD-MMM-YYYY format (e.g., "16-Feb-2012")
+    const dmmmMatch = trimmed.match(/^(\d{1,2})[\s-](\w{3})[\s-](\d{4})$/i);
+    if (dmmmMatch) {
+      const [, day, monthName, year] = dmmmMatch;
+      const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+      const monthIndex = months.indexOf(monthName.toLowerCase());
+      if (monthIndex !== -1) {
+        const date = new Date(parseInt(year, 10), monthIndex, parseInt(day, 10));
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+    }
+
+    // Default to standard parsing
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
 };
 
 const pdfService = new PdfService();
@@ -241,7 +247,7 @@ const fetchAllApplicationsInChunks = async ({
       if (iteration === 0) {
         totalRecords = repoResult.total ?? null;
         logger.info(`Fetch-all first iteration result: ${repoResult.records.length} records, total: ${totalRecords}, skipTotal: ${skipTotalInitial}`);
-        
+
         // On first iteration, if we get no records, return early with empty result
         // This handles the case where there truly are no matching records
         if (repoResult.records.length === 0) {
@@ -302,7 +308,7 @@ const fetchAllApplicationsInChunks = async ({
         stack: error.stack,
         baseParams: { churchId: baseParams?.churchId, page: currentPage }
       });
-      
+
       // On first iteration, return empty result instead of throwing
       // This ensures the API always responds, even if there's a database error
       if (iteration === 0) {
@@ -327,7 +333,7 @@ const fetchAllApplicationsInChunks = async ({
 
   // Ensure aggregated is always an array
   const finalRecords = Array.isArray(aggregated) ? aggregated : [];
-  
+
   const derivedTotal = totalRecords !== null
     ? totalRecords
     : finalRecords.length;
@@ -349,23 +355,23 @@ const fetchAllApplicationsInChunks = async ({
 const invalidateNicheApplicationCache = () => {
   if (enableNicheApplicationCache) {
     logger.info('[invalidateNicheApplicationCache] Starting aggressive cache invalidation');
-    
+
     // First, get all current keys before deletion for logging
     const allKeysBefore = cache.keys();
     const nicheAppKeysBefore = allKeysBefore.filter(key => key.startsWith(NICHE_APPLICATION_CACHE_PREFIX));
-    
+
     logger.info(`[invalidateNicheApplicationCache] Found ${nicheAppKeysBefore.length} niche application cache entries before invalidation`);
-    
+
     // Delete all niche application cache entries
     const deletedCount = deleteByPrefix(NICHE_APPLICATION_CACHE_PREFIX);
-    
+
     // Also flush the entire cache to ensure complete invalidation
     // This is a more aggressive approach to prevent any stale data
     cache.flushAll();
-    
+
     logger.info(`[invalidateNicheApplicationCache] Cache invalidation completed. Deleted ${deletedCount} cache entries with prefix: ${NICHE_APPLICATION_CACHE_PREFIX}`);
     logger.info('[invalidateNicheApplicationCache] Complete cache flush performed for maximum data freshness');
-    
+
     // Additional debug logging to confirm cache has been cleared
     if (process.env.NODE_ENV === 'development') {
       const allKeysAfter = cache.keys();
@@ -487,17 +493,7 @@ const buildPersonKey = (person = {}) => {
 };
 
 const parseDateValue = (value) => {
-  if (!value) {
-    return null;
-  }
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value;
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-  return parsed;
+  return parseDate(value);
 };
 
 const parseIntegerLike = (value) => {
@@ -595,21 +591,10 @@ const buildBeneficiaryEntity = (input = {}) => {
   // Handle dateOfBirth and birthYear conversion properly
   let dateOfBirth = parseDateValue(pickFirst(input.dateOfBirth, input.dob));
   let birthYear = input.birthYear;
-  
-  // If dateOfBirth is valid but birthYear is missing, extract year from date
-  if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
-    birthYear = dateOfBirth.getFullYear().toString();
-  }
-  
-  // If dateOfBirth is empty but birthYear exists, construct date from year
-  else if (!dateOfBirth && birthYear) {
-    dateOfBirth = new Date(`${birthYear}-01-01`);
-  }
-  
+
   // If we have a valid date but birthYear is still missing, extract it
-  if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
-    birthYear = dateOfBirth.getFullYear().toString();
-  }
+  // Removed automatic conversion logic as per user request
+
   const idNo = pickFirst(input.idNo, input.nric, input.identificationNumber, input.idNumber);
   const isCatholic = deriveIsCatholic(
     input.isCatholic !== undefined && input.isCatholic !== null
@@ -619,10 +604,10 @@ const buildBeneficiaryEntity = (input = {}) => {
         : input.religiousAffiliation
   );
   const isMale = parseGender(
-    input.isMale !== undefined 
-      ? input.isMale 
-      : input.gender !== undefined 
-        ? input.gender 
+    input.isMale !== undefined
+      ? input.isMale
+      : input.gender !== undefined
+        ? input.gender
         : input.sex
   );
 
@@ -631,7 +616,7 @@ const buildBeneficiaryEntity = (input = {}) => {
     input.relationshipToNominee1,
     input.relationshipToNomineeOne
   );
-  
+
   const relationshipToNominee2 = pickFirst(
     input.relationshipToNominee2,
     input.relationshipToNomineeTwo
@@ -658,7 +643,7 @@ const buildBeneficiaryEntity = (input = {}) => {
 const extractBeneficiariesFromPayload = (payload = {}) => {
   logger.debug('[extractBeneficiariesFromPayload] Extracting beneficiaries from payload');
   logger.debug('[extractBeneficiariesFromPayload] Payload keys:', Object.keys(payload));
-  
+
   const collected = [];
 
   // Prioritize the beneficiaries array if it exists and has items
@@ -1160,7 +1145,7 @@ class NicheApplicationService {
         hasToDate: !!query.toDate,
         hasSearchTerm: !!query.searchTerm
       });
-      
+
       // Log specific parameter values
       if (query.fromDate) {
         logger.info('[Service] From Date value:', query.fromDate, 'Type:', typeof query.fromDate);
@@ -1177,7 +1162,7 @@ class NicheApplicationService {
       if (query.nomineeName) {
         logger.info('[Service] Nominee Name:', query.nomineeName);
       }
-      
+
       const rawPageValue = parseInt(query.page, 10);
       const rawPageSizeValue = parseInt(query.pageSize, 10);
       const rawFetchAllChunkValue = parseInt(query.fetchAllChunkSize || query.chunkSize, 10);
@@ -1341,7 +1326,7 @@ class NicheApplicationService {
             ...searchParams,
             skipTotal
           });
-          
+
           // Ensure result has valid structure
           if (!result || !Array.isArray(result.records)) {
             logger.warn('Repository returned invalid result, using empty array');
@@ -1352,14 +1337,14 @@ class NicheApplicationService {
             };
           }
         } catch (repoError) {
-          const isTimeoutError = 
+          const isTimeoutError =
             repoError.code === 'ETIMEOUT' ||
             repoError.code === 'ETIMEDOUT' ||
             repoError.message?.includes('timeout') ||
             repoError.message?.includes('Timeout') ||
             repoError.message?.includes('Request timeout') ||
             repoError.message?.includes('Response timeout');
-          
+
           if (isTimeoutError) {
             logger.warn('Repository search timed out, returning empty result to prevent frontend timeout:', {
               error: repoError.message,
@@ -1369,7 +1354,7 @@ class NicheApplicationService {
           } else {
             logger.error('Error in repository searchApplications:', repoError);
           }
-          
+
           // Return empty result to ensure API always responds quickly
           // This prevents frontend timeout errors
           result = {
@@ -1382,7 +1367,7 @@ class NicheApplicationService {
 
       // Ensure result.records is always an array
       const records = result && Array.isArray(result.records) ? result.records : [];
-      
+
       // Map raw records to response DTOs and de‑duplicate by application code
       // Some legacy data may contain duplicate rows for the same Code; we keep
       // only the first occurrence per code to avoid duplicates in the listing.
@@ -1404,12 +1389,12 @@ class NicheApplicationService {
       });
 
       const formattedRecords = uniqueByCode;
-      
+
       const totalRecords = result.skipTotal ? null : (result.total ?? formattedRecords.length);
       const effectivePageSize = fetchAllRequested
         ? (requestedPageSizeNumber && requestedPageSizeNumber > 0 ? requestedPageSizeNumber : chunkSize)
         : queryPageSize;
-      
+
       const totalPages = fetchAllRequested
         ? (totalRecords !== null
           ? Math.ceil(totalRecords / effectivePageSize)
@@ -1420,11 +1405,11 @@ class NicheApplicationService {
 
       // Calculate pagination metadata
       const itemsRetrieved = formattedRecords.length;
-      const hasNextPage = totalPages !== null 
-        ? responsePage < totalPages 
+      const hasNextPage = totalPages !== null
+        ? responsePage < totalPages
         : itemsRetrieved === effectivePageSize; // If we got a full page, there might be more
       const hasPreviousPage = responsePage > 1;
-      const remainingPages = totalPages !== null 
+      const remainingPages = totalPages !== null
         ? Math.max(0, totalPages - responsePage)
         : null;
       const remainingRecords = totalRecords !== null
@@ -1489,26 +1474,26 @@ class NicheApplicationService {
       if (isDatabaseUnavailableError(error)) {
         logger.warn('Service: Database unavailable while searching niche applications, returning fallback response');
 
-         // Provide a fast, safe fallback payload without relying on possibly undefined local vars
-         const fallbackPage = Number.isFinite(parseInt(query.page, 10))
-           ? parseInt(query.page, 10)
-           : 1;
-         const fallbackPageSize = Number.isFinite(parseInt(query.pageSize, 10))
-           ? parseInt(query.pageSize, 10)
-           : pageSizeDefault;
+        // Provide a fast, safe fallback payload without relying on possibly undefined local vars
+        const fallbackPage = Number.isFinite(parseInt(query.page, 10))
+          ? parseInt(query.page, 10)
+          : 1;
+        const fallbackPageSize = Number.isFinite(parseInt(query.pageSize, 10))
+          ? parseInt(query.pageSize, 10)
+          : pageSizeDefault;
 
-         const fallbackFilters = searchParams || {
-           churchId,
-           page: fallbackPage,
-           pageSize: fallbackPageSize,
-           applicationCode: query.applicationCode || query.code || null,
-           applicantName: query.applicantName || query.applicant || null,
-           nomineeName: query.nomineeName || query.nominee || null,
-           searchTerm: query.search || query.searchTerm || query.q || null,
-           fromDate: query.fromDate || query.startDate || null,
-           toDate: query.toDate || query.endDate || null,
-           status: query.status || null
-         };
+        const fallbackFilters = searchParams || {
+          churchId,
+          page: fallbackPage,
+          pageSize: fallbackPageSize,
+          applicationCode: query.applicationCode || query.code || null,
+          applicantName: query.applicantName || query.applicant || null,
+          nomineeName: query.nomineeName || query.nominee || null,
+          searchTerm: query.search || query.searchTerm || query.q || null,
+          fromDate: query.fromDate || query.startDate || null,
+          toDate: query.toDate || query.endDate || null,
+          status: query.status || null
+        };
 
         return {
           success: true,
@@ -1540,11 +1525,11 @@ class NicheApplicationService {
   async createApplication(data, userId, churchId) {
     try {
       logger.info('[Service] Starting createApplication with data:', JSON.stringify(data, null, 2));
-      
+
       // Validate optimized payload structure
       const validation = this.validateOptimizedPayload(data);
       logger.info('[Service] Payload validation result:', validation);
-      
+
       if (!validation.isValid) {
         logger.warn('[Service] Payload validation failed:', validation.errors);
         return {
@@ -1608,6 +1593,7 @@ class NicheApplicationService {
         nomineeHomeTelNo2: nominee2Input?.homeTel || null,
         nomineeOfficeTelNo2: nominee2Input?.officeTel || null,
         nomineeRelationship2: nominee2Input?.relationship || null,
+        remarks: data.remarks || data.additionalDetails?.remarks || null,
         churchId,
         userId,
         status: 'Draft',
@@ -1665,7 +1651,7 @@ class NicheApplicationService {
       if (createdApplication) {
         const applicationJson = createdApplication.toJSON();
         responseData = this.buildOptimizedApplicationResponse(createdApplication, data);
-        
+
         if (attachInvoicePdf) {
           try {
             const invoicePayload = {
@@ -1698,9 +1684,9 @@ class NicheApplicationService {
 
       // Invalidate cache to ensure fresh data on next request
       invalidateNicheApplicationCache();
-      
+
       logger.info('[createApplication] Cache invalidated after creation, preparing response');
-      
+
       return {
         success: true,
         code,
@@ -1724,208 +1710,6 @@ class NicheApplicationService {
   }
 
   /**
-   * Update existing niche application
-   * PUT /api/niche-applications/:code
-   * Based on: UpdateNewicheApplication WebMethod
-   * Optimized for performance and proper beneficiary handling
-   */
-  async updateApplication(code, data, churchId) {
-    try {
-      logger.info('Date inputes', beneficiaries);
-      
-      // Validate optimized payload structure
-      const validation = this.validateOptimizedPayload(data);
-      logger.info('[Service] Payload validation result:', validation);
-      
-      if (!validation.isValid) {
-        logger.warn('[Service] Payload validation failed:', validation.errors);
-        return {
-          success: false,
-          error: {
-            code: 'VALIDATION_FAILED',
-            message: 'Invalid application data structure',
-            details: validation.errors
-          }
-        };
-      }
-
-      // Extract and transform data from optimized structure
-      const applicantInput = data.applicant || {};
-      const nomineesArray = Array.isArray(data.nominees) ? data.nominees : [];
-      const nomineeInput = nomineesArray[0] || {};
-      const nominee2Input = nomineesArray[1] || null;
-      const beneficiariesArray = Array.isArray(data.beneficiaries) ? data.beneficiaries : [];
-      
-      // Create beneficiary objects
-      const beneficiaries = [];
-      if (Array.isArray(data.beneficiaries)) {
-        data.beneficiaries.forEach(beneficiary => {
-          if (beneficiary && beneficiary.name) {
-            // Process dateOfBirth and birthYear properly
-            let dateOfBirth = beneficiary.dateOfBirth ? parseDate(beneficiary.dateOfBirth) : null;
-            let birthYear = beneficiary.birthYear;
-            
-            // If dateOfBirth is valid but birthYear is missing, extract year from date
-            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
-              birthYear = dateOfBirth.getFullYear().toString();
-            }
-            
-            // If dateOfBirth is empty but birthYear exists, construct date from year
-            if (!dateOfBirth && birthYear && birthYear !== '' && birthYear !== null) {
-              try {
-                dateOfBirth = new Date(`01-Jan-${birthYear}`);
-                // Validate that the constructed date is valid
-                if (Number.isNaN(dateOfBirth.getTime())) {
-                  dateOfBirth = null;
-                }
-              } catch (e) {
-                dateOfBirth = null;
-              }
-            }
-            
-            // If we have a valid date but birthYear is still missing, extract it
-            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
-              birthYear = dateOfBirth.getFullYear().toString();
-            }
-
-                 logger.info('Date inputes maping ', dateOfBirth ,  birthYear);
-
-            beneficiaries.push(new NicheApplicationBeneficiary({
-              name: beneficiary.name,
-              relationshipToApplicant: beneficiary.relationship,
-              dateOfBirth: dateOfBirth,
-              birthYear: birthYear,
-              idNo: beneficiary.idNo,
-              isCatholic: beneficiary.isCatholic,
-              isMale: beneficiary.isMale,
-              relationshipToNominee1: beneficiary.relationshipToNominee1,
-              relationshipToNominee2: beneficiary.relationshipToNominee2
-            }));
-          }
-        });
-      }
-      
-      // Log key data for debugging
-      logger.info('[Service] Processing update with:');
-      logger.info('[Service] - Applicant name:', applicantInput.name);
-      logger.info('[Service] - Nominees count:', nomineesArray.length);
-      logger.info('[Service] - Beneficiaries count:', beneficiaries.length);
-      if (beneficiaries.length > 0) {
-        logger.info('[Service] - First beneficiary name:', beneficiaries[0].name);
-      }
-
-      // Build application entity
-      const application = new NicheApplication({
-        nicheId: data.niche?.id || data.nicheId,
-        // Preserve existing dates if not provided in update
-        appliedDate: data.appliedDate,
-        agreementDate: data.agreementDate,
-        applicantName: applicantInput.name,
-        applicantAddressNo: applicantInput.address?.no,
-        applicantAddressLine1: applicantInput.address?.line1,
-        applicantAddressLine2: applicantInput.address?.line2,
-        applicantAddressCity: applicantInput.address?.city,
-        applicantAddressState: applicantInput.address?.state,
-        applicantAddressCountry: applicantInput.address?.country,
-        applicantIDNo: applicantInput.idNo,
-        applicantEmailID: applicantInput.email,
-        applicantMobileNo: applicantInput.phone,
-        applicantHomeTelNo: applicantInput.homeTel,
-        applicantOfficeTelNo: applicantInput.officeTel,
-        applicantIsCatholic: applicantInput.isCatholic,
-        // Map nominees - optimized for performance
-        nomineeName: nomineeInput.name,
-        nomineeAddress: nomineeInput.address ? [
-          nomineeInput.address.no,
-          nomineeInput.address.line1,
-          nomineeInput.address.line2,
-          nomineeInput.address.city,
-          nomineeInput.address.state,
-          nomineeInput.address.country
-        ].filter(Boolean).join(' ') : undefined,
-        nomineeEmailID: nomineeInput.email,
-        nomineeMobileNo: nomineeInput.phone,
-        nomineeHomeTelNo: nomineeInput.homeTel,
-        nomineeOfficeTelNo: nomineeInput.officeTel,
-        nomineeIDNo: nomineeInput.idNo,
-        nomineeRelationship: nomineeInput.relationship,
-        nominee2Name: nominee2Input?.name,
-        nominee2Address: nominee2Input?.address ? [
-          nominee2Input.address.no,
-          nominee2Input.address.line1,
-          nominee2Input.address.line2,
-          nominee2Input.address.city,
-          nominee2Input.address.state,
-          nominee2Input.address.country
-        ].filter(Boolean).join(' ') : undefined,
-        nominee2EmailID: nominee2Input?.email,
-        nominee2MobileNo: nominee2Input?.phone,
-        nominee2HomeTelNo: nominee2Input?.homeTel,
-        nominee2OfficeTelNo: nominee2Input?.officeTel,
-        nominee2IDNo: nominee2Input?.idNo,
-        nominee2Relationship: nominee2Input?.relationship,
-        contactStatus: data.contact?.status || 'Active'
-      });
-
-      // Check if exists and can be modified
-      const existing = await NicheApplicationRepository.getByCode(code);
-      if (!existing) {
-        return {
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Application not found'
-          }
-        };
-      }
-
-      // Check church ACL
-      if (existing.churchId !== churchId) {
-        return {
-          success: false,
-          error: {
-            code: 'ACCESS_DENIED',
-            message: 'Access denied - Church ID mismatch'
-          }
-        };
-      }
-
-      // Allow modification of all statuses including Booked (3) and Completed (4)
-      // Validation removed to enable updates for all application statuses
-
-      const requestedConsentForms = data.consentForms ? normalizeConsentForms(data.consentForms) : null;
-      const shouldPersistConsent = requestedConsentForms ? hasConsentSelections(requestedConsentForms) : false;
-
-      // Update application with beneficiaries
-      logger.info('[Service] Calling repository update with beneficiaries...');
-      await NicheApplicationRepository.update(
-        code,
-        application,
-        beneficiaries // Pass the beneficiaries array to be handled by repository
-      );
-
-      // Handle consent forms if present
-      if (shouldPersistConsent) {
-        logger.info('[Service] Persisting consent forms...');
-        try {
-          await NicheApplicationRepository.updateConsentForms(code, requestedConsentForms);
-        } catch (consentError) {
-          logger.warn('[Service] Consent form update warning:', consentError.message);
-          // Don't fail the entire operation if consent form update fails
-        }
-      }
-
-      logger.info(`[Service] Niche application updated: ${code}`);
-
-      // Return optimized response structure
-      return this.buildOptimizedResponse(code, 'Niche application updated successfully');
-    } catch (error) {
-      logger.error('[Service] Failed to update niche application:', error);
-      throw error;
-    }
-  }
-  
-  /**
    * Build optimized response for update operations
    */
   buildOptimizedResponse(code, message) {
@@ -1942,20 +1726,20 @@ class NicheApplicationService {
    */
   validateOptimizedPayload(data) {
     const errors = [];
-    
+
     // Required fields validation
     if (!data.niche?.id && !data.nicheId) {
       errors.push('Niche ID is required');
     }
-    
+
     if (data.applicant && !data.applicant.name) {
       errors.push('Applicant name is required');
     }
-    
+
     if (data.applicant && !data.applicant.idNo) {
       errors.push('Applicant ID/NRIC is required');
     }
-    
+
     // Validate nominees array structure
     if (Array.isArray(data.nominees)) {
       data.nominees.forEach((nominee, index) => {
@@ -1965,7 +1749,7 @@ class NicheApplicationService {
         // ID is not always required for updates
       });
     }
-    
+
     // Validate beneficiaries array structure - this is critical for the issue
     if (Array.isArray(data.beneficiaries)) {
       logger.info(`[Service] Validating ${data.beneficiaries.length} beneficiaries`);
@@ -1985,10 +1769,10 @@ class NicheApplicationService {
     } else {
       logger.info('[Service] No beneficiaries array found in payload');
     }
-    
+
     const isValid = errors.length === 0;
     logger.info(`[Service] Payload validation ${isValid ? 'PASSED' : 'FAILED'} with ${errors.length} errors`);
-    
+
     return {
       isValid,
       errors
@@ -2009,21 +1793,21 @@ class NicheApplicationService {
     const buildAddressString = (address) => {
       if (!address) return null;
       return [
-        address.no, 
-        address.line1, 
-        address.line2, 
-        address.city, 
-        address.state, 
+        address.no,
+        address.line1,
+        address.line2,
+        address.city,
+        address.state,
         address.country
       ].filter(Boolean).join(', ');
     };
 
     const applicantAddressFormatted = buildAddressString(applicationJson.applicant?.address);
-    const nomineeAddressFormatted = applicationJson.nominee 
-      ? buildAddressString(applicationJson.nominee.address) 
+    const nomineeAddressFormatted = applicationJson.nominee
+      ? buildAddressString(applicationJson.nominee.address)
       : null;
-    const nominee2AddressFormatted = applicationJson.nominee2 
-      ? buildAddressString(applicationJson.nominee2.address) 
+    const nominee2AddressFormatted = applicationJson.nominee2
+      ? buildAddressString(applicationJson.nominee2.address)
       : null;
 
     // Transform beneficiaries to response format
@@ -2098,6 +1882,7 @@ class NicheApplicationService {
         lineAmount: applicationJson.niche?.defaultAmount || 0
       },
       status: applicationJson.status,
+      remarks: applicationJson.remarks || null,
       metadata: {
         generatedAt: new Date().toISOString(),
         beneficiaryCount: beneficiariesForResponse.length,
@@ -2116,13 +1901,13 @@ class NicheApplicationService {
   async getApplicationByCode(code, churchId) {
     try {
       const startTime = Date.now();
-      
+
       // CRITICAL OPTIMIZATION: Add caching for single-record lookups
       // This significantly improves performance for repeated queries
       // Cache key includes code and churchId for proper isolation
       const cacheKey = `${NICHE_APPLICATION_CACHE_PREFIX}single:${churchId}:${code}`;
       const bypassCache = process.env.BYPASS_CACHE === 'true';
-      
+
       if (enableNicheApplicationCache && !bypassCache) {
         const cached = cache.get(cacheKey);
         if (cached) {
@@ -2263,74 +2048,77 @@ class NicheApplicationService {
       const applicantData = data.applicant || {};
       const nomineeData = Array.isArray(data.nominees) ? data.nominees[0] : data.nominee || {};
       const nominee2Data = Array.isArray(data.nominees) && data.nominees.length > 1 ? data.nominees[1] : data.nominee2 || {};
-      
+      const pickUpdateValue = (incomingValue, currentValue) => (
+        incomingValue === undefined ? currentValue : incomingValue
+      );
+
       const applicationData = {
         ...existing,
         // Applicant data mapping
-        applicantName: applicantData.name || existing.applicantName,
-        applicantEmailID: applicantData.email || existing.applicantEmailID,
-        applicantMobileNo: applicantData.phone || existing.applicantMobileNo,
-        applicantHomeTelNo: applicantData.homeTel || existing.applicantHomeTelNo,
-        applicantOfficeTelNo: applicantData.officeTel || existing.applicantOfficeTelNo,
-        applicantIDNo: applicantData.idNo || existing.applicantIDNo,
+        applicantName: pickUpdateValue(pickFirst(applicantData.name, data.applicantName), existing.applicantName),
+        applicantEmailID: pickUpdateValue(pickFirst(applicantData.email, data.applicantEmailID, data.applicantEmail), existing.applicantEmailID),
+        applicantMobileNo: pickUpdateValue(pickFirst(applicantData.phone, applicantData.mobileNo, data.applicantMobileNo, data.applicantPhone), existing.applicantMobileNo),
+        applicantHomeTelNo: pickUpdateValue(pickFirst(applicantData.homeTel, applicantData.homeTelNo, data.applicantHomeTelNo, data.applicantHomeTel), existing.applicantHomeTelNo),
+        applicantOfficeTelNo: pickUpdateValue(pickFirst(applicantData.officeTel, applicantData.officeTelNo, data.applicantOfficeTelNo, data.applicantOfficeTel), existing.applicantOfficeTelNo),
+        applicantIDNo: pickUpdateValue(pickFirst(applicantData.idNo, data.applicantIDNo), existing.applicantIDNo),
         applicantIsCatholic: applicantData.isCatholic !== undefined ? applicantData.isCatholic : existing.applicantIsCatholic,
-        
+
         // Applicant address mapping
-        applicantAddressNo: applicantData.address?.no || existing.applicantAddressNo,
-        applicantAddressLine1: applicantData.address?.line1 || existing.applicantAddressLine1,
-        applicantAddressLine2: applicantData.address?.line2 || existing.applicantAddressLine2,
-        applicantAddressCity: applicantData.address?.city || existing.applicantAddressCity,
-        applicantAddressState: applicantData.address?.state || existing.applicantAddressState,
-        applicantAddressCountry: applicantData.address?.country || existing.applicantAddressCountry,
-        
+        applicantAddressNo: pickUpdateValue(pickFirst(applicantData.address?.no, data.applicantAddressNo), existing.applicantAddressNo),
+        applicantAddressLine1: pickUpdateValue(pickFirst(applicantData.address?.line1, data.applicantAddressLine1), existing.applicantAddressLine1),
+        applicantAddressLine2: pickUpdateValue(pickFirst(applicantData.address?.line2, data.applicantAddressLine2), existing.applicantAddressLine2),
+        applicantAddressCity: pickUpdateValue(pickFirst(applicantData.address?.city, data.applicantAddressCity), existing.applicantAddressCity),
+        applicantAddressState: pickUpdateValue(pickFirst(applicantData.address?.state, data.applicantAddressState), existing.applicantAddressState),
+        applicantAddressCountry: pickUpdateValue(pickFirst(applicantData.address?.country, data.applicantAddressCountry), existing.applicantAddressCountry),
+
         // Primary nominee mapping
-        nomineeName: nomineeData.name || existing.nomineeName,
-        nomineeEmailID: nomineeData.email || existing.nomineeEmailID,
-        nomineeMobileNo: nomineeData.phone || existing.nomineeMobileNo,
-        nomineeHomeTelNo: nomineeData.homeTel || existing.nomineeHomeTelNo,
-        nomineeOfficeTelNo: nomineeData.officeTel || existing.nomineeOfficeTelNo,
-        nomineeIDNo: nomineeData.idNo || existing.nomineeIDNo,
-        nomineeRelationship: nomineeData.relationship || existing.nomineeRelationship,
+        nomineeName: pickUpdateValue(pickFirst(nomineeData.name, data.nomineeName), existing.nomineeName),
+        nomineeEmailID: pickUpdateValue(pickFirst(nomineeData.email, data.nomineeEmailID, data.nomineeEmail), existing.nomineeEmailID),
+        nomineeMobileNo: pickUpdateValue(pickFirst(nomineeData.phone, nomineeData.mobileNo, data.nomineeMobileNo, data.nomineePhone), existing.nomineeMobileNo),
+        nomineeHomeTelNo: pickUpdateValue(pickFirst(nomineeData.homeTel, nomineeData.homeTelNo, data.nomineeHomeTelNo, data.nomineeHomeTel), existing.nomineeHomeTelNo),
+        nomineeOfficeTelNo: pickUpdateValue(pickFirst(nomineeData.officeTel, nomineeData.officeTelNo, data.nomineeOfficeTelNo, data.nomineeOfficeTel), existing.nomineeOfficeTelNo),
+        nomineeIDNo: pickUpdateValue(pickFirst(nomineeData.idNo, data.nomineeIDNo), existing.nomineeIDNo),
+        nomineeRelationship: pickUpdateValue(pickFirst(nomineeData.relationship, data.nomineeRelationship), existing.nomineeRelationship),
         nomineeIsCatholic: nomineeData.isCatholic !== undefined ? nomineeData.isCatholic : existing.nomineeIsCatholic,
-        
+
         // Primary nominee address mapping
-        nomineeAddressNo: nomineeData.address?.no || existing.nomineeAddressNo,
-        nomineeAddressLine1: nomineeData.address?.line1 || existing.nomineeAddressLine1,
-        nomineeAddressLine2: nomineeData.address?.line2 || existing.nomineeAddressLine2,
-        nomineeAddressCity: nomineeData.address?.city || existing.nomineeAddressCity,
-        nomineeAddressState: nomineeData.address?.state || existing.nomineeAddressState,
-        nomineeAddressCountry: nomineeData.address?.country || existing.nomineeAddressCountry,
-        
+        nomineeAddressNo: pickUpdateValue(pickFirst(nomineeData.address?.no, data.nomineeAddressNo), existing.nomineeAddressNo),
+        nomineeAddressLine1: pickUpdateValue(pickFirst(nomineeData.address?.line1, data.nomineeAddressLine1), existing.nomineeAddressLine1),
+        nomineeAddressLine2: pickUpdateValue(pickFirst(nomineeData.address?.line2, data.nomineeAddressLine2), existing.nomineeAddressLine2),
+        nomineeAddressCity: pickUpdateValue(pickFirst(nomineeData.address?.city, data.nomineeAddressCity), existing.nomineeAddressCity),
+        nomineeAddressState: pickUpdateValue(pickFirst(nomineeData.address?.state, data.nomineeAddressState), existing.nomineeAddressState),
+        nomineeAddressCountry: pickUpdateValue(pickFirst(nomineeData.address?.country, data.nomineeAddressCountry), existing.nomineeAddressCountry),
+
         // Secondary nominee mapping
-        nomineeName2: nominee2Data.name || existing.nomineeName2,
-        nomineeEmailID2: nominee2Data.email || existing.nomineeEmailID2,
-        nomineeMobileNo2: nominee2Data.phone || existing.nomineeMobileNo2,
-        nomineeHomeTelNo2: nominee2Data.homeTel || existing.nomineeHomeTelNo2,
-        nomineeOfficeTelNo2: nominee2Data.officeTel || existing.nomineeOfficeTelNo2,
-        nomineeIDNo2: nominee2Data.idNo || existing.nomineeIDNo2,
-        nomineeRelationship2: nominee2Data.relationship || existing.nomineeRelationship2,
+        nomineeName2: pickUpdateValue(pickFirst(nominee2Data.name, data.nomineeName2), existing.nomineeName2),
+        nomineeEmailID2: pickUpdateValue(pickFirst(nominee2Data.email, data.nomineeEmailID2, data.nomineeEmail2), existing.nomineeEmailID2),
+        nomineeMobileNo2: pickUpdateValue(pickFirst(nominee2Data.phone, nominee2Data.mobileNo, data.nomineeMobileNo2, data.nomineePhone2), existing.nomineeMobileNo2),
+        nomineeHomeTelNo2: pickUpdateValue(pickFirst(nominee2Data.homeTel, nominee2Data.homeTelNo, data.nomineeHomeTelNo2, data.nomineeHomeTel2), existing.nomineeHomeTelNo2),
+        nomineeOfficeTelNo2: pickUpdateValue(pickFirst(nominee2Data.officeTel, nominee2Data.officeTelNo, data.nomineeOfficeTelNo2, data.nomineeOfficeTel2), existing.nomineeOfficeTelNo2),
+        nomineeIDNo2: pickUpdateValue(pickFirst(nominee2Data.idNo, data.nomineeIDNo2), existing.nomineeIDNo2),
+        nomineeRelationship2: pickUpdateValue(pickFirst(nominee2Data.relationship, data.nomineeRelationship2), existing.nomineeRelationship2),
         nomineeIsCatholic2: nominee2Data.isCatholic !== undefined ? nominee2Data.isCatholic : existing.nomineeIsCatholic2,
-        
+
         // Secondary nominee address mapping
-        nomineeAddressNo2: nominee2Data.address?.no || existing.nomineeAddressNo2,
-        nomineeAddressLine12: nominee2Data.address?.line1 || existing.nomineeAddressLine12,
-        nomineeAddressLine22: nominee2Data.address?.line2 || existing.nomineeAddressLine22,
-        nomineeAddressCity2: nominee2Data.address?.city || existing.nomineeAddressCity2,
-        nomineeAddressState2: nominee2Data.address?.state || existing.nomineeAddressState2,
-        nomineeAddressCountry2: nominee2Data.address?.country || existing.nomineeAddressCountry2,
-        
+        nomineeAddressNo2: pickUpdateValue(pickFirst(nominee2Data.address?.no, data.nomineeAddressNo2), existing.nomineeAddressNo2),
+        nomineeAddressLine12: pickUpdateValue(pickFirst(nominee2Data.address?.line1, data.nomineeAddressLine12), existing.nomineeAddressLine12),
+        nomineeAddressLine22: pickUpdateValue(pickFirst(nominee2Data.address?.line2, data.nomineeAddressLine22), existing.nomineeAddressLine22),
+        nomineeAddressCity2: pickUpdateValue(pickFirst(nominee2Data.address?.city, data.nomineeAddressCity2), existing.nomineeAddressCity2),
+        nomineeAddressState2: pickUpdateValue(pickFirst(nominee2Data.address?.state, data.nomineeAddressState2), existing.nomineeAddressState2),
+        nomineeAddressCountry2: pickUpdateValue(pickFirst(nominee2Data.address?.country, data.nomineeAddressCountry2), existing.nomineeAddressCountry2),
+
         // Keep other fields from payload or existing
         ...data,
         nicheApplicationId: existing.nicheApplicationId,
         code: existing.code
       };
-      
+
       const application = new NicheApplication(applicationData);
 
       // For booked applications (status 3), preserve the existing niche ID to avoid changing allocations
       // Only allow niche ID changes for draft (1) and pending (2) applications
       let normalizedNicheId;
-      
+
       if (existing.status === 3) { // Booked application
         // Preserve the existing niche ID, ignore any changes in the payload
         normalizedNicheId = existing.nicheId;
@@ -2347,7 +2135,7 @@ class NicheApplicationService {
             existing.nicheId
           )
         );
-        
+
         if (!normalizedNicheId) {
           return {
             success: false,
@@ -2379,206 +2167,75 @@ class NicheApplicationService {
         existing.defaultAmount || 0
       );
 
-      // Create beneficiary objects - handle both old flat structure and new optimized structure
+      // Create beneficiary objects
+      const hasFlatBeneficiaryFields = ['beneficiary1Name', 'beneficiary2Name', 'beneficiary3Name', 'beneficiary4Name', 'beneficiary5Name']
+        .some((field) => Object.prototype.hasOwnProperty.call(data, field));
       const beneficiaries = [];
-      
-      // Process beneficiaries from array format (optimized structure)
       if (Array.isArray(data.beneficiaries)) {
         data.beneficiaries.forEach(beneficiary => {
-          if (beneficiary && beneficiary.name) {
-            // Process dateOfBirth and birthYear properly
-            let dateOfBirth = beneficiary.dateOfBirth ? parseDate(beneficiary.dateOfBirth) : null;
-            let birthYear = beneficiary.birthYear;
-            
-            // If dateOfBirth is valid but birthYear is missing, extract year from date
-            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
-              birthYear = dateOfBirth.getFullYear().toString();
-            }
-            
-            // If dateOfBirth is empty but birthYear exists, construct date from year
-            if (!dateOfBirth && birthYear && birthYear !== '' && birthYear !== null) {
-              try {
-                dateOfBirth = new Date(`01-Jan-${birthYear}`);
-                // Validate that the constructed date is valid
-                if (Number.isNaN(dateOfBirth.getTime())) {
-                  dateOfBirth = null;
-                }
-              } catch (e) {
-                dateOfBirth = null;
-              }
-            }
-            
-            // If we have a valid date but birthYear is still missing, extract it
-            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
-              birthYear = dateOfBirth.getFullYear().toString();
-            }
-            
-            beneficiaries.push(new NicheApplicationBeneficiary({
-              name: beneficiary.name,
-              relationshipToApplicant: beneficiary.relationship,
-              dateOfBirth: dateOfBirth,
-              birthYear: birthYear,
-              idNo: beneficiary.idNo,
-              isCatholic: beneficiary.isCatholic,
-              isMale: beneficiary.isMale,
-              relationshipToNominee1: beneficiary.relationshipToNominee1,
-              relationshipToNominee2: beneficiary.relationshipToNominee2
-            }));
+          const entity = buildBeneficiaryEntity(beneficiary);
+          if (entity) {
+            beneficiaries.push(entity);
           }
         });
-      } else {
-        // Process beneficiaries from old flat structure
-        ['beneficiary1', 'beneficiary2', 'beneficiary3', 'beneficiary4', 'beneficiary5'].forEach((fieldPrefix, index) => {
+      } else if (hasFlatBeneficiaryFields) {
+        // Process beneficiaries from old flat structure - unified logic using buildBeneficiaryEntity
+        ['beneficiary1', 'beneficiary2', 'beneficiary3', 'beneficiary4', 'beneficiary5'].forEach((fieldPrefix) => {
+          let input = {};
+
+          // Case 1: data.beneficiaryX is an object (nested structure in flat payload)
           const beneficiaryData = data[fieldPrefix];
-          if (beneficiaryData && beneficiaryData.name) {
-            // Process dateOfBirth and birthYear for legacy format too
-            let dateOfBirth = beneficiaryData.dateOfBirth ? new Date(beneficiaryData.dateOfBirth) : null;
-            let birthYear = beneficiaryData.birthYear;
-            
-            // If dateOfBirth is valid but birthYear is missing, extract year from date
-            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
-              birthYear = dateOfBirth.getFullYear().toString();
-            }
-            
-            // If dateOfBirth is empty but birthYear exists, construct date from year
-            if (!dateOfBirth && birthYear && birthYear !== '' && birthYear !== null) {
-              try {
-                dateOfBirth = new Date(`01-Jan-${birthYear}`);
-                // Validate that the constructed date is valid
-                if (Number.isNaN(dateOfBirth.getTime())) {
-                  dateOfBirth = null;
-                }
-              } catch (e) {
-                dateOfBirth = null;
-              }
-            }
-            
-            // If we have a valid date but birthYear is still missing, extract it
-            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
-              birthYear = dateOfBirth.getFullYear().toString();
-            }
-            
-            beneficiaries.push(new NicheApplicationBeneficiary({
-              name: beneficiaryData.name,
-              relationshipToApplicant: beneficiaryData.relationship,
-              dateOfBirth: dateOfBirth,
-              birthYear: birthYear,
-              idNo: beneficiaryData.idNo,
-              isCatholic: beneficiaryData.isCatholic,
-              isMale: beneficiaryData.isMale,
-              relationshipToNominee1: beneficiaryData.relationshipToNominee1,
-              relationshipToNominee2: beneficiaryData.relationshipToNominee2
-            }));
+          if (beneficiaryData && typeof beneficiaryData === 'object') {
+            input = { ...beneficiaryData };
           }
-          
-          // Also handle individual fields like beneficiary1Name, beneficiary1IDNo, etc.
+
+          // Case 2: Flat properties (override or augment, e.g. beneficiary1Name)
           const name = data[`${fieldPrefix}Name`];
-          if (name) {
-            // Process dateOfBirth and birthYear for legacy format too
-            let dateOfBirth = data[`${fieldPrefix}DateOfBirth`] ? new Date(data[`${fieldPrefix}DateOfBirth`]) : null;
-            let birthYear = data[`${fieldPrefix}BirthYear`] || '';
-            
-            // If dateOfBirth is valid but birthYear is missing, extract year from date
-            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
-              birthYear = dateOfBirth.getFullYear().toString();
+          // Only process if we have a name in the flat property OR we already established an input object with a name
+          if (name || input.name) {
+            if (name) input.name = name;
+            if (data[`${fieldPrefix}Relationship`] !== undefined) input.relationship = data[`${fieldPrefix}Relationship`];
+            if (data[`${fieldPrefix}DateOfBirth`] !== undefined) input.dateOfBirth = data[`${fieldPrefix}DateOfBirth`];
+            if (data[`${fieldPrefix}BirthYear`] !== undefined) input.birthYear = data[`${fieldPrefix}BirthYear`];
+
+            const idNo = data[`${fieldPrefix}IDNo`] || data[`${fieldPrefix}IdNo`];
+            if (idNo !== undefined) input.idNo = idNo;
+
+            const isCatholic = data[`${fieldPrefix}IsCatholic`];
+            if (isCatholic !== undefined) input.isCatholic = isCatholic;
+
+            const isMale = data[`${fieldPrefix}IsMale`];
+            if (isMale !== undefined) input.isMale = isMale;
+
+            const gender = data[`${fieldPrefix}Gender`];
+            if (gender !== undefined) input.gender = gender;
+
+            const rel1 = data[`${fieldPrefix}RelationshipToNominee1`];
+            if (rel1 !== undefined) input.relationshipToNominee1 = rel1;
+
+            const rel2 = data[`${fieldPrefix}RelationshipToNominee2`];
+            if (rel2 !== undefined) input.relationshipToNominee2 = rel2;
+
+            const entity = buildBeneficiaryEntity(input);
+            if (entity) {
+              beneficiaries.push(entity);
             }
-            
-            // If dateOfBirth is empty but birthYear exists, construct date from year
-            if (!dateOfBirth && birthYear && birthYear !== '' && birthYear !== null) {
-              try {
-                dateOfBirth = new Date(`01-Jan-${birthYear}`);
-                // Validate that the constructed date is valid
-                if (Number.isNaN(dateOfBirth.getTime())) {
-                  dateOfBirth = null;
-                }
-              } catch (e) {
-                dateOfBirth = null;
-              }
-            }
-            
-            // If we have a valid date but birthYear is still missing, extract it
-            if (dateOfBirth && (birthYear === undefined || birthYear === null || birthYear === '')) {
-              birthYear = dateOfBirth.getFullYear().toString();
-            }
-            
-            beneficiaries.push(new NicheApplicationBeneficiary({
-              name: name,
-              relationshipToApplicant: data[`${fieldPrefix}Relationship`] || '',
-              dateOfBirth: dateOfBirth,
-              birthYear: birthYear,
-              idNo: data[`${fieldPrefix}IDNo`] || data[`${fieldPrefix}IdNo`] || '',
-              isCatholic: data[`${fieldPrefix}IsCatholic`] || false,
-              isMale: data[`${fieldPrefix}IsMale`] || false,
-              relationshipToNominee1: data[`${fieldPrefix}RelationshipToNominee1`] || '',
-              relationshipToNominee2: data[`${fieldPrefix}RelationshipToNominee2`] || ''
-            }));
           }
-        });
-      }
-
-      // --- Business rule: prevent duplicate nominees / beneficiaries on update as well ---
-      const updateNomineeCandidates = [];
-      const updateNomineeArray = Array.isArray(data.nominees) ? data.nominees : [];
-      const updateNomineeInput = data.nominee || updateNomineeArray[0] || {};
-      const updateNominee2Input = data.nominee2 || updateNomineeArray[1] || null;
-
-      if (updateNomineeArray.length > 0) {
-        updateNomineeArray.forEach((nominee) => {
-          if (!nominee) return;
-          updateNomineeCandidates.push({
-            name: pickFirst(nominee.fullName, nominee.name),
-            idNo: pickFirst(nominee.nric, nominee.idNo, nominee.identificationNumber, nominee.idNumber),
-            email: pickFirst(nominee.email, nominee.emailID, nominee.emailId),
-            mobileNo: pickFirst(
-              nominee.mobileNo,
-              nominee.contactNumber,
-              nominee.phone,
-              nominee.mobile
-            )
-          });
         });
       } else {
-        if (updateNomineeInput && (updateNomineeInput.name || updateNomineeInput.fullName || updateNomineeInput.nric || updateNomineeInput.idNo)) {
-          updateNomineeCandidates.push({
-            name: pickFirst(updateNomineeInput.fullName, updateNomineeInput.name),
-            idNo: pickFirst(updateNomineeInput.nric, updateNomineeInput.idNo, updateNomineeInput.identificationNumber, updateNomineeInput.idNumber),
-            email: pickFirst(updateNomineeInput.email, updateNomineeInput.emailID, updateNomineeInput.emailId),
-            mobileNo: pickFirst(
-              updateNomineeInput.mobileNo,
-              updateNomineeInput.contactNumber,
-              updateNomineeInput.phone,
-              updateNomineeInput.mobile
-            )
-          });
-        }
-        if (updateNominee2Input && (updateNominee2Input.name || updateNominee2Input.fullName || updateNominee2Input.nric || updateNominee2Input.idNo)) {
-          updateNomineeCandidates.push({
-            name: pickFirst(updateNominee2Input.fullName, updateNominee2Input.name),
-            idNo: pickFirst(updateNominee2Input.nric, updateNominee2Input.idNo, updateNominee2Input.identificationNumber, updateNominee2Input.idNumber),
-            email: pickFirst(updateNominee2Input.email, updateNominee2Input.emailID, updateNominee2Input.emailId),
-            mobileNo: pickFirst(
-              updateNominee2Input.mobileNo,
-              updateNominee2Input.contactNumber,
-              updateNominee2Input.phone,
-              updateNominee2Input.mobile
-            )
-          });
-        }
+        // If update payload omits beneficiary fields, preserve existing beneficiaries.
+        const existingBeneficiaries = Array.isArray(existing.beneficiaries) ? existing.beneficiaries : [];
+        existingBeneficiaries.forEach((beneficiary) => {
+          const entity = buildBeneficiaryEntity(beneficiary);
+          if (entity) {
+            beneficiaries.push(entity);
+          }
+        });
       }
 
-      const updateNomineeKeys = new Set();
-      const updateDuplicateNomineeDescriptions = new Set();
-      updateNomineeCandidates.forEach((nominee) => {
-        const key = buildPersonKey(nominee);
-        if (!key) return;
-        if (updateNomineeKeys.has(key)) {
-          updateDuplicateNomineeDescriptions.add(
-            pickFirst(nominee.name, nominee.idNo, nominee.email, nominee.mobileNo) || 'Unknown nominee'
-          );
-        } else {
-          updateNomineeKeys.add(key);
-        }
-      });
+      // NOTE:
+      // Duplicate nominee validation is intentionally removed per business request.
+      // A person is now allowed to appear as multiple nominee entries.
 
       const updateBeneficiaryKeys = new Set();
       const updateDuplicateBeneficiaryDescriptions = new Set();
@@ -2598,13 +2255,8 @@ class NicheApplicationService {
         }
       });
 
-      if (updateDuplicateNomineeDescriptions.size > 0 || updateDuplicateBeneficiaryDescriptions.size > 0) {
+      if (updateDuplicateBeneficiaryDescriptions.size > 0) {
         const errors = [];
-        if (updateDuplicateNomineeDescriptions.size > 0) {
-          errors.push(
-            `Same person cannot be added as multiple nominees: ${Array.from(updateDuplicateNomineeDescriptions).join(', ')}`
-          );
-        }
         if (updateDuplicateBeneficiaryDescriptions.size > 0) {
           errors.push(
             `Same person cannot be added as multiple beneficiaries: ${Array.from(updateDuplicateBeneficiaryDescriptions).join(', ')}`
@@ -2699,10 +2351,10 @@ class NicheApplicationService {
       // Invalidate cache to ensure fresh data on next request
       // Use aggressive invalidation strategy
       invalidateNicheApplicationCache();
-      
+
       // Log cache invalidation for debugging
       logger.info('[updateApplication] Cache invalidated after update, preparing response');
-      
+
       // Additional cache verification
       if (process.env.NODE_ENV === 'development') {
         const remainingKeys = cache.keys().filter(key => key.startsWith(NICHE_APPLICATION_CACHE_PREFIX));
@@ -2726,7 +2378,7 @@ class NicheApplicationService {
   async deleteApplication(code, churchId) {
     try {
       logger.info(`[deleteApplication] Starting deletion for code: ${code}, churchId: ${churchId}`);
-      
+
       // Get application to check church access
       const application = await NicheApplicationRepository.getByCode(code);
 
@@ -2762,13 +2414,13 @@ class NicheApplicationService {
       // Use aggressive invalidation strategy
       invalidateNicheApplicationCache();
       logger.info('[deleteApplication] Cache invalidated - all niche application cache entries cleared');
-      
+
       // Additional cache verification
       if (process.env.NODE_ENV === 'development') {
         const remainingKeys = cache.keys().filter(key => key.startsWith(NICHE_APPLICATION_CACHE_PREFIX));
         logger.debug(`[deleteApplication] Cache verification - remaining niche app keys: ${remainingKeys.length}`);
       }
-      
+
       // Log cache invalidation for debugging
       logger.info('[deleteApplication] Cache invalidated after deletion, preparing response');
 
@@ -3078,7 +2730,7 @@ class NicheApplicationService {
             }
           };
         }
-        
+
         return {
           success: false,
           error: {
@@ -3090,7 +2742,7 @@ class NicheApplicationService {
 
       // Update status from Draft (1) to Booked (3)
       const updateResult = await NicheApplicationRepository.updateStatus(code, 3);
-      
+
       if (!updateResult) {
         return {
           success: false,

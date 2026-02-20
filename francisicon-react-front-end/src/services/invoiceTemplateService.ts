@@ -111,7 +111,7 @@ export const invoiceTemplateService = {
     const subTotal = (data.totalAmount || 0) - taxAmount;
 
     const safeCustomerName = escapeHtml(data.customerName || '');
-    const safeCustomerAddress = escapeHtml(data.customerAddress || '');
+    const safeCustomerAddress = escapeHtml(data.customerAddress || '').replace(/\n/g, '<br>');
     const safeInvoiceCode = escapeHtml(data.invoiceCode || '');
     const safeInvoiceDate = escapeHtml(data.invoiceDate || today);
 

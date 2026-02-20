@@ -1,5 +1,7 @@
 import React from 'react'
 import { PDF_ASSETS } from '../components/common/FranciscanLogo'
+import addressUtils from '../utils/addressUtils'
+import { paymentModeToLabel } from '../utils/paymentMode'
 interface AgreementPdfTemplateProps {
   data: {
     applicationCode?: string
@@ -50,8 +52,9 @@ interface AgreementPdfTemplateProps {
       birthYear?: number
       relationshipToNominee1?: string
       relationshipToNominee2?: string
-      status?: string
-      sex?: string
+      status: string;
+      sex: string;
+      lifeStatus?: string;
     }>
     niche?: {
       number?: string
@@ -96,6 +99,17 @@ interface AgreementPdfTemplateProps {
       paymentMode?: string
       paymentModeDocNo?: string
       refDocNumber?: string
+      invoiceDetails?: Array<{
+        itemId?: number
+        itemName?: string
+        itemCode?: string
+        description?: string
+        quantity?: number
+        unitPrice?: number
+        taxAmount?: number
+        lineTotal?: number
+        lineNet?: number
+      }>
     }
     deceased?: {
       deceased1?: {
@@ -144,39 +158,6 @@ const formatCurrency = (amount: any) => {
     maximumFractionDigits: 2,
   })
 }
-const buildAddressLinesFromEntity = (entity: any): string[] => {
-  const addressNo = entity.addressNo || entity.address?.no || ''
-  const addressLine1 = entity.addressLine1 || entity.address?.line1 || ''
-  const addressLine2 = entity.addressLine2 || entity.address?.line2 || ''
-  const addressCity = entity.addressCity || entity.address?.city || ''
-  const addressState = entity.addressState || entity.address?.state || ''
-  const addressCountry = entity.addressCountry || entity.address?.country || ''
-  if (
-    addressNo ||
-    addressLine1 ||
-    addressLine2 ||
-    addressCity ||
-    addressState ||
-    addressCountry
-  ) {
-    const line1Parts: string[] = []
-    if (addressNo) line1Parts.push(addressNo.trim())
-    if (addressLine1) line1Parts.push(addressLine1.trim())
-    if (addressLine2) line1Parts.push(addressLine2.trim())
-    const line1 = line1Parts.join(' ').trim()
-    const line2 = addressCity || ''
-    const line3 = [addressCountry, addressState]
-      .filter(Boolean)
-      .join(' ')
-      .trim()
-    return [line1, line2, line3]
-  }
-  const rawAddress = entity?.address || ''
-  if (rawAddress) {
-    return [rawAddress.trim(), '', '']
-  }
-  return ['', '', '']
-}
 const formatDate = (dateStr: string | null | undefined): string => {
   return dateStr || ''
 }
@@ -196,7 +177,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
     deceased,
     storage,
   } = data
-  const applicantAddressLines = buildAddressLinesFromEntity(applicant || {})
+  const applicantAddressLines = addressUtils.buildAddressLines(applicant || {})
   const considerationSum =
     niche?.lineAmount || 
     niche?.totalAmount || 
@@ -230,19 +211,36 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   const firstDeceasedDate = formatDate(deceased1?.dateDied)
   const secondDeceasedDate = formatDate(deceased2?.dateDied)
   const storageFrom = formatDate(storage?.storageFrom)
-  const storageTo = formatDate(storage?.storageTo)
+  let storageTo = formatDate(storage?.storageTo)
+
+  // Auto-calculate storageTo as 30 years after storageFrom if storageFrom exists
+  if (storageFrom) {
+    const fromDate = new Date(storageFrom);
+    if (!isNaN(fromDate.getTime())) {
+      const toDate = new Date(fromDate);
+      toDate.setFullYear(fromDate.getFullYear() + 30);
+
+      const year = toDate.getFullYear();
+      const month = String(toDate.getMonth() + 1).padStart(2, '0');
+      const day = String(toDate.getDate()).padStart(2, '0');
+      storageTo = `${year}-${month}-${day}`;
+    }
+  }
   const invoiceNo = invoice?.invoiceNo || ''
   const invoiceDate = formatDate(invoice?.invoiceDate)
+  const receiptNo = invoice?.receiptNo || ''
+  const receiptDate = formatDate(invoice?.receiptDate)
   const nicheAmount = invoice?.receiptAmount || invoice?.totalAmount || 0
   const taxAmount = invoice?.taxAmount || 0
   const totalAmount = invoice?.totalAmount || invoice?.invoicePayingAmount || 0
-  const paymentMethod = invoice?.paymentMode || 'Cash'
+  const paymentMethod = paymentModeToLabel(invoice?.paymentMode)
   const balance = invoice?.receiptPayingAmount || 0
+  const invoiceDetails = invoice?.invoiceDetails || []
   const TableRow = ({
     children,
     className = '',
   }: {
-    children: React.ReactNode
+    children?: React.ReactNode
     className?: string
   }) => (
     <div className={'flex border-b border-black last:border-b-0 ' + className}>
@@ -254,14 +252,14 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
     width = 'w-32',
     className = '',
   }: {
-    children: React.ReactNode
+    children?: React.ReactNode
     width?: string
     className?: string
   }) => (
     <div
       className={
         width +
-        ' border-r border-black p-1 pl-2 text-xs font-medium flex-shrink-0 ' +
+        ' border-r border-black p-1 pl-2 text-xs font-medium flex-shrink-0 flex items-center ' +
         className
       }
     >
@@ -273,13 +271,13 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
     className = '',
     width = 'flex-1',
   }: {
-    children: React.ReactNode
+    children?: React.ReactNode
     className?: string
     width?: string
   }) => (
-    <div className={width + ' p-1 pl-2 text-xs ' + className}>{children}</div>
+    <div className={width + ' p-1 pl-2 text-xs flex items-center ' + className}>{children}</div>
   )
-  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+  const SectionLabel = ({ children }: { children?: React.ReactNode }) => (
     <div className="border border-black border-t-0 px-2 py-1 text-xs font-bold bg-gray-50">
       {children}
     </div>
@@ -287,7 +285,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   return (
     <div className="min-h-screen bg-gray-100 py-4 font-sans text-gray-900 print:bg-white print:py-0">
       {/* Page 1 */}
-      <div className="max-w-[210mm] mx-auto bg-white shadow-lg p-6 mb-4 min-h-[297mm] print:shadow-none print:mb-0 print:p-8">
+      <div data-pdf-page className="max-w-[210mm] mx-auto bg-white shadow-lg p-6 mb-4 min-h-[297mm] print:shadow-none print:mb-0 print:p-8">
         {/* Header */}
         <header className="flex justify-between items-start mb-4">
           <div className="flex-1 text-center pt-2">
@@ -341,14 +339,6 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 {applicationCode || '0000-0'}
               </span>
             </div>
-            <div className="text-[10px]">
-              Applied Date :{' '}
-              <span className="font-normal ml-1">{appliedDate || ''}</span>
-            </div>
-            <div className="text-[10px]">
-              Status :{' '}
-              <span className="font-normal ml-1">{statusText || ''}</span>
-            </div>
           </div>
         </div>
 
@@ -365,9 +355,9 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </ValueCell>
           </TableRow>
           <div className="flex border-b border-black">
-            <LabelCell className="h-16 border-b-0">Address</LabelCell>
+            <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
             <div className="flex-1 flex flex-col">
-              <div className="flex border-b border-black h-5">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
                   {applicantAddressLines[0]}
                 </ValueCell>
@@ -381,7 +371,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                   {applicantMobileNo}
                 </ValueCell>
               </div>
-              <div className="flex border-b border-black h-5">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
                   {applicantAddressLines[1]}
                 </ValueCell>
@@ -395,7 +385,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                   {applicantHomeTelNo}
                 </ValueCell>
               </div>
-              <div className="flex h-5">
+              <div className="flex h-[26px]">
                 <ValueCell className="flex-1">
                   {applicantAddressLines[2]}
                 </ValueCell>
@@ -449,7 +439,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
           <span>of an urn(s) containing the ashes of</span>
         </div>
 
-     
+
 
         {/* Beneficiary 1 */}
         <div className="flex border border-black mb-1 text-xs">
@@ -469,7 +459,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </TableRow>
             <TableRow>
               <LabelCell width="w-36">Date of Birth</LabelCell>
-              <ValueCell>{beneficiary1?.dateOfBirth ||beneficiary1?.birthYear || ''}</ValueCell>
+              <ValueCell>{beneficiary1?.dateOfBirth || beneficiary1?.birthYear || ''}</ValueCell>
               <LabelCell width="w-28" className="border-l border-black">
                 Sex
               </LabelCell>
@@ -483,10 +473,22 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 {beneficiary1?.relationshipToApplicant || ''}
               </ValueCell>
               <LabelCell width="w-28" className="border-l border-black">
-                Catholic
+                Life Status
               </LabelCell>
               <ValueCell width="w-32" className="border-l border-black">
+                {beneficiary1?.lifeStatus || ''}
+              </ValueCell>
+            </TableRow>
+            <TableRow>
+              <LabelCell width="w-36">Catholic</LabelCell>
+              <ValueCell>
                 {beneficiary1?.isCatholic ? 'Yes' : 'No'}
+              </ValueCell>
+              <LabelCell width="w-28" className="border-l border-black">
+                {'\u00A0'}
+              </LabelCell>
+              <ValueCell width="w-32" className="border-l border-black">
+                {'\u00A0'}
               </ValueCell>
             </TableRow>
             <div className="flex">
@@ -530,7 +532,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </TableRow>
             <TableRow>
               <LabelCell width="w-36">Date of Birth</LabelCell>
-              <ValueCell>{beneficiary2?.dateOfBirth || ''}</ValueCell>
+              <ValueCell>{beneficiary2?.dateOfBirth || beneficiary2?.birthYear || ''}</ValueCell>
               <LabelCell width="w-28" className="border-l border-black">
                 Sex
               </LabelCell>
@@ -544,10 +546,22 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 {beneficiary2?.relationshipToApplicant || ''}
               </ValueCell>
               <LabelCell width="w-28" className="border-l border-black">
-                Catholic
+                Life Status
               </LabelCell>
               <ValueCell width="w-32" className="border-l border-black">
+                {beneficiary2?.lifeStatus || ''}
+              </ValueCell>
+            </TableRow>
+            <TableRow>
+              <LabelCell width="w-36">Catholic</LabelCell>
+              <ValueCell>
                 {beneficiary2?.isCatholic ? 'Yes' : 'No'}
+              </ValueCell>
+              <LabelCell width="w-28" className="border-l border-black">
+                {'\u00A0'}
+              </LabelCell>
+              <ValueCell width="w-32" className="border-l border-black">
+                {'\u00A0'}
               </ValueCell>
             </TableRow>
             <div className="flex">
@@ -604,7 +618,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
 
         {/* Signatures */}
         <div className="border border-black p-3 mt-auto text-xs">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 ">
             <div>
               <p className="mb-8 font-medium">The Applicant Personally :</p>
               <div className="border-b border-black mb-2"></div>
@@ -623,7 +637,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 The Order of Friars Minor (Singapore) Limited
               </p>
               <div className="border-b border-black mb-2"></div>
-              <div className="mb-1">FrGerard Victor</div>
+              <div className="mb-1">Fr Gerard Victor</div>
               <div>Friar - Manager</div>
             </div>
           </div>
@@ -631,7 +645,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
       </div>
 
       {/* Page 2 */}
-      <div className="max-w-[210mm] mx-auto bg-white shadow-lg p-6 min-h-[297mm] print:shadow-none print:p-8">
+      <div data-pdf-page className="max-w-[210mm] mx-auto bg-white shadow-lg p-6 min-h-[297mm] print:shadow-none print:p-8">
         {/* Nominee 1 */}
         <p className="mb-1 text-xs font-medium">
           The Applicant's 1st nominee for contact purposes ("Nominee") is :
@@ -648,11 +662,11 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </ValueCell>
           </TableRow>
           <div className="flex border-b border-black">
-            <LabelCell className="h-16 border-b-0">Address</LabelCell>
+            <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
             <div className="flex-1 flex flex-col">
-              <div className="flex border-b border-black h-5">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
-                  {buildAddressLinesFromEntity(nominee || {})[0]}
+                  {addressUtils.buildAddressLines(nominee || {})[0]}
                 </ValueCell>
                 <LabelCell
                   width="w-28"
@@ -664,9 +678,9 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                   {nominee?.mobileNo || ''}
                 </ValueCell>
               </div>
-              <div className="flex border-b border-black h-5">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
-                  {buildAddressLinesFromEntity(nominee || {})[1]}
+                  {addressUtils.buildAddressLines(nominee || {})[1]}
                 </ValueCell>
                 <LabelCell
                   width="w-28"
@@ -678,9 +692,9 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                   {nominee?.homeTelNo || ''}
                 </ValueCell>
               </div>
-              <div className="flex h-5">
+              <div className="flex h-[26px]">
                 <ValueCell className="flex-1">
-                  {buildAddressLinesFromEntity(nominee || {})[2]}
+                  {addressUtils.buildAddressLines(nominee || {})[2]}
                 </ValueCell>
                 <LabelCell
                   width="w-28"
@@ -722,11 +736,11 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </ValueCell>
           </TableRow>
           <div className="flex border-b border-black">
-            <LabelCell className="h-16 border-b-0">Address</LabelCell>
+            <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
             <div className="flex-1 flex flex-col">
-              <div className="flex border-b border-black h-5">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
-                  {buildAddressLinesFromEntity(nominee2 || {})[0]}
+                  {addressUtils.buildAddressLines(nominee2 || {})[0]}
                 </ValueCell>
                 <LabelCell
                   width="w-28"
@@ -738,9 +752,9 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                   {nominee2?.mobileNo || ''}
                 </ValueCell>
               </div>
-              <div className="flex border-b border-black h-5">
+              <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
-                  {buildAddressLinesFromEntity(nominee2 || {})[1]}
+                  {addressUtils.buildAddressLines(nominee2 || {})[1]}
                 </ValueCell>
                 <LabelCell
                   width="w-28"
@@ -752,9 +766,9 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                   {nominee2?.homeTelNo || ''}
                 </ValueCell>
               </div>
-              <div className="flex h-5">
+              <div className="flex h-[26px]">
                 <ValueCell className="flex-1">
-                  {buildAddressLinesFromEntity(nominee2 || {})[2]}
+                  {addressUtils.buildAddressLines(nominee2 || {})[2]}
                 </ValueCell>
                 <LabelCell
                   width="w-28"
@@ -838,32 +852,53 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </div>
             <div className="w-20 p-1 pl-2 text-right pr-2">Total</div>
           </div>
-          <div className="flex border-b border-black h-6">
+          {invoiceDetails && invoiceDetails.length > 0 ? (
+            invoiceDetails.map((item, idx) => (
+              <div key={idx} className="flex border-b border-black min-h-[26px]">
+                <div className="w-24 p-1 pl-2 border-r border-black truncate">
+                  {idx === 0 ? invoiceDate : ''}
+                </div>
+                <div className="w-24 p-1 pl-2 border-r border-black truncate">
+                  {idx === 0 ? invoiceNo : ''}
+                </div>
+                <div className="flex-1 p-1 pl-2 border-r border-black text-right pr-2">
+                  {item.itemName || item.description || 'Service Item'}
+                </div>
+                <div className="w-20 p-1 pl-2 border-r border-black text-right pr-2">
+                  $ {formatCurrency(item.lineNet)}
+                </div>
+                <div className="w-16 p-1 pl-2 border-r border-black text-right pr-2">
+                  $ {formatCurrency(item.taxAmount)}
+                </div>
+                <div className="w-20 p-1 pl-2 text-right pr-2">
+                  $ {formatCurrency(item.lineTotal)}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="flex border-b border-black h-[26px]">
+              <div className="w-24 p-1 pl-2 border-r border-black">{invoiceDate}</div>
+              <div className="w-24 p-1 pl-2 border-r border-black">{invoiceNo}</div>
+              <div className="flex-1 p-1 pl-2 border-r border-black text-right pr-2">
+                Niche Fee
+              </div>
+              <div className="w-20 p-1 pl-2 border-r border-black text-right pr-2">
+                $ {formatCurrency(nicheAmount)}
+              </div>
+              <div className="w-16 p-1 pl-2 border-r border-black text-right pr-2">
+                $ {formatCurrency(taxAmount)}
+              </div>
+              <div className="w-20 p-1 pl-2 text-right pr-2">
+                $ {formatCurrency(totalAmount)}
+              </div>
+            </div>
+          )}
+          <div className="flex border-b border-black h-[26px]">
             <div className="w-24 p-1 pl-2 border-r border-black">
-              {invoiceDate}
+              {receiptDate}
             </div>
             <div className="w-24 p-1 pl-2 border-r border-black">
-              {invoiceNo}
-            </div>
-            <div className="flex-1 p-1 pl-2 border-r border-black text-right pr-2">
-              Niche Fee
-            </div>
-            <div className="w-20 p-1 pl-2 border-r border-black text-right pr-2">
-              $ {formatCurrency(nicheAmount)}
-            </div>
-            <div className="w-16 p-1 pl-2 border-r border-black text-right pr-2">
-              $ {formatCurrency(taxAmount)}
-            </div>
-            <div className="w-20 p-1 pl-2 text-right pr-2">
-              $ {formatCurrency(totalAmount)}
-            </div>
-          </div>
-          <div className="flex border-b border-black h-6">
-            <div className="w-24 p-1 pl-2 border-r border-black">
-              {invoiceDate}
-            </div>
-            <div className="w-24 p-1 pl-2 border-r border-black">
-              {invoiceNo}
+              {receiptNo}
             </div>
             <div className="flex-1 p-1 pl-2 border-r border-black text-right pr-2">
               {paymentMethod}
@@ -876,7 +911,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
               $ {formatCurrency(balance)}
             </div>
           </div>
-          <div className="flex border-b border-black h-6">
+          <div className="flex border-b border-black h-[26px]">
             <div className="w-24 border-r border-black"></div>
             <div className="w-24 border-r border-black"></div>
             <div className="flex-1 border-r border-black"></div>
@@ -884,7 +919,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             <div className="w-16 border-r border-black"></div>
             <div className="w-20"></div>
           </div>
-          <div className="flex h-6">
+          <div className="flex h-[26px]">
             <div className="w-24"></div>
             <div className="w-24"></div>
             <div className="flex-1"></div>
@@ -907,7 +942,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </div>
             <div className="w-40 p-1 pl-2">Date of Deceased</div>
           </div>
-          <div className="flex border-b border-black h-6">
+          <div className="flex border-b border-black h-[26px]">
             <div className="flex-1 p-1 pl-2 border-r border-black">
               {firstDeceasedName}
             </div>
@@ -916,7 +951,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </div>
             <div className="w-40 p-1 pl-2">{firstDeceasedDate}</div>
           </div>
-          <div className="flex h-6">
+          <div className="flex h-[26px]">
             <div className="flex-1 p-1 pl-2 border-r border-black">
               {secondDeceasedName}
             </div>

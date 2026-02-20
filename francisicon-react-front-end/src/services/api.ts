@@ -12,8 +12,10 @@ declare module 'axios' {
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: (import.meta as any).env?.VITE_API_BASE || 'http://localhost:3000',
-  timeout: 10000,
+  baseURL: (import.meta as any).env?.VITE_API_BASE || 'http://192.168.1.24:3000/',
+  // Some invoice/inscription resolution paths can legitimately take >10s.
+  // Keep a higher client timeout to prevent premature "Network error" aborts.
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -28,17 +30,17 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    
+
     // Add request timestamp for logging
     config.metadata = { startTime: new Date() };
-    
+
     // Handle cache bypass
+    // We send bypassCache as a query param so it works with CORS on older backends
     if (config.params?.bypassCache) {
-      config.headers['X-Bypass-Cache'] = 'true';
-      // Remove bypassCache from params to avoid sending it to backend
-      delete config.params.bypassCache;
+      // Ensure it's treated as a string 'true' for consistency with backend check
+      config.params.bypassCache = 'true';
     }
-    
+
     // Log request details
     console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, {
       params: config.params,
@@ -46,7 +48,7 @@ api.interceptors.request.use(
       baseURL: config.baseURL,
       bypassCache: config.headers['X-Bypass-Cache'] === 'true'
     });
-    
+
     return config;
   },
   (error) => {
@@ -59,26 +61,26 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => {
     // Calculate request duration
-    const duration = response.config.metadata?.startTime 
+    const duration = response.config.metadata?.startTime
       ? new Date().getTime() - response.config.metadata.startTime.getTime()
       : 0;
-    
+
     console.log(`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}`, {
       status: response.status,
       duration: `${duration}ms`,
       dataSize: JSON.stringify(response.data).length
     });
-    
+
     return response;
   },
   async (error) => {
     const originalRequest = error.config;
-    
+
     // Calculate request duration
-    const duration = originalRequest?.metadata?.startTime 
+    const duration = originalRequest?.metadata?.startTime
       ? new Date().getTime() - originalRequest.metadata.startTime.getTime()
       : 0;
-    
+
     // Log error details
     console.error(`[API Error] ${originalRequest?.method?.toUpperCase()} ${originalRequest?.url}`, {
       status: error.response?.status,
@@ -98,11 +100,11 @@ api.interceptors.response.use(
       try {
         // Try to refresh the token
         await authService.refreshAccessToken();
-        
+
         // Retry the original request with new token
         const newToken = authService.getAccessToken();
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        
+
         return api(originalRequest);
       } catch (refreshError) {
         // Refresh failed, redirect to login

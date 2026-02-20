@@ -17,7 +17,7 @@ class NicheAgreementController extends BaseController {
    * GET /api/niche-agreements/:applicationNumber
    * Supports formats: "3795-1", "3795", or "3795-"
    */
-  getNicheAgreementDetails = this.asyncHandler(async(req, res) => {
+  getNicheAgreementDetails = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Niche Agreement Details');
 
     const { applicationNumber } = req.params;
@@ -51,7 +51,7 @@ class NicheAgreementController extends BaseController {
    * Get application number suggestions for partial matches
    * GET /api/niche-agreements/suggestions/:partialApplicationNumber
    */
-  getApplicationNumberSuggestions = this.asyncHandler(async(req, res) => {
+  getApplicationNumberSuggestions = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Application Number Suggestions');
 
     const { partialApplicationNumber } = req.params;
@@ -74,7 +74,7 @@ class NicheAgreementController extends BaseController {
    * Validate application number format
    * POST /api/niche-agreements/validate
    */
-  validateApplicationNumber = this.asyncHandler(async(req, res) => {
+  validateApplicationNumber = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Validate Application Number');
 
     const { applicationNumber } = req.body;
@@ -102,7 +102,7 @@ class NicheAgreementController extends BaseController {
    * GET /api/niche-agreements/:applicationNumber/summary
    * Supports formats: "3795-1", "3795", or "3795-"
    */
-  getNicheAgreementSummary = this.asyncHandler(async(req, res) => {
+  getNicheAgreementSummary = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Niche Agreement Summary');
 
     const { applicationNumber } = req.params;
@@ -171,7 +171,7 @@ class NicheAgreementController extends BaseController {
    * GET /api/niche-agreements/:applicationNumber/reports
    * Supports formats: "3795-1", "3795", or "3795-"
    */
-  getCrystalReportsInfo = this.asyncHandler(async(req, res) => {
+  getCrystalReportsInfo = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Crystal Reports Info');
 
     const { applicationNumber } = req.params;
@@ -207,7 +207,7 @@ class NicheAgreementController extends BaseController {
    * GET /api/niche-agreements/:applicationNumber/pdf
    * Supports formats: "3795-1", "3795", or "3795-"
    */
-  getAgreementPdf = this.asyncHandler(async(req, res) => {
+  getAgreementPdf = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Agreement PDF Data');
 
     const { applicationNumber } = req.params;
@@ -330,7 +330,7 @@ class NicheAgreementController extends BaseController {
    * GET /api/niche-agreements/:applicationNumber/invoice-pdf
    * Supports formats: "3795-1", "3795", or "3795-"
    */
-  getInvoicePdf = this.asyncHandler(async(req, res) => {
+  getInvoicePdf = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Invoice PDF Data');
 
     const { applicationNumber } = req.params;
@@ -431,25 +431,25 @@ class NicheAgreementController extends BaseController {
 
       // Handle HEAD requests - just send status code, no body
       if (isHeadRequest) {
-        if (error.message.includes('No niche agreement found') || 
-            error.message.includes('No niche agreement found for application number')) {
+        if (error.message.includes('No niche agreement found') ||
+          error.message.includes('No niche agreement found for application number')) {
           return res.status(404).end();
         }
-        if (error.message.includes('Application number is required') || 
-            error.message.includes('Invalid')) {
+        if (error.message.includes('Application number is required') ||
+          error.message.includes('Invalid')) {
           return res.status(400).end();
         }
         return res.status(500).end();
       }
 
       // Handle GET requests with full error response
-      if (error.message.includes('No niche agreement found') || 
-          error.message.includes('No niche agreement found for application number')) {
+      if (error.message.includes('No niche agreement found') ||
+        error.message.includes('No niche agreement found for application number')) {
         return this.sendError(res, error.message || 'No niche agreement found for this application number', 404);
       }
 
-      if (error.message.includes('Application number is required') || 
-          error.message.includes('Invalid')) {
+      if (error.message.includes('Application number is required') ||
+        error.message.includes('Invalid')) {
         return this.sendError(res, error.message, 400);
       }
 
@@ -462,7 +462,7 @@ class NicheAgreementController extends BaseController {
    * GET /api/niche-agreements/:applicationNumber/second-nominee-agreement-pdf
    * Supports formats: "3795-1", "3795", or "3795-"
    */
-  getSecondNomineeAgreementPdf = this.asyncHandler(async(req, res) => {
+  getSecondNomineeAgreementPdf = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get 2nd Nominee Agreement PDF Data');
 
     const { applicationNumber } = req.params;
@@ -475,7 +475,9 @@ class NicheAgreementController extends BaseController {
 
       // Get niche agreement details (service will handle flexible format matching)
       logger.info(`Fetching 2nd nominee agreement data for PDF: ${applicationNumber}`);
-      const agreementDetails = await this.nicheAgreementService.getNicheAgreementDetails(applicationNumber);
+      const agreementDetails = await this.nicheAgreementService.getNicheAgreementDetails(applicationNumber, {
+        includeDeceasedDetails: false
+      });
 
       // Check if 2nd nominee exists
       if (!agreementDetails.nominee2 || !agreementDetails.nominee2.name) {
@@ -585,13 +587,13 @@ class NicheAgreementController extends BaseController {
     } catch (error) {
       logger.error('Error in getSecondNomineeAgreementPdf:', error);
 
-      if (error.message.includes('No niche agreement found') || 
-          error.message.includes('No niche agreement found for application number')) {
+      if (error.message.includes('No niche agreement found') ||
+        error.message.includes('No niche agreement found for application number')) {
         return this.sendError(res, error.message || 'No niche agreement found for this application number', 404);
       }
 
-      if (error.message.includes('Application number is required') || 
-          error.message.includes('Invalid')) {
+      if (error.message.includes('Application number is required') ||
+        error.message.includes('Invalid')) {
         return this.sendError(res, error.message, 400);
       }
 

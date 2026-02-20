@@ -7,10 +7,13 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
+// Log environment variables for debugging
+console.log('JWT_SECRET from .env:', process.env.JWT_SECRET);
+
 const logger = require('./utils/logger');
-const errorHandler = require('./middleware/errorHandler');
-const notFoundHandler = require('./middleware/notFoundHandler');
+const { errorHandler, notFoundHandler, asyncHandler, validateInput, rateLimit: customRateLimit } = require('./middleware/errorHandler');
 const { responseCache } = require('./middleware/responseCache');
+const { apiPerformanceMiddleware } = require('./utils/performanceMonitor');
 const { connectDatabase } = require('./config/database');
 const NicheApplicationService = require('./services/NicheApplicationService');
 
@@ -55,6 +58,11 @@ app.use(cors({
 
     const allowedOrigins = [
       process.env.CORS_ORIGIN || 'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:3001',
+      'http://localhost:4173',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000'
     ];
 
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
@@ -65,7 +73,7 @@ app.use(cors({
   },
   credentials: process.env.CORS_CREDENTIALS === 'true',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cache-Control', 'Pragma', 'Expires', 'X-Bypass-Cache'],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   maxAge: 86400 // 24 hours
 }));
@@ -79,17 +87,35 @@ app.use((req, res, next) => {
 });
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
-  message: {
-    error: 'Too many requests from this IP, please try again later.'
-  }
-});
-app.use(limiter);
+const isRateLimitEnabled = process.env.RATE_LIMIT_ENABLED !== 'false';
+if (isRateLimitEnabled) {
+  const limiter = customRateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000, // 15 minutes
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 1000,
+    skip: (req) => {
+      const ip = String(req.ip || req.connection?.remoteAddress || '').replace(/^::ffff:/, '');
+      const pathName = req.path || '';
+      // Keep health/static/options/local requests from consuming global API quota.
+      return (
+        req.method === 'OPTIONS' ||
+        pathName === '/health' ||
+        pathName === '/favicon.ico' ||
+        pathName.startsWith('/public') ||
+        pathName.startsWith('/pdfs') ||
+        ip === '127.0.0.1' ||
+        ip === '::1' ||
+        ip === 'localhost'
+      );
+    }
+  });
+  app.use(limiter);
+}
 
 // Compression middleware
 app.use(compression());
+
+// Performance monitoring middleware
+app.use(apiPerformanceMiddleware());
 
 // Logging middleware
 app.use(morgan('combined', {
@@ -243,9 +269,9 @@ const cacheMiddleware = responseCache({
       '/api/login',
       '/api/utils/cache-stats'
     ];
-    return req.method === 'GET' && 
-           res.statusCode === 200 && 
-           !skipCachePaths.some(path => req.path.startsWith(path));
+    return req.method === 'GET' &&
+      res.statusCode === 200 &&
+      !skipCachePaths.some(path => req.path.startsWith(path));
   }
 });
 
@@ -279,7 +305,7 @@ app.use('/niche-applications', cacheMiddleware, nicheApplicationRoutes);
 app.use('/niche-application', cacheMiddleware, nicheApplicationRoutes);
 app.use('/api/receipts', receiptRoutes); // POST/PUT operations
 app.use('/api', receiptItemRoutes); // POST/PUT operations
-app.use('/api/items', cacheMiddleware, itemRoutes);
+app.use('/api/items', itemRoutes); // Cache removed to prevent stale data after item CRUD operations
 app.use('/api/utils', utilRoutes);
 app.use('/api/reports', cacheMiddleware, reportRoutes);
 // Bible Choices APIs - mounted under both /api/bible-choices and /bible-choices for backward compatibility
@@ -331,14 +357,14 @@ const startServer = async () => {
     try {
       await connectDatabase();
       logger.info('Database connected successfully');
-      
+
       // Warm cache with common queries for improved performance (optional)
       // Only warm if explicitly enabled via environment variable
       const enableCacheWarming = process.env.ENABLE_CACHE_WARMING === 'true';
-      const cacheWarmingChurchIds = process.env.CACHE_WARMING_CHURCH_IDS 
+      const cacheWarmingChurchIds = process.env.CACHE_WARMING_CHURCH_IDS
         ? process.env.CACHE_WARMING_CHURCH_IDS.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
         : [];
-      
+
       if (enableCacheWarming && cacheWarmingChurchIds.length > 0) {
         logger.info(`Cache warming enabled for church IDs: ${cacheWarmingChurchIds.join(', ')}`);
         // Warm cache asynchronously without blocking server startup

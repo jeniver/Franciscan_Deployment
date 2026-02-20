@@ -1,5 +1,6 @@
 import React from 'react'
 import { PDF_ASSETS } from '../common/FranciscanLogo'
+
 interface ReceiptTemplateProps {
   receiptNo?: string
   date?: string
@@ -17,6 +18,7 @@ interface ReceiptTemplateProps {
     amount: number
   }>
 }
+
 export function ReceiptTemplate({
   receiptNo = '003762',
   date = '03-Oct-25',
@@ -29,145 +31,118 @@ export function ReceiptTemplate({
   paymentMethod = 'Cash',
   items = [],
 }: ReceiptTemplateProps) {
+  const formattedAmount = (amt: number) =>
+    amt.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+
   return (
-    <div className="w-full max-w-[800px] bg-white p-8 md:p-12 mx-auto text-black font-serif shadow-sm border border-gray-200">
-      {/* Header */}
-      <div className="flex justify-between items-start mb-12">
-        <div className="flex items-start gap-4">
-          {/* Franciscan Logo */}
+    <div className="w-full max-w-[950px] bg-white p-12 mx-auto text-black font-sans leading-relaxed shadow-lg border border-gray-200">
+      {/* Header Section */}
+      <div className="flex justify-between items-start mb-10">
+        <div className="flex items-start gap-6">
           <img
             src={PDF_ASSETS.headerImageUrl}
-            alt="Franciscan Logo - St. Francis receiving the stigmata"
-            className="w-24 h-20 object-contain"
+            alt="Franciscan Logo"
+            className="w-28 h-28 object-contain"
           />
-          <div className="flex flex-col justify-center h-20">
-            <h1 className="text-3xl font-bold tracking-wide leading-none">
-              OFFICIAL
-            </h1>
-            <h1 className="text-3xl font-bold tracking-wide leading-none">
-              RECEIPT
-            </h1>
+          <div className="flex flex-col pt-2">
+            <h1 className="text-4xl font-bold tracking-wider leading-none">OFFICIAL</h1>
+            <h1 className="text-4xl font-bold tracking-wider leading-none mt-1">RECEIPT</h1>
           </div>
         </div>
 
-        <div className="text-right text-sm leading-relaxed">
-          <h2 className="font-bold text-lg uppercase mb-1">
-           THE ORDER OF FRIARS MINOR (S) LTD
-          </h2>
-          <p>Co. & GST Reg. No. 201016236M</p>
-          <p>Franciscan Columbarium</p>
-          <p>5 Bukit Batok East Ave 2, Singapore 659918</p>
-          <p>
-            Tel: 6560-6361 , HP: 9774-7053
-            ,
-          </p>
-          <p>email:Email:franciscan.columbarium@gmail.com</p>
+        <div className="text-right text-[12px] leading-tight max-w-[450px]">
+          <h2 className="text-[22px] font-bold mb-1 tracking-tight">THE ORDER OF FRIARS MINOR (S) LTD</h2>
+          <p className="mb-0.5">Co & GST Reg No. 201016236M</p>
+          <p className="mb-0.5">Franciscan Columbarium</p>
+          <p className="mb-0.5">5 Bukit Batok East Avenue 2 Singapore 659918</p>
+          <p className="mb-0.5">Tel: 6560-6361, HP: 9774-7053,</p>
+          <p className="mb-0.5">email: Franciscan.columbarium@gmail.com</p>
 
-          <div className="mt-6 grid grid-cols-[auto_100px] gap-x-4 justify-end">
-            <span className="text-right">Receipt No:</span>
-            <span className="text-right font-medium">{receiptNo}</span>
-            <span className="text-right">Date :</span>
-            <span className="text-right font-medium">{date}</span>
+          <div className="mt-8 flex flex-col items-end text-[14px]">
+            <div className="grid grid-cols-[auto_140px] gap-y-1">
+              <span className="pr-4">Receipt No:</span>
+              <span className="text-right font-medium">{receiptNo}</span>
+              <span className="pr-4">Date :</span>
+              <span className="text-right font-medium">{date}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Body */}
-      <div className="space-y-8 mb-12">
-        <div className="grid grid-cols-[120px_1fr] gap-4">
-          <span className="whitespace-nowrap">Received From :</span>
-          <span>{receivedFrom}</span>
-          <span>Address:</span>
-          <span>{address}</span>
+      {/* Received From and Address */}
+      <div className="space-y-4 mb-12 text-[15px]">
+        <div className="flex gap-1">
+          <span className="w-[140px] shrink-0">Received From :</span>
+          <span className="font-medium underline decoration-gray-300 underline-offset-4">{receivedFrom}</span>
+        </div>
+        <div className="flex gap-1">
+          <span className="w-[140px] shrink-0">Address:</span>
+          <span className="font-medium flex-1 underline decoration-gray-300 underline-offset-4">{address}</span>
+        </div>
+      </div>
+
+      {/* Invoice Details Table */}
+      <div className="mb-10">
+        <div className="grid grid-cols-[120px_1fr_180px] gap-4 mb-4">
+          <div className="font-bold underline underline-offset-8 decoration-1">Invoice</div>
+          <div className="font-bold underline underline-offset-8 decoration-1 pl-4">Description</div>
+          <div className="font-bold underline underline-offset-8 decoration-1 text-right">Total Amount</div>
         </div>
 
-        {/* Invoice Details Grid */}
-        <div className="mt-8">
-          <div className="grid grid-cols-[1fr_2fr_1fr] gap-4 mb-4">
-            <div className="font-bold underline decoration-1 underline-offset-4">
-              Invoice
-            </div>
-            <div className="font-bold underline decoration-1 underline-offset-4">
-              Description
-            </div>
-            <div className="font-bold underline decoration-1 underline-offset-4 text-right">
-              Total Amount
-            </div>
-          </div>
-
-          {/* Show individual items if available */}
+        <div className="space-y-3 min-h-[100px]">
           {items && items.length > 0 ? (
-            <>
-              {items.map((item, index) => (
-                <div key={index} className="grid grid-cols-[1fr_2fr_1fr] gap-4 mb-2">
-                  <div>{invoiceNo}</div>
-                  <div className="whitespace-pre-line">{item.description}</div>
-                  <div className="text-right">
-                    ${' '}
-                    {typeof item.amount === 'number' ? item.amount.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                    }) : '0.00'}
-                  </div>
-                </div>
-              ))}
-              
-              {/* Total Line */}
-              <div className="flex justify-end items-center gap-8 mb-2 mt-4 pt-2 border-t border-gray-300">
-                <span className="font-bold">Total :</span>
-                <div className="border-t-2 border-b-2 border-black py-1 min-w-[150px] text-right font-bold">
-                  ${' '}
-                  {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                  }) : '0.00'}
+            items.map((item, idx) => (
+              <div key={idx} className="grid grid-cols-[120px_1fr_180px] gap-4 text-[15px]">
+                <div className="py-1">{invoiceNo}</div>
+                <div className="pl-4 py-1 whitespace-pre-line">{item.description}</div>
+                <div className="text-right py-1 font-medium">
+                  $ {formattedAmount(item.amount)}
                 </div>
               </div>
-            </>
+            ))
           ) : (
-            // Fallback to single description if no items
-            <>
-              <div className="grid grid-cols-[1fr_2fr_1fr] gap-4 mb-8">
-                <div>{invoiceNo}</div>
-                <div className="whitespace-pre-line">{description}</div>
-                <div className="text-right">
-                  ${' '}
-                  {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                  }) : '0.00'}
-                </div>
+            <div className="grid grid-cols-[120px_1fr_180px] gap-4 text-[15px]">
+              <div className="py-1">{invoiceNo}</div>
+              <div className="pl-4 py-1 whitespace-pre-line">{description}</div>
+              <div className="text-right py-1 font-medium">
+                $ {formattedAmount(totalAmount)}
               </div>
-
-              {/* Total Line */}
-              <div className="flex justify-end items-center gap-8 mb-2">
-                <span className="font-bold">Total :</span>
-                <div className="border-t-2 border-b-2 border-black py-1 min-w-[150px] text-right font-bold">
-                  ${' '}
-                  {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                  }) : '0.00'}
-                </div>
-              </div>
-            </>
+            </div>
           )}
-
-          {/* Double line effect for total */}
-          <div className="flex justify-end">
-            <div className="h-px bg-black w-[150px] -mt-1"></div>
-          </div>
         </div>
 
-        <div className="grid grid-cols-[100px_1fr] gap-4 mt-8">
-          <span>Dollars :</span>
-          <span>{dollarsInWords}</span>
+        {/* Total Row */}
+        <div className="flex justify-end mt-8">
+          <div className="flex items-center gap-16 font-bold text-[16px]">
+            <span>Total :</span>
+            <div className="min-w-[180px] text-right">
+              <div className="border-t-2 border-black pt-2 pb-1">
+                $ {formattedAmount(totalAmount)}
+              </div>
+              <div className="border-t-2 border-b border-black h-1 -mt-0.5"></div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="mt-24 flex justify-between items-end">
-        <div className="w-1/3 border-t-2 border-black pt-2">
-          {paymentMethod}
+      {/* Amount in Words */}
+      <div className="flex gap-4 mb-32 text-[15px]">
+        <span className="w-[100px] shrink-0">Dollars :</span>
+        <span className="flex-1 font-medium italic underline decoration-gray-300 underline-offset-4 leading-relaxed">
+          {dollarsInWords}
+        </span>
+      </div>
+
+      {/* Footer / Signature lines */}
+      <div className="flex justify-between items-end">
+        <div className="w-[350px] border-t border-black pt-3">
+          <span className="text-[14px] uppercase tracking-wide">{paymentMethod}</span>
         </div>
-        <div className="w-1/3 border-t-2 border-black pt-2 text-right text-sm">
-          The Order of Friars Minor (S) Ltd
+        <div className="w-[350px] border-t border-black pt-3 text-right">
+          <span className="text-[14px]">The Order of Friars Minor (S) Ltd</span>
         </div>
       </div>
     </div>

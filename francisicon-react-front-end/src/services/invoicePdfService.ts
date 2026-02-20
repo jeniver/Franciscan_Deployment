@@ -410,7 +410,7 @@ const generateInvoiceHtmlTemplate = (data: InvoiceData): string => {
     <div class="info-grid">
         <div>
             <span class="info-label">Name :</span> ${data.applicantName || 'N/A'}<br>
-            <span class="info-label">Address :</span> ${data.applicantAddress || 'Blk:,,, Singapore'}
+            <span class="info-label">Address :</span> ${(data.applicantAddress || 'Blk:,,, Singapore').replace(/\n/g, '<br>')}
         </div>
         <div>
             <span class="info-label">Invoice No :</span> ${data.invoiceNo || 'N/A'}<br>

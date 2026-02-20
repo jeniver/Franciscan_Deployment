@@ -18,16 +18,16 @@ const WakeRoomBooking = require('../models/WakeRoomBooking');
 const toDate = (value, baseDate = null) => {
   if (!value) return null;
   if (value instanceof Date) return value;
-  
+
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    
+
     // Handle time-only format (HH:MM or HH:MM:SS)
     if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(trimmed)) {
       if (baseDate) {
         const base = toDate(baseDate);
         if (!base) return null;
-        
+
         const [hours, minutes, seconds = '0'] = trimmed.split(':');
         const result = new Date(base);
         result.setHours(parseInt(hours, 10), parseInt(minutes, 10), parseInt(seconds, 10), 0);
@@ -39,13 +39,13 @@ const toDate = (value, baseDate = null) => {
       result.setHours(parseInt(hours, 10), parseInt(minutes, 10), parseInt(seconds, 10), 0);
       return result;
     }
-    
+
     // Handle date-only format (YYYY-MM-DD)
     if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
       const date = new Date(trimmed + 'T00:00:00.000Z');
       return Number.isNaN(date.getTime()) ? null : date;
     }
-    
+
     // Handle ISO-like format without timezone (YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS)
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) {
       // Add seconds and milliseconds if missing, then try parsing
@@ -65,12 +65,12 @@ const toDate = (value, baseDate = null) => {
       }
       return Number.isNaN(date.getTime()) ? null : date;
     }
-    
+
     // Try standard Date parsing (handles full ISO 8601)
     const date = new Date(trimmed);
     return Number.isNaN(date.getTime()) ? null : date;
   }
-  
+
   return null;
 };
 
@@ -427,7 +427,7 @@ class WakeRoomRepository extends BaseRepository {
       const result = await executeQuery(query, { wakeRoomId, minDate, maxDate });
 
       const bookings = result.recordset.map(row => new WakeRoomBooking(row));
-      
+
       // Group bookings by date
       const bookingsByDate = new Map();
       dateStrings.forEach(dateStr => {
@@ -437,7 +437,7 @@ class WakeRoomRepository extends BaseRepository {
       bookings.forEach(booking => {
         const bookingDate = new Date(booking.usingDate);
         const bookingDateStr = bookingDate.toISOString().split('T')[0];
-        
+
         // Check if this booking's date is in our requested dates
         if (dateStrings.includes(bookingDateStr)) {
           const existing = bookingsByDate.get(bookingDateStr) || [];
@@ -464,49 +464,64 @@ class WakeRoomRepository extends BaseRepository {
     try {
       logger.info('Searching wake room bookings');
 
-      let query = `
+      const page = searchParams.page || 1;
+      const pageSize = searchParams.pageSize || 10;
+      const offset = (page - 1) * pageSize;
+
+      let baseWhere = 'wrb.ChurchId = @churchId AND wrb.Status >= 0';
+      const params = { churchId: searchParams.churchId };
+
+      if (searchParams.code) {
+        baseWhere += ' AND wrb.Code LIKE @code';
+        params.code = `%${searchParams.code}%`;
+      }
+
+      if (searchParams.applicantName) {
+        baseWhere += ' AND wrb.ApplicantName LIKE @applicantName';
+        params.applicantName = `%${searchParams.applicantName}%`;
+      }
+
+      if (searchParams.nameOfDeceased) {
+        baseWhere += ' AND wrb.NameOfDeceased LIKE @nameOfDeceased';
+        params.nameOfDeceased = `%${searchParams.nameOfDeceased}%`;
+      }
+
+      if (searchParams.usingDate) {
+        baseWhere += ' AND CONVERT(DATE, wrb.UsingDate) = CONVERT(DATE, @usingDate)';
+        params.usingDate = toDate(searchParams.usingDate) || searchParams.usingDate;
+      }
+
+      if (searchParams.wakeRoomId) {
+        baseWhere += ' AND wrb.WakeRoomId = @wakeRoomId';
+        params.wakeRoomId = searchParams.wakeRoomId;
+      }
+
+      // 1. Get total count
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM WakeRoomBooking wrb WITH (NOLOCK)
+        LEFT JOIN WakeRoom wr WITH (NOLOCK) ON wrb.WakeRoomId = wr.WakeRoomId
+        WHERE ${baseWhere}
+      `;
+
+      const countResult = await executeQuery(countQuery, params);
+      const total = countResult.recordset[0].total;
+
+      // 2. Get paginated data
+      const query = `
         SELECT 
           wrb.*,
           wr.Code AS WakeRoomCode,
           wr.Name AS WakeRoomName
         FROM WakeRoomBooking wrb WITH (NOLOCK)
         LEFT JOIN WakeRoom wr WITH (NOLOCK) ON wrb.WakeRoomId = wr.WakeRoomId
-        WHERE wrb.ChurchId = @churchId
+        WHERE ${baseWhere}
+        ORDER BY wrb.WakeRoomBookingId DESC
+        OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
       `;
 
-      const params = { churchId: searchParams.churchId };
-
-      // Add dynamic filters
-      if (searchParams.code) {
-        query += ' AND wrb.Code LIKE @code';
-        params.code = `%${searchParams.code}%`;
-      }
-
-      if (searchParams.applicantName) {
-        query += ' AND wrb.ApplicantName LIKE @applicantName';
-        params.applicantName = `%${searchParams.applicantName}%`;
-      }
-
-      if (searchParams.nameOfDeceased) {
-        query += ' AND wrb.NameOfDeceased LIKE @nameOfDeceased';
-        params.nameOfDeceased = `%${searchParams.nameOfDeceased}%`;
-      }
-
-      if (searchParams.usingDate) {
-        query += ' AND CONVERT(DATE, wrb.UsingDate) = CONVERT(DATE, @usingDate)';
-        // Convert date string to Date object if needed
-        params.usingDate = toDate(searchParams.usingDate) || searchParams.usingDate;
-      }
-
-      if (searchParams.wakeRoomId) {
-        query += ' AND wrb.WakeRoomId = @wakeRoomId';
-        params.wakeRoomId = searchParams.wakeRoomId;
-      }
-
-      // Exclude deleted bookings (Status = -1)
-      query += ' AND wrb.Status >= 0';
-
-      query += ' ORDER BY wrb.UsingTimeFrom DESC';
+      params.offset = offset;
+      params.pageSize = pageSize;
 
       const result = await executeQuery(query, params);
 
@@ -521,8 +536,15 @@ class WakeRoomRepository extends BaseRepository {
         return booking;
       });
 
-      logger.info(`Found ${bookings.length} booking(s)`);
-      return bookings;
+      logger.info(`Found ${bookings.length} booking(s) (Page ${page} of ${Math.ceil(total / pageSize)})`);
+
+      return {
+        bookings,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize)
+      };
     } catch (error) {
       logger.error('Error searching wake bookings:', error.message);
       throw error;
@@ -709,6 +731,34 @@ class WakeRoomRepository extends BaseRepository {
       return booking.wakeRoomBookingId;
     } catch (error) {
       logger.error('Error updating wake room booking:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get last booking code matching a prefix
+   * @param {string} prefix - Prefix to search for
+   * @param {number} churchId - Church ID
+   * @returns {Promise<string|null>} Last code or null
+   */
+  async getLastBookingCodeByPrefix(prefix, churchId) {
+    try {
+      const query = `
+        SELECT TOP 1 Code
+        FROM WakeRoomBooking WITH (NOLOCK)
+        WHERE ChurchId = @churchId
+        AND Code LIKE @prefixPattern
+        ORDER BY LEN(Code) DESC, Code DESC
+      `;
+
+      const result = await executeQuery(query, {
+        churchId,
+        prefixPattern: prefix + '%'
+      });
+
+      return result.recordset.length > 0 ? result.recordset[0].Code : null;
+    } catch (error) {
+      logger.error('Error getting last booking code by prefix:', error.message);
       throw error;
     }
   }

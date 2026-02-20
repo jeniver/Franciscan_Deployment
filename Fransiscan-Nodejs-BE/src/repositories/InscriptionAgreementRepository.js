@@ -20,7 +20,7 @@ class InscriptionAgreementRepository {
 
       const searchCode = inscriptionCode.trim();
       logger.info(`Fetching inscription agreement details for code: ${searchCode}, churchId: ${churchId}`);
-      
+
       // Log detailed search information
       logger.info(`[DEBUG] Searching for inscription code: ${searchCode}`);
       if (churchId) {
@@ -30,12 +30,12 @@ class InscriptionAgreementRepository {
       // Handle ID-based lookup for INCR-ID format
       let query;
       let params;
-      
+
       if (searchCode.match(/^INCR-\d+$/)) {
         // ID-based lookup: INCR-20623 format
         const inscriptionId = parseInt(searchCode.replace('INCR-', ''));
         logger.info(`Using ID-based lookup for inscription ID: ${inscriptionId}`);
-        
+
         query = `
           SELECT 
             nir.NicheInscriptionRequestId,
@@ -94,7 +94,11 @@ class InscriptionAgreementRepository {
             nir.AdditionalInscriptionPhrase,
             
             -- Bible choice information
-            bic.BibleInscriptionChoiceNoValue
+            bic.BibleInscriptionChoiceNoValue,
+            
+            -- Storage period
+            nir.StorageFrom,
+            nir.StorageTo
             
           FROM NicheInscriptionRequest nir WITH(NOLOCK)
           INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
@@ -177,7 +181,11 @@ class InscriptionAgreementRepository {
             nir.AdditionalInscriptionPhrase,
             
             -- Bible choice information
-            bic.BibleInscriptionChoiceNoValue
+            bic.BibleInscriptionChoiceNoValue,
+            
+            -- Storage period
+            nir.StorageFrom,
+            nir.StorageTo
             
           FROM NicheInscriptionRequest nir WITH(NOLOCK)
           INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
@@ -209,12 +217,12 @@ class InscriptionAgreementRepository {
 
       logger.info(`[DEBUG] Executing query with params:`, params);
       logger.info(`[DEBUG] Query: ${query}`);
-      
+
       const result = await executeQuery(query, params, { timeout: 15000 });
 
       if (!result.recordset || result.recordset.length === 0) {
         logger.info(`No inscription agreement found for code: ${searchCode}`);
-        
+
         // Debug: Log what we actually found in the database
         try {
           const debugQuery = `
@@ -229,10 +237,10 @@ class InscriptionAgreementRepository {
             WHERE nir.Code LIKE '%${searchCode}%'
             ORDER BY nir.NicheInscriptionRequestId DESC
           `;
-          
+
           const debugResult = await executeQuery(debugQuery, {}, { timeout: 10000 });
           if (debugResult.recordset && debugResult.recordset.length > 0) {
-            logger.info(`[DEBUG] Found similar records for code ${searchCode}:`, 
+            logger.info(`[DEBUG] Found similar records for code ${searchCode}:`,
               debugResult.recordset.map(r => ({
                 code: r.Code,
                 refDocType: r.RefDocType,
@@ -246,7 +254,7 @@ class InscriptionAgreementRepository {
         } catch (debugError) {
           logger.warn(`[DEBUG] Failed to run debug query:`, debugError.message);
         }
-        
+
         return null;
       }
 
@@ -260,7 +268,7 @@ class InscriptionAgreementRepository {
             deceasedDetails: []
           };
         }
-        
+
         // Add deceased details if present
         if (row.DeceasedName) {
           groupedResults[key].deceasedDetails.push({
@@ -276,7 +284,7 @@ class InscriptionAgreementRepository {
 
       // Return the first (and typically only) inscription request
       const agreementDetails = Object.values(groupedResults)[0];
-      
+
       logger.info(`Found inscription agreement details for code: ${searchCode}`, {
         inscriptionId: agreementDetails.NicheInscriptionRequestId,
         code: agreementDetails.InscriptionCode,
@@ -284,7 +292,7 @@ class InscriptionAgreementRepository {
         churchId: agreementDetails.ChurchId,
         deceasedCount: agreementDetails.deceasedDetails?.length || 0
       });
-      
+
       return agreementDetails;
     } catch (error) {
       logger.error('Failed to get inscription agreement details:', error);
@@ -301,7 +309,7 @@ class InscriptionAgreementRepository {
   async getCrystalReportsInfo(inscriptionCode, churchId = null) {
     try {
       const agreementDetails = await this.getAgreementDetailsByCode(inscriptionCode, churchId);
-      
+
       if (!agreementDetails) {
         return null;
       }
@@ -312,7 +320,7 @@ class InscriptionAgreementRepository {
         InscriptionCode: agreementDetails.InscriptionCode,
         ApplicationCode: agreementDetails.ApplicationCode,
         AgreementDate: agreementDetails.InscriptionCreatedOn,
-        
+
         // Applicant information
         ApplicantName: agreementDetails.ApplicantName,
         ApplicantNRIC: agreementDetails.ApplicantIDNo,
@@ -327,32 +335,32 @@ class InscriptionAgreementRepository {
           agreementDetails.ApplicantAddressState,
           agreementDetails.ApplicantAddressCountry
         ),
-        
+
         // Niche information
         NicheCode: agreementDetails.NicheCode,
         Chapel: agreementDetails.ChapelName,
         Wall: agreementDetails.WallName,
         Row: agreementDetails.RowCode,
         NicheDescription: agreementDetails.AppearanceDescription,
-        
+
         // Contact person
         ContactPersonName: agreementDetails.ContactPersonName,
         ContactPersonNRIC: agreementDetails.ContactPersonIDNo,
         ContactPersonMobile: agreementDetails.ContactPersonMobile,
         ContactPersonEmail: agreementDetails.ContactPersonEmail,
-        
+
         // Nominees
         Nominee1Name: agreementDetails.NomineeName,
         Nominee1NRIC: agreementDetails.NomineeIDNo,
         Nominee2Name: agreementDetails.Nominee2Name,
         Nominee2NRIC: agreementDetails.Nominee2IDNo,
-        
+
         // Inscription details
         BibleInscriptionChoice: agreementDetails.BibleInscriptionChoiceNoValue,
         BibleInscriptionText: agreementDetails.BibleInscriptionText,
         AdditionalInscriptionPhrase: agreementDetails.AdditionalInscriptionPhrase,
         InscriptionRemarks: agreementDetails.InscriptionRemarks,
-        
+
         // Deceased details (formatted for report)
         DeceasedCount: agreementDetails.deceasedDetails.length,
         DeceasedDetails: agreementDetails.deceasedDetails.map(deceased => ({
@@ -382,7 +390,7 @@ class InscriptionAgreementRepository {
   async getPdfData(inscriptionCode, churchId = null) {
     try {
       const agreementDetails = await this.getAgreementDetailsByCode(inscriptionCode, churchId);
-      
+
       if (!agreementDetails) {
         return null;
       }
@@ -394,7 +402,7 @@ class InscriptionAgreementRepository {
         inscriptionCode: agreementDetails.InscriptionCode,
         applicationCode: agreementDetails.ApplicationCode,
         createdDate: agreementDetails.InscriptionCreatedOn,
-        
+
         // Applicant section
         applicant: {
           name: agreementDetails.ApplicantName,
@@ -411,7 +419,7 @@ class InscriptionAgreementRepository {
             agreementDetails.ApplicantAddressCountry
           )
         },
-        
+
         // Niche details
         niche: {
           code: agreementDetails.NicheCode,
@@ -420,7 +428,7 @@ class InscriptionAgreementRepository {
           row: agreementDetails.RowCode,
           description: agreementDetails.AppearanceDescription
         },
-        
+
         // Contact person
         contactPerson: {
           name: agreementDetails.ContactPersonName,
@@ -428,7 +436,7 @@ class InscriptionAgreementRepository {
           mobile: agreementDetails.ContactPersonMobile,
           email: agreementDetails.ContactPersonEmail
         },
-        
+
         // Nominees
         nominees: [
           agreementDetails.NomineeName ? {
@@ -440,19 +448,26 @@ class InscriptionAgreementRepository {
             nric: agreementDetails.Nominee2IDNo
           } : null
         ].filter(Boolean),
-        
+
         // Inscription details
         inscription: {
           bibleChoiceId: agreementDetails.BibleInscriptionChoiceId,
           bibleChoiceText: agreementDetails.BibleInscriptionChoiceNoValue,
           bibleText: agreementDetails.BibleInscriptionText,
           additionalPhrase: agreementDetails.AdditionalInscriptionPhrase,
-          remarks: agreementDetails.InscriptionRemarks
+          remarks: agreementDetails.InscriptionRemarks,
+          crossType: agreementDetails.CrossType || 'Crucifix'
         },
-        
+
         // Deceased details
         deceased: agreementDetails.deceasedDetails,
-        
+
+        // Storage period (using internmentDate as fallback)
+        storage: {
+          storageFrom: agreementDetails.StorageFrom || agreementDetails.deceasedDetails?.[0]?.internmentDate || null,
+          storageTo: agreementDetails.StorageTo || agreementDetails.deceasedDetails?.[0]?.internmentDate || null
+        },
+
         // Status information
         status: this.getStatusText(agreementDetails.InscriptionStatus),
         formattedDate: new Date(agreementDetails.InscriptionCreatedOn).toLocaleDateString('en-SG', {

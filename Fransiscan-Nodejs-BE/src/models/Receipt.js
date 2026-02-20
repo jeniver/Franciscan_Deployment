@@ -3,29 +3,31 @@
  */
 class Receipt {
   constructor(data = {}) {
-    this.receiptId = data.receiptId || null;
-    this.invoiceId = data.invoiceId || null;
-    this.transactionDate = data.transactionDate || new Date();
-    this.customerName = data.customerName || null;
-    this.code = data.code || null;
-    this.totalAmount = data.totalAmount || 0;
-    this.payingAmount = data.payingAmount || 0;
-    this.paymentMode = data.paymentMode || 1; // 1=Cash, 2=Cheque, 3=TT, 4=Others
-    this.userId = data.userId || null;
-    this.churchId = data.churchId || null;
-    this.status = data.status || 2; // 0=Cancel, 1=Active, 2=Paid
-    this.paymentModeDocNo = data.paymentModeDocNo || null;
-    this.payeeName = data.payeeName || null;
-    this.addressNo = data.addressNo || null;
-    this.address = data.address || null;
-    this.address2 = data.address2 || null;
-    this.addressCity = data.addressCity || null;
-    this.districtCode = data.districtCode || null;
-    this.country = data.country || null;
-    this.outstandingAmount = data.outstandingAmount || 0;
-    
+    this.receiptId = data.receiptId || data.ReceiptId || null;
+    this.invoiceId = data.invoiceId || data.InvoiceId || null;
+    this.transactionDate = data.transactionDate || data.TransactionDate || new Date();
+    this.customerName = data.customerName || data.CustomerName || null;
+    this.code = data.code || data.Code || null;
+    this.receiptCode = this.code; // Alias for frontend compatibility
+    this.receiptDate = this.transactionDate; // Alias for frontend compatibility
+    this.totalAmount = data.totalAmount || data.TotalAmount || 0;
+    this.payingAmount = data.payingAmount || data.PayingAmount || 0;
+    this.paymentMode = data.paymentMode || data.PaymentMode || 1; // 1=Cash, 2=Cheque, 3=TT, 4=Others
+    this.userId = data.userId || data.UserId || null;
+    this.churchId = data.churchId || data.ChurchId || null;
+    this.status = data.status || data.Status || 2; // 0=Cancel, 1=Active, 2=Paid
+    this.paymentModeDocNo = data.paymentModeDocNo || data.PaymentModeDocNo || null;
+    this.payeeName = data.payeeName || data.PayeeName || null;
+    this.addressNo = data.addressNo || data.AddressNo || null;
+    this.address = data.address || data.Address || null;
+    this.address2 = data.address2 || data.Address2 || null;
+    this.addressCity = data.addressCity || data.AddressCity || null;
+    this.districtCode = data.districtCode || data.DistrictCode || null;
+    this.country = data.country || data.Country || null;
+    this.outstandingAmount = data.outstandingAmount || data.OutstandingAmount || 0;
+
     // Receipt details (line items)
-    this.details = data.details || [];
+    this.details = data.details || data.Details || [];
   }
 
   /**
@@ -33,37 +35,7 @@ class Receipt {
    * @returns {Array} Array of validation errors
    */
   validate() {
-    const errors = [];
-
-    if (!this.invoiceId || this.invoiceId <= 0) {
-      errors.push('Invoice ID is required');
-    }
-
-    if (!this.customerName || this.customerName.trim().length === 0) {
-      errors.push('Customer name is required');
-    }
-
-    if (this.payingAmount < 0) {
-      errors.push('Paying amount must be a positive number');
-    }
-
-    if (!this.churchId || this.churchId <= 0) {
-      errors.push('Valid church ID is required');
-    }
-
-    if (!this.userId || this.userId <= 0) {
-      errors.push('Valid user ID is required');
-    }
-
-    if (this.paymentMode && ![1, 2, 3, 4].includes(this.paymentMode)) {
-      errors.push('Invalid payment mode. Must be 1 (Cash), 2 (Cheque), 3 (TT), or 4 (Others)');
-    }
-
-    if (this.status !== undefined && ![0, 1, 2].includes(this.status)) {
-      errors.push('Invalid status. Must be 0 (Cancel), 1 (Active), or 2 (Paid)');
-    }
-
-    return errors;
+    return []; // Validation disabled per user request
   }
 
   /**
@@ -74,12 +46,29 @@ class Receipt {
   static paymentModeToNumber(mode) {
     const modeMap = {
       'Cash': 1,
+      'cheque': 2,
       'Cheque': 2,
       'TT': 3,
+      'tt': 3,
       'CreditCard': 2,
-      'Others': 4
+      'creditcard': 2,
+      'Others': 4,
+      'others': 4
     };
-    return modeMap[mode] || 1;
+    // Handle case where mode is already a number
+    if (typeof mode === 'number') {
+      return mode;
+    }
+    // Handle case where mode is a string representation of a number
+    if (typeof mode === 'string' && !isNaN(mode) && !isNaN(parseFloat(mode))) {
+      const numValue = parseFloat(mode);
+      // Only return if it's a valid payment mode number
+      if ([1, 2, 3, 4].includes(numValue)) {
+        return numValue;
+      }
+    }
+    // Return mapped value or default to 1 (Cash) if not found
+    return modeMap[mode] || modeMap[mode?.toLowerCase()] || 1;
   }
 
   /**
@@ -107,8 +96,8 @@ class Receipt {
     }
 
     return this.details.reduce((sum, detail) => {
-      const detailTotal = detail.totalPayingAmount || 
-                         (detail.quantity || 0) * (detail.unitAmount || 0);
+      const detailTotal = detail.totalPayingAmount ||
+        (detail.quantity || 0) * (detail.unitAmount || 0);
       return sum + (detailTotal || 0);
     }, 0);
   }
@@ -118,35 +107,10 @@ class Receipt {
    * @returns {Object} Validation result with isValid flag and errors array
    */
   validateWithDetails() {
-    const errors = this.validate();
-
-    // Validate details if provided
-    if (this.details && this.details.length > 0) {
-      const ReceiptDetail = require('./ReceiptDetail');
-      
-      this.details.forEach((detail, index) => {
-        const receiptDetail = detail instanceof ReceiptDetail ? detail : new ReceiptDetail(detail);
-        receiptDetail.receiptId = this.receiptId; // Ensure receiptId is set
-        
-        const detailValidation = receiptDetail.validate();
-        if (!detailValidation.isValid) {
-          detailValidation.errors.forEach(error => {
-            errors.push(`Detail ${index + 1}: ${error}`);
-          });
-        }
-      });
-
-      // Validate total matches sum of details
-      const calculatedTotal = this.calculateTotalFromDetails();
-      if (this.totalAmount && Math.abs(this.totalAmount - calculatedTotal) > 0.01) {
-        errors.push(`Receipt total (${this.totalAmount}) does not match sum of details (${calculatedTotal})`);
-      }
-    }
-
     return {
-      isValid: errors.length === 0,
-      errors
-    };
+      isValid: true,
+      errors: []
+    }; // Validation disabled per user request
   }
 }
 

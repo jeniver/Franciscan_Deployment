@@ -6,9 +6,12 @@ export interface InvoiceFlags {
   isApplicationData: boolean;
   isInvoice: boolean;
   hasInvoice: boolean;
+  hasReceipt: boolean;
   canCreateInvoice: boolean;
   canCreateReceipt: boolean;
 }
+
+
 
 export interface InvoiceDetail {
   invoiceDetailId?: number | null;
@@ -29,6 +32,20 @@ export interface InvoiceDetail {
   lineTotalAmount: number;
   lineTaxPercent: number;
   lineTaxAmount: number;
+  UnitAmount?: number;
+  Quantity?: number;
+  LineTotalAmount?: number;
+  LineTaxPercent?: number;
+  LineTaxAmount?: number;
+  TotalPayingAmount?: number;
+  RefDocNumber?: string;
+  ItemId?: number;
+  ItemName?: string;
+  ItemPrice?: number;
+  PayingAmount?: number;
+  unitPrice?: number;
+  amount?: number;
+  taxPercent?: number;
 }
 
 export interface NicheInfo {
@@ -63,13 +80,13 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
   code: string | null;
   applicationCode?: string;
   nicheApplicationId?: number;
-  
+
   // Customer Info
   customerName: string;
   applicantIDNo?: string;
   applicantEmail?: string;
   applicantMobile?: string;
-  
+
   // Address
   addressNo?: string;
   address?: string;
@@ -77,7 +94,7 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
   addressCity?: string;
   districtCode?: string;
   country?: string;
-  
+
   // Financial
   totalAmount: number;
   payingAmount: number;
@@ -85,7 +102,7 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
   taxPercentage: number;
   taxCode: string | null;
   paymentMode?: string | null;
-  
+
   // System
   userId: number;
   churchId: number;
@@ -93,16 +110,23 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
   transactionDate: string;
   refDocNumber?: string;
   refDocName?: string;
-  
+  payeeName?: string;
+  paymentModeDocNo?: string;
+  PaymentMode?: string;
+  PaymentModeDocNo?: string;
+  InvoiceCode?: string;
+  invoiceCode?: string;
+  receipt?: any;
+
   // Niche Info (only in application data)
   niche?: NicheInfo | null;
-  
+
   // Booking Info (only in application data)
   booking?: BookingInfo | null;
-  
+
   // Details
   details: InvoiceDetail[];
-  
+
   // Summary
   summary: {
     totalItems: number;
@@ -110,6 +134,16 @@ export interface InvoiceOrApplicationData extends InvoiceFlags {
     totalTax: number;
     grandTotal: number;
   };
+}
+
+// Create Invoice Request Type
+export interface CreateIndividualInvoiceRequest {
+  applicationCode: string;
+  customerName: string;
+  totalAmount: number;
+  payingAmount: number;
+  paymentMode: string;
+  paymentModeDocNo?: string;
 }
 
 // Create Invoice Request Type
@@ -157,11 +191,12 @@ interface InvoiceState {
   loading: boolean;
   error: string | null;
   creatingInvoice: boolean;
-  creatingReceipt: boolean;
   createInvoiceSuccess: boolean;
   createReceiptSuccess: boolean;
   lastCreatedInvoiceCode: string | null;
   lastCreatedReceiptCode: string | null;
+  canCreateInvoice: boolean;
+  canCreateReceipt: boolean;
 }
 
 const initialState: InvoiceState = {
@@ -169,11 +204,12 @@ const initialState: InvoiceState = {
   loading: false,
   error: null,
   creatingInvoice: false,
-  creatingReceipt: false,
   createInvoiceSuccess: false,
   createReceiptSuccess: false,
   lastCreatedInvoiceCode: null,
   lastCreatedReceiptCode: null,
+  canCreateInvoice: true,
+  canCreateReceipt: true,
 };
 
 // Async thunks
@@ -181,32 +217,37 @@ const initialState: InvoiceState = {
 // Fetch invoice or application by code
 export const fetchInvoiceOrApplication = createAsyncThunk<
   InvoiceOrApplicationData,
-  string,
+  string | { code: string; type?: string },
   { rejectValue: string }
 >(
   'invoice/fetchInvoiceOrApplication',
-  async (code: string, { rejectWithValue }) => {
+  async (arg, { rejectWithValue }) => {
     try {
-      const response = await api.get(`/api/invoices/${code.trim()}`);
+      let code: string;
+      let type: string | undefined;
 
-      // Backend can return either:
-      // 1) { success: true, message: "...", data: { ...InvoiceOrApplicationData } }
-      // 2) { ...InvoiceOrApplicationData } (direct)
-      const body = response.data;
-      if (body && typeof body === 'object' && 'success' in body && 'data' in body) {
-        const wrapped: any = body;
-        if (wrapped.success === true && wrapped.data) {
-          return wrapped.data as InvoiceOrApplicationData;
-        }
-        return rejectWithValue(wrapped.message || 'Failed to fetch data');
+      if (typeof arg === 'string') {
+        code = arg;
+      } else {
+        code = arg.code;
+        type = arg.type;
       }
 
-      return body as InvoiceOrApplicationData;
+      // Use invoiceService instead of direct API call to consistency utilize the updated service method
+      // which handles the type parameter correctly
+      try {
+        const invoiceService = (await import('../services/invoiceService')).default;
+        const data = await invoiceService.getInvoiceByCode(code.trim(), type);
+        return data as InvoiceOrApplicationData;
+      } catch (serviceError: any) {
+        // Fallback or rethrow service error
+        throw serviceError;
+      }
     } catch (error: any) {
-      if (error.response?.status === 404) {
+      if (error.statusCode === 404 || error.response?.status === 404) {
         return rejectWithValue('Invoice or application not found');
       }
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch data');
+      return rejectWithValue(error.message || error.response?.data?.message || 'Failed to fetch data');
     }
   }
 );
@@ -253,11 +294,11 @@ export const createInvoice = createAsyncThunk<
     try {
       // Backend route: POST /api/invoices  (expects { invoice, invoiceDetails, createReceipt })
       const response = await api.post('/api/invoices', payload);
-      
+
       if (response.data.success === false) {
         return rejectWithValue(response.data.message || 'Failed to create invoice');
       }
-      
+
       return {
         invoiceId: response.data.data?.invoiceId || response.data.invoiceId,
         invoiceCode: response.data.data?.invoiceCode || response.data.invoiceCode,
@@ -273,6 +314,50 @@ export const createInvoice = createAsyncThunk<
   }
 );
 
+
+
+// Create individual invoice from application
+export interface IndividualInvoiceResponse {
+  invoiceCode: string;
+  receiptCreated?: boolean;
+  hasInvoice: boolean;
+  hasReceipt: boolean;
+  canCreateInvoice: boolean;
+  canCreateReceipt: boolean;
+  invoiceDetails: any;
+}
+
+export const createIndividualInvoice = createAsyncThunk<
+  IndividualInvoiceResponse,
+  CreateIndividualInvoiceRequest,
+  { rejectValue: string }
+>(
+  'invoice/createIndividualInvoice',
+  async (payload: CreateIndividualInvoiceRequest, { rejectWithValue }) => {
+    try {
+      // Backend route: POST /api/invoices/individual
+      const response = await api.post('/api/invoices/individual', payload);
+
+      if (response.data.success === false) {
+        return rejectWithValue(response.data.message || 'Failed to create individual invoice');
+      }
+
+      return {
+        invoiceCode: response.data.data?.invoiceCode || response.data.invoiceCode,
+        receiptCreated: response.data.receiptCreated,
+        hasInvoice: response.data.data?.hasInvoice || true,
+        hasReceipt: response.data.data?.hasReceipt || false,
+        canCreateInvoice: response.data.data?.canCreateInvoice || false,
+        canCreateReceipt: response.data.data?.canCreateReceipt || true,
+        invoiceDetails: response.data.data?.invoiceDetails || null
+      };
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to create individual invoice');
+    }
+  }
+);
+
+
 // Invoice slice
 const invoiceSlice = createSlice({
   name: 'invoice',
@@ -285,7 +370,10 @@ const invoiceSlice = createSlice({
       state.createReceiptSuccess = false;
       state.lastCreatedInvoiceCode = null;
       state.lastCreatedReceiptCode = null;
+      state.canCreateInvoice = true;
+      state.canCreateReceipt = true;
     },
+
     clearError: (state) => {
       state.error = null;
     },
@@ -294,9 +382,13 @@ const invoiceSlice = createSlice({
       state.createReceiptSuccess = false;
       state.lastCreatedInvoiceCode = null;
       state.lastCreatedReceiptCode = null;
+      state.canCreateInvoice = true;
+      state.canCreateReceipt = true;
     },
   },
   extraReducers: (builder) => {
+
+
     // Fetch invoice or application
     builder.addCase(fetchInvoiceOrApplication.pending, (state) => {
       state.loading = true;
@@ -326,116 +418,6 @@ const invoiceSlice = createSlice({
       state.error = action.payload || 'Failed to fetch data';
       state.currentData = null;
     });
-    
-    // Fetch combined invoice and receipt data
-    builder.addCase(fetchCombinedInvoiceReceiptData.pending, (state) => {
-      state.loading = true;
-      state.error = null;
-      state.currentData = null; // Clear previous data
-    });
-    builder.addCase(fetchCombinedInvoiceReceiptData.fulfilled, (state, action) => {
-      state.loading = false;
-      // Map the combined response to the expected format for currentData
-      // The combined response includes invoice, receipt, and flags
-      const combinedData = action.payload;
-      
-      // Use invoice data if available, otherwise create a basic structure
-      if (combinedData.invoice) {
-        state.currentData = {
-          ...combinedData.invoice,
-          isApplicationData: !combinedData.invoice.isInvoice || combinedData.flags.isApplicationData,
-          isInvoice: !!combinedData.invoice.isInvoice,
-          hasInvoice: combinedData.invoiceExists,
-          canCreateInvoice: combinedData.flags.canCreateInvoice,
-          canCreateReceipt: combinedData.flags.canCreateReceipt,
-        };
-      } else if (combinedData.inscriptionData) {
-        // If we have inscription data but no invoice, create a structure based on that
-        state.currentData = {
-          invoiceId: null,
-          code: combinedData.code,
-          customerName: combinedData.inscriptionData.applicant?.name || '',
-          applicantIDNo: '',
-          applicantEmail: '',
-          applicantMobile: '',
-          totalAmount: combinedData.inscriptionData.summary?.grandTotal || 0,
-          payingAmount: combinedData.inscriptionData.summary?.grandTotal || 0,
-          taxAmount: combinedData.inscriptionData.summary?.totalTax || 0,
-          taxPercentage: 9, // Default GST
-          taxCode: 'GST',
-          transactionDate: new Date().toISOString(),
-          details: combinedData.inscriptionData.details || [],
-          summary: combinedData.inscriptionData.summary || { totalItems: 0, subtotal: 0, totalTax: 0, grandTotal: 0 },
-          isApplicationData: true,
-          isInvoice: false,
-          hasInvoice: false,
-          canCreateInvoice: combinedData.flags.canCreateInvoice,
-          canCreateReceipt: combinedData.flags.canCreateReceipt,
-          userId: 0,
-          churchId: combinedData.churchId,
-          status: 1,
-          paymentMode: 'Cash',
-          applicationCode: combinedData.code,
-          refDocNumber: combinedData.code,
-          refDocName: 'INCR',
-          addressNo: '',
-          address: '',
-          address2: '',
-          addressCity: '',
-          districtCode: '',
-          country: '',
-          niche: null,
-          booking: null,
-          nicheApplicationId: undefined,
-        };
-      } else {
-        // Fallback to basic structure
-        state.currentData = {
-          invoiceId: null,
-          code: combinedData.code,
-          customerName: combinedData.receipt?.customerName || '',
-          applicantIDNo: '',
-          applicantEmail: '',
-          applicantMobile: '',
-          totalAmount: combinedData.receipt?.totalAmount || 0,
-          payingAmount: combinedData.receipt?.payingAmount || 0,
-          taxAmount: 0,
-          taxPercentage: 0,
-          taxCode: null,
-          transactionDate: combinedData.receipt?.transactionDate || new Date().toISOString(),
-          details: [],
-          summary: { totalItems: 0, subtotal: 0, totalTax: 0, grandTotal: 0 },
-          isApplicationData: combinedData.flags.isApplicationData,
-          isInvoice: combinedData.flags.hasInvoice,
-          hasInvoice: combinedData.invoiceExists,
-          canCreateInvoice: combinedData.flags.canCreateInvoice,
-          canCreateReceipt: combinedData.flags.canCreateReceipt,
-          userId: 0,
-          churchId: combinedData.churchId,
-          status: 1,
-          paymentMode: combinedData.receipt?.paymentMode || 'Cash',
-          applicationCode: combinedData.code,
-          refDocNumber: combinedData.code,
-          refDocName: combinedData.receipt?.refDocName || 'NAPP',
-          addressNo: '',
-          address: '',
-          address2: '',
-          addressCity: '',
-          districtCode: '',
-          country: '',
-          niche: null,
-          booking: null,
-          nicheApplicationId: undefined,
-        };
-      }
-      state.error = null;
-    });
-    builder.addCase(fetchCombinedInvoiceReceiptData.rejected, (state, action) => {
-      state.loading = false;
-      state.error = action.payload || 'Failed to fetch combined data';
-      state.currentData = null;
-    });
-    
     // Create invoice
     builder.addCase(createInvoice.pending, (state) => {
       state.creatingInvoice = true;
@@ -450,6 +432,20 @@ const invoiceSlice = createSlice({
         state.lastCreatedReceiptCode = action.payload.receiptCode;
         state.createReceiptSuccess = true;
       }
+
+      // Update currentData flags
+      if (state.currentData) {
+        state.currentData.hasInvoice = true;
+        state.currentData.canCreateInvoice = false;
+        state.currentData.code = action.payload.invoiceCode;
+
+        if (action.payload.receiptCreated || action.payload.receiptCode) {
+          state.currentData.hasReceipt = true;
+          state.currentData.canCreateReceipt = false;
+          // Note: code in currentData specifically refers to invoice code, but can wrap receipt info
+        }
+      }
+
       state.error = null;
     });
     builder.addCase(createInvoice.rejected, (state, action) => {
@@ -457,7 +453,42 @@ const invoiceSlice = createSlice({
       state.createInvoiceSuccess = false;
       state.error = action.payload || 'Failed to create invoice';
     });
-    
+
+    // Create individual invoice
+    builder.addCase(createIndividualInvoice.pending, (state) => {
+      state.creatingInvoice = true;
+      state.error = null;
+      state.createInvoiceSuccess = false;
+    });
+    builder.addCase(createIndividualInvoice.fulfilled, (state, action) => {
+      state.creatingInvoice = false;
+      state.createInvoiceSuccess = true;
+      state.lastCreatedInvoiceCode = action.payload.invoiceCode;
+      if (action.payload.receiptCreated) {
+        state.lastCreatedReceiptCode = action.payload.invoiceCode; // Use invoice code as receipt code if receipt was created
+        state.createReceiptSuccess = true;
+      }
+      // Update button control flags
+      state.canCreateInvoice = action.payload.canCreateInvoice;
+      state.canCreateReceipt = action.payload.canCreateReceipt;
+
+      // Update currentData flags
+      if (state.currentData) {
+        state.currentData.hasInvoice = action.payload.hasInvoice;
+        state.currentData.hasReceipt = action.payload.hasReceipt;
+        state.currentData.canCreateInvoice = action.payload.canCreateInvoice;
+        state.currentData.canCreateReceipt = action.payload.canCreateReceipt;
+        state.currentData.code = action.payload.invoiceCode;
+      }
+
+      state.error = null;
+    });
+    builder.addCase(createIndividualInvoice.rejected, (state, action) => {
+      state.creatingInvoice = false;
+      state.createInvoiceSuccess = false;
+      state.error = action.payload || 'Failed to create individual invoice';
+    });
+
     // Receipt is created together with invoice when createReceipt=true on createInvoice
   },
 });

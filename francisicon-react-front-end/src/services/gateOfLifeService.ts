@@ -1,7 +1,7 @@
 import api from './api';
 
 // Vite exposes env vars via import.meta.env.VITE_*
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:3000';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://192.168.1.24:3000';
 
 // Custom error class for gate of life operations
 export class GateOfLifeError extends Error {
@@ -19,12 +19,6 @@ export class GateOfLifeError extends Error {
 // Types for Gate of Life data
 export interface GateOfLifeApplicant {
   name: string;
-  block: string;
-  blockNo: string;
-  streetName: string;
-  unitNo: string;
-  postalCode: string;
-  country: string;
   mobileNo: string;
   homeTelephone: string;
   officeTelephone: string;
@@ -33,10 +27,6 @@ export interface GateOfLifeApplicant {
 
 export interface GateOfLifeEngraving {
   name: string;
-  relationship: string;
-  dateOfBirth: string;
-  dateOfDeath: string;
-  additionalInfo: string;
 }
 
 export interface GateOfLifeApplication {
@@ -50,7 +40,6 @@ export interface GateOfLifeApplication {
   };
   applicant?: {
     name?: string;
-    idNo?: string | null;
     email?: string | null;
     mobileNo?: string;
     homeTelNo?: string | null;
@@ -79,6 +68,8 @@ export interface GateOfLifeApplication {
   };
   createdAt?: string;
   updatedAt?: string;
+  requestSameBrick?: boolean;
+  donationAmount?: number;
 }
 
 export interface GateOfLifeResponse {
@@ -117,21 +108,26 @@ export interface SearchGateOfLifeParams {
   bookedFrom?: string;
   bookedTo?: string;
   searchTerm?: string;
+  bypassCache?: boolean;
 }
 
 export interface CreateGateOfLifeRequest {
   bookingDate: string;
   applicantName: string;
-  applicantIDNo?: string;
+  applicantIDNo: string;
   applicantEmailID?: string;
   applicantMobileNo: string;
+  applicantHomeTelNo?: string;
+  applicantOfficeTelNo?: string;
   applicantAddressNo?: string;
   applicantAddressLine1?: string;
+  applicantAddressLine2?: string;
   applicantAddressCity?: string;
+  applicantAddressState?: string;
+  applicantAddressCountry?: string;
   donationAmount: number;
   details: Array<{
     nameToEngrave: string;
-    remarks?: string;
   }>;
 }
 
@@ -141,10 +137,17 @@ export interface UpdateGateOfLifeRequest {
   applicantIDNo?: string;
   applicantEmailID?: string;
   applicantMobileNo?: string;
+  applicantHomeTelNo?: string;
+  applicantOfficeTelNo?: string;
+  applicantAddressNo?: string;
+  applicantAddressLine1?: string;
+  applicantAddressLine2?: string;
+  applicantAddressCity?: string;
+  applicantAddressState?: string;
+  applicantAddressCountry?: string;
   donationAmount?: number;
   details?: Array<{
     nameToEngrave: string;
-    remarks?: string;
   }>;
 }
 
@@ -160,7 +163,6 @@ export const gateOfLifeService = {
         pageSize: params.pageSize ?? 20,
         applicationCode: params.applicationCode,
         applicantName: params.applicantName,
-        applicantIdNo: params.applicantIdNo,
         nameToEngrave: params.nameToEngrave,
         bookedFrom: params.bookedFrom,
         bookedTo: params.bookedTo,
@@ -175,7 +177,20 @@ export const gateOfLifeService = {
         }
       });
 
-      const response = await api.get('/api/gates-of-life', { params: queryParams });
+      // Add cache-busting timestamp when bypassCache is requested
+      if (params.bypassCache) {
+        queryParams._t = Date.now();
+      }
+
+      const response = await api.get('/api/gates-of-life', {
+        params: queryParams,
+        ...(params.bypassCache ? {
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          }
+        } : {})
+      });
       const payload = response.data ?? {};
       const rawData = payload.data ?? payload.records ?? payload.items ?? payload.results;
 
@@ -202,18 +217,18 @@ export const gateOfLifeService = {
 
       const pagination: GateOfLifePagination | undefined = payload.pagination
         ? {
-            page: Number(payload.pagination.page ?? fallbackPage),
-            pageSize: Number(payload.pagination.pageSize ?? fallbackPageSize),
-            total: Number(payload.pagination.total ?? fallbackTotal),
-            totalPages: Number(payload.pagination.totalPages ?? fallbackTotalPages)
-          }
+          page: Number(payload.pagination.page ?? fallbackPage),
+          pageSize: Number(payload.pagination.pageSize ?? fallbackPageSize),
+          total: Number(payload.pagination.total ?? fallbackTotal),
+          totalPages: Number(payload.pagination.totalPages ?? fallbackTotalPages)
+        }
         : (payload.total !== undefined || payload.totalPages !== undefined)
           ? {
-              page: fallbackPage,
-              pageSize: fallbackPageSize,
-              total: fallbackTotal,
-              totalPages: fallbackTotalPages
-            }
+            page: fallbackPage,
+            pageSize: fallbackPageSize,
+            total: fallbackTotal,
+            totalPages: fallbackTotalPages
+          }
           : undefined;
 
       return {
@@ -252,7 +267,7 @@ export const gateOfLifeService = {
       }
 
       const response = await api.get(`/api/gates-of-life/${applicationCode.trim()}`);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -262,7 +277,7 @@ export const gateOfLifeService = {
       if (error instanceof GateOfLifeError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new GateOfLifeError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 404) {
@@ -281,7 +296,7 @@ export const gateOfLifeService = {
   createGateOfLifeApplication: async (applicationData: CreateGateOfLifeRequest): Promise<GateOfLifeResponse> => {
     try {
       const response = await api.post('/api/gates-of-life', applicationData);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -291,14 +306,14 @@ export const gateOfLifeService = {
       if (error instanceof GateOfLifeError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new GateOfLifeError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 400) {
         // Parse validation error response
         const errorData = error.response?.data;
         let errorMessage = 'Invalid application data';
-        
+
         if (errorData?.error?.message) {
           errorMessage = errorData.error.message;
         } else if (errorData?.error?.details && Array.isArray(errorData.error.details)) {
@@ -306,7 +321,7 @@ export const gateOfLifeService = {
         } else if (errorData?.message) {
           errorMessage = errorData.message;
         }
-        
+
         throw new GateOfLifeError(errorMessage, 'validation', 400);
       } else if (error.response?.status >= 500) {
         throw new GateOfLifeError('Server error occurred', 'server', error.response.status);
@@ -329,7 +344,7 @@ export const gateOfLifeService = {
       }
 
       const response = await api.put(`/api/gates-of-life/${applicationCode.trim()}`, applicationData);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -339,14 +354,14 @@ export const gateOfLifeService = {
       if (error instanceof GateOfLifeError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new GateOfLifeError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 400) {
         // Parse validation error response
         const errorData = error.response?.data;
         let errorMessage = 'Invalid application data';
-        
+
         if (errorData?.error?.message) {
           errorMessage = errorData.error.message;
         } else if (errorData?.error?.details && Array.isArray(errorData.error.details)) {
@@ -354,7 +369,7 @@ export const gateOfLifeService = {
         } else if (errorData?.message) {
           errorMessage = errorData.message;
         }
-        
+
         throw new GateOfLifeError(errorMessage, 'validation', 400);
       } else if (error.response?.status === 404) {
         throw new GateOfLifeError('Gate of life application not found', 'validation', 404);
@@ -376,7 +391,7 @@ export const gateOfLifeService = {
       }
 
       const response = await api.delete(`/api/gates-of-life/${applicationCode.trim()}`);
-      
+
       if (response.data.success) {
         return response.data;
       } else {
@@ -386,7 +401,7 @@ export const gateOfLifeService = {
       if (error instanceof GateOfLifeError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new GateOfLifeError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 404) {
@@ -435,17 +450,17 @@ export const gateOfLifeService = {
         // If HEAD succeeds, open the PDF
         const pdfUrl = `${API_BASE}${endpoint}`;
         const newWindow = window.open(pdfUrl, '_blank', 'noopener,noreferrer');
-        
+
         if (!newWindow) {
           throw new GateOfLifeError('Popup blocked. Please allow popups for this site.', 'validation', 403);
         }
-        
+
         console.log(`Opening ${type} PDF in new tab:`, pdfUrl);
         return;
       } catch (headError: any) {
         // If HEAD fails (404), try to get application data and use client-side generation
         console.warn(`PDF endpoint ${endpoint} not available, trying to get application data for client-side generation`);
-        
+
         // Get application data for PDF generation
         let appData: any = null;
         try {
@@ -456,7 +471,7 @@ export const gateOfLifeService = {
         } catch (appError: any) {
           console.warn('Could not get application data for PDF generation:', appError.message);
         }
-        
+
         // If we have application data, use client-side generation
         if (appData) {
           const formData = {
@@ -465,7 +480,7 @@ export const gateOfLifeService = {
               name: appData.applicant?.name || '',
               mobileNo: appData.applicant?.mobileNo || '',
               emailAddress: appData.applicant?.email || '',
-              address: appData.applicant?.address ? 
+              address: appData.applicant?.address ?
                 `${appData.applicant.address.no || ''} ${appData.applicant.address.line1 || ''} ${appData.applicant.address.line2 || ''} ${appData.applicant.address.city || ''} ${appData.applicant.address.state || ''} ${appData.applicant.address.country || ''}`.trim() : ''
             },
             engravings: (appData.details || []).map((d: any) => ({
@@ -475,13 +490,13 @@ export const gateOfLifeService = {
             bookingDate: appData.bookingDate || '',
             donationAmount: appData.donation?.amount || 0
           };
-          
+
           // Use client-side PDF generation
           // Call the generatePDFFromData method from the service object
           await gateOfLifeService.generatePDFFromData(formData, type);
           return;
         }
-        
+
         // If we can't get data, throw the original error
         if (headError.response?.status === 404) {
           throw new GateOfLifeError(
@@ -496,7 +511,7 @@ export const gateOfLifeService = {
       if (error instanceof GateOfLifeError) {
         throw error;
       }
-      
+
       if (error.response?.status === 404) {
         throw new GateOfLifeError(
           `PDF endpoint not found. Please contact support or use the application form to generate PDFs.`,
@@ -518,10 +533,10 @@ export const gateOfLifeService = {
     try {
       // Create PDF content from form data
       const htmlContent = createPDFContent(formData, type);
-      
+
       // Use html2pdf for proper PDF generation
       const html2pdf = (await import('html2pdf.js')).default;
-      
+
       // Create a temporary element with the HTML content
       const element = document.createElement('div');
       element.innerHTML = htmlContent;
@@ -529,22 +544,22 @@ export const gateOfLifeService = {
       element.style.left = '-9999px';
       element.style.top = '-9999px';
       document.body.appendChild(element);
-      
+
       // Configure html2pdf options
       const opt = {
         margin: 1,
         filename: `GateOfLife_${type}_${formData.applicationNumber || 'Document'}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
+        image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2 },
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const }
       };
-      
+
       // Generate and download PDF
       await html2pdf().set(opt).from(element).save();
-      
+
       // Clean up
       document.body.removeChild(element);
-      
+
       console.log(`Generated ${type} PDF from form data`);
     } catch (error: any) {
       if (error instanceof GateOfLifeError) {
@@ -554,14 +569,14 @@ export const gateOfLifeService = {
         console.warn('html2pdf not available, falling back to HTML template');
         const htmlContent = createPDFContent(formData, type);
         const printWindow = window.open('', '_blank', 'width=800,height=600');
-        
+
         if (!printWindow) {
           throw new GateOfLifeError('Popup blocked. Please allow popups for this site.');
         }
-        
+
         printWindow.document.write(htmlContent);
         printWindow.document.close();
-        
+
         printWindow.onload = () => {
           setTimeout(() => {
             printWindow.print();
@@ -575,7 +590,7 @@ export const gateOfLifeService = {
 // Helper function to create PDF content from form data
 function createPDFContent(formData: any, type: string): string {
   const { applicationNumber, applicantDetails, engravings, bookingDate } = formData;
-  
+
   // Create HTML content that can be converted to PDF
   const htmlContent = `
 <!DOCTYPE html>

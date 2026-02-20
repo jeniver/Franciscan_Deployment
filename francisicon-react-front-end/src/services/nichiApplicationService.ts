@@ -194,6 +194,7 @@ export interface CreateNichiApplicationRequest {
   consentForm?: NichiConsentForm;
   agreement?: NichiAgreement;
   additionalDetails?: NichiAdditionalDetails;
+  remarks?: string;
 }
 
 // Response structure (excluding crystalReports)
@@ -214,6 +215,7 @@ export interface NichiApplicationResponse {
     storage?: NichiStorage;
     consentForm?: NichiConsentForm;
     agreement?: NichiAgreement;
+    remarks?: string;
     metadata: NichiMetadata;
     printReady?: {
       agreementReady?: boolean;

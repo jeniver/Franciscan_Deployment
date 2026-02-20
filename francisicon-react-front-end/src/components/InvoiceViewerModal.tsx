@@ -1,8 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { XIcon, PrinterIcon, DownloadIcon, Maximize2Icon, Minimize2Icon } from 'lucide-react';
 import { invoiceTemplateService, InvoiceTemplateData } from '../services/invoiceTemplateService';
+import { formatAddressLinesForInvoiceReceipt, formatAddressForDisplay, joinAddressLines } from '../utils/addressUtils';
 import { TaxInvoice } from '../components/InvoiceReceiptTemplate/InvoiceTemplate';
 import { ReceiptTemplate } from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 interface InvoiceViewerModalProps {
   isOpen: boolean;
@@ -20,6 +23,8 @@ export function InvoiceViewerModal({
   const [htmlContent, setHtmlContent] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     if (invoiceData && isOpen) {
@@ -30,228 +35,68 @@ export function InvoiceViewerModal({
     }
   }, [invoiceData, isOpen]);
 
-  // Helper function to generate receipt HTML manually since there's no generateReceiptTemplate method
-  const generateReceiptHtml = (receiptData: any): string => {
-    // Creating a simplified HTML structure similar to the ReceiptTemplate component
-    return `
-      <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif;">
-        <thead>
-          <tr>
-            <th colspan="2" style="text-align: center; padding: 10px; border-bottom: 2px solid black;">
-              <h2>RECEIPT</h2>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="padding: 8px; vertical-align: top; width: 30%;">
-              <strong>Receipt No:</strong><br>
-              <span>${receiptData.receiptNo || 'N/A'}</span>
-            </td>
-            <td style="padding: 8px; vertical-align: top; width: 70%;">
-              <strong>Date:</strong><br>
-              <span>${receiptData.date || 'N/A'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; vertical-align: top;" colspan="2">
-              <strong>Received From:</strong><br>
-              <span>${receiptData.receivedFrom || 'N/A'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; vertical-align: top;" colspan="2">
-              <strong>Address:</strong><br>
-              <span>${receiptData.address || 'N/A'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; vertical-align: top;">
-              <strong>Invoice No:</strong><br>
-              <span>${receiptData.invoiceNo || 'N/A'}</span>
-            </td>
-            <td style="padding: 8px; vertical-align: top;">
-              <strong>Payment Method:</strong><br>
-              <span>${receiptData.paymentMethod || 'N/A'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; vertical-align: top;" colspan="2">
-              <strong>Description:</strong><br>
-              <span>${receiptData.description || 'N/A'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; vertical-align: top;">
-              <strong>Total Amount:</strong><br>
-              <span>$${receiptData.totalAmount ? receiptData.totalAmount.toFixed(2) : '0.00'}</span>
-            </td>
-            <td style="padding: 8px; vertical-align: top;">
-              <strong>In Words:</strong><br>
-              <span>${receiptData.dollarsInWords || 'N/A'}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    `;
-  };
+  // Helper function to convert amount to words
+  const amountToWords = (num: number | string | null | undefined): string => {
+    const n = typeof num === 'string' ? parseFloat(num) : num;
+    if (n === null || n === undefined || isNaN(n) || n === 0) return 'Zero Only';
 
-  const handleDownloadPdf = async () => {
-    try {
-      setIsGeneratingPdf(true);
-      
-      // Create a temporary container to render the template for PDF generation
-      const tempContainer = document.createElement('div');
-      tempContainer.style.position = 'absolute';
-      tempContainer.style.left = '-9999px';
-      tempContainer.style.top = '0';
-      tempContainer.style.width = '210mm'; // A4 width
-      tempContainer.style.minHeight = '297mm'; // A4 height
-      tempContainer.style.padding = '15mm';
-      tempContainer.style.boxSizing = 'border-box';
-      tempContainer.style.fontFamily = 'Inter, Arial, sans-serif';
-      tempContainer.style.fontSize = '12px';
-      tempContainer.style.lineHeight = '1.4';
-      
-      // Get the template HTML based on whether it's a receipt or invoice
-      let templateHTML = '';
-      if (invoiceData?.receipt) {
-        // For receipts, we'll use the receipt template component directly
-        const receiptData = mapToReceiptTemplateData(invoiceData);
-        // Since there's no generateReceiptTemplate method, we'll render the ReceiptTemplate component
-        // and get its HTML using a temporary div
-        const tempDiv = document.createElement('div');
-        // Render the receipt template to HTML manually
-        templateHTML = generateReceiptHtml(receiptData);
-      } else {
-        const invoiceTemplateData = mapToInvoiceTemplateData(invoiceData);
-        const invoiceTemplate = invoiceTemplateService.generateInvoiceTemplate(invoiceTemplateData);
-        templateHTML = `<div class="invoice-container" style="width: 100%; height: 100%;">${invoiceTemplate}</div>`;
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+      'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    const convertLessThanThousand = (val: number): string => {
+      if (val === 0) return '';
+      if (val < 20) return ones[val];
+      if (val < 100) return tens[Math.floor(val / 10)] + (val % 10 > 0 ? ' ' + ones[val % 10] : '');
+      return ones[Math.floor(val / 100)] + ' Hundred' + (val % 100 > 0 ? ' ' + convertLessThanThousand(val % 100) : '');
+    };
+
+    const convert = (val: number): string => {
+      if (val === 0) return '';
+      let res = '';
+      if (val >= 1000000) {
+        res += convertLessThanThousand(Math.floor(val / 1000000)) + ' Million ';
+        val %= 1000000;
       }
-      
-      tempContainer.innerHTML = templateHTML;
-      document.body.appendChild(tempContainer);
-      
-      // Wait for content to render
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Dynamically import html2canvas and jsPDF
-      const html2canvas = (await import('html2canvas')).default;
-      const { jsPDF } = await import('jspdf');
-      
-      const canvas = await html2canvas(tempContainer, {
-        scale: 2, // Higher quality
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-      });
-      
-      const imgData = canvas.toDataURL('image/jpeg', 0.8);
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-      });
-      
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgX = (pdfWidth - imgWidth * ratio) / 2;
-      const imgY = 10; // Small margin from top
-      
-      pdf.addImage(imgData, 'JPEG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-      
-      // Determine filename based on type
-      const fileName = invoiceData?.receipt 
-        ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'unknown'}.pdf`
-        : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'unknown'}.pdf`;
-      
-      pdf.save(fileName);
-      
-      // Clean up
-      document.body.removeChild(tempContainer);
-      setIsGeneratingPdf(false);
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      setIsGeneratingPdf(false);
-      alert('Failed to generate PDF. Please try again.');
+      if (val >= 1000) {
+        res += convertLessThanThousand(Math.floor(val / 1000)) + ' Thousand ';
+        val %= 1000;
+      }
+      if (val > 0) {
+        res += convertLessThanThousand(Math.floor(val));
+      }
+      return res.trim();
+    };
+
+    const wholePart = Math.floor(n);
+    const decimalPart = Math.round((n - wholePart) * 100);
+    let result = convert(wholePart);
+    if (!result) result = 'Zero';
+
+    if (decimalPart > 0) {
+      result += ' and Cents ' + convertLessThanThousand(decimalPart) + ' Only';
+    } else {
+      result += ' Only';
     }
-  };
-
-  const handlePrint = async () => {
-    try {
-      // Create a print window
-      const printWindow = window.open('', '_blank', 'height=800,width=1000');
-      if (!printWindow) {
-        alert('Please allow popups for printing');
-        return;
-      }
-      
-      // Get the template HTML based on whether it's a receipt or invoice
-      let templateHTML = '';
-      if (invoiceData?.receipt) {
-        // For receipts, we'll use the receipt template component directly
-        const receiptData = mapToReceiptTemplateData(invoiceData);
-        // Since there's no generateReceiptTemplate method, we'll render the ReceiptTemplate component
-        // and get its HTML using a temporary div
-        const tempDiv = document.createElement('div');
-        // Render the receipt template to HTML manually
-        templateHTML = generateReceiptHtml(receiptData);
-      } else {
-        const invoiceTemplateData = mapToInvoiceTemplateData(invoiceData);
-        const invoiceTemplate = invoiceTemplateService.generateInvoiceTemplate(invoiceTemplateData);
-        templateHTML = `<div class="invoice-container" style="width: 100%; height: 100%;">${invoiceTemplate}</div>`;
-      }
-      
-      // Write the template to the print window
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Print Document</title>
-            <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body { margin: 0; padding: 15mm; background: white; font-family: Inter, Arial, sans-serif; font-size: 12px; line-height: 1.4; }
-              @media print { @page { margin: 15mm; size: A4; } body { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; } }
-              /* Include any specific styles for the template */
-              .invoice-container, .receipt-container { width: 100%; min-height: 100%; }
-            </style>
-          </head>
-          <body>${templateHTML}</body>
-        </html>
-      `);
-      
-      printWindow.document.close();
-      printWindow.focus();
-      
-      // Wait for content to render before printing
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
-    } catch (error) {
-      console.error('Error printing:', error);
-      alert('Failed to print. Please try again.');
-    }
-  };
-
-  const toggleFullscreen = () => {
-    setIsFullscreen(!isFullscreen);
+    return result;
   };
 
   // Function to map API response to InvoiceTemplateData interface
   const mapToInvoiceTemplateData = (apiData: any): InvoiceTemplateData => {
-    // Calculate address string from available address fields
-    const addressParts = [
-      apiData.addressNo || '',
-      apiData.address || '',
-      apiData.address2 || '',
-      apiData.addressCity || '',
-      apiData.country || ''
-    ].filter(part => part && part.trim() !== '');
-    
-    const customerAddress = addressParts.length > 0 ? addressParts.join(', ') : undefined;
+    // Format address (Block, Street, Unit, Singapore) - avoid duplicate Block/Blk
+    let customerAddress: string | undefined;
+    if (apiData.customerAddress) {
+      customerAddress = formatAddressForDisplay(apiData.customerAddress) || undefined;
+    } else {
+      const lines = formatAddressLinesForInvoiceReceipt({
+        blockNo: apiData.addressNo || apiData.AddressNo,
+        street: apiData.address || apiData.Address || apiData.addressLine1,
+        unit: apiData.address2 || apiData.Address2 || apiData.addressLine2,
+        postalCode: apiData.addressCity || apiData.AddressCity || apiData.city,
+        country: apiData.country || apiData.Country || 'Singapore',
+      });
+      customerAddress = joinAddressLines(lines, '\n') || undefined;
+    }
 
     // Map details to InvoiceTemplateItem format
     const items = (apiData.details || []).map((detail: any) => ({
@@ -264,10 +109,10 @@ export function InvoiceViewerModal({
     return {
       invoiceCode: apiData.code || apiData.invoiceCode || apiData.Code || 'N/A',
       invoiceDate: formatDate(apiData.transactionDate || apiData.TransactionDate || apiData.invoiceDate || apiData.InvoiceDate || new Date()),
-      customerName: apiData.customerName || apiData.CustomerName || 'N/A',
-      customerAddress: customerAddress,
+      customerName: apiData.customerName || apiData.CustomerName || apiData.payeeName || 'N/A',
+      customerAddress: apiData.customerAddress || customerAddress || 'N/A',
       paymentMode: apiData.paymentMode || apiData.PaymentMode || 'N/A',
-      totalAmount: apiData.totalAmount || apiData.TotalAmount || 0,
+      totalAmount: apiData.totalAmount || apiData.TotalAmount || apiData.payingAmount || 0,
       taxAmount: apiData.taxAmount || apiData.TaxAmount || 0,
       items: items,
     };
@@ -276,12 +121,12 @@ export function InvoiceViewerModal({
   // Function to format dates consistently
   const formatDate = (date: string | Date): string => {
     if (!date) return new Date().toLocaleDateString('en-SG');
-    
+
     const dateObj = new Date(date);
     if (isNaN(dateObj.getTime())) {
       return date.toString(); // Return as-is if it's already formatted
     }
-    
+
     return dateObj.toLocaleDateString('en-SG', {
       year: 'numeric',
       month: 'short',
@@ -291,16 +136,29 @@ export function InvoiceViewerModal({
 
   // Function to map API data to ReceiptTemplate props
   const mapToReceiptTemplateData = (apiData: any) => {
-    // Calculate address string from available address fields
-    const addressParts = [
-      apiData.addressNo || '',
-      apiData.address || '',
-      apiData.address2 || '',
-      apiData.addressCity || '',
-      apiData.country || ''
-    ].filter(part => part && part.trim() !== '');
-    
-    const customerAddress = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+    const getAddress = () => {
+      if (!apiData) return 'N/A';
+
+      const existingAddress = apiData.customerAddress ||
+        apiData.address ||
+        apiData.receipt?.address ||
+        apiData.receipt?.payeeAddress;
+
+      if (existingAddress && existingAddress !== 'N/A' && existingAddress !== 'null') {
+        return formatAddressForDisplay(existingAddress);
+      }
+
+      const lines = formatAddressLinesForInvoiceReceipt({
+        blockNo: apiData.addressNo || apiData.receipt?.addressNo || apiData.receipt?.AddressNo,
+        street: apiData.address || apiData.addressLine1 || apiData.receipt?.address || apiData.receipt?.Address || apiData.receipt?.AddressLine1,
+        unit: apiData.address2 || apiData.addressLine2 || apiData.receipt?.address2 || apiData.receipt?.Address2 || apiData.receipt?.AddressLine2,
+        postalCode: apiData.addressCity || apiData.receipt?.addressCity || apiData.receipt?.AddressCity,
+        country: apiData.country || apiData.receipt?.country || apiData.receipt?.Country || 'Singapore',
+      });
+      return joinAddressLines(lines, '\n') || 'N/A';
+    };
+
+    const customerAddress = getAddress();
 
     // Calculate description from details
     const description = (apiData.details || [])
@@ -308,52 +166,37 @@ export function InvoiceViewerModal({
       .filter((desc: string) => desc && desc.trim() !== '')
       .join(', ');
 
-    // Convert amount to words
-    const amountToWords = (amount: number): string => {
-      // Very simple converter, could be expanded
-      const num = Math.abs(Math.round(amount));
-      if (num === 0) return 'Zero Only';
-      
-      // For now, return a simple representation - in production you'd want a proper number-to-words library
-      return `${typeof num === 'number' ? num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '0.00'} Only`;
-    };
+    // Handle receipt totals with broad compatibility
+    const totalAmount = apiData.receipt?.totalAmount ||
+      apiData.receipt?.ReceiptTotalAmount ||
+      apiData.receipt?.payingAmount ||
+      apiData.receipt?.PayingAmount ||
+      apiData.totalAmount ||
+      apiData.TotalAmount ||
+      apiData.payingAmount ||
+      0;
 
     return {
-      receiptNo: apiData.receipt?.receiptCode || apiData.receipt?.ReceiptCode || apiData.code || 'N/A',
-      date: formatDate(apiData.receipt?.receiptDate || apiData.receipt?.ReceiptDate || apiData.transactionDate || new Date()),
-      receivedFrom: apiData.receipt?.payeeName || apiData.receipt?.PayeeName || apiData.customerName || apiData.CustomerName || 'N/A',
+      receiptNo: apiData.receipt?.receiptCode || apiData.receipt?.ReceiptCode || apiData.receiptCode || apiData.code || apiData.Code || 'N/A',
+      date: formatDate(apiData.receipt?.receiptDate || apiData.receipt?.ReceiptDate || apiData.transactionDate || apiData.TransactionDate || apiData.receiptDate || new Date()),
+      receivedFrom: apiData.receipt?.payeeName || apiData.receipt?.PayeeName || apiData.customerName || apiData.CustomerName || apiData.payeeName || 'N/A',
       address: customerAddress,
-      invoiceNo: apiData.code || apiData.invoiceCode || apiData.Code || 'N/A',
+      invoiceNo: apiData.code || apiData.invoiceCode || apiData.Code || apiData.invoiceNo || 'N/A',
       description: description || 'Services Rendered',
-      totalAmount: apiData.totalAmount || apiData.TotalAmount || 0,
-      dollarsInWords: amountToWords(apiData.totalAmount || apiData.TotalAmount || 0),
-      paymentMethod: apiData.paymentMode || apiData.PaymentMode || 'Cash',
+      totalAmount: totalAmount,
+      dollarsInWords: amountToWords(totalAmount),
+      paymentMethod: apiData.receipt?.paymentMode || apiData.receipt?.PaymentMode || apiData.paymentMode || apiData.PaymentMode || 'Cash',
     };
   };
 
   // Function to map API data to InvoiceTemplate interface for TaxInvoice component
   const mapToTaxInvoiceProps = (apiData: any) => {
     // Calculate address string from available address fields
-    const addressParts = [
-      apiData.addressNo || '',
-      apiData.address || '',
-      apiData.address2 || '',
-      apiData.addressCity || '',
-      apiData.country || ''
-    ].filter(part => part && part.trim() !== '');
-    
-    const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
 
-    // Debug: Log incoming apiData
-    console.log('[mapToTaxInvoiceProps] apiData received:', apiData);
-    console.log('[mapToTaxInvoiceProps] apiData.details:', apiData.details);
-    console.log('[mapToTaxInvoiceProps] apiData.items:', apiData.items);
-    console.log('[mapToTaxInvoiceProps] Has direct items:', Array.isArray(apiData.items) && apiData.items.length > 0);
-    console.log('[mapToTaxInvoiceProps] Has details to map:', Array.isArray(apiData.details) && apiData.details.length > 0);
-    
+    const address = apiData.customerAddress || 'N/A';
     // Handle both direct items array and details mapping
     let items: any[] = [];
-    
+
     // If apiData already has items array (from template data), use it directly
     if (Array.isArray(apiData.items) && apiData.items.length > 0) {
       items = apiData.items.map((item: any) => ({
@@ -375,21 +218,9 @@ export function InvoiceViewerModal({
         amount: detail.lineTotalAmount || detail.LineTotalAmount || detail.totalPayingAmount || detail.TotalPayingAmount || 0
       }));
     }
-    
+
     // Calculate subTotal
     const subTotal = apiData.summary?.subtotal || apiData.subtotal || (apiData.totalAmount || 0) - (apiData.taxAmount || 0);
-    
-    // Convert amount to words
-    const amountToWords = (amount: number): string => {
-      const num = Math.abs(Math.round(amount));
-      if (num === 0) return 'Zero Only';
-      
-      return `${typeof num === 'number' ? num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '0.00'} Only`;
-    };
-
-    // Debug: Log mapped items
-    console.log('[mapToTaxInvoiceProps] Final mapped items:', items);
-    console.log('[mapToTaxInvoiceProps] Final items length:', items.length);
 
     return {
       invoiceNo: apiData.code || apiData.invoiceCode || apiData.Code || 'N/A',
@@ -404,6 +235,198 @@ export function InvoiceViewerModal({
     };
   };
 
+  // Helper function to get all computed styles as inline styles
+  const getComputedStylesAsString = (element: Element): string => {
+    const computedStyle = window.getComputedStyle(element)
+    let styleString = ''
+    for (let i = 0; i < computedStyle.length; i++) {
+      const prop = computedStyle[i]
+      styleString += `${prop}:${computedStyle.getPropertyValue(prop)};`
+    }
+    return styleString
+  }
+
+  // Deep clone with computed styles
+  const cloneWithStyles = (element: HTMLElement): HTMLElement => {
+    const clone = element.cloneNode(true) as HTMLElement
+    // Apply computed styles to the clone and all its children
+    const applyStyles = (original: Element, cloned: Element) => {
+      if (original instanceof HTMLElement && cloned instanceof HTMLElement) {
+        cloned.style.cssText = getComputedStylesAsString(original)
+      }
+      const originalChildren = original.children
+      const clonedChildren = cloned.children
+      for (let i = 0; i < originalChildren.length; i++) {
+        if (clonedChildren[i]) {
+          applyStyles(originalChildren[i], clonedChildren[i])
+        }
+      }
+    }
+    applyStyles(element, clone)
+    return clone
+  }
+
+  const handleDownloadPdf = async () => {
+    if (!contentRef.current) return
+    setIsGeneratingPdf(true)
+    try {
+      // Check if html2pdf is already loaded
+      let html2pdf = (window as any).html2pdf
+      if (!html2pdf) {
+        // Dynamically load html2pdf from CDN
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script')
+          script.src =
+            'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
+          script.onload = () => resolve()
+          script.onerror = () => reject(new Error('Failed to load PDF library'))
+          document.head.appendChild(script)
+        })
+        html2pdf = (window as any).html2pdf
+      }
+      // Clone with all computed styles
+      const styledClone = cloneWithStyles(contentRef.current)
+      // Create a container with proper dimensions
+      const container = document.createElement('div')
+      container.style.position = 'absolute'
+      container.style.left = '-9999px'
+      container.style.top = '0'
+      container.style.width = '210mm'
+      container.style.backgroundColor = 'white'
+      container.appendChild(styledClone)
+      document.body.appendChild(container)
+      // Wait a bit for styles to apply
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      const fileName = invoiceData?.receipt
+        ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'Document'}.pdf`
+        : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'Document'}.pdf`;
+
+      // PDF options
+      const opt = {
+        margin: [5, 5, 5, 5],
+        filename: fileName,
+        image: {
+          type: 'jpeg',
+          quality: 0.98,
+        },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          letterRendering: true,
+          allowTaint: true,
+        },
+        jsPDF: {
+          unit: 'mm',
+          format: 'a4',
+          orientation: 'portrait',
+        },
+        pagebreak: {
+          mode: ['avoid-all', 'css', 'legacy'],
+        },
+      }
+      // Generate and save PDF
+      await html2pdf().set(opt).from(container).save()
+      // Cleanup
+      setTimeout(() => {
+        if (document.body.contains(container)) {
+          document.body.removeChild(container)
+        }
+      }, 1000)
+    } catch (error: any) {
+      console.error('Error generating PDF:', error)
+      alert(
+        'PDF generation failed. Please try the Print option and save as PDF.',
+      )
+    } finally {
+      setIsGeneratingPdf(false)
+    }
+  }
+
+  const handleGeneratePDF = async () => {
+    if (!contentRef.current || isGenerating) return
+    setIsGenerating(true)
+    try {
+      // Find all page elements
+      const pages = contentRef.current.querySelectorAll('[data-pdf-page]')
+      // If no marked pages, fallback to contentRef itself (or wrap it) based on logic
+      // The user snippet throws error if 0, but current code handled fallback. 
+      // We will try to be robust. if pages length is 0, treat contentRef as one page if acceptable, 
+      // OR better yet, ensure our template renders [data-pdf-page]
+      const targetPages = pages.length > 0 ? pages : [contentRef.current];
+
+      if (targetPages.length === 0) {
+        throw new Error('No pages found to print')
+      }
+      // Create PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      })
+      // Process each page
+      for (let i = 0; i < targetPages.length; i++) {
+        const pageElement = targetPages[i] as HTMLElement
+        // Temporarily remove shadow for clean capture
+        const originalBoxShadow = pageElement.style.boxShadow
+        pageElement.style.boxShadow = 'none'
+        // Capture the page
+        const canvas = await html2canvas(pageElement, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: pageElement.scrollWidth,
+          windowHeight: pageElement.scrollHeight,
+        })
+        // Restore styles
+        pageElement.style.boxShadow = originalBoxShadow
+        // Add page to PDF (except for the first one which is created by default)
+        if (i > 0) {
+          pdf.addPage()
+        }
+        const imgData = canvas.toDataURL('image/png', 1.0)
+        const pdfWidth = pdf.internal.pageSize.getWidth()
+        const pdfHeight = pdf.internal.pageSize.getHeight()
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+      }
+      // Generate blob and open in new tab
+      const pdfBlob = pdf.output('blob')
+      const blobUrl = URL.createObjectURL(pdfBlob)
+      const newTab = window.open(blobUrl, '_blank')
+
+      const fileName = invoiceData?.receipt
+        ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'Document'}.pdf`
+        : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'Document'}.pdf`;
+
+      if (!newTab) {
+        // Fallback: download the file if popup blocked
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = fileName
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
+      } else {
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+      }
+    } catch (error) {
+      console.error('PDF generation failed:', error)
+      alert('Failed to generate PDF. Please try again.')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const handlePrint = () => {
+    handleGeneratePDF();
+  };
+
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -416,14 +439,12 @@ export function InvoiceViewerModal({
 
       {/* Modal Container */}
       <div
-        className={`fixed inset-0 flex items-center justify-center p-4 transition-all ${
-          isFullscreen ? 'p-0' : ''
-        }`}
+        className={`fixed inset-0 flex items-center justify-center p-4 transition-all ${isFullscreen ? 'p-0' : ''
+          }`}
       >
         <div
-          className={`relative bg-white rounded-lg shadow-2xl flex flex-col transition-all ${
-            isFullscreen ? 'w-full h-full rounded-none' : 'w-full max-w-6xl h-[90vh]'
-          }`}
+          className={`relative bg-white rounded-lg shadow-2xl flex flex-col transition-all ${isFullscreen ? 'w-full h-full rounded-none' : 'w-full max-w-6xl h-[90vh]'
+            }`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -445,19 +466,19 @@ export function InvoiceViewerModal({
               </button>
               <button
                 onClick={handlePrint}
-                disabled={isGeneratingPdf || loading || !invoiceData}
+                disabled={isGenerating || isGeneratingPdf || loading || !invoiceData}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Print Document"
               >
-                <PrinterIcon className={`w-5 h-5 ${isGeneratingPdf || loading ? 'animate-pulse' : ''}`} />
+                <PrinterIcon className={`w-5 h-5 ${isGenerating || isGeneratingPdf || loading ? 'animate-pulse' : ''}`} />
               </button>
               <button
                 onClick={handleDownloadPdf}
-                disabled={isGeneratingPdf || loading || !invoiceData}
+                disabled={isGenerating || isGeneratingPdf || loading || !invoiceData}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Download PDF"
               >
-                <DownloadIcon className={`w-5 h-5 ${isGeneratingPdf || loading ? 'animate-pulse' : ''}`} />
+                <DownloadIcon className={`w-5 h-5 ${isGenerating || isGeneratingPdf || loading ? 'animate-pulse' : ''}`} />
               </button>
               <button
                 onClick={onClose}
@@ -477,20 +498,27 @@ export function InvoiceViewerModal({
                   <p className="text-gray-600">Loading document...</p>
                 </div>
               </div>
-            ) : isGeneratingPdf ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-75 z-20">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mb-4"></div>
-                  <p className="text-gray-600">Generating PDF...</p>
-                </div>
-              </div>
             ) : htmlContent ? (
-              <div className="p-4">
-                {invoiceData?.receipt ? (
-                  <ReceiptTemplate {...mapToReceiptTemplateData(invoiceData)} />
-                ) : (
-                  <TaxInvoice {...mapToTaxInvoiceProps(invoiceData)} />
+              <div className="p-4 relative min-h-full">
+                {(isGenerating || isGeneratingPdf) && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-75 z-20">
+                    <div className="text-center">
+                      <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mb-4"></div>
+                      <p className="text-gray-600">Generating PDF...</p>
+                    </div>
+                  </div>
                 )}
+                <div ref={contentRef}>
+                  {invoiceData?.receipt ? (
+                    <div data-pdf-page>
+                      <ReceiptTemplate {...mapToReceiptTemplateData(invoiceData)} />
+                    </div>
+                  ) : (
+                    <div data-pdf-page>
+                      <TaxInvoice {...mapToTaxInvoiceProps(invoiceData)} />
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">

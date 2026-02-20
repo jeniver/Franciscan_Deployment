@@ -242,6 +242,11 @@ export function App() {
   };
 
   const handleOpenTableView = useCallback(async (overrides: Partial<ApplicationListFilters> = {}) => {
+    // Navigate to /niche if not already there
+    if (location.pathname !== '/niche') {
+      navigate('/niche');
+    }
+
     setViewMode('table');
     if (Object.keys(overrides).length > 0) {
       updateListFilters(overrides);
@@ -250,7 +255,7 @@ export function App() {
       ...(Object.keys(overrides).length > 0 ? { filters: overrides } : {}),
       pagination: { page: 1 }
     });
-  }, [setViewMode, updateListFilters, searchApplicationList]);
+  }, [setViewMode, updateListFilters, searchApplicationList, navigate, location.pathname]);
 
   const handleSearch = useCallback(async () => {
     // Clear any pending debounced searches
@@ -295,9 +300,11 @@ export function App() {
     // Set flag to prevent useEffect from switching back to table view
     isCreatingNewRef.current = true;
     setLastCreatedCode(null);
+    // Switch to form mode first to ensure immediate UI feedback
+    setViewMode('form');
     // Navigate to /niche/new route
     navigate('/niche/new');
-  }, [navigate]);
+  }, [navigate, setViewMode]);
 
   // Debounce timer ref for search inputs
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -323,8 +330,8 @@ export function App() {
   }, [updateListFilters, searchApplicationList]);
 
   const handleShowApplicationsClick = useCallback(() => {
-    void handleOpenTableView();
-  }, [handleOpenTableView]);
+    navigate('/niche');
+  }, [navigate]);
 
   const handleListPageChange = useCallback(async (page: number) => {
     await searchApplicationList({ pagination: { page } });
@@ -353,12 +360,22 @@ export function App() {
     const routeKey = `${path}:${params.applicationCode || ''}`;
 
     // Prevent infinite loops - only process if route actually changed
-    if (routeProcessingRef.current) {
+    // or if we're in the wrong view mode for the current path
+    const currentState = stateRef.current;
+    const isNichePath = path === '/niche';
+    const isNicheNewPath = path === '/niche/new';
+
+    // Check if we need to process based on path vs viewMode mismatch
+    const needsViewSync =
+      (isNichePath && currentState.viewMode !== 'table') ||
+      (isNicheNewPath && currentState.viewMode !== 'form');
+
+    if (routeProcessingRef.current && !needsViewSync) {
       return;
     }
 
-    // Check if route actually changed
-    if (lastProcessedRouteRef.current === routeKey) {
+    // Check if route actually changed (unless we need a view sync)
+    if (lastProcessedRouteRef.current === routeKey && !needsViewSync) {
       return;
     }
 
@@ -369,15 +386,15 @@ export function App() {
     const resetProcessing = () => {
       setTimeout(() => {
         routeProcessingRef.current = false;
-      }, 100);
+      }, 150);
     };
 
     // Handle /niche/new route - create new application
     if (path === '/niche/new') {
       isCreatingNewRef.current = true;
-      const currentState = stateRef.current;
       // Only call handleNewApplication if we're not already in the right state
       if (currentState.applicationNumber.trim() !== '' || currentState.isViewMode || currentState.isEditMode || currentState.viewMode !== 'form') {
+        console.log('[App Router Effect] Switching to new application mode');
         handleNewApplication();
       }
       // Ensure we're on step 1
@@ -391,9 +408,9 @@ export function App() {
     // Handle /niche/view/:applicationCode route - view application
     if (path.startsWith('/niche/view/') && params.applicationCode) {
       const codeFromRoute = params.applicationCode;
-      const currentState = stateRef.current;
       // Only load if we need to
       if (codeFromRoute !== currentState.applicationNumber || !currentState.isViewMode || currentState.viewMode !== 'form') {
+        console.log('[App Router Effect] Switching to view application mode:', codeFromRoute);
         if (currentState.viewMode !== 'form') {
           setViewMode('form');
         }
@@ -410,9 +427,9 @@ export function App() {
     // Handle /niche/edit/:applicationCode route - edit application
     if (path.startsWith('/niche/edit/') && params.applicationCode) {
       const codeFromRoute = params.applicationCode;
-      const currentState = stateRef.current;
       // Only load if we need to
       if (codeFromRoute !== currentState.applicationNumber || !currentState.isEditMode || currentState.viewMode !== 'form') {
+        console.log('[App Router Effect] Switching to edit application mode:', codeFromRoute);
         if (currentState.viewMode !== 'form') {
           setViewMode('form');
         }
@@ -428,21 +445,20 @@ export function App() {
 
     // Handle /niche route (base) - show table view
     if (path === '/niche') {
-      const currentState = stateRef.current;
       // Only switch to table if not already there
       if (currentState.viewMode !== 'table') {
+        console.log('[App Router Effect] Switching to table view mode');
         setViewMode('table');
         handleOpenTableView();
       } else {
-        // If already in table view, just ensure data is loaded (but don't force refresh to prevent loops)
-        // The table will load data on its own if needed
+        // If already in table view, just ensure data is loaded
       }
       resetProcessing();
       return;
     }
 
     resetProcessing();
-  }, [location.pathname, params.applicationCode]);
+  }, [location.pathname, params.applicationCode, handleNewApplication, handleOpenTableView, handleViewApplicationFromTable, handleEditApplicationFromTable, goToStep, setViewMode]);
 
   // Cleanup debounce timer on unmount
   useEffect(() => {
@@ -1010,7 +1026,7 @@ The application list will be refreshed to show your new application.`);
 
   return <Layout title="Niche Application">
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40 px-6 py-4">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col gap-4 mb-4">
             {isFormView ? (
@@ -1051,7 +1067,7 @@ The application list will be refreshed to show your new application.`);
                     onClick={handleGoToInvoiceWithFeedback}
                     disabled={!applicationNumber.trim()}
                   >
-                    Invoice & Receipt
+                    Invoice
                   </Button>
                   {applicationNumber && (
                     <Button
@@ -1063,7 +1079,7 @@ The application list will be refreshed to show your new application.`);
                       View Inscription
                     </Button>
                   )}
-                                    {applicationNumber && (
+                  {applicationNumber && (
                     <NomineeConsentFormButton applicationNumber={applicationNumber} />)}
                   <Button
                     variant="secondary"
@@ -1269,6 +1285,25 @@ The application list will be refreshed to show your new application.`);
                     ← Cancel
                   </Button>
                   <div className="flex gap-2">
+                    {/* <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          const saveResult = await saveChanges(formData);
+                          if (!saveResult.success && saveResult.error && saveResult.error !== 'No application code provided') {
+                            showErrorMessage(saveResult.error || 'Failed to save changes');
+                            return;
+                          }
+                          showSuccessMessage('Changes saved successfully!');
+                        } catch (error) {
+                          console.error('Error saving changes:', error);
+                          showErrorMessage('Failed to save changes');
+                        }
+                      }}
+                      disabled={loading || isUpdating}
+                    >
+                      Save Changes
+                    </Button> */}
                     <Button
                       variant="outline"
                       onClick={previousStep}
@@ -1276,6 +1311,7 @@ The application list will be refreshed to show your new application.`);
                     >
                       ← Previous Step
                     </Button>
+                 
                     <Button
                       variant="primary"
                       onClick={async () => {
@@ -1337,32 +1373,17 @@ The application list will be refreshed to show your new application.`);
                   >
                     ← Back to Applications
                   </Button>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => handleEditApplicationFromTable(applicationNumber)}
-                      className="bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
-                    >
-                      Edit Application
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={handleGoToInvoiceWithFeedback}
-                      disabled={!applicationNumber.trim()}
-                    >
-                      Go to Invoice & Receipt
-                    </Button>
-                    {applicationNumber && (
-                      <Button
-                        variant="outline"
-                        onClick={() => navigate(`/inscription?applicationCode=${applicationNumber}`)}
-                        className="bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
-                        icon={<PenToolIcon className="w-4 h-4" />}
-                      >
-                        View Inscription
-                      </Button>
-                    )}
-                  </div>
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      if (applicationNumber?.trim()) {
+                        navigate(`/niche/edit/${applicationNumber.trim()}`);
+                      }
+                    }}
+                    disabled={!applicationNumber?.trim()}
+                  >
+                    Edit Application
+                  </Button>
                 </div>
               )}
             </div>

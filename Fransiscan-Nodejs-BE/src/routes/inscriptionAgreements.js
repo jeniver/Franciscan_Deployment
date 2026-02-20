@@ -41,4 +41,11 @@ router.get('/:inscriptionCode/validate', InscriptionAgreementController.validate
  */
 router.get('/:inscriptionCode/template/:format', InscriptionAgreementController.getTemplateData);
 
+/**
+ * @route POST /api/inscription-agreements/:inscriptionCode/send-email
+ * @desc Send inscription agreement via email
+ * @access Private
+ */
+router.post('/:inscriptionCode/send-email', InscriptionAgreementController.sendEmail);
+
 module.exports = router;

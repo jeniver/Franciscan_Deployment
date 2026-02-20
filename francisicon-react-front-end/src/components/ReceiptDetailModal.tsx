@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { XIcon, DownloadIcon, PrinterIcon } from 'lucide-react';
-import { Receipt, receiptService } from '../services/receiptService';
+import { Receipt } from '../services/receiptService';
 import { receiptPdfService } from '../services/receiptPdfService';
+import { formatAddressForDisplay } from '../utils/addressUtils';
 import { useToast } from '../contexts/ToastContext';
-import {ReceiptTemplate} from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
+import { ReceiptTemplate } from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 interface ReceiptDetailModalProps {
   isOpen: boolean;
@@ -12,42 +15,141 @@ interface ReceiptDetailModalProps {
 }
 
 export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailModalProps) {
-  const { showError, showSuccess } = useToast();
-  const [isDownloading, setIsDownloading] = useState(false);
+  const { showError } = useToast();
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [htmlContent, setHtmlContent] = useState<string>('');
   const contentRef = useRef<HTMLDivElement>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const [fullReceiptData, setFullReceiptData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !receipt) {
+    if (isOpen && receipt && !fullReceiptData) {
+      const loadFullReceipt = async () => {
+        setIsLoading(true);
+        try {
+          const appCode = receipt.applicationCode || (receipt as any).RefDocName;
+          const isAppType = appCode && isNaN(Number(appCode));
+          const data = await receiptService.getReceiptByCode(
+            receipt.receiptCode || (receipt as any).code,
+            isAppType ? String(appCode) : undefined
+          );
+          setFullReceiptData(data);
+        } catch (err: any) {
+          console.error('[ReceiptDetailModal] Failed to fetch full receipt:', err);
+          showError('Error', 'Could not load full receipt details. Address and items might be missing.');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      loadFullReceipt();
+    }
+  }, [isOpen, receipt, fullReceiptData, showError]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setFullReceiptData(null);
       setHtmlContent('');
       return;
     }
 
+    if (!receipt) return;
+
+    const currentReceipt = fullReceiptData || receipt;
+    // Calculate address with comprehensive fallback
+    const getAddress = () => {
+      // Check for an existing single address string first
+      const existingAddress = (currentReceipt as any).customerAddress ||
+        (currentReceipt as any).address ||
+        (currentReceipt as any).customer?.address ||
+        (currentReceipt as any).invoice?.customerAddress ||
+        (currentReceipt as any).invoice?.address ||
+        (currentReceipt as any).payeeAddress;
+
+      const parts = [
+        currentReceipt.addressNo || (currentReceipt as any).AddressNo || (currentReceipt as any).invoice?.addressNo || (currentReceipt as any).invoice?.AddressNo,
+        currentReceipt.address || (currentReceipt as any).Address || (currentReceipt as any).addressLine1 || (currentReceipt as any).invoice?.address || (currentReceipt as any).invoice?.Address || (currentReceipt as any).invoice?.addressLine1,
+        currentReceipt.address2 || (currentReceipt as any).Address2 || (currentReceipt as any).addressLine2 || (currentReceipt as any).invoice?.address2 || (currentReceipt as any).invoice?.Address2 || (currentReceipt as any).invoice?.addressLine2,
+        currentReceipt.addressCity || (currentReceipt as any).AddressCity || (currentReceipt as any).invoice?.addressCity || (currentReceipt as any).invoice?.AddressCity,
+        (currentReceipt as any).districtCode || (currentReceipt as any).DistrictCode || (currentReceipt as any).addressState || (currentReceipt as any).invoice?.districtCode || (currentReceipt as any).invoice?.DistrictCode,
+        currentReceipt.country || (currentReceipt as any).Country || (currentReceipt as any).invoice?.country || (currentReceipt as any).invoice?.Country
+      ].filter(part =>
+        part &&
+        part !== 'undefined' &&
+        part !== 'null' &&
+        typeof part === 'string' &&
+        part.trim() !== ''
+      );
+
+      // Deduplicate parts to avoid repeats like #65686, #65686
+      const uniqueParts: string[] = [];
+      const seenNormalized = new Set<string>();
+
+      for (const part of parts) {
+        const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!normalized) continue;
+
+        let exists = false;
+        for (const seen of seenNormalized) {
+          if (seen.includes(normalized) || normalized.includes(seen)) {
+            exists = true;
+            break;
+          }
+        }
+
+        if (!exists) {
+          uniqueParts.push(part);
+          seenNormalized.add(normalized);
+        }
+      }
+
+      const fullAddress = uniqueParts.join(', ');
+
+      if (uniqueParts.length > 1) {
+        return fullAddress;
+      }
+
+      return (existingAddress && existingAddress !== 'N/A' && existingAddress !== 'null') ? existingAddress : (uniqueParts[0] || 'N/A');
+    };
+
+    const rawAddress = getAddress();
+    const fullAddress = formatAddressForDisplay(rawAddress) || rawAddress;
+
+    // Build a lightweight payload compatible with receiptPdfService
+    const totalAmount = currentReceipt.totalAmount || (currentReceipt as any).ReceiptTotalAmount || currentReceipt.payingAmount || 0;
+
+    const payload: any = {
+      receipt: {
+        code: currentReceipt.receiptCode || (currentReceipt as any).ReceiptCode || (currentReceipt as any).code,
+        transactionDate: currentReceipt.receiptDate || (currentReceipt as any).ReceiptDate || (currentReceipt as any).transactionDate || currentReceipt.createdAt,
+        customerName: currentReceipt.customerName || (currentReceipt as any).CustomerName || (currentReceipt as any).payeeName,
+        address: fullAddress,
+        customerAddress: fullAddress,
+        totalAmount: totalAmount,
+        payingAmount: currentReceipt.payingAmount || totalAmount,
+        paymentMode: currentReceipt.paymentMode || (currentReceipt as any).PaymentMode,
+        paymentModeDocNo: (currentReceipt as any).paymentModeDocNo || (currentReceipt as any).PaymentModeDocNo,
+      },
+      details: (currentReceipt.invoiceDetails || (currentReceipt as any).details || []).map((d: any) => ({
+        description: d.description || d.itemName || d.ItemName || 'Service',
+        refDocName: d.refDocName || d.itemName || d.ItemName || d.description,
+        quantity: d.quantity || d.Quantity || 1,
+        unitAmount: d.unitPrice || d.unitAmount || d.UnitPrice || d.UnitAmount || 0,
+        lineTotalAmount: d.amount || d.lineTotalAmount || d.LineTotalAmount || 0,
+        invoice: {
+          invoiceNo: currentReceipt.invoice?.code || (currentReceipt as any).invoice?.Code || currentReceipt.invoiceCode || (currentReceipt as any).InvoiceCode || '',
+          code: currentReceipt.invoice?.code || (currentReceipt as any).invoice?.Code || currentReceipt.invoiceCode || (currentReceipt as any).InvoiceCode || '',
+        }
+      }))
+    };
+
     try {
       const applicationCode =
-        receipt.applicationCode || (receipt.applicationId ? String(receipt.applicationId) : undefined);
-
-      // Build a lightweight payload compatible with receiptPdfService
-      const payload: any = {
-        receipt: {
-          code: receipt.receiptCode,
-          transactionDate: receipt.receiptDate || receipt.createdAt,
-          customerName: receipt.customerName,
-          totalAmount: receipt.totalAmount,
-          payingAmount: receipt.payingAmount,
-          paymentMode: receipt.paymentMode,
-        },
-        details: (receipt.invoiceDetails || []).map((d) => ({
-          description: d.description,
-          quantity: d.quantity,
-          unitAmount: d.unitPrice,
-          lineTotalAmount: d.amount,
-        })),
-      };
+        currentReceipt.applicationCode || (currentReceipt.applicationId ? String(currentReceipt.applicationId) : undefined);
 
       const html = receiptPdfService.generateReceiptHtml(payload, {
-        requestedCode: receipt.receiptCode,
+        requestedCode: currentReceipt.receiptCode || (currentReceipt as any).code,
         applicationCode,
       });
       setHtmlContent(html);
@@ -55,134 +157,141 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
       console.error('Failed to generate receipt HTML preview:', err);
       setHtmlContent('');
     }
-  }, [isOpen, receipt]);
+  }, [isOpen, receipt, fullReceiptData, showError]);
 
   if (!isOpen || !receipt) return null;
 
   // Helper function to get all computed styles as inline styles
   const getComputedStylesAsString = (element: Element): string => {
-    const computedStyle = window.getComputedStyle(element);
-    let styleString = '';
+    const computedStyle = window.getComputedStyle(element)
+    let styleString = ''
     for (let i = 0; i < computedStyle.length; i++) {
-      const prop = computedStyle[i];
-      styleString += `${prop}:${computedStyle.getPropertyValue(prop)};`;
+      const prop = computedStyle[i]
+      styleString += `${prop}:${computedStyle.getPropertyValue(prop)};`
     }
-    return styleString;
-  };
+    return styleString
+  }
 
   // Deep clone with computed styles
   const cloneWithStyles = (element: HTMLElement): HTMLElement => {
-    const clone = element.cloneNode(true) as HTMLElement;
+    const clone = element.cloneNode(true) as HTMLElement
     // Apply computed styles to the clone and all its children
     const applyStyles = (original: Element, cloned: Element) => {
       if (original instanceof HTMLElement && cloned instanceof HTMLElement) {
-        cloned.style.cssText = getComputedStylesAsString(original);
+        cloned.style.cssText = getComputedStylesAsString(original)
       }
-      const originalChildren = original.children;
-      const clonedChildren = cloned.children;
+      const originalChildren = original.children
+      const clonedChildren = cloned.children
       for (let i = 0; i < originalChildren.length; i++) {
         if (clonedChildren[i]) {
-          applyStyles(originalChildren[i], clonedChildren[i]);
+          applyStyles(originalChildren[i], clonedChildren[i])
         }
       }
-    };
-    applyStyles(element, clone);
-    return clone;
-  };
-
-  const handlePrint = () => {
-    if (!htmlContent) return;
-    setIsGeneratingPdf(true);
-    try {
-      // Create a new window with print-specific styles
-      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-      if (!printWindow) {
-        alert('Please allow popups to print the document');
-        return;
-      }
-      
-      // Add print-specific styles
-      const printStyles = `
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        body {
-          font-family: Arial, sans-serif;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-          color-adjust: exact !important;
-        }
-        @media print {
-          body {
-            margin: 0;
-            padding: 0;
-          }
-          @page {
-            size: A4;
-            margin: 5mm;
-          }
-        }
-      `;
-      
-      printWindow.document.write(
-        '<!DOCTYPE html><html><head>' +
-        '<title>Receipt - ' + (receipt?.receiptCode || 'document') + '</title>' +
-        '<style>' + printStyles + '</style>' +
-        '</head><body>' +
-        htmlContent +
-        '</body></html>',
-      );
-      printWindow.document.close();
-      
-      // Wait for images to load, then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.focus();
-          printWindow.print();
-          setIsGeneratingPdf(false);
-        }, 500);
-      };
-    } catch (error) {
-      console.error('Error printing document:', error);
-      setIsGeneratingPdf(false);
-      alert('Printing failed. Please try again.');
     }
-  };
+    applyStyles(element, clone)
+    return clone
+  }
+
+  const handlePrint = async () => {
+    if (!contentRef.current || isGenerating) return
+    setIsGenerating(true)
+    try {
+      // Find all page elements
+      const pages = contentRef.current.querySelectorAll('[data-pdf-page]')
+      const targetPages = pages.length > 0 ? (Array.from(pages) as HTMLElement[]) : [contentRef.current];
+
+      if (targetPages.length === 0) {
+        throw new Error('No pages found to print')
+      }
+      // Create PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      })
+      // Process each page
+      for (let i = 0; i < targetPages.length; i++) {
+        const pageElement = targetPages[i] as HTMLElement
+        // Temporarily remove shadow for clean capture
+        const originalBoxShadow = pageElement.style.boxShadow
+        pageElement.style.boxShadow = 'none'
+        // Capture the page
+        const canvas = await html2canvas(pageElement, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: pageElement.scrollWidth,
+          windowHeight: pageElement.scrollHeight,
+        })
+        // Restore styles
+        pageElement.style.boxShadow = originalBoxShadow
+        // Add page to PDF (except for the first one which is created by default)
+        if (i > 0) {
+          pdf.addPage()
+        }
+        const imgData = canvas.toDataURL('image/png', 1.0)
+        const pdfWidth = pdf.internal.pageSize.getWidth()
+        const pdfHeight = pdf.internal.pageSize.getHeight()
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+      }
+      // Generate blob and open in new tab
+      const pdfBlob = pdf.output('blob')
+      const blobUrl = URL.createObjectURL(pdfBlob)
+      const newTab = window.open(blobUrl, '_blank')
+
+      const fileName = `Receipt-${receipt?.receiptCode || 'document'}.pdf`;
+
+      if (!newTab) {
+        // Fallback: download the file if popup blocked
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = fileName
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
+      } else {
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+      }
+    } catch (error) {
+      console.error('PDF generation failed:', error)
+      alert('Failed to generate PDF. Please try again.')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
 
   const handleDownloadPdf = async () => {
-    if (!htmlContent) return;
-    setIsGeneratingPdf(true);
+    if (!contentRef.current) return
+    setIsGeneratingPdf(true)
     try {
       // Check if html2pdf is already loaded
-      let html2pdf = (window as any).html2pdf;
+      let html2pdf = (window as any).html2pdf
       if (!html2pdf) {
         // Dynamically load html2pdf from CDN
         await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script');
+          const script = document.createElement('script')
           script.src =
-            'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error('Failed to load PDF library'));
-          document.head.appendChild(script);
-        });
-        html2pdf = (window as any).html2pdf;
+            'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
+          script.onload = () => resolve()
+          script.onerror = () => reject(new Error('Failed to load PDF library'))
+          document.head.appendChild(script)
+        })
+        html2pdf = (window as any).html2pdf
       }
-
+      // Clone with all computed styles
+      const styledClone = cloneWithStyles(contentRef.current)
       // Create a container with proper dimensions
-      const container = document.createElement('div');
-      container.style.position = 'absolute';
-      container.style.left = '-9999px';
-      container.style.top = '0';
-      container.style.width = '210mm';
-      container.style.backgroundColor = 'white';
-      container.innerHTML = htmlContent;
-      document.body.appendChild(container);
-      
+      const container = document.createElement('div')
+      container.style.position = 'absolute'
+      container.style.left = '-9999px'
+      container.style.top = '0'
+      container.style.width = '210mm'
+      container.style.backgroundColor = 'white'
+      container.appendChild(styledClone)
+      document.body.appendChild(container)
       // Wait a bit for styles to apply
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100))
       // PDF options
       const opt = {
         margin: [5, 5, 5, 5],
@@ -206,104 +315,158 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
         pagebreak: {
           mode: ['avoid-all', 'css', 'legacy'],
         },
-      };
-      
+      }
       // Generate and save PDF
-      await html2pdf().set(opt).from(container).save();
-      
+      await html2pdf().set(opt).from(container).save()
       // Cleanup
       setTimeout(() => {
         if (document.body.contains(container)) {
-          document.body.removeChild(container);
+          document.body.removeChild(container)
         }
-      }, 1000);
+      }, 1000)
     } catch (error: any) {
-      console.error('Error generating PDF:', error);
+      console.error('Error generating PDF:', error)
       alert(
         'PDF generation failed. Please try the Print option and save as PDF.',
-      );
+      )
     } finally {
-      setIsGeneratingPdf(false);
+      setIsGeneratingPdf(false)
     }
-  };
+  }
 
-  const handleDownload = async () => {
-    if (!receipt.receiptCode) {
-      showError('Error', 'Receipt code is missing');
-      return;
-    }
+  // Helper function to convert number to words
+  const convertToDollarsInWords = (num: number | string | null | undefined): string => {
+    const n = typeof num === 'string' ? parseFloat(num) : num;
+    if (n === null || n === undefined || isNaN(n) || n === 0) return 'Zero Only';
 
-    setIsDownloading(true);
-    try {
-      const applicationCode = receipt.applicationCode || (receipt.applicationId ? String(receipt.applicationId) : undefined);
-      await receiptService.getReceiptPdfLink(receipt.receiptCode.trim(), true, applicationCode);
-      showSuccess('Success', 'Receipt PDF opened in new tab');
-    } catch (error: any) {
-      showError('Error', error.message || 'Failed to download receipt PDF');
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  // Helper function to convert number to words (for receipt amounts)
-  const convertToDollarsInWords = (num: number): string => {
     const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
       'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
     const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
-    if (num === 0) return 'Zero';
+    const convertLessThanThousand = (val: number): string => {
+      if (val === 0) return '';
+      if (val < 20) return ones[val];
+      if (val < 100) return tens[Math.floor(val / 10)] + (val % 10 > 0 ? ' ' + ones[val % 10] : '');
+      return ones[Math.floor(val / 100)] + ' Hundred' + (val % 100 > 0 ? ' ' + convertLessThanThousand(val % 100) : '');
+    };
 
-    const convertHundreds = (n: number): string => {
-      if (n === 0) return '';
-      if (n < 20) return ones[n];
-      if (n < 100) {
-        const ten = Math.floor(n / 10);
-        const one = n % 10;
-        return tens[ten] + (one > 0 ? ' ' + ones[one] : '');
+    const convert = (val: number): string => {
+      if (val === 0) return '';
+
+      let res = '';
+
+      // Millions
+      if (val >= 1000000) {
+        res += convertLessThanThousand(Math.floor(val / 1000000)) + ' Million ';
+        val %= 1000000;
       }
-      const hundred = Math.floor(n / 100);
-      const remainder = n % 100;
-      return ones[hundred] + ' Hundred' + (remainder > 0 ? ' ' + convertHundreds(remainder) : '');
+
+      // Thousands
+      if (val >= 1000) {
+        res += convertLessThanThousand(Math.floor(val / 1000)) + ' Thousand ';
+        val %= 1000;
+      }
+
+      // Hundreds/Units
+      if (val > 0) {
+        res += convertLessThanThousand(Math.floor(val));
+      }
+
+      return res.trim();
     };
 
-    const convertThousands = (n: number): string => {
-      if (n < 1000) return convertHundreds(n);
-      const thousand = Math.floor(n / 1000);
-      const remainder = n % 1000;
-      return convertHundreds(thousand) + ' Thousand' + (remainder > 0 ? ' ' + convertHundreds(remainder) : '');
-    };
+    const wholePart = Math.floor(n);
+    const decimalPart = Math.round((n - wholePart) * 100);
 
-    const wholePart = Math.floor(num);
-    const decimalPart = Math.round((num - wholePart) * 100);
-    let result = convertThousands(wholePart);
-    
+    let result = convert(wholePart);
+    if (!result) result = 'Zero';
+
     if (decimalPart > 0) {
-      const cents = decimalPart < 20 ? ones[decimalPart] : 
-        tens[Math.floor(decimalPart / 10)] + (decimalPart % 10 > 0 ? ' ' + ones[decimalPart % 10] : '');
-      result += ', And ' + cents + ' Cents Only';
+      result += ' and Cents ' + convertLessThanThousand(decimalPart) + ' Only';
     } else {
       result += ' Only';
     }
-    
+
     return result;
   };
 
+  // Pre-calculate address for the React component with comprehensive fallback
+  const getDisplayAddress = () => {
+    if (!receipt) return 'N/A';
+
+    // Check various common field names for address
+    const address = (receipt as any).customerAddress ||
+      (receipt as any).address ||
+      (receipt as any).customer?.address ||
+      (receipt as any).invoice?.customerAddress ||
+      (receipt as any).invoice?.address ||
+      (receipt as any).payeeAddress ||
+      '';
+
+    if (address && address !== 'N/A' && address !== 'null') return formatAddressForDisplay(address) || address;
+
+    // Attempt to build from components
+    // Attempt to build from components
+    const parts = [
+      receipt.addressNo || (receipt as any).AddressNo || (receipt as any).invoice?.addressNo || (receipt as any).invoice?.AddressNo,
+      receipt.address || (receipt as any).Address || (receipt as any).addressLine1 || (receipt as any).invoice?.address || (receipt as any).invoice?.Address || (receipt as any).invoice?.addressLine1,
+      receipt.address2 || (receipt as any).Address2 || (receipt as any).addressLine2 || (receipt as any).invoice?.address2 || (receipt as any).invoice?.Address2 || (receipt as any).invoice?.addressLine2,
+      receipt.addressCity || (receipt as any).AddressCity || (receipt as any).invoice?.addressCity || (receipt as any).invoice?.AddressCity,
+      (receipt as any).districtCode || (receipt as any).DistrictCode || (receipt as any).addressState || (receipt as any).invoice?.districtCode || (receipt as any).invoice?.DistrictCode,
+      receipt.country || (receipt as any).Country || (receipt as any).invoice?.country || (receipt as any).invoice?.Country
+    ].filter(part =>
+      part &&
+      part !== 'undefined' &&
+      part !== 'null' &&
+      typeof part === 'string' &&
+      part.trim() !== ''
+    );
+
+    // Deduplicate parts to avoid repeats like #65686, #65686
+    const uniqueParts: string[] = [];
+    const seenNormalized = new Set<string>();
+
+    for (const part of parts) {
+      const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!normalized) continue;
+
+      let exists = false;
+      for (const seen of seenNormalized) {
+        if (seen.includes(normalized) || normalized.includes(seen)) {
+          exists = true;
+          break;
+        }
+      }
+
+      if (!exists) {
+        uniqueParts.push(part);
+        seenNormalized.add(normalized);
+      }
+    }
+
+    const fullAddress = uniqueParts.join(', ');
+
+    // Format address (Block, Street, Unit, Singapore) and avoid Block/Blk, Singapore duplicates
+    if (uniqueParts.length > 0) {
+      return formatAddressForDisplay(fullAddress) || fullAddress;
+    }
+
+    return formatAddressForDisplay(uniqueParts[0]) || uniqueParts[0] || 'N/A';
+  };
+
+  const displayAddress = getDisplayAddress();
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-        onClick={onClose}
-      />
+      <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={onClose} />
 
-      {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="relative bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
           {/* Header */}
           <div className="sticky top-0 bg-gradient-to-r from-[#8b2828] to-[#7d1f1f] px-6 py-4 rounded-t-lg flex items-center justify-between z-10">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-                <DownloadIcon className="w-6 h-6 text-white" />
+                <PrinterIcon className="w-6 h-6 text-white" />
               </div>
               <div>
                 <h2 className="text-xl font-bold text-white">Receipt Details</h2>
@@ -313,32 +476,21 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
             <div className="flex items-center gap-2">
               <button
                 onClick={handlePrint}
-                disabled={isGeneratingPdf || isDownloading || !htmlContent}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isGenerating || isGeneratingPdf || !receipt}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50"
                 title="Print"
               >
-                <PrinterIcon className={`w-5 h-5 ${isGeneratingPdf || isDownloading ? 'animate-pulse' : ''}`} />
+                <PrinterIcon className={`w-5 h-5 ${isGenerating || isGeneratingPdf ? 'animate-pulse' : ''}`} />
               </button>
               <button
                 onClick={handleDownloadPdf}
-                disabled={isGeneratingPdf || isDownloading || !htmlContent}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isGenerating || isGeneratingPdf || !htmlContent}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50"
                 title="Download PDF"
               >
-                <DownloadIcon className={`w-5 h-5 ${isGeneratingPdf || isDownloading ? 'animate-pulse' : ''}`} />
+                <DownloadIcon className={`w-5 h-5 ${isGenerating || isGeneratingPdf ? 'animate-pulse' : ''}`} />
               </button>
-              <button
-                onClick={handleDownload}
-                disabled={isDownloading}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Download from Server"
-              >
-                <DownloadIcon className={`w-5 h-5 ${isDownloading ? 'animate-pulse' : ''}`} />
-              </button>
-              <button
-                onClick={onClose}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
-              >
+              <button onClick={onClose} className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2">
                 <XIcon className="w-5 h-5" />
               </button>
             </div>
@@ -346,61 +498,54 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
 
           {/* Content */}
           <div className="flex-1 p-6 bg-gray-50 overflow-auto relative">
-            {isGeneratingPdf && (
+            {(isGenerating || isGeneratingPdf || isLoading) && (
               <div className="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-75 z-20">
                 <div className="text-center">
                   <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#8b2828] mb-4"></div>
-                  <p className="text-gray-600">Generating PDF...</p>
+                  <p className="text-gray-600">{isLoading ? 'Loading receipt data...' : 'Processing document...'}</p>
                 </div>
               </div>
             )}
             <div ref={contentRef}>
-              {receipt && (
-                <ReceiptTemplate
-                  receiptNo={receipt.receiptCode}
-                  date={receipt.receiptDate ? formatDate(receipt.receiptDate) : formatDate(receipt.createdAt)}
-                  receivedFrom={receipt.customerName}
-                  address={`${receipt.addressNo || ''}${receipt.addressNo ? ', ' : ''}${receipt.address || ''}${receipt.address ? ', ' : ''}${receipt.address2 || ''}${receipt.address2 ? ', ' : ''}${receipt.addressCity || ''}${receipt.addressCity ? ', ' : ''}${receipt.country || ''}`.replace(/,+/g, ', ').replace(/^, |, $/g, '') || 'N/A'}
-                  invoiceNo={receipt.invoice?.code || receipt.invoiceCode || 'N/A'}
-                  description={(receipt.description || (receipt.invoiceDetails && receipt.invoiceDetails.length > 0 ? receipt.invoiceDetails[0].description : '')) || 'Payment received'}
-                  totalAmount={receipt.totalAmount}
-                  dollarsInWords={convertToDollarsInWords(receipt.totalAmount)}
-                  paymentMethod={receipt.paymentMode}
-                  items={(receipt.invoiceDetails || []).map((d) => ({
-                    description: d.description || '',
-                    quantity: d.quantity || 0,
-                    unitPrice: d.unitPrice || 0,
-                    amount: d.amount || 0,
-                  }))}
-                />
-              )}
+              <div data-pdf-page>
+                {(() => {
+                  const currentReceipt = fullReceiptData || receipt;
+                  const totalAmt = currentReceipt.totalAmount || (currentReceipt as any).ReceiptTotalAmount || currentReceipt.payingAmount || 0;
+
+                  return (
+                    <ReceiptTemplate
+                      receiptNo={currentReceipt.receiptCode || (currentReceipt as any).code || (currentReceipt.applicationId != null ? String(currentReceipt.applicationId) : 'N/A')}
+                      date={currentReceipt.receiptDate ? formatDate(currentReceipt.receiptDate) : (currentReceipt.createdAt ? formatDate(currentReceipt.createdAt) : (currentReceipt as any).transactionDate ? formatDate((currentReceipt as any).transactionDate) : formatDate(new Date().toISOString()))}
+                      receivedFrom={currentReceipt.customerName || (currentReceipt as any).payeeName || 'N/A'}
+                      address={displayAddress}
+                      invoiceNo={currentReceipt.invoice?.code || (currentReceipt as any).invoice?.Code || currentReceipt.invoiceCode || (currentReceipt as any).invoiceNo || 'N/A'}
+                      description={(currentReceipt.description || (() => {
+                        const details = currentReceipt.invoiceDetails || (currentReceipt as any).details || [];
+                        const d = details[0];
+                        if (!d) return '';
+                        return (d.refDocName || d.refDocNumber || d.RefDocName || d.RefDocNumber || d.itemName || d.ItemName || d.description || '').trim() || 'Payment received';
+                      })()) || 'Payment received'}
+                      totalAmount={totalAmt}
+                      dollarsInWords={convertToDollarsInWords(totalAmt)}
+                      paymentMethod={(() => {
+                        const pm = String(currentReceipt.paymentMode || (currentReceipt as any).paymentMethod || (currentReceipt as any).PaymentMode || 'Cash').trim();
+                        const pmDoc = (currentReceipt as any).paymentModeDocNo || (currentReceipt as any).PaymentModeDocNo;
+                        const isCash = pm.toLowerCase().startsWith('cash');
+                        if (isCash) return 'Cash';
+                        return pmDoc ? `${pm} (Ref: ${pmDoc})` : pm;
+                      })()}
+                      items={((currentReceipt.invoiceDetails || (currentReceipt as any).details || []).map((d: any) => ({
+                        description: (d.refDocName || d.refDocNumber || d.RefDocName || d.RefDocNumber || d.itemName || d.ItemName || d.description || '').trim() || 'Payment received',
+                        quantity: d.quantity || d.Quantity || 1,
+                        unitPrice: d.unitPrice || d.UnitPrice || d.unitAmount || d.UnitAmount || d.payingAmount || d.PayingAmount || 0,
+                        amount: d.amount || d.Amount || d.lineTotalAmount || d.LineTotalAmount || d.totalPayingAmount || d.TotalPayingAmount || 0,
+                      })))}
+                    />
+                  );
+                })()}
+              </div>
             </div>
 
-            {/* Footer Actions */}
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Close
-              </button>
-              <button
-                onClick={handlePrint}
-                disabled={isGeneratingPdf || isDownloading || !htmlContent}
-                className="px-4 py-2 bg-gradient-to-r from-[#8b2828] to-[#7d1f1f] text-white rounded-lg hover:shadow-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <PrinterIcon className="w-4 h-4" />
-                Print
-              </button>
-              <button
-                onClick={handleDownloadPdf}
-                disabled={isGeneratingPdf || isDownloading || !htmlContent}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-lg hover:shadow-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <DownloadIcon className="w-4 h-4" />
-                Download PDF
-              </button>
-            </div>
           </div>
         </div>
       </div>

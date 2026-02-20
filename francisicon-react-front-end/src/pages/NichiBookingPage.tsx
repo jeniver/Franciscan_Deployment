@@ -2,11 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { Layout } from '../components/Layout';
 import { useNichiBooking } from '../hooks/useNichiBooking';
 import { useToast } from '../contexts/ToastContext';
-import { ChurchIcon, BookOpenIcon, PlusIcon, ChevronDownIcon, LoaderIcon, EyeIcon } from 'lucide-react';
+import { ChurchIcon, BookOpenIcon, PlusIcon, ChevronDownIcon, LoaderIcon, EyeIcon, Loader2, CheckCircle2, X } from 'lucide-react';
+import { usePersonLookup } from '../hooks/usePersonLookup';
+import { PersonData } from '../services/personService';
 import inscriptionService from '../services/inscriptionService';
 import { DateInput } from '../components/common/DateInput';
 import type { BibleChoice } from '../services/inscriptionService';
 import type { DeceasedDetail } from '../store/nichibookingSlice';
+import { PAYMENT_MODE_OPTIONS } from '../utils/paymentMode';
 
 export function NichiBookingPage() {
   const {
@@ -17,6 +20,7 @@ export function NichiBookingPage() {
     refDocNumber,
     lineTaxPercent,
     itemId,
+    remarks,
     creatingInvoice,
     invoiceError,
     createdInvoice,
@@ -35,6 +39,7 @@ export function NichiBookingPage() {
     updateRefDocNumber,
     updateLineTaxPercent,
     updateItemId,
+    updateRemarks,
     handleCreateNichiBookingInvoice: _handleCreateNichiBookingInvoice,
     handleCreateNichiApplication,
     handleViewNichiApplication,
@@ -65,6 +70,10 @@ export function NichiBookingPage() {
   const [bibleChoices, setBibleChoices] = useState<BibleChoice[]>([]);
   const [bibleChoicesLoading, setBibleChoicesLoading] = useState(false);
   const [bibleChoicesError, setBibleChoicesError] = useState<string | null>(null);
+
+  const { searchPerson, searchResults, isSearching, clearResults } = usePersonLookup();
+  const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   // Fetch Bible choices on mount (optional feature)
   useEffect(() => {
@@ -129,15 +138,52 @@ export function NichiBookingPage() {
   };
 
   const handleUpdateBeneficiary = (index: number, field: keyof DeceasedDetail, value: string) => {
+    const updatedValue: Partial<DeceasedDetail> = { [field]: value };
+
+    // Auto calculate storage periods when internment date is updated
+    if (field === 'internmentDate' && value) {
+      updatedValue.storagePeriodFrom = value;
+
+      const internmentDate = new Date(value);
+      if (!isNaN(internmentDate.getTime())) {
+        const storageToDate = new Date(internmentDate);
+        storageToDate.setFullYear(internmentDate.getFullYear() + 30);
+
+        // Format as YYYY-MM-DD
+        const year = storageToDate.getFullYear();
+        const month = String(storageToDate.getMonth() + 1).padStart(2, '0');
+        const day = String(storageToDate.getDate()).padStart(2, '0');
+        updatedValue.storagePeriodTo = `${year}-${month}-${day}`;
+      }
+    }
+
     // If this is the first beneficiary and it's still in local state (not in Redux yet)
     if (deceasedDetails.length === 0 && beneficiaries.length === 1) {
       // Update the local beneficiary and sync to Redux
-      const updated = [{ ...beneficiaries[0], [field]: value }];
+      const updated = [{ ...beneficiaries[0], ...updatedValue }];
       updateDeceasedDetails(updated);
     } else {
-      updateDeceased(index, { [field]: value });
+      updateDeceased(index, updatedValue);
     }
   };
+
+  const handleSelectPerson = useCallback((person: PersonData, index: number) => {
+    const updatedValue: Partial<DeceasedDetail> = {
+      nameOfDeceased: person.name,
+      // You could also map birth/death dates if available in PersonData
+    };
+
+    if (deceasedDetails.length === 0 && beneficiaries.length === 1) {
+      const updated = [{ ...beneficiaries[0], ...updatedValue }];
+      updateDeceasedDetails(updated);
+    } else {
+      updateDeceased(index, updatedValue);
+    }
+
+    setShowSearchResults(false);
+    setActiveSearchIndex(null);
+    clearResults();
+  }, [beneficiaries, deceasedDetails.length, updateDeceased, updateDeceasedDetails, clearResults]);
 
   const handleCreateInvoice = async () => {
     try {
@@ -201,7 +247,7 @@ export function NichiBookingPage() {
       // Reset niche-related fields when switching to a different application
       // This prevents showing the previous application's niche selection
       console.log(`Application number changed from ${previousRefDocNumber} to ${currentRefDocNumber}, resetting niche state`);
-      
+
       // Note: The actual reset happens in handleViewNichiApplication
       // This effect is just for manual refDocNumber changes
     }
@@ -280,7 +326,7 @@ export function NichiBookingPage() {
         {/* Invoice Form Section */}
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Nichi Booking Invoice</h2>
-          
+
           <div className="space-y-6">
             {/* Invoice Number and Payment Mode */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -307,10 +353,11 @@ export function NichiBookingPage() {
                   onChange={(e) => updatePaymentMode(e.target.value)}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all"
                 >
-                  <option value="Cash">Cash</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="Bank Transfer">Bank Transfer</option>
-                  <option value="Credit Card">Credit Card</option>
+                  {PAYMENT_MODE_OPTIONS.map((option) => (
+                    <option key={option.code} value={option.label}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -396,6 +443,17 @@ export function NichiBookingPage() {
                 </div>
               </div>
             </details>
+
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700">Remarks</label>
+              <textarea
+                rows={3}
+                value={remarks}
+                onChange={(e) => updateRemarks(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all resize-none"
+                placeholder="Enter remarks (optional)"
+              />
+            </div>
           </div>
         </div>
 
@@ -434,14 +492,57 @@ export function NichiBookingPage() {
                           <option value="">Select</option>
                         </select>
                       </td>
-                      <td className="py-4 px-4">
-                        <input
-                          type="text"
-                          value={beneficiary.nameOfDeceased}
-                          onChange={(e) => handleUpdateBeneficiary(index, 'nameOfDeceased', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
-                          placeholder="Full name"
-                        />
+                      <td className="py-4 px-4 relative">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={beneficiary.nameOfDeceased}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              handleUpdateBeneficiary(index, 'nameOfDeceased', val);
+                              if (val.length >= 3) {
+                                searchPerson(val);
+                                setActiveSearchIndex(index);
+                                setShowSearchResults(true);
+                              } else if (activeSearchIndex === index) {
+                                setShowSearchResults(false);
+                              }
+                            }}
+                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
+                            placeholder="Full name"
+                          />
+                          {isSearching && activeSearchIndex === index && (
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                            </div>
+                          )}
+                        </div>
+
+                        {showSearchResults && activeSearchIndex === index && searchResults.length > 0 && (
+                          <div className="absolute z-50 w-64 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto left-4">
+                            <div className="p-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-500 flex items-center justify-between">
+                              <span>MATCHES FOUND</span>
+                              <button onClick={() => setShowSearchResults(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                            {searchResults.map((person) => (
+                              <div
+                                key={person.personId}
+                                className="p-3 hover:bg-red-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors group"
+                                onClick={() => handleSelectPerson(person, index)}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex flex-col text-left">
+                                    <span className="font-medium text-gray-900 group-hover:text-red-700">{person.name}</span>
+                                    <span className="text-xs text-gray-500">{person.idNo}</span>
+                                  </div>
+                                  <CheckCircle2 className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="py-4 px-4">
                         <DateInput
@@ -464,14 +565,9 @@ export function NichiBookingPage() {
                             onChange={(apiDate) => handleUpdateBeneficiary(index, 'internmentDate', apiDate)}
                             className="rounded-lg py-2 px-3 text-sm"
                           />
-                          <input
-                            type="time"
-                            value={beneficiary.internmentTime}
-                            onChange={(e) => handleUpdateBeneficiary(index, 'internmentTime', e.target.value)}
-                            className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#801818] focus:border-[#801818] transition-all text-sm"
-                          />
                         </div>
                       </td>
+
                       <td className="py-4 px-4">
                         <input
                           type="text"
@@ -547,7 +643,7 @@ export function NichiBookingPage() {
                     </div>
                   )}
                   {selectedBibleChoiceId && (
-                    <button 
+                    <button
                       onClick={() => {
                         const selected = bibleChoices.find(c => c.bibleInscriptionChoiceId === selectedBibleChoiceId);
                         if (selected) {
@@ -609,46 +705,46 @@ export function NichiBookingPage() {
 
         {/* Action Buttons */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        {/* Success Message */}
-        {(createdApplication || createdInvoice) && (
-          <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 rounded-lg">
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0">
-                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">✓</span>
+          {/* Success Message */}
+          {(createdApplication || createdInvoice) && (
+            <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                    <span className="text-white font-bold text-lg">✓</span>
+                  </div>
                 </div>
-              </div>
-              <div className="flex-1">
-                <div className="text-base font-semibold text-green-800">
-                  {createdApplication ? 'Application Created Successfully!' : 'Invoice Created Successfully!'}
-                </div>
-                <div className="text-sm text-green-700 mt-1">
-                  {createdApplication ? (
-                    <>
-                      Application Code: <span className="font-mono font-bold">{createdApplication.applicationCode}</span>
-                      {createdApplication.invoice && (
-                        <div className="mt-1">
-                          Invoice No: <span className="font-mono font-bold">{createdApplication.invoice.invoiceNo}</span>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      Invoice Code: <span className="font-mono font-bold">{createdInvoice?.invoiceCode || createdInvoice?.invoiceNumber}</span>
-                    </>
-                  )}
+                <div className="flex-1">
+                  <div className="text-base font-semibold text-green-800">
+                    {createdApplication ? 'Application Created Successfully!' : 'Invoice Created Successfully!'}
+                  </div>
+                  <div className="text-sm text-green-700 mt-1">
+                    {createdApplication ? (
+                      <>
+                        Application Code: <span className="font-mono font-bold">{createdApplication.applicationCode}</span>
+                        {createdApplication.invoice && (
+                          <div className="mt-1">
+                            Invoice No: <span className="font-mono font-bold">{createdApplication.invoice.invoiceNo}</span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        Invoice Code: <span className="font-mono font-bold">{createdInvoice?.invoiceCode || createdInvoice?.invoiceNumber}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Error Message */}
-        {(applicationError || invoiceError) && (
-          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg">
-            <div className="text-sm font-semibold text-red-800">{applicationError || invoiceError}</div>
-          </div>
-        )}
+          {/* Error Message */}
+          {(applicationError || invoiceError) && (
+            <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg">
+              <div className="text-sm font-semibold text-red-800">{applicationError || invoiceError}</div>
+            </div>
+          )}
 
           {/* Button Groups */}
           <div className="flex flex-wrap gap-3 justify-between items-center">

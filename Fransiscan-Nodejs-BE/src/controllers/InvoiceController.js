@@ -13,15 +13,78 @@ class InvoiceController extends BaseController {
     super();
     this.invoiceRepository = new InvoiceRepository();
     this.invoiceService = new InvoiceService(this.invoiceRepository);
-    this.receiptService = new ReceiptService(require('../repositories/ReceiptRepository'));
+    const ReceiptRepository = require('../repositories/ReceiptRepository');
+    this.receiptService = new ReceiptService(new ReceiptRepository());
   }
+
+  /**
+   * Get creation status for an application code
+   * GET /api/invoices/status/:code
+   * Returns status information about what's been created for a given code
+   */
+  getCreationStatus = this.asyncHandler(async (req, res) => {
+    this.logRequest(req, 'Get Creation Status');
+
+    try {
+      const { code } = req.params;
+      const userId = req.user?.userId;
+      const churchId = req.user?.churchId;
+
+      if (!code) {
+        return this.sendError(res, 'Code is required', 400);
+      }
+
+      if (!userId || !churchId) {
+        return this.sendError(res, 'Authentication required', 401);
+      }
+
+      // Check if invoice exists
+      const invoice = await this.invoiceRepository.getInvoiceByCode(code, churchId);
+
+      // Check if receipt exists for this invoice/application
+      let receipt = null;
+      if (invoice) {
+        receipt = await this.receiptService.getReceiptByInvoiceId(invoice.InvoiceId, churchId);
+      } else {
+        // Check if there's a receipt for the application code directly
+        receipt = await this.receiptService.getReceiptByCode(code, churchId);
+      }
+
+      // Resolve application data via ApplicationService
+      const applicationService = require('../services/ApplicationService');
+      const type = req.query.type || req.query.refDocName || null;
+      const applicationData = await applicationService.getApplicationDetails(code, churchId, type);
+      const isApplication = !!applicationData;
+
+      const status = {
+        code: code,
+        hasInvoice: !!invoice,
+        hasReceipt: !!receipt,
+        isApplication: isApplication,
+        isExistingRecord: !!invoice || !!receipt,
+        canCreateInvoice: isApplication, // Always allow if it's a valid application
+        canCreateReceipt: invoice || isApplication, // Always allow if invoice or application exists
+        invoiceCode: invoice?.Code || null,
+        receiptCode: receipt?.Code || null,
+        invoiceId: invoice?.InvoiceId || null,
+        receiptId: receipt?.ReceiptId || null,
+        applicationData: applicationData
+      };
+
+      return this.sendSuccess(res, status, 'Creation status retrieved successfully');
+
+    } catch (error) {
+      logger.error('Controller: Failed to get creation status:', error);
+      return this.sendError(res, 'Failed to retrieve creation status', 500);
+    }
+  });
 
   /**
    * Create new invoice
    * POST /api/invoices
    * Matching ASP.NET Capture.aspx.cs SaveInvoice
    */
-  createInvoice = this.asyncHandler(async(req, res) => {
+  createInvoice = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Create Invoice');
 
     try {
@@ -53,8 +116,8 @@ class InvoiceController extends BaseController {
 
       if (!result.success) {
         const statusCode = result.error.code === 'DUPLICATE_INVOICE' ? 409 :
-                          result.error.code === 'INVALID_REF_DOCUMENT' ? 400 :
-                          result.error.code === 'VALIDATION_ERROR' ? 400 : 400;
+          result.error.code === 'INVALID_REF_DOCUMENT' ? 400 :
+            result.error.code === 'VALIDATION_ERROR' ? 400 : 400;
 
         return res.status(statusCode).json({
           success: false,
@@ -117,14 +180,14 @@ class InvoiceController extends BaseController {
    * If it's an inscription code, retrieves inscription data and creates invoice from it
    * Request body is optional - if provided, will be used to override defaults
    */
-  createInvoiceByCode = this.asyncHandler(async(req, res) => {
+  createInvoiceByCode = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Create Invoice by Code');
 
     try {
       const { code } = req.params;
       const userId = req.user?.userId;
       const churchId = req.user?.churchId;
-      const applicationCode = req.query.applicationCode || null;
+      const applicationCode = req.query.applicationCode || req.query.type || null;
 
       if (!code) {
         return this.sendError(res, 'Invoice code is required', 400);
@@ -136,7 +199,7 @@ class InvoiceController extends BaseController {
 
       // First, check if invoice already exists
       const existingInvoice = await this.invoiceRepository.getInvoiceByCode(code, churchId, applicationCode);
-      
+
       if (existingInvoice) {
         // Invoice already exists, return it
         logger.info(`Invoice already exists for code: ${code}, returning existing invoice`);
@@ -145,214 +208,24 @@ class InvoiceController extends BaseController {
 
       // If no invoice found, try to create it from application data
       logger.info(`No existing invoice found for code: ${code}, attempting to create new invoice`);
-      
-      // Try to resolve the application based on code format
-      const { executeQuery } = require('../config/database');
-      let application = null;
-      let refDocName = null;
-      let customerName = null;
-      let nicheApplicationId = null;
 
-      const normalizedCode = code.trim().toUpperCase();
+      const applicationService = require('../services/ApplicationService');
+      // Extract type from request if available (from query or body)
+      const type = req.query.type || req.query.refDocName || req.body.refDocName || null;
+      const application = await applicationService.getApplicationDetails(code, churchId, type);
 
-      // Determine RefDocName from code pattern
-      if (normalizedCode.startsWith('NAPP-') || /^\d+-\d+$/.test(normalizedCode)) {
-        // Niche Application - format: "NAPP-XXXX" or "XXXX-0"
-        refDocName = 'NAPP';
-        
-        // Query NicheApplication table
-        const appQuery = `
-          SELECT TOP 1
-            NicheApplicationId,
-            Code,
-            ApplicantName,
-            Status,
-            ChurchId,
-            Amount,
-            AppliedDate,
-            AgreementDate
-          FROM NicheApplication WITH(NOLOCK)
-          WHERE Code = @code
-        `;
-        
-        const appResult = await executeQuery(appQuery, { code });
-        if (appResult.recordset && appResult.recordset.length > 0) {
-          application = appResult.recordset[0];
-          customerName = application.ApplicantName;
-          nicheApplicationId = application.NicheApplicationId;
-          
-          // Check church access
-          if (application.ChurchId !== churchId) {
-            return this.sendError(res, 'Access denied - Church ID mismatch', 403);
-          }
-        } else {
-          return this.sendError(res, `Niche application not found for code: ${code}`, 404);
-        }
-      } else if (normalizedCode.startsWith('INCR-') || 
-                 (normalizedCode.startsWith('I-') && 
-                  (Boolean(normalizedCode.match(/^I-\d+$/)) || 
-                   Boolean(normalizedCode.match(/^I-\d+-\d+$/)) || 
-                   normalizedCode.startsWith('I-NAPP-')))) {
-        // Inscription Request - format: "INCR-XXXX" or "I-XXXX" or "I-XXXX-X"
-        refDocName = 'INCR';
-        
-        // Query NicheInscriptionRequest table
-        const inscrQuery = `
-          SELECT TOP 1
-            NicheInscriptionRequestId,
-            Code,
-            ApplicantName,
-            ChurchId,
-            NicheBookingId
-          FROM NicheInscriptionRequest WITH(NOLOCK)
-          WHERE Code = @code
-        `;
-        
-        const inscrResult = await executeQuery(inscrQuery, { code });
-        if (inscrResult.recordset && inscrResult.recordset.length > 0) {
-          application = inscrResult.recordset[0];
-          customerName = application.ApplicantName || 'Unknown Applicant';
-          
-          // Check church access
-          if (application.ChurchId !== churchId) {
-            return this.sendError(res, 'Access denied - Church ID mismatch', 403);
-          }
-          
-          // Get inscription items for this inscription request
-          try {
-            const inscriptionData = await this.getInscriptionItems(code, churchId);
-            if (inscriptionData && inscriptionData.length > 0) {
-              // Use the first item's details as the main application details
-              const firstItem = inscriptionData[0];
-              application.Amount = firstItem.totalPayingAmount || firstItem.unitAmount;
-            } else if (inscriptionData && inscriptionData.items && inscriptionData.items.length > 0) {
-              // Handle the new object format from InscriptionInvoiceService
-              const firstItem = inscriptionData.items[0];
-              application.Amount = firstItem.Price || firstItem.price || 0;
-                    
-              // Set customer name from applicant details if available
-              if (inscriptionData.applicant && inscriptionData.applicant.name) {
-                customerName = inscriptionData.applicant.name;
-                // Also populate address details from applicant
-                if (inscriptionData.applicant.address) {
-                  application.ApplicantAddressNo = inscriptionData.applicant.address.block || '';
-                  application.ApplicantAddressLine1 = inscriptionData.applicant.address.street || '';
-                  application.ApplicantAddressLine2 = inscriptionData.applicant.address.unitNo || '';
-                  application.ApplicantAddressCity = inscriptionData.applicant.address.postalCode || '';
-                }
-                // Populate contact details
-                application.ApplicantMobileNo = inscriptionData.applicant.mobile || '';
-                application.ApplicantEmailID = inscriptionData.applicant.emailId || '';
-              }
-            }
-          } catch (inscriptionError) {
-            logger.warn('Failed to get inscription items for invoice creation:', inscriptionError.message);
-          }
-        } else {
-          // For inscription codes, try to provide more helpful information
-          logger.info(`Inscription request not found for code: ${code}, checking for inscription details`);
-          
-          try {
-            // Try to get inscription details even if main request not found
-            const inscriptionItems = await this.getInscriptionItems(code, churchId);
-            if (inscriptionItems && (inscriptionItems.items?.length > 0 || inscriptionItems.length > 0)) {
-              // Return application details with instruction to create invoice
-              const responseData = {
-                success: false,
-                error: {
-                  code: 'INSCRIPTION_DETAILS_FOUND',
-                  message: `Inscription details found but no invoice created yet. Create invoice with these inscription details: ${code}`,
-                  inscriptionCode: code,
-                  canCreateInvoice: true,
-                  details: inscriptionItems
-                }
-              };
-              return res.status(404).json(responseData);
-            }
-          } catch (detailError) {
-            logger.warn('Failed to get inscription details for error response:', detailError.message);
-          }
-          
-          return this.sendError(res, `Inscription request not found for code: ${code}`, 404);
-        }
-      } else if (normalizedCode.startsWith('WAPP-')) {
-        // Wake Room Application - format: "WAPP-XXXX" (wake room booking codes)
-        refDocName = 'WAPP';
-        
-        // Query WakeRoomBooking table
-        const wakeRoomQuery = `
-          SELECT TOP 1
-            WakeRoomBookingId,
-            Code,
-            ApplicantName,
-            ApplicantAddressNo,
-            ApplicantAddressLine1,
-            ApplicantAddressLine2,
-            ApplicantAddressCity,
-            ApplicantAddressState,
-            ApplicantAddressCountry,
-            ApplicantMobileNo,
-            ApplicantEmailID,
-            NameOfDeceased,
-            UsingDate,
-            UsingTimeFrom,
-            UsingTimeTo,
-            DonationAmount,
-            DefaultDonationAmount,
-            NoOfDays,
-            ChurchId,
-            Status
-          FROM WakeRoomBooking WITH(NOLOCK)
-          WHERE Code = @code
-        `;
-        
-        const wakeRoomResult = await executeQuery(wakeRoomQuery, { code });
-        if (wakeRoomResult.recordset && wakeRoomResult.recordset.length > 0) {
-          application = wakeRoomResult.recordset[0];
-          customerName = application.ApplicantName || 'Unknown Applicant';
-          
-          // Check church access
-          if (application.ChurchId !== churchId) {
-            return this.sendError(res, 'Access denied - Church ID mismatch', 403);
-          }
-          
-          // Set application amount from donation amount
-          application.Amount = application.DonationAmount || application.DefaultDonationAmount || 0;
-          
-          // Populate address details
-          if (application.ApplicantAddressLine1) {
-            application.ApplicantAddressNo = application.ApplicantAddressNo || '';
-            application.ApplicantAddressLine2 = application.ApplicantAddressLine2 || '';
-            application.ApplicantAddressCity = application.ApplicantAddressCity || '';
-            application.ApplicantAddressState = application.ApplicantAddressState || '';
-            application.ApplicantAddressCountry = application.ApplicantAddressCountry || '';
-          }
-        } else {
-          return this.sendError(res, `Wake room booking not found for code: ${code}`, 404);
-        }
-      } else if (normalizedCode.startsWith('GOLA-')) {
-        refDocName = 'GOLA';
-        // TODO: Implement Gate of Life Application resolution
-        return this.sendError(res, 'Gate of Life Application invoice creation not yet implemented', 501);
-      } else {
-        // Provide helpful error message with supported formats
-        const supportedFormats = [
-          'NAPP-XXXX (Niche Application)',
-          'XXXX-0 (Niche Application)',
-          'INCR-XXXX (Inscription Request)',
-          'I-XXXX (Inscription Request)',
-          'I-XXXX-X (Inscription Request)',
-          'WAPP-XXXX (Wake Room Booking)',
-          'GOLA-XXXX (Gate of Life - Coming Soon)'
-        ];
-        
-        const errorMessage = `Unable to determine application type for code: ${code}. Supported formats: ${supportedFormats.join(', ')}`;
-        return this.sendError(res, errorMessage, 400);
+      if (!application) {
+        return this.sendError(res, `Application or booking not found for code: ${code}`, 404);
       }
 
-      // Get niche information to determine the correct item
+      const refDocName = application.Type;
+      const customerName = application.ApplicantName || 'Unknown Applicant';
+      const nicheApplicationId = (refDocName === 'NAPP' || refDocName === 'GOLA') ? application.Id : null;
+
+      // Get niche information for NAPP types
       let nicheInfo = null;
       if (application.NicheId) {
+        const { executeQuery } = require('../config/database');
         const nicheQuery = `
           SELECT TOP 1
             n.NicheId,
@@ -370,134 +243,80 @@ class InvoiceController extends BaseController {
         }
       }
 
-      // Determine invoice item - try to match by niche level first
-      let item = null;
-      if (nicheInfo && nicheInfo.NicheLevel) {
-        // Try to get item by niche level (e.g., Level 6 -> ItemId 6)
-        const levelItemQuery = `
-          SELECT TOP 1
-            i.ItemId,
-            i.Name AS ItemName,
-            i.Code AS ItemCode,
-            i.Price AS ItemPrice
-          FROM Item i WITH(NOLOCK)
-          WHERE i.ChurchId = @churchId
-            AND i.ItemId = @itemId
-        `;
-        const levelItemResult = await executeQuery(levelItemQuery, { 
-          churchId, 
-          itemId: nicheInfo.NicheLevel 
-        });
-        if (levelItemResult.recordset && levelItemResult.recordset.length > 0) {
-          item = levelItemResult.recordset[0];
-        }
-      }
+      // Determine invoice item
+      // Determine invoice items
+      // Priority 1: Use items resolved by ApplicationService (especially for Inscription/Niche)
+      let items = application.items || [];
 
-      // For INCR (inscription) requests, get inscription-specific items instead of generic niche items
-      if (refDocName === 'INCR' && !item) {
-        // Get inscription items from InscriptionInvoiceService
-        try {
-          const inscriptionItems = await this.getInscriptionItems(code, churchId);
-          if (inscriptionItems && inscriptionItems.length > 0) {
-            // Use the first inscription item
-            const firstInscriptionItem = inscriptionItems[0];
-            item = {
-              ItemId: firstInscriptionItem.itemId,
-              ItemName: firstInscriptionItem.itemName,
-              ItemCode: firstInscriptionItem.itemCode,
-              ItemPrice: firstInscriptionItem.unitAmount
-            };
-          } else if (inscriptionItems && inscriptionItems.items && inscriptionItems.items.length > 0) {
-            // Handle object format
-            const firstInscriptionItem = inscriptionItems.items[0];
-            item = {
-              ItemId: firstInscriptionItem.ItemId || firstInscriptionItem.itemId,
-              ItemName: firstInscriptionItem.Name || firstInscriptionItem.ItemName || 'Inscription Item',
-              ItemCode: firstInscriptionItem.Code || firstInscriptionItem.ItemCode,
-              ItemPrice: firstInscriptionItem.Price || firstInscriptionItem.unitAmount || 0
-            };
-          }
-        } catch (inscriptionItemError) {
-          logger.warn('Failed to get inscription items for item selection:', inscriptionItemError.message);
-        }
-      }
+      // Priority 2: If no items from service, try manual resolution (Legacy Fallback)
+      if (!items || items.length === 0) {
+        logger.info(`No items returned from ApplicationService for ${code}, attempting manual resolution`);
 
-      // For WAPP (wake room) requests, get wake room-specific items
-      if (refDocName === 'WAPP' && !item) {
-        // Try to get wake room items
-        try {
-          const wakeRoomItemQuery = `
+        let item = null;
+
+        // Manual Niche Item Resolution
+        if (nicheInfo && nicheInfo.NicheLevel) {
+          const { executeQuery } = require('../config/database');
+          const levelItemQuery = `
             SELECT TOP 1
-              i.ItemId,
-              i.Name AS ItemName,
-              i.Code AS ItemCode,
-              i.Price AS ItemPrice
+              i.ItemId, i.Name AS ItemName, i.Code AS ItemCode, i.Price AS ItemPrice, i.Code
+            FROM Item i WITH(NOLOCK)
+            WHERE i.ChurchId = @churchId AND i.ItemId = @itemId
+          `;
+          const levelItemResult = await executeQuery(levelItemQuery, {
+            churchId,
+            itemId: nicheInfo.NicheLevel
+          });
+          if (levelItemResult.recordset && levelItemResult.recordset.length > 0) {
+            item = levelItemResult.recordset[0];
+          }
+        }
+
+        // Generic Fallback Item Resolution
+        if (!item) {
+          const { executeQuery } = require('../config/database');
+          let itemQuery = `
+            SELECT TOP 1 i.ItemId, i.Name AS ItemName, i.Code AS ItemCode, i.Price AS ItemPrice, i.Code
             FROM Item i WITH(NOLOCK)
             WHERE i.ChurchId = @churchId
-              AND (i.DocType = 'WAPP' OR i.Code LIKE 'WR%' OR i.Code LIKE 'WAKE%')
-            ORDER BY i.ItemId
           `;
-          
-          const wakeRoomItemResult = await executeQuery(wakeRoomItemQuery, { churchId });
-          if (wakeRoomItemResult.recordset && wakeRoomItemResult.recordset.length > 0) {
-            item = wakeRoomItemResult.recordset[0];
+
+          if (refDocName === 'INCR') {
+            itemQuery += ` AND (i.DocType = 'INCR' OR i.Code LIKE 'INSC%' OR i.Code LIKE 'PLAQ%')`;
+          } else if (refDocName === 'WAPP') {
+            itemQuery += ` AND (i.DocType = 'WAPP' OR i.Code LIKE 'WR%' OR i.Code LIKE 'WAKE%')`;
+          } else if (refDocName === 'GOLA') {
+            itemQuery += ` AND (i.DocType = 'GOLA' OR i.Code LIKE 'GOL%' OR i.Code LIKE 'WALL%')`;
+          } else {
+            itemQuery += ` AND (i.DocType = 'NAPP' OR i.IsRefType = 1)`;
           }
-        } catch (wakeRoomItemError) {
-          logger.warn('Failed to get wake room items for item selection:', wakeRoomItemError.message);
+          itemQuery += ` ORDER BY i.ItemId`;
+
+          const itemResult = await executeQuery(itemQuery, { churchId });
+          if (itemResult.recordset && itemResult.recordset.length > 0) {
+            item = itemResult.recordset[0];
+          }
+        }
+
+        if (item) {
+          items = [{
+            itemId: item.ItemId,
+            itemName: item.ItemName,
+            itemCode: item.ItemCode || item.Code,
+            unitAmount: item.ItemPrice,
+            quantity: 1,
+            lineTotalAmount: item.ItemPrice,
+            lineTaxPercent: 9,
+            lineTaxAmount: item.ItemPrice * 0.09,
+            totalPayingAmount: item.ItemPrice * 1.09,
+            refDocNumber: code,
+            refDocName: refDocName,
+            refType: refDocName
+          }];
         }
       }
 
-      // Fallback: Get item by DocType NAPP or IsRefType = 1 (only for non-INCR and non-WAPP)
-      if (!item && refDocName !== 'INCR' && refDocName !== 'WAPP') {
-        const itemQuery = `
-          SELECT TOP 1
-            i.ItemId,
-            i.Name AS ItemName,
-            i.Code AS ItemCode,
-            i.Price AS ItemPrice
-          FROM Item i WITH(NOLOCK)
-          WHERE i.ChurchId = @churchId
-            AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
-          ORDER BY i.ItemId
-        `;
-        const itemResult = await executeQuery(itemQuery, { churchId });
-        if (itemResult.recordset && itemResult.recordset.length > 0) {
-          item = itemResult.recordset[0];
-        }
-      }
-
-      // Last resort: Get any item for the church (different approach for INCR vs NAPP)
-      if (!item) {
-        let fallbackItemQuery = `
-          SELECT TOP 1
-            i.ItemId,
-            i.Name AS ItemName,
-            i.Code AS ItemCode,
-            i.Price AS ItemPrice
-          FROM Item i WITH(NOLOCK)
-          WHERE i.ChurchId = @churchId
-        `;
-        
-        // For INCR, prioritize inscription-related items
-        if (refDocName === 'INCR') {
-          fallbackItemQuery += ` AND (i.DocType = 'INCR' OR i.Code LIKE 'INSC%' OR i.Code LIKE 'PLAQ%')`;
-        } else if (refDocName === 'WAPP') {
-          // For WAPP, prioritize wake room-related items
-          fallbackItemQuery += ` AND (i.DocType = 'WAPP' OR i.Code LIKE 'WR%' OR i.Code LIKE 'WAKE%')`;
-        } else {
-          // For NAPP, prioritize niche-related items
-          fallbackItemQuery += ` AND (i.DocType = 'NAPP' OR i.IsRefType = 1)`;
-        }
-        
-        fallbackItemQuery += ` ORDER BY i.ItemId`;
-        
-        const fallbackItemResult = await executeQuery(fallbackItemQuery, { churchId });
-        if (fallbackItemResult.recordset && fallbackItemResult.recordset.length > 0) {
-          item = fallbackItemResult.recordset[0];
-        }
-      }
-
-      if (!item) {
+      if (!items || items.length === 0) {
         return this.sendError(res, 'No items found for invoice creation', 404);
       }
 
@@ -505,15 +324,16 @@ class InvoiceController extends BaseController {
       let invoiceDetails = [];
       let invoiceData = null;
 
+      // Use provided invoice details from request body
       if (req.body.details && Array.isArray(req.body.details) && req.body.details.length > 0) {
         // Use provided invoice details from request body
         logger.info(`Using provided invoice details from request body: ${req.body.details.length} items`);
-        
+
         // Calculate totals from provided details
         const totalAmount = req.body.details.reduce((sum, detail) => {
           return sum + (detail.totalPayingAmount || detail.lineTotalAmount + (detail.lineTaxAmount || 0) || 0);
         }, 0);
-        
+
         const totalTaxAmount = req.body.details.reduce((sum, detail) => {
           return sum + (detail.lineTaxAmount || 0);
         }, 0);
@@ -529,7 +349,7 @@ class InvoiceController extends BaseController {
         let customerCountry = null;
         let customerMobile = null;
         let customerEmail = null;
-              
+
         // Try to get address details from inscription data
         if (application && application.ApplicantAddressLine1) {
           customerAddressNo = application.ApplicantAddressNo || null;
@@ -541,7 +361,7 @@ class InvoiceController extends BaseController {
           customerMobile = application.ApplicantMobileNo || null;
           customerEmail = application.ApplicantEmailID || null;
         }
-              
+
         invoiceData = {
           transactionDate: req.body.transactionDate || application.AgreementDate || application.AppliedDate || new Date(),
           refDocNumber: code.trim(), // Use the application code
@@ -566,13 +386,13 @@ class InvoiceController extends BaseController {
         // Map provided details to invoice details format
         invoiceDetails = req.body.details.map(detail => {
           // Normalize RefDocNumber - use provided or default to application code
-          const normalizedRefDocNumber = detail.refDocNumber 
-            ? String(detail.refDocNumber).trim() 
+          const normalizedRefDocNumber = detail.refDocNumber
+            ? String(detail.refDocNumber).trim()
             : code.trim();
-          
+
           // Normalize RefDocName - use provided or default
-          const normalizedRefDocName = detail.refDocName 
-            ? String(detail.refDocName).trim().toUpperCase() 
+          const normalizedRefDocName = detail.refDocName
+            ? String(detail.refDocName).trim().toUpperCase()
             : refDocName;
 
           // Calculate values if not provided
@@ -599,17 +419,13 @@ class InvoiceController extends BaseController {
           };
         });
       } else {
-        // Auto-determine invoice items from application (existing logic)
-        // Determine unit amount: use application amount, niche default amount, or item price
-        const unitAmount = application.Amount || 
-                          (nicheInfo && nicheInfo.DefaultAmount) || 
-                          item.ItemPrice || 
-                          0;
-        const quantity = 1;
-        const lineTotalAmount = unitAmount * quantity;
-        const lineTaxPercent = 9; // 9% GST
-        const lineTaxAmount = lineTotalAmount * (lineTaxPercent / 100);
-        const totalPayingAmount = lineTotalAmount + lineTaxAmount;
+        // Auto-determine invoice items from mapped items
+        // Calculate totals from all items
+        const totalPayingAmount = items.reduce((sum, i) => sum + (Number(i.totalPayingAmount) || 0), 0);
+        const totalTaxAmount = items.reduce((sum, i) => sum + (Number(i.lineTaxAmount) || 0), 0);
+
+        // Get primary tax percent from first item or default to 9
+        const primaryTaxPercent = items.length > 0 ? (items[0].lineTaxPercent || 9) : 9;
 
         // Prepare invoice data with better customer information
         let finalCustomerName = customerName || application.ApplicantName || 'Unknown Customer';
@@ -619,34 +435,30 @@ class InvoiceController extends BaseController {
         let customerAddressNo = null;
         let customerDistrictCode = null;
         let customerCountry = null;
-        let customerMobile = null;
-        let customerEmail = null;
-        
+
         // Try to get address details from application
-        if (application.ApplicantAddressLine1) {
-          customerAddressNo = application.ApplicantAddressNo || null;
-          customerAddress = application.ApplicantAddressLine1;
-          customerAddress2 = application.ApplicantAddressLine2 || null;
-          customerAddressCity = application.ApplicantAddressCity || null;
-          customerDistrictCode = application.ApplicantAddressState || null;
-          customerCountry = application.ApplicantAddressCountry || null;
-          customerMobile = application.ApplicantMobileNo || null;
-          customerEmail = application.ApplicantEmailID || null;
+        if (application.ApplicantAddressLine1 || application.address) {
+          customerAddressNo = application.ApplicantAddressNo || application.address?.addressNo || null;
+          customerAddress = application.ApplicantAddressLine1 || application.address?.addressLine1;
+          customerAddress2 = application.ApplicantAddressLine2 || application.address?.addressLine2 || null;
+          customerAddressCity = application.ApplicantAddressCity || application.address?.addressCity || null;
+          customerDistrictCode = application.ApplicantAddressState || application.address?.addressState || null;
+          customerCountry = application.ApplicantAddressCountry || application.address?.addressCountry || null;
         }
-        
+
         invoiceData = {
           transactionDate: application.AgreementDate || application.AppliedDate || new Date(),
           refDocNumber: code.trim(), // Use the application code
           refDocName: refDocName,
           customerName: finalCustomerName,
           totalAmount: totalPayingAmount,
-          payingAmount: totalPayingAmount,
+          payingAmount: totalPayingAmount, // Default to full payment
           paymentMode: req.body.paymentMode || 'Cash',
           paymentModeDocNo: req.body.paymentModeDocNo || null,
           nicheApplicationId: nicheApplicationId,
           taxCode: 'GST',
-          taxPercentage: lineTaxPercent,
-          taxAmount: lineTaxAmount,
+          taxPercentage: primaryTaxPercent,
+          taxAmount: totalTaxAmount,
           addressNo: customerAddressNo,
           address: customerAddress,
           address2: customerAddress2,
@@ -655,21 +467,21 @@ class InvoiceController extends BaseController {
           country: customerCountry
         };
 
-        // Prepare invoice details
-        invoiceDetails = [{
-          itemId: item.ItemId,
-          quantity: quantity,
-          unitAmount: unitAmount,
-          payingAmount: unitAmount,
-          totalPayingAmount: totalPayingAmount,
-          refDocNumber: code.trim(), // Use the application code
-          refDocName: refDocName,
-          refType: refDocName,
-          outstandingAmount: 0,
-          lineTotalAmount: lineTotalAmount,
-          lineTaxPercent: lineTaxPercent,
-          lineTaxAmount: lineTaxAmount
-        }];
+        // Prepare invoice details from mapped items
+        invoiceDetails = items.map(item => ({
+          itemId: item.itemId,
+          quantity: item.quantity || 1,
+          unitAmount: item.unitAmount || 0,
+          payingAmount: item.totalPayingAmount || 0, // Default to full payment
+          totalPayingAmount: item.totalPayingAmount || 0,
+          lineTotalAmount: item.lineTotalAmount || 0,
+          lineTaxPercent: item.lineTaxPercent || 0,
+          lineTaxAmount: item.lineTaxAmount || 0,
+          refDocNumber: item.refDocNumber || code,
+          refDocName: item.refDocName || refDocName,
+          refType: item.refType || refDocName,
+          outstandingAmount: 0 // Assume fully paid in this context or calculated elsewhere
+        }));
       }
 
       // Create invoice using InvoiceService
@@ -682,8 +494,8 @@ class InvoiceController extends BaseController {
 
       if (!invoiceResult.success) {
         const statusCode = invoiceResult.error.code === 'DUPLICATE_INVOICE' ? 409 :
-                          invoiceResult.error.code === 'INVALID_REF_DOCUMENT' ? 400 :
-                          invoiceResult.error.code === 'VALIDATION_ERROR' ? 400 : 400;
+          invoiceResult.error.code === 'INVALID_REF_DOCUMENT' ? 400 :
+            invoiceResult.error.code === 'VALIDATION_ERROR' ? 400 : 400;
 
         return res.status(statusCode).json({
           success: false,
@@ -698,19 +510,26 @@ class InvoiceController extends BaseController {
         applicationCode
       );
 
+      // Add receiptCreated flag to indicate a new invoice was created
+      if (createdInvoice) {
+        createdInvoice.receiptCreated = true;
+      }
+
       if (!createdInvoice) {
         // Fallback: try to get by application code
         const fallbackInvoice = await this.invoiceRepository.getInvoiceByCode(code, churchId, applicationCode);
         if (fallbackInvoice) {
+          fallbackInvoice.receiptCreated = true;
           return this.sendSuccess(res, fallbackInvoice, 'Invoice created and retrieved successfully');
         }
-        
+
         // If still not found, return basic info
         return res.status(201).json({
           success: true,
           data: {
             invoiceId: invoiceResult.data.invoiceId,
             invoiceCode: invoiceResult.data.invoiceCode,
+            receiptCreated: true,
             message: 'Invoice created successfully but could not be retrieved immediately'
           },
           message: 'Invoice created successfully'
@@ -725,6 +544,242 @@ class InvoiceController extends BaseController {
   });
 
   /**
+   * Create individual invoice for application code
+   * POST /api/invoices/individual
+   * Creates invoice directly from application data
+   */
+  createIndividualInvoice = this.asyncHandler(async (req, res) => {
+    this.logRequest(req, 'Create Individual Invoice');
+
+    try {
+      const { body, user } = req;
+
+      console.log('Request body:', body);
+      console.log('User:', user);
+
+      if (!user || !user.churchId || !user.userId) {
+        return this.sendError(res, 'Authentication required with church ID and user ID', 401);
+      }
+
+      const { applicationCode, customerName, totalAmount, payingAmount, paymentMode, paymentModeDocNo, invoiceDetails: providedInvoiceDetails, addressNo, address, address2, addressCity, districtCode, country } = body;
+
+      console.log('Application code:', applicationCode);
+
+      // Check for duplicate invoice - DISABLED per user request to allow more flexibility
+      /*
+      if (applicationCode) {
+        const { executeQuery } = require('../config/database');
+
+        const duplicateCheckQuery = `
+          SELECT TOP 1 i.InvoiceId, i.Code, i.TransactionDate, i.Status
+          FROM Invoice i
+          WHERE i.RefDocNumber = @refDocNumber 
+          AND i.ChurchId = @churchId
+          AND i.Status > 0
+        `;
+
+        const duplicateResult = await executeQuery(duplicateCheckQuery, {
+          refDocNumber: applicationCode,
+          churchId: user.churchId
+        });
+
+        if (duplicateResult.recordset && duplicateResult.recordset.length > 0) {
+          return res.status(409).json({
+            success: false,
+            error: {
+              code: 'DUPLICATE_INVOICE',
+              message: 'Invoice already created for this application',
+              invoiceCode: duplicateResult.recordset[0].Code,
+              transactionDate: duplicateResult.recordset[0].TransactionDate
+            }
+          });
+        }
+      }
+      */
+
+      let application = null;
+      let resolvedApplicationCode = applicationCode || '';
+      let resolvedRefDocName = body.refDocName || 'NAPP';
+      let resolvedNicheApplicationId = null;
+      let resolvedCustomerName = customerName || 'Unknown Customer';
+
+      // If application code is provided, try to get application data
+      if (applicationCode) {
+        const ApplicationService = require('../services/ApplicationService');
+        const type = body.refDocName || body.type || null;
+        const appDetails = await ApplicationService.getApplicationDetails(applicationCode, user.churchId, type);
+
+        if (!appDetails) {
+          return this.sendError(res, `Application not found for code: ${applicationCode}`, 404);
+        }
+
+        // Map resolved details to local variables
+        application = appDetails.application; // The raw DB record
+        resolvedApplicationCode = appDetails.code;
+        resolvedRefDocName = appDetails.type;
+        resolvedCustomerName = customerName || appDetails.customerName;
+
+        // Use the generic Id from the service (maps to NicheApplicationId, EngraveWallApplicationId, or WakeRoomBookingId)
+        resolvedNicheApplicationId = appDetails.application.Id;
+
+        // Log successful resolution
+        console.log(`Resolved application: ${resolvedRefDocName} - ${resolvedApplicationCode} (ID: ${resolvedNicheApplicationId})`);
+      }
+
+      // Calculate total tax amount
+      const taxPercentage = 9; // 9% GST
+      const taxAmount = (totalAmount || 0) * (taxPercentage / 100);
+
+      // Create invoice data
+      const invoiceData = {
+        transactionDate: new Date(),
+        refDocNumber: resolvedApplicationCode,
+        refDocName: resolvedRefDocName,
+        customerName: resolvedCustomerName,
+        totalAmount: (totalAmount || 0) + taxAmount,
+        payingAmount: (payingAmount || 0) + taxAmount,
+        taxAmount: taxAmount,
+        taxPercentage: taxPercentage,
+        taxCode: 'GST',
+        nicheApplicationId: resolvedNicheApplicationId,
+        paymentMode: paymentMode || 'Cash',
+        paymentModeDocNo: paymentModeDocNo || null,
+        // Include address fields with fallback to application address
+        addressNo: addressNo || appDetails?.address?.addressNo || null,
+        address: address || appDetails?.address?.addressLine1 || null,
+        address2: address2 || appDetails?.address?.addressLine2 || null,
+        addressCity: addressCity || appDetails?.address?.addressCity || null,
+        districtCode: districtCode || appDetails?.address?.addressState || null,
+        country: country || appDetails?.address?.addressCountry || 'Singapore'
+      };
+
+      // Convert payment mode string to number for database compatibility
+      // The InvoiceRepository expects paymentMode as integer (sql.Int)
+      if (typeof invoiceData.paymentMode === 'string') {
+        const Receipt = require('../models/Receipt');
+        invoiceData.paymentMode = Receipt.paymentModeToNumber(invoiceData.paymentMode);
+      }
+
+      // Create invoice details from provided details or use default
+      let invoiceDetails = [];
+
+      if (providedInvoiceDetails && Array.isArray(providedInvoiceDetails) && providedInvoiceDetails.length > 0) {
+        // Use provided invoice details and preserve client-side GST values
+        invoiceDetails = providedInvoiceDetails.map(detail => {
+          // Calculate tax values if not provided, but prioritize client-provided values
+          const quantity = detail.quantity || 1;
+          const unitAmount = detail.unitAmount || 0;
+          const lineTotalAmount = detail.lineTotalAmount !== undefined ? detail.lineTotalAmount : (unitAmount * quantity);
+          const lineTaxPercent = detail.lineTaxPercent !== undefined ? detail.lineTaxPercent : 9; // Default 9% GST if not provided
+          const lineTaxAmount = detail.lineTaxAmount !== undefined ? detail.lineTaxAmount : (lineTotalAmount * (lineTaxPercent / 100));
+          const totalPayingAmount = detail.totalPayingAmount !== undefined ? detail.totalPayingAmount : (lineTotalAmount + lineTaxAmount);
+
+          return {
+            itemId: detail.itemId || 1,
+            quantity: quantity,
+            unitAmount: unitAmount,
+            payingAmount: detail.payingAmount !== undefined ? detail.payingAmount : unitAmount,
+            totalPayingAmount: totalPayingAmount,
+            refDocNumber: detail.refDocNumber || resolvedApplicationCode || '',
+            refDocName: detail.refDocName || resolvedRefDocName || 'NAPP',
+            lineTotalAmount: lineTotalAmount,
+            lineTaxPercent: lineTaxPercent,
+            lineTaxAmount: lineTaxAmount,
+            outstandingAmount: detail.outstandingAmount || 0,
+            refType: detail.refType || resolvedRefDocName || 'NAPP'
+          };
+        });
+      } else {
+        // Create default invoice details if no details provided
+        const lineTotalAmount = invoiceData.payingAmount;
+        const lineTaxPercent = 9; // Default 9% GST
+        const lineTaxAmount = lineTotalAmount * (lineTaxPercent / 100);
+        const totalPayingAmount = lineTotalAmount + lineTaxAmount;
+
+        invoiceDetails = [{
+          itemId: 1, // Default item
+          quantity: 1,
+          unitAmount: invoiceData.payingAmount,
+          payingAmount: invoiceData.payingAmount,
+          totalPayingAmount: totalPayingAmount,
+          refDocNumber: resolvedApplicationCode || '',
+          refDocName: resolvedRefDocName || 'NAPP',
+          lineTotalAmount: lineTotalAmount,
+          lineTaxPercent: lineTaxPercent,
+          lineTaxAmount: lineTaxAmount,
+          outstandingAmount: 0,
+          refType: resolvedRefDocName || 'NAPP'
+        }];
+      }
+
+      // Save invoice - use validation bypass for standalone invoices (no application code)
+      const result = applicationCode
+        ? await this.invoiceService.saveInvoice(invoiceData, invoiceDetails, user.userId, user.churchId)
+        : await this.invoiceService.saveInvoiceWithoutValidation(invoiceData, invoiceDetails, user.userId, user.churchId);
+
+      if (!result.success) {
+        return this.sendError(res, result.error.message || 'Failed to create invoice', 400);
+      }
+
+      logger.info(`Individual invoice created successfully: code=${result.data.invoiceCode}, applicationCode=${applicationCode}`);
+
+      // Check if receipt exists for this application/invoice
+      let hasReceipt = false;
+      if (applicationCode) {
+        try {
+          const { executeQuery } = require('../config/database');
+          const receiptQuery = `
+            SELECT TOP 1 r.ReceiptId 
+            FROM Receipt r WITH(NOLOCK) 
+            INNER JOIN MisalaniousReceiptDetail rd WITH(NOLOCK) ON r.ReceiptId = rd.ReceiptId
+            WHERE rd.RefDocNumber = @refDocNumber AND r.ChurchId = @churchId
+          `;
+          const receiptResult = await executeQuery(receiptQuery, {
+            refDocNumber: applicationCode,
+            churchId: user.churchId
+          });
+          hasReceipt = receiptResult.recordset && receiptResult.recordset.length > 0;
+        } catch (receiptCheckError) {
+          logger.warn('Failed to check receipt existence:', receiptCheckError.message);
+          hasReceipt = false;
+        }
+      }
+
+      // Get the created invoice details for complete response
+      let createdInvoice = null;
+      try {
+        createdInvoice = await this.invoiceRepository.getInvoiceByCode(
+          result.data.invoiceCode,
+          user.churchId
+        );
+      } catch (fetchError) {
+        logger.warn('Could not fetch created invoice details:', fetchError.message);
+      }
+
+      const responseData = {
+        invoiceId: result.data.invoiceId,
+        invoiceCode: result.data.invoiceCode,
+        hasInvoice: true,
+        hasReceipt: hasReceipt,
+        canCreateInvoice: false, // Invoice just created, so can't create another
+        canCreateReceipt: !hasReceipt, // Can create receipt if none exists
+        invoiceDetails: createdInvoice ? this.formatInvoiceResponse(createdInvoice) : null
+      };
+
+      return res.status(201).json({
+        success: true,
+        data: responseData,
+        receiptCreated: false, // Individual invoices don't automatically create receipts
+        message: 'Individual invoice created successfully'
+      });
+
+    } catch (error) {
+      logger.error('Controller: Failed to create individual invoice:', error);
+      return this.sendError(res, error.message || 'Failed to create individual invoice', 500);
+    }
+  });
+
+  /**
    * Get application data by code - handles all code types
    * @param {string} code - Application code
    * @param {number} churchId - Church ID
@@ -733,13 +788,13 @@ class InvoiceController extends BaseController {
   async getApplicationDataByCode(code, churchId) {
     try {
       const normalizedCode = code.trim().toUpperCase();
-      
+
       // Handle different code patterns
       if (normalizedCode.startsWith('NAPP-') || /^\d+-\d+$/.test(normalizedCode)) {
         // Niche Application
         return await this.getNicheApplicationData(normalizedCode, churchId);
-      } else if (normalizedCode.startsWith('I-') && 
-                 (normalizedCode.match(/^I-\d+$/) || normalizedCode.startsWith('I-NAPP-'))) {
+      } else if (normalizedCode.startsWith('I-') &&
+        (normalizedCode.match(/^I-\d+$/) || normalizedCode.startsWith('I-NAPP-'))) {
         // Inscription Request
         return await this.getInscriptionApplicationData(normalizedCode, churchId);
       } else if (normalizedCode.startsWith('WAPP-') || /^I-\d+-\d+$/.test(normalizedCode)) {
@@ -764,7 +819,7 @@ class InvoiceController extends BaseController {
   async getNicheApplicationData(code, churchId) {
     try {
       const { executeQuery } = require('../config/database');
-      
+
       const appQuery = `
         SELECT TOP 1
           NicheApplicationId,
@@ -788,18 +843,18 @@ class InvoiceController extends BaseController {
         FROM NicheApplication WITH(NOLOCK)
         WHERE Code = @code AND ChurchId = @churchId AND Status > 0
       `;
-      
+
       const appResult = await executeQuery(appQuery, { code, churchId });
-      
+
       if (!appResult.recordset || appResult.recordset.length === 0) {
         return null;
       }
-      
+
       const application = appResult.recordset[0];
-      
+
       // Get associated items
       const items = await this.getNicheApplicationItems(application.Code, churchId);
-      
+
       return {
         type: 'NAPP',
         application: application,
@@ -834,11 +889,11 @@ class InvoiceController extends BaseController {
       // Use InscriptionInvoiceService to get inscription data
       const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
       const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(code, churchId);
-      
+
       if (!inscriptionData) {
         return null;
       }
-      
+
       return {
         type: 'INCR',
         isInscriptionData: true,
@@ -870,7 +925,7 @@ class InvoiceController extends BaseController {
   async getWakeRoomApplicationData(code, churchId) {
     try {
       const { executeQuery } = require('../config/database');
-      
+
       const wakeRoomQuery = `
         SELECT TOP 1
           WakeRoomBookingId,
@@ -896,22 +951,41 @@ class InvoiceController extends BaseController {
         FROM WakeRoomBooking WITH(NOLOCK)
         WHERE Code = @code AND ChurchId = @churchId AND Status > 0
       `;
-      
+
       const wakeRoomResult = await executeQuery(wakeRoomQuery, { code, churchId });
-      
+
       if (!wakeRoomResult.recordset || wakeRoomResult.recordset.length === 0) {
         return null;
       }
-      
+
       const application = wakeRoomResult.recordset[0];
-      
+
       // Get wake room items
       const items = await this.getWakeRoomItems(churchId);
-      
+      const mappedItems = items.map(item => {
+        const amount = application.DonationAmount || application.DefaultDonationAmount || item.Price || 0;
+        return {
+          itemId: item.ItemId,
+          itemName: item.Name || 'Wake Room Service',
+          itemCode: item.Code,
+          itemPrice: item.Price || amount,
+          quantity: application.NoOfDays || 1,
+          unitAmount: amount,
+          payingAmount: amount,
+          lineTotalAmount: amount,
+          lineTaxPercent: 9, // Default 9% GST
+          lineTaxAmount: amount * 0.09,
+          totalPayingAmount: amount * 1.09,
+          refDocNumber: application.Code,
+          refDocName: 'WAPP',
+          refType: 'WAPP'
+        };
+      });
+
       return {
         type: 'WAPP',
         application: application,
-        items: items,
+        items: mappedItems,
         customerName: application.ApplicantName,
         address: {
           addressNo: application.ApplicantAddressNo,
@@ -936,9 +1010,72 @@ class InvoiceController extends BaseController {
    * Get gate of life application data
    */
   async getGateOfLifeApplicationData(code, churchId) {
-    // TODO: Implement Gate of Life Application data retrieval
-    logger.warn('Gate of Life Application data retrieval not yet implemented');
-    return null;
+    try {
+      const GateOfLifeRepository = require('../repositories/GateOfLifeRepository');
+      const data = await GateOfLifeRepository.getInvoiceDetails(code, churchId);
+
+      if (!data || !data.application) {
+        return null;
+      }
+
+      const quantity = Math.max((data.details || []).length, 1);
+      const totalAmount = Number(data.application.DonationAmount || data.application.DefaultDonationAmount || 0);
+      const fallbackUnitAmount = Number(data.application.DefaultDonationAmount || 300);
+      const unitAmount = totalAmount > 0
+        ? parseFloat((totalAmount / quantity).toFixed(2))
+        : fallbackUnitAmount;
+      const lineTotalAmount = parseFloat((unitAmount * quantity).toFixed(2));
+      const lineTaxAmount = parseFloat((lineTotalAmount * 0.09).toFixed(2));
+
+      // Map GOL items
+      const items = [{
+        itemId: 10, // Default item ID for GOL (should be mapped to real Item table)
+        itemName: 'Gate of Life Application',
+        itemCode: 'GOL',
+        itemPrice: unitAmount,
+        quantity,
+        unitAmount,
+        payingAmount: unitAmount,
+        lineTotalAmount,
+        lineTaxPercent: 9,
+        lineTaxAmount,
+        totalPayingAmount: parseFloat((lineTotalAmount + lineTaxAmount).toFixed(2)),
+        refDocNumber: data.application.Code,
+        refDocName: 'GOLA',
+        refType: 'GOLA',
+        description: 'Gate of Life Application Donation',
+        category: 'Gate of Life',
+        customerName: data.application.ApplicantName || 'Unknown Applicant',
+        address: data.application.ApplicantAddressLine1 || '',
+        address2: data.application.ApplicantAddressLine2 || '',
+        addressCity: data.application.ApplicantAddressCity || '',
+        addressNo: data.application.ApplicantAddressNo || ''
+      }];
+
+      return {
+        type: 'GOLA',
+        application: data.application,
+        items: items,
+        customerName: data.application.ApplicantName,
+        address: {
+          addressNo: data.application.ApplicantAddressNo,
+          addressLine1: data.application.ApplicantAddressLine1,
+          addressLine2: data.application.ApplicantAddressLine2,
+          addressCity: data.application.ApplicantAddressCity,
+          addressState: data.application.ApplicantAddressState,
+          addressCountry: data.application.ApplicantAddressCountry
+        },
+        contact: {
+          mobile: data.application.ApplicantMobileNo,
+          email: data.application.ApplicantEmailID,
+          homeTel: data.application.ApplicantHomeTelNo,
+          officeTel: data.application.ApplicantOfficeTelNo
+        }
+      };
+    } catch (error) {
+      logger.error('Error getting gate of life application data:', error);
+      return null;
+    }
   }
 
   /**
@@ -948,13 +1085,13 @@ class InvoiceController extends BaseController {
     // Try different application types
     const nicheData = await this.getNicheApplicationData(code, churchId);
     if (nicheData) return nicheData;
-    
+
     const inscriptionData = await this.getInscriptionApplicationData(code, churchId);
     if (inscriptionData) return inscriptionData;
-    
+
     const wakeRoomData = await this.getWakeRoomApplicationData(code, churchId);
     if (wakeRoomData) return wakeRoomData;
-    
+
     return null;
   }
 
@@ -967,10 +1104,10 @@ class InvoiceController extends BaseController {
       const totalAmount = inscriptionData.items.reduce((sum, item) => {
         return sum + (item.Price || item.unitAmount || 0);
       }, 0);
-      
+
       const taxAmount = totalAmount * 0.09; // 9% GST
       const totalWithTax = totalAmount + taxAmount;
-      
+
       // Prepare invoice data
       const invoiceData = {
         transactionDate: new Date(),
@@ -991,14 +1128,14 @@ class InvoiceController extends BaseController {
         taxPercentage: 9,
         taxAmount: taxAmount
       };
-      
+
       // Prepare invoice details
       const invoiceDetails = inscriptionData.items.map(item => {
         const unitAmount = item.Price || item.unitAmount || 0;
         const lineTotal = unitAmount;
         const lineTax = lineTotal * 0.09;
         const totalPaying = lineTotal + lineTax;
-        
+
         return {
           itemId: item.ItemId,
           quantity: 1,
@@ -1014,7 +1151,7 @@ class InvoiceController extends BaseController {
           lineTaxAmount: lineTax
         };
       });
-      
+
       // Create invoice using InvoiceService
       const invoiceResult = await this.invoiceService.saveInvoice(
         invoiceData,
@@ -1022,20 +1159,20 @@ class InvoiceController extends BaseController {
         userId,
         churchId
       );
-      
+
       if (invoiceResult.success) {
         // Retrieve the created invoice
         const createdInvoice = await this.invoiceRepository.getInvoiceByCode(
           invoiceResult.data.invoiceCode,
           churchId
         );
-        
+
         return {
           success: true,
           data: this.formatInvoiceResponse(createdInvoice)
         };
       }
-      
+
       return invoiceResult;
     } catch (error) {
       logger.error('Error creating invoice from inscription data:', error);
@@ -1061,7 +1198,7 @@ class InvoiceController extends BaseController {
         // Get default item based on application type
         item = await this.getDefaultItemForApplicationType(applicationData.type, churchId);
       }
-      
+
       if (!item) {
         return {
           success: false,
@@ -1070,13 +1207,13 @@ class InvoiceController extends BaseController {
           }
         };
       }
-      
+
       // Calculate amount
       const unitAmount = applicationData.application.Amount || item.Price || 0;
       const lineTotal = unitAmount;
       const lineTax = lineTotal * 0.09; // 9% GST
       const totalPaying = lineTotal + lineTax;
-      
+
       // Prepare invoice data
       const invoiceData = {
         transactionDate: applicationData.application.AgreementDate || applicationData.application.AppliedDate || new Date(),
@@ -1097,7 +1234,7 @@ class InvoiceController extends BaseController {
         taxPercentage: 9,
         taxAmount: lineTax
       };
-      
+
       // Prepare invoice details
       const invoiceDetails = [{
         itemId: item.ItemId,
@@ -1113,7 +1250,7 @@ class InvoiceController extends BaseController {
         lineTaxPercent: 9,
         lineTaxAmount: lineTax
       }];
-      
+
       // Create invoice using InvoiceService
       const invoiceResult = await this.invoiceService.saveInvoice(
         invoiceData,
@@ -1121,20 +1258,20 @@ class InvoiceController extends BaseController {
         userId,
         churchId
       );
-      
+
       if (invoiceResult.success) {
         // Retrieve the created invoice
         const createdInvoice = await this.invoiceRepository.getInvoiceByCode(
           invoiceResult.data.invoiceCode,
           churchId
         );
-        
+
         return {
           success: true,
           data: this.formatInvoiceResponse(createdInvoice)
         };
       }
-      
+
       return invoiceResult;
     } catch (error) {
       logger.error('Error creating invoice from application data:', error);
@@ -1153,7 +1290,7 @@ class InvoiceController extends BaseController {
   async getDefaultItemForApplicationType(appType, churchId) {
     try {
       const { executeQuery } = require('../config/database');
-      
+
       let itemQuery = `
         SELECT TOP 1
           ItemId,
@@ -1163,7 +1300,7 @@ class InvoiceController extends BaseController {
         FROM Item WITH(NOLOCK)
         WHERE ChurchId = @churchId
       `;
-      
+
       switch (appType) {
         case 'NAPP':
           itemQuery += ` AND (DocType = 'NAPP' OR IsRefType = 1)`;
@@ -1177,15 +1314,15 @@ class InvoiceController extends BaseController {
         default:
           itemQuery += ` AND IsRefType = 1`;
       }
-      
+
       itemQuery += ` ORDER BY ItemId`;
-      
+
       const itemResult = await executeQuery(itemQuery, { churchId });
-      
+
       if (!itemResult.recordset || itemResult.recordset.length === 0) {
         return null;
       }
-      
+
       return itemResult.recordset[0];
     } catch (error) {
       logger.error('Error getting default item for application type:', error);
@@ -1201,22 +1338,22 @@ class InvoiceController extends BaseController {
   extractNicheApplicationCode(inscriptionCode) {
     try {
       const normalizedCode = inscriptionCode.trim().toUpperCase();
-      
+
       // Handle I-XXXX-0 format (remove the -0 suffix)
       if (normalizedCode.match(/^I-\d+-0$/)) {
         return normalizedCode.replace(/^I-(\d+)-0$/, '$1-0');
       }
-      
+
       // Handle I-XXXX format (append -0)
       if (normalizedCode.match(/^I-\d+$/)) {
         return normalizedCode.replace(/^I-(\d+)$/, '$1-0');
       }
-      
+
       // Handle I-NAPP-XXXX format
       if (normalizedCode.startsWith('I-NAPP-')) {
         return normalizedCode.replace(/^I-NAPP-/, 'NAPP-');
       }
-      
+
       return null;
     } catch (error) {
       logger.error('Error extracting niche application code:', error);
@@ -1237,13 +1374,13 @@ class InvoiceController extends BaseController {
         // I-XXXX-X format -> try XXXX-0
         return normalizedCode.replace(/^I-(\d+)-\d+$/, '$1-0');
       }
-      
+
       // For NAPP codes with suffixes, try the base code
       if (normalizedCode.match(/^\d+-\d+-\d+$/)) {
         // XXXX-0-1 format -> try XXXX-0
         return normalizedCode.replace(/^(\d+-\d+)-\d+$/, '$1');
       }
-      
+
       return null;
     } catch (error) {
       logger.error('Error finding associated application code:', error);
@@ -1260,13 +1397,13 @@ class InvoiceController extends BaseController {
   async getNicheItemsForInscriptionCode(inscriptionCode, churchId) {
     try {
       const { executeQuery } = require('../config/database');
-      
+
       // Get the niche application code associated with this inscription
       const nicheAppCode = this.extractNicheApplicationCode(inscriptionCode);
       if (!nicheAppCode) {
         return [];
       }
-      
+
       // Get the niche application
       const appQuery = `
         SELECT TOP 1
@@ -1287,16 +1424,16 @@ class InvoiceController extends BaseController {
         LEFT JOIN Chapel c WITH(NOLOCK) ON w.ChapelId = c.ChapelId
         WHERE na.Code = @code AND na.ChurchId = @churchId AND na.Status > 0
       `;
-      
+
       const appResult = await executeQuery(appQuery, { code: nicheAppCode, churchId });
-      
+
       if (!appResult.recordset || appResult.recordset.length === 0) {
         return [];
       }
-      
+
       const application = appResult.recordset[0];
       const items = [];
-      
+
       // Get niche item
       if (application.NicheId) {
         const nicheItem = await this.getNicheItem(application.NicheId, churchId, application);
@@ -1304,11 +1441,11 @@ class InvoiceController extends BaseController {
           items.push(nicheItem);
         }
       }
-      
+
       // Get inscription items from the niche booking
       const inscriptionItems = await this.getInscriptionItemsForNicheApplication(application.NicheApplicationId, churchId);
       items.push(...inscriptionItems);
-      
+
       return items;
     } catch (error) {
       logger.error('Error getting niche items for inscription code:', error);
@@ -1331,14 +1468,14 @@ class InvoiceController extends BaseController {
       const totalAmount = items.reduce((sum, item) => sum + (item.unitAmount || 0), 0);
       const taxAmount = totalAmount * 0.09; // 9% GST
       const totalWithTax = totalAmount + taxAmount;
-      
+
       // Determine customer information from items
       let customerName = 'Unknown Customer';
       let address = '';
       let address2 = '';
       let addressCity = '';
       let addressNo = '';
-      
+
       // Try to get customer info from the first item that has it
       for (const item of items) {
         if (item.customerName) {
@@ -1352,7 +1489,7 @@ class InvoiceController extends BaseController {
           break;
         }
       }
-      
+
       // Prepare invoice data
       const invoiceData = {
         transactionDate: new Date(),
@@ -1373,14 +1510,14 @@ class InvoiceController extends BaseController {
         taxPercentage: 9,
         taxAmount: taxAmount
       };
-      
+
       // Prepare invoice details
       const invoiceDetails = items.map((item, index) => {
         const unitAmount = item.unitAmount || 0;
         const lineTotal = unitAmount;
         const lineTax = lineTotal * 0.09;
         const totalPaying = lineTotal + lineTax;
-        
+
         return {
           itemId: item.itemId,
           quantity: item.quantity || 1,
@@ -1396,7 +1533,7 @@ class InvoiceController extends BaseController {
           lineTaxAmount: lineTax
         };
       });
-      
+
       // Create invoice using InvoiceService
       const invoiceResult = await this.invoiceService.saveInvoice(
         invoiceData,
@@ -1404,20 +1541,20 @@ class InvoiceController extends BaseController {
         userId,
         churchId
       );
-      
+
       if (invoiceResult.success) {
         // Retrieve the created invoice
         const createdInvoice = await this.invoiceRepository.getInvoiceByCode(
           invoiceResult.data.invoiceCode,
           churchId
         );
-        
+
         return {
           success: true,
           data: this.formatInvoiceResponse(createdInvoice)
         };
       }
-      
+
       return invoiceResult;
     } catch (error) {
       logger.error('Error creating invoice from mapped items:', error);
@@ -1436,7 +1573,7 @@ class InvoiceController extends BaseController {
   async getWakeRoomItems(churchId) {
     try {
       const { executeQuery } = require('../config/database');
-      
+
       const itemQuery = `
         SELECT 
           ItemId,
@@ -1448,14 +1585,20 @@ class InvoiceController extends BaseController {
           AND (DocType = 'WAPP' OR Code LIKE 'WR%' OR Code LIKE 'WAKE%')
         ORDER BY ItemId
       `;
-      
+
       const itemResult = await executeQuery(itemQuery, { churchId });
-      
+
       if (!itemResult.recordset || itemResult.recordset.length === 0) {
         return [];
       }
-      
-      return itemResult.recordset;
+
+      return itemResult.recordset.map(item => ({
+        itemId: item.ItemId,
+        itemName: item.Name,
+        itemCode: item.Code,
+        unitPrice: item.Price || 0,
+        defaultAmount: item.Price || 0
+      }));
     } catch (error) {
       logger.error('Error getting wake room items:', error);
       return [];
@@ -1467,12 +1610,12 @@ class InvoiceController extends BaseController {
    */
   formatInvoiceResponse(invoice) {
     if (!invoice) return null;
-    
+
     // If it's already in the correct format, return as-is
     if (invoice.isInvoice !== undefined) {
       return invoice;
     }
-    
+
     // Convert database invoice to expected response format
     return {
       isApplicationData: false,
@@ -1542,13 +1685,14 @@ class InvoiceController extends BaseController {
    * Supports both invoice codes and application codes (NAPP-*, WAPP-*, INCR-*, GOLA-*)
    * Optional query parameter: ?applicationCode=NAPP to explicitly filter by document type
    */
-  getInvoiceByCode = this.asyncHandler(async(req, res) => {
+  getInvoiceByCode = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Invoice by Code');
 
     try {
       const { code } = req.params;
       const churchId = req.user?.churchId;
-      const applicationCode = req.query.applicationCode || null;
+      const applicationCode = req.query.applicationCode || req.query.type || null;
+      const normalizedCode = code.trim().toUpperCase();
 
       if (!code) {
         return this.sendError(res, 'Invoice code is required', 400);
@@ -1556,150 +1700,166 @@ class InvoiceController extends BaseController {
 
       const invoice = await this.invoiceRepository.getInvoiceByCode(code, churchId, applicationCode);
 
-      if (!invoice) {
-        // Check if it's an inscription code
-        const normalizedCode = code.trim().toUpperCase();
-        
-        // If it looks like an inscription code (starts with 'I-' followed by digits only, or I-NAPP- format)
-        // Exclude wake room booking codes which follow I-XXXX-X pattern (second hyphen)
-        if (normalizedCode.startsWith('I-') && 
-            (normalizedCode.match(/^I-\d+$/) || normalizedCode.startsWith('I-NAPP-'))) {
-          try {
-            // Get inscription items for this code using the service
-            const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
-            const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(normalizedCode, churchId);
-            
-            if (inscriptionData && inscriptionData.items && inscriptionData.items.length > 0) {
-              // Format as application data since no invoice exists yet
-              const applicationResponse = {
-                isApplicationData: true,
-                isInvoice: false,
-                hasInvoice: false,
-                canCreateInvoice: true,
-                applicationCode: normalizedCode,
-                customerName: inscriptionData.applicant?.name || '',
-                totalAmount: 0,
-                payingAmount: 0,
-                taxAmount: 0,
-                details: inscriptionData.items.map(item => ({
-                  itemId: item.ItemId,
-                  itemName: item.Name,
-                  itemCode: item.Code,
-                  unitAmount: item.Price,
-                  quantity: 1,
-                  lineTotalAmount: item.Price,
-                  lineTaxAmount: item.Price * 0.09, // 9% GST
-                  totalPayingAmount: item.Price * 1.09,
-                  refDocNumber: normalizedCode,
-                  refDocName: 'INCR',
-                  refType: 'INCR'
-                })),
-                summary: {
-                  totalItems: inscriptionData.items.length,
-                  subtotal: inscriptionData.items.reduce((sum, item) => sum + (item.Price || 0), 0),
-                  totalTax: inscriptionData.items.reduce((sum, item) => sum + ((item.Price || 0) * 0.09), 0),
-                  grandTotal: inscriptionData.items.reduce((sum, item) => sum + ((item.Price || 0) * 1.09), 0)
-                },
-                // Add inscription-specific data
-                inscriptionCode: normalizedCode,
-                items: inscriptionData.items,
-                applicant: inscriptionData.applicant,
-                deceasedDetails: inscriptionData.deceasedDetails
-              };
-              
-              return this.sendSuccess(res, applicationResponse, 'Inscription items retrieved successfully - no invoice exists yet');
-            }
-          } catch (inscriptionError) {
-            logger.warn('Failed to get inscription items from service:', inscriptionError.message);
-          }
-        }
-        
-        // Enhanced error message with diagnostic info
-        logger.warn(`Invoice lookup failed: code=${code}, churchId=${churchId}, applicationCode=${applicationCode}`);
-        
-        // Try to provide helpful diagnostic information
-        let diagnosticInfo = null;
+      // If repo returned application details (no InvoiceId), normalize to same shape for frontend
+      const isRepoApplicationDetails = invoice && (invoice.InvoiceId == null || invoice.InvoiceId === undefined) && Array.isArray(invoice.details) && invoice.applicationCode;
+      if (isRepoApplicationDetails) {
         try {
-          // Check if invoice exists without churchId filter (for debugging)
-          const invoiceWithoutChurch = await this.invoiceRepository.getInvoiceByCode(code, null, applicationCode);
-          if (invoiceWithoutChurch) {
-            diagnosticInfo = {
-              message: 'Invoice exists but belongs to a different church',
-              foundChurchId: invoiceWithoutChurch.churchId,
-              requestedChurchId: churchId
-            };
-          } else {
-            // Run comprehensive diagnostic query
-            const { executeQuery } = require('../config/database');
-            try {
-              const diagQuery = `
-                SELECT TOP 10
-                  i.InvoiceId,
-                  i.Code AS InvoiceCode,
-                  i.Status,
-                  i.ChurchId,
-                  i.TransactionDate,
-                  id.RefDocNumber,
-                  id.RefDocName,
-                  id.ItemId
-                FROM Invoice i WITH(NOLOCK)
-                LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
-                WHERE id.RefDocNumber = @code
-                   OR UPPER(LTRIM(RTRIM(id.RefDocNumber))) = @codeUpper
-                   OR i.RefDocNumber = @code
-                   OR UPPER(LTRIM(RTRIM(i.RefDocNumber))) = @codeUpper
-                ORDER BY i.TransactionDate DESC
-              `;
-              const diagResult = await executeQuery(diagQuery, {
-                code: code,
-                codeUpper: code.toUpperCase().trim()
-              });
-              
-              if (diagResult.recordset && diagResult.recordset.length > 0) {
-                diagnosticInfo = {
-                  message: 'Invoices found in database but not matching lookup criteria',
-                  foundInvoices: diagResult.recordset.map(r => ({
-                    invoiceId: r.InvoiceId,
-                    invoiceCode: r.InvoiceCode,
-                    status: r.Status,
-                    churchId: r.ChurchId,
-                    refDocNumber: r.RefDocNumber,
-                    refDocName: r.RefDocName,
-                    itemId: r.ItemId,
-                    transactionDate: r.TransactionDate,
-                    issues: [
-                      r.Status === 0 ? 'Status is 0 (deleted)' : null,
-                      churchId && r.ChurchId !== churchId ? `ChurchId mismatch: expected ${churchId}, found ${r.ChurchId}` : null
-                    ].filter(Boolean)
-                  }))
-                };
-              } else {
-                diagnosticInfo = {
-                  message: 'No invoices found in database with this RefDocNumber',
-                  searchedCode: code
-                };
-              }
-            } catch (diagQueryError) {
-              logger.warn('Failed to run diagnostic query in controller:', diagQueryError);
-            }
-          }
-        } catch (diagError) {
-          logger.warn('Failed to run diagnostic check:', diagError);
+          const details = invoice.details || [];
+          const safeDetails = details.filter(Boolean);
+          const applicationResponse = {
+            success: true,
+            isApplicationData: true,
+            isInvoice: false,
+            hasInvoice: false,
+            canCreateInvoice: true,
+            code: invoice.applicationCode,
+            applicationCode: normalizedCode,
+            applicationType: invoice.refDocName || 'NAPP',
+            customerName: invoice.customerName || invoice.applicantName,
+            totalAmount: invoice.summary?.grandTotal ?? invoice.totalAmount ?? 0,
+            payingAmount: invoice.summary?.grandTotal ?? invoice.payingAmount ?? invoice.totalAmount ?? 0,
+            taxAmount: invoice.summary?.totalTax ?? invoice.taxAmount ?? 0,
+            applicantMobile: invoice.applicantMobile ?? invoice.applicantMobileNo,
+            applicantEmail: invoice.applicantEmail ?? invoice.applicantEmailID,
+            addressNo: invoice.addressNo ?? invoice.applicantAddressNo,
+            address: invoice.address ?? invoice.applicantAddressLine1,
+            address2: invoice.address2 ?? invoice.applicantAddressLine2,
+            addressCity: invoice.addressCity ?? invoice.applicantAddressCity,
+            districtCode: invoice.districtCode ?? invoice.applicantAddressState,
+            country: invoice.country ?? invoice.applicantAddressCountry,
+            details: safeDetails,
+            summary: invoice.summary || { totalItems: safeDetails.length, subtotal: invoice.totalAmount ?? 0, totalTax: invoice.taxAmount ?? 0, grandTotal: invoice.totalAmount ?? 0 },
+            references: safeDetails.map(d => `${(d && d.refDocName) || 'N/A'}-${(d && d.refDocNumber) || 'N/A'}`),
+            totalItems: safeDetails.length,
+            application: invoice,
+            items: safeDetails,
+            contact: { mobile: invoice.applicantMobileNo, email: invoice.applicantEmailID },
+            addressData: { addressNo: invoice.applicantAddressNo, addressLine1: invoice.applicantAddressLine1, addressLine2: invoice.applicantAddressLine2, addressCity: invoice.applicantAddressCity, addressState: invoice.applicantAddressState, addressCountry: invoice.applicantAddressCountry }
+          };
+          return this.sendSuccess(res, applicationResponse, `${applicationResponse.applicationType} application data retrieved successfully - no invoice exists yet`);
+        } catch (normErr) {
+          logger.warn('Normalize application details failed, falling through:', normErr.message);
         }
-        
-        const errorResponse = {
+      }
+
+      if (!invoice) {
+        // Use ApplicationService to get unified application details if no invoice found
+        const applicationService = require('../services/ApplicationService');
+        const type = req.query.applicationCode || req.query.type || req.query.refDocName || null;
+        try {
+          const applicationData = await applicationService.getApplicationDetails(code, churchId, type);
+
+          if (applicationData) {
+            const items = Array.isArray(applicationData.items) ? applicationData.items.filter(Boolean) : [];
+            const calculatedResult = this.calculateItemTotals(items);
+
+            // Build unified application response
+            const summary = calculatedResult && calculatedResult.summary ? calculatedResult.summary : { grandTotal: 0, totalTax: 0 };
+            const applicationResponse = {
+              success: true,
+              isApplicationData: true,
+              isInvoice: false,
+              hasInvoice: false,
+              canCreateInvoice: true,
+              code: applicationData.code || normalizedCode,
+              applicationCode: normalizedCode,
+              applicationType: applicationData.type,
+              customerName: applicationData.customerName,
+              totalAmount: summary.grandTotal ?? 0,
+              payingAmount: summary.grandTotal ?? 0,
+              taxAmount: summary.totalTax ?? 0,
+              applicantMobile: applicationData.contact?.mobile,
+              applicantEmail: applicationData.contact?.email,
+              addressNo: applicationData.address?.addressNo,
+              address: applicationData.address?.addressLine1 || applicationData.address?.address,
+              address2: applicationData.address?.addressLine2 || applicationData.address?.address2,
+              addressCity: applicationData.address?.addressCity,
+              districtCode: applicationData.address?.addressState || applicationData.address?.districtCode,
+              country: applicationData.address?.addressCountry || applicationData.address?.country,
+              details: calculatedResult.items || [],
+              summary: summary,
+              references: calculatedResult.references || [],
+              totalItems: (calculatedResult.items || []).length,
+              // Legacy fields for backward compatibility
+              application: applicationData.application,
+              items: applicationData.items,
+              contact: applicationData.contact,
+              addressData: applicationData.address
+            };
+
+            return this.sendSuccess(res, applicationResponse, `${applicationData.type} application data retrieved successfully - no invoice exists yet`);
+          }
+          logger.info(`ApplicationService.getApplicationDetails returned no data for code=${code}, churchId=${churchId}`);
+        } catch (appServiceError) {
+          logger.warn(`Failed to get application data via ApplicationService for ${code}:`, appServiceError.message);
+          if (appServiceError.stack) logger.debug(appServiceError.stack);
+        }
+
+        // Last resort: Check if it's a receipt code directly
+        try {
+          const ReceiptRepository = require('../repositories/ReceiptRepository');
+          const receiptRepo = new ReceiptRepository();
+          const receiptData = await receiptRepo.getReceiptWithInvoiceAndDetails(code, churchId);
+
+          if (receiptData && receiptData.code) {
+            logger.info(`Found receipt for code: ${code}, returning receipt data`);
+
+            // Format receipt data to look like an invoice response for the UI
+            const formattedReceipt = {
+              isApplicationData: false,
+              isInvoice: true, // Mark as true so UI shows it, but we can differentiate if needed
+              isReceiptData: true,
+              hasInvoice: !!receiptData.invoice,
+              hasReceipt: true,
+              canCreateInvoice: false,
+              canCreateReceipt: false,
+              invoiceId: receiptData.invoice?.invoiceId || null,
+              code: receiptData.invoice?.code || null,
+              receiptCode: receiptData.code,
+              receiptId: receiptData.receiptId,
+              customerName: receiptData.customerName || receiptData.payeeName,
+              totalAmount: receiptData.totalAmount,
+              payingAmount: receiptData.payingAmount,
+              transactionDate: receiptData.transactionDate,
+              paymentMode: receiptData.paymentMode,
+              paymentModeDocNo: receiptData.paymentModeDocNo,
+              addressNo: receiptData.addressNo,
+              address: receiptData.address,
+              address2: receiptData.address2,
+              addressCity: receiptData.addressCity,
+              districtCode: receiptData.districtCode,
+              country: receiptData.country,
+              receipt: receiptData,
+              details: (receiptData.details || []).map(d => ({
+                itemId: d.ItemId || d.itemId,
+                itemName: d.ItemName || d.itemName,
+                itemPrice: d.UnitAmount || d.unitAmount,
+                quantity: d.Quantity || d.quantity,
+                unitAmount: d.UnitAmount || d.unitAmount,
+                payingAmount: d.PayingAmount || d.payingAmount,
+                totalPayingAmount: d.TotalPayingAmount || d.totalPayingAmount,
+                lineTotalAmount: d.LineTotalAmount || d.lineTotalAmount,
+                lineTaxPercent: d.LineTaxPercent || d.lineTaxPercent || 0,
+                lineTaxAmount: d.LineTaxAmount || d.lineTaxAmount || 0,
+                refDocNumber: d.RefDocNumber || d.refDocNumber,
+                refDocName: d.RefDocName || d.refDocName
+              }))
+            };
+
+            return this.sendSuccess(res, formattedReceipt, 'Receipt data retrieved successfully');
+          }
+        } catch (receiptRepoError) {
+          logger.warn('Failed to search in ReceiptRepository:', receiptRepoError.message);
+        }
+
+        logger.warn(`Invoice lookup failed: code=${code}, churchId=${churchId}, applicationCode=${applicationCode}`);
+        return res.status(404).json({
           success: false,
           error: {
             code: 'NOT_FOUND',
             message: 'Invoice not found'
           }
-        };
-        
-        if (diagnosticInfo) {
-          errorResponse.diagnostic = diagnosticInfo;
-        }
-        
-        return res.status(404).json(errorResponse);
+        });
       }
 
       return this.sendSuccess(res, invoice, 'Invoice retrieved successfully');
@@ -1900,13 +2060,13 @@ class InvoiceController extends BaseController {
    * Includes automatic calculations for totals and taxes
    * @param {string} code - Application code (e.g., "1405-0", "NAPP-52")
    */
-  getApplicationItems = this.asyncHandler(async(req, res) => {
+  getApplicationItems = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Get Application Items');
 
     try {
       const { code } = req.params;
       const churchId = req.user?.churchId;
-      
+
       if (!code) {
         return this.sendError(res, 'Application code is required', 400);
       }
@@ -1915,29 +2075,46 @@ class InvoiceController extends BaseController {
         return this.sendError(res, 'Authentication required with church ID', 401);
       }
 
-      // Get all items linked to this application code
-      const applicationItems = await this.getApplicationItemsByCode(code, churchId);
+      // Use ApplicationService to get unified application details
+      const ApplicationService = require('../services/ApplicationService');
+      const applicationData = await ApplicationService.getApplicationDetails(code, churchId);
 
-      if (!applicationItems || applicationItems.length === 0) {
-        return this.sendError(res, `No items found for application code: ${code}`, 404);
+      if (!applicationData) {
+        return this.sendError(res, `Application not found: ${code}`, 404);
       }
 
-      // Calculate totals and taxes
-      const calculatedItems = this.calculateItemTotals(applicationItems);
-      
-      // Build response with summary
+      // Calculate totals and taxes for items
+      const calculatedResult = this.calculateItemTotals(applicationData.items || []);
+
+      // Build unified response
       const response = {
+        success: true,
+        isApplicationData: true,
         applicationCode: code,
-        items: calculatedItems.items,
-        summary: calculatedItems.summary,
-        references: calculatedItems.references,
-        totalItems: calculatedItems.items.length
+        applicationType: applicationData.type,
+        customerName: applicationData.customerName,
+        applicantMobile: applicationData.contact?.mobile,
+        applicantEmail: applicationData.contact?.email,
+        addressNo: applicationData.address?.addressNo,
+        address: applicationData.address?.addressLine1 || applicationData.address?.address,
+        address2: applicationData.address?.addressLine2 || applicationData.address?.address2,
+        addressCity: applicationData.address?.addressCity,
+        districtCode: applicationData.address?.addressState || applicationData.address?.districtCode,
+        country: applicationData.address?.addressCountry || applicationData.address?.country,
+        items: calculatedResult.items,
+        summary: calculatedResult.summary,
+        references: calculatedResult.references,
+        totalItems: calculatedResult.items.length,
+        // Include raw application data for specific UI needs
+        application: applicationData.application,
+        contact: applicationData.contact,
+        addressData: applicationData.address
       };
 
       return this.sendSuccess(res, response, 'Application items retrieved successfully');
     } catch (error) {
       logger.error('Controller: Failed to get application items:', error);
-      return this.sendError(res, 'Failed to retrieve application items', 500);
+      return this.sendError(res, 'Failed to retrieve application items: ' + error.message, 500);
     }
   });
 
@@ -1950,12 +2127,13 @@ class InvoiceController extends BaseController {
   async getApplicationItemsByCode(applicationCode, churchId) {
     try {
       logger.info(`Getting application items for code: ${applicationCode}, churchId: ${churchId}`);
-      
+
       // Handle different application code formats
       let appType = '';
       let normalizedCode = applicationCode.toUpperCase().trim();
       let baseCode = normalizedCode;
-      
+
+      // Check for explicit prefixes first
       if (normalizedCode.startsWith('NAPP-')) {
         appType = 'NAPP';
         baseCode = normalizedCode.substring(5);
@@ -1965,24 +2143,45 @@ class InvoiceController extends BaseController {
       } else if (normalizedCode.startsWith('I-NAPP-')) {
         appType = 'INCR'; // Inscription referencing NAPP
         baseCode = normalizedCode.substring(7);
-      } else if (/^\d+-\d+$/.test(normalizedCode)) {
-        appType = 'NAPP';
+      } else if (normalizedCode.startsWith('WAPP-')) {
+        appType = 'WAPP';
+        baseCode = normalizedCode.substring(5);
+      } else if (normalizedCode.startsWith('GOL-') || normalizedCode.startsWith('GOLA-')) {
+        appType = 'GOLA';
       } else if (/^I-\d+-\d+$/.test(normalizedCode)) {
         // Handle inscription format: I-XXXX-X
         appType = 'INCR';
         baseCode = normalizedCode; // Keep full code for inscription lookup
+      } else if (/^\d{3}-\d+$/.test(normalizedCode)) {
+        // Wake Room codes: XXX-NNN (3-digit prefix like 001-721)
+        appType = 'WAPP';
+      } else if (/^\d+-\d+$/.test(normalizedCode)) {
+        // Niche codes: XXXX-X (4+ digit prefix like 1405-0)
+        appType = 'NAPP';
       } else {
         throw new Error(`Unsupported application code format: ${applicationCode}`);
       }
 
       let items = [];
-      
+
       if (appType === 'NAPP') {
         // Get niche application items
         items = await this.getNicheApplicationItems(baseCode, churchId);
       } else if (appType === 'INCR') {
         // Get inscription items
         items = await this.getInscriptionItems(baseCode, churchId);
+      } else if (appType === 'WAPP') {
+        // Get Wake Room application data
+        const wakeRoomData = await this.getWakeRoomApplicationData(normalizedCode, churchId);
+        if (wakeRoomData && wakeRoomData.items) {
+          items = wakeRoomData.items;
+        }
+      } else if (appType === 'GOLA') {
+        // Get Gate of Life application data
+        const golData = await this.getGateOfLifeApplicationData(normalizedCode, churchId);
+        if (golData && golData.items) {
+          items = golData.items;
+        }
       }
 
       return items;
@@ -2001,7 +2200,7 @@ class InvoiceController extends BaseController {
   async getNicheApplicationItems(appCode, churchId) {
     try {
       const { executeQuery } = require('../config/database');
-      
+
       // Get niche application
       const appQuery = `
         SELECT TOP 1
@@ -2017,27 +2216,27 @@ class InvoiceController extends BaseController {
           AND na.ChurchId = @churchId
           AND na.Status > 0
       `;
-      
+
       const appResult = await executeQuery(appQuery, { code: appCode, churchId });
-      
+
       if (!appResult.recordset || appResult.recordset.length === 0) {
         logger.warn(`Niche application not found: ${appCode}`);
         return [];
       }
-      
+
       const application = appResult.recordset[0];
       let items = [];
-      
+
       // Get niche item
       const nicheItem = await this.getNicheItem(application.NicheId, churchId, application);
       if (nicheItem) {
         items.push(nicheItem);
       }
-      
+
       // Get inscription items if they exist
       const inscriptionItems = await this.getInscriptionItemsForNicheApplication(application.NicheApplicationId, churchId);
       items = items.concat(inscriptionItems);
-      
+
       return items;
     } catch (error) {
       logger.error('Error getting niche application items:', error);
@@ -2055,7 +2254,7 @@ class InvoiceController extends BaseController {
   async getNicheItem(nicheId, churchId, application) {
     try {
       const { executeQuery } = require('../config/database');
-      
+
       // Get niche details
       const nicheQuery = `
         SELECT 
@@ -2072,18 +2271,18 @@ class InvoiceController extends BaseController {
         INNER JOIN Chapel c ON w.ChapelId = c.ChapelId
         WHERE n.NicheId = @nicheId
       `;
-      
+
       const nicheResult = await executeQuery(nicheQuery, { nicheId });
-      
+
       if (!nicheResult.recordset || nicheResult.recordset.length === 0) {
         return null;
       }
-      
+
       const niche = nicheResult.recordset[0];
-      
+
       // Get matching item
       let item = null;
-      
+
       // Try to get item by niche level
       if (niche.NicheLevel) {
         const levelItemQuery = `
@@ -2097,17 +2296,17 @@ class InvoiceController extends BaseController {
           WHERE i.ChurchId = @churchId
             AND i.ItemId = @itemId
         `;
-        
-        const levelItemResult = await executeQuery(levelItemQuery, { 
-          churchId, 
-          itemId: niche.NicheLevel 
+
+        const levelItemResult = await executeQuery(levelItemQuery, {
+          churchId,
+          itemId: niche.NicheLevel
         });
-        
+
         if (levelItemResult.recordset && levelItemResult.recordset.length > 0) {
           item = levelItemResult.recordset[0];
         }
       }
-      
+
       // Fallback to NAPP items
       if (!item) {
         const itemQuery = `
@@ -2122,28 +2321,28 @@ class InvoiceController extends BaseController {
             AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
           ORDER BY i.ItemId
         `;
-        
+
         const itemResult = await executeQuery(itemQuery, { churchId });
-        
+
         if (itemResult.recordset && itemResult.recordset.length > 0) {
           item = itemResult.recordset[0];
         }
       }
-      
+
       if (!item) {
         return null;
       }
-      
+
       // Calculate amount
-      const amount = application.Amount || 
-                    niche.NichePrice || 
-                    niche.RowPrice || 
-                    item.Price || 
-                    0;
-      
+      const amount = application.Amount ||
+        niche.NichePrice ||
+        niche.RowPrice ||
+        item.Price ||
+        0;
+
       // Extract customer information if available
       const customerName = application.ApplicantName || 'Unknown Customer';
-      
+
       return {
         itemId: item.ItemId,
         itemName: item.Name || 'Niche',
@@ -2151,6 +2350,7 @@ class InvoiceController extends BaseController {
         itemPrice: item.Price,
         quantity: 1,
         unitAmount: amount,
+        payingAmount: amount,
         lineTotalAmount: amount,
         lineTaxPercent: 9, // 9% GST
         lineTaxAmount: amount * 0.09,
@@ -2186,7 +2386,7 @@ class InvoiceController extends BaseController {
   async getInscriptionItemsForNicheApplication(nicheApplicationId, churchId) {
     try {
       const { executeQuery } = require('../config/database');
-      
+
       // Get niche booking
       const bookingQuery = `
         SELECT TOP 1
@@ -2196,15 +2396,15 @@ class InvoiceController extends BaseController {
         WHERE nb.NicheApplicationId = @nicheApplicationId
           AND nb.BookingStatus > 0
       `;
-      
+
       const bookingResult = await executeQuery(bookingQuery, { nicheApplicationId });
-      
+
       if (!bookingResult.recordset || bookingResult.recordset.length === 0) {
         return [];
       }
-      
+
       const booking = bookingResult.recordset[0];
-      
+
       // Get inscription requests
       const inscrQuery = `
         SELECT 
@@ -2215,21 +2415,21 @@ class InvoiceController extends BaseController {
         WHERE nir.NicheBookingId = @nicheBookingId
         ORDER BY nir.NicheInscriptionRequestId
       `;
-      
+
       const inscrResult = await executeQuery(inscrQuery, { nicheBookingId: booking.NicheBookingId });
-      
+
       if (!inscrResult.recordset || inscrResult.recordset.length === 0) {
         return [];
       }
-      
+
       let items = [];
-      
+
       // Get items for each inscription
       for (const inscription of inscrResult.recordset) {
         const inscrItems = await this.getInscriptionItems(inscription.Code, churchId);
         items = items.concat(inscrItems);
       }
-      
+
       return items;
     } catch (error) {
       logger.error('Error getting inscription items for niche application:', error);
@@ -2246,7 +2446,7 @@ class InvoiceController extends BaseController {
   async getInscriptionItems(inscrCode, churchId) {
     try {
       const { executeQuery } = require('../config/database');
-      
+
       // Get inscription request
       const inscrQuery = `
         SELECT TOP 1
@@ -2258,20 +2458,20 @@ class InvoiceController extends BaseController {
         INNER JOIN NicheBooking nb ON nir.NicheBookingId = nb.NicheBookingId
         WHERE nir.Code = @code
       `;
-      
+
       const inscrResult = await executeQuery(inscrQuery, { code: inscrCode });
-      
+
       if (!inscrResult.recordset || inscrResult.recordset.length === 0) {
         return [];
       }
-      
+
       const inscription = inscrResult.recordset[0];
-      
+
       // Get inscription items from InscriptionInvoiceService
       try {
         const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
         const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscrCode, churchId);
-        
+
         if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items)) {
           // Handle the new object format from InscriptionInvoiceService
           return inscriptionData.items.map(item => ({
@@ -2330,7 +2530,7 @@ class InvoiceController extends BaseController {
       } catch (serviceError) {
         logger.warn('Failed to get inscription items from service:', serviceError.message);
       }
-      
+
       // Fallback: Get inscription items from database
       const itemQuery = `
         SELECT 
@@ -2344,9 +2544,9 @@ class InvoiceController extends BaseController {
           AND (i.DocType = 'INCR' OR i.Code LIKE 'INSC%' OR i.Code LIKE 'PLAQ%')
         ORDER BY i.ItemId
       `;
-      
+
       const itemResult = await executeQuery(itemQuery, { churchId });
-      
+
       if (!itemResult.recordset || itemResult.recordset.length === 0) {
         // Last resort: Get any item for inscription
         const fallbackItemQuery = `
@@ -2361,16 +2561,16 @@ class InvoiceController extends BaseController {
             AND i.IsRefType = 1
           ORDER BY i.ItemId
         `;
-        
+
         const fallbackResult = await executeQuery(fallbackItemQuery, { churchId });
-        
+
         if (!fallbackResult.recordset || fallbackResult.recordset.length === 0) {
           return [];
         }
-        
+
         const item = fallbackResult.recordset[0];
         const amount = item.Price || 0;
-        
+
         return [{
           itemId: item.ItemId,
           itemName: item.Name || 'Inscription Service',
@@ -2378,6 +2578,7 @@ class InvoiceController extends BaseController {
           itemPrice: item.Price,
           quantity: 1,
           unitAmount: amount,
+          payingAmount: amount,
           lineTotalAmount: amount,
           lineTaxPercent: 9, // 9% GST
           lineTaxAmount: amount * 0.09,
@@ -2396,7 +2597,7 @@ class InvoiceController extends BaseController {
           addressNo: ''
         }];
       }
-      
+
       // Return all inscription-related items
       return itemResult.recordset.map(item => {
         const amount = item.Price || 0;
@@ -2407,6 +2608,7 @@ class InvoiceController extends BaseController {
           itemPrice: item.Price,
           quantity: 1,
           unitAmount: amount,
+          payingAmount: amount,
           lineTotalAmount: amount,
           lineTaxPercent: 9, // 9% GST
           lineTaxAmount: amount * 0.09,
@@ -2438,33 +2640,33 @@ class InvoiceController extends BaseController {
    */
   calculateItemTotals(items) {
     try {
-      // Calculate individual item totals
-      const calculatedItems = items.map(item => {
-        const quantity = item.quantity || 1;
-        const unitAmount = item.unitAmount || 0;
+      const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
+      const calculatedItems = safeItems.map(item => {
+        const it = item || {};
+        const quantity = it.quantity || 1;
+        const unitAmount = it.unitAmount || 0;
         const lineTotal = quantity * unitAmount;
-        const taxPercent = item.lineTaxPercent || 9;
+        const taxPercent = it.lineTaxPercent || 9;
         const taxAmount = lineTotal * (taxPercent / 100);
         const totalPaying = lineTotal + taxAmount;
-        
+
         return {
-          ...item,
+          ...it,
           lineTotalAmount: lineTotal,
           lineTaxAmount: taxAmount,
           totalPayingAmount: totalPaying
         };
       });
-      
+
       // Calculate summary
       const subtotal = calculatedItems.reduce((sum, item) => sum + (item.lineTotalAmount || 0), 0);
       const totalTax = calculatedItems.reduce((sum, item) => sum + (item.lineTaxAmount || 0), 0);
       const grandTotal = calculatedItems.reduce((sum, item) => sum + (item.totalPayingAmount || 0), 0);
-      
-      // Extract unique references
-      const references = [...new Set(calculatedItems.map(item => 
-        `${item.refDocName || 'N/A'}-${item.refDocNumber || 'N/A'}`
+
+      const references = [...new Set(calculatedItems.map(it =>
+        `${(it && it.refDocName) || 'N/A'}-${(it && it.refDocNumber) || 'N/A'}`
       ))].filter(Boolean);
-      
+
       return {
         items: calculatedItems,
         summary: {
@@ -2478,7 +2680,11 @@ class InvoiceController extends BaseController {
       };
     } catch (error) {
       logger.error('Error calculating item totals:', error);
-      throw error;
+      return {
+        items: [],
+        summary: { totalItems: 0, subtotal: 0, totalTax: 0, grandTotal: 0, taxPercentage: 0 },
+        references: []
+      };
     }
   }
 
@@ -2487,7 +2693,7 @@ class InvoiceController extends BaseController {
    * POST /api/invoices/:code/cancel
    * Mirrors ASP.NET UpdateInvoice_Status behavior.
    */
-  cancelInvoiceByCode = this.asyncHandler(async(req, res) => {
+  cancelInvoiceByCode = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Cancel Invoice by Code');
 
     try {
@@ -2507,8 +2713,8 @@ class InvoiceController extends BaseController {
       if (!result.success) {
         const statusCode =
           result.error.code === 'NOT_FOUND' ? 404 :
-          result.error.code === 'VALIDATION_ERROR' ? 400 :
-          400;
+            result.error.code === 'VALIDATION_ERROR' ? 400 :
+              400;
 
         return res.status(statusCode).json(result);
       }
@@ -2524,11 +2730,49 @@ class InvoiceController extends BaseController {
     }
   });
 
+  async getInvoiceByCode(req, res) {
+    try {
+      const { code } = req.params;
+      const type = req.query.type || req.query.refDocName || null;
+
+      const invoice = await this.invoiceService.getInvoiceByCode(code, type);
+
+      if (!invoice) {
+        return this.sendError(res, 'Invoice not found', 404);
+      }
+
+      return this.sendResponse(res, invoice);
+    } catch (error) {
+      return this.handleError(res, error);
+    }
+  }
+
+  async createInvoiceByCode(req, res) {
+    try {
+      const { code } = req.params;
+      const churchId = req.user.ChurchId;
+      const userId = req.user.UserId;
+      // Extract specific type if provided (e.g., 'NAPP', 'INCR', 'WAPP')
+      const type = req.query.type || req.query.refDocName || req.body.refDocName || null;
+
+      logger.info(`Creating invoice for code: ${code}, type: ${type}`);
+
+      const result = await this.invoiceService.createInvoiceByCode(code, churchId, userId, type);
+
+      return this.sendResponse(res, result, 'Invoice created successfully');
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return this.sendError(res, error.message, 404);
+      }
+      return this.handleError(res, error);
+    }
+  }
+
   /**
    * Search invoices
    * GET /api/invoices/search
    */
-  searchInvoices = this.asyncHandler(async(req, res) => {
+  searchInvoices = this.asyncHandler(async (req, res) => {
     this.logRequest(req, 'Search Invoices');
 
     try {
@@ -2558,7 +2802,7 @@ class InvoiceController extends BaseController {
 
       const params = {};
       const conditions = [];
-      
+
       // Build base WHERE clause conditions (will be used for both main query and count query)
       conditions.push('i.Status > 0');
 
@@ -2571,11 +2815,11 @@ class InvoiceController extends BaseController {
       if (searchTerm && searchTerm.trim()) {
         const searchConditions = [];
         const searchValue = `%${searchTerm.trim()}%`;
-        
+
         searchConditions.push('i.CustomerName LIKE @searchTerm');
-        searchConditions.push('i.InvoiceCode LIKE @searchTerm');
+        searchConditions.push('i.Code LIKE @searchTerm');
         searchConditions.push('i.RefDocNumber LIKE @searchTerm');
-        
+
         params.searchTerm = searchValue;
         conditions.push(`(${searchConditions.join(' OR ')})`);
       }
@@ -2587,7 +2831,7 @@ class InvoiceController extends BaseController {
       }
 
       if (invoiceCode && !searchTerm) {
-        conditions.push('i.InvoiceCode LIKE @invoiceCode');
+        conditions.push('i.Code LIKE @invoiceCode');
         params.invoiceCode = `%${invoiceCode}%`;
       }
 
@@ -2630,7 +2874,7 @@ class InvoiceController extends BaseController {
         FROM Invoice i WITH(NOLOCK)
         ${whereClause}
       `;
-      
+
       const { executeQuery } = require('../config/database');
       const countResult = await executeQuery(countQuery, params);
       const total = countResult.recordset[0]?.Total || 0;
@@ -2645,9 +2889,17 @@ class InvoiceController extends BaseController {
       `;
 
       // Handle sorting
-      const validSortBy = ['TransactionDate', 'InvoiceId', 'CustomerName', 'InvoiceCode', 'TotalAmount', 'PayingAmount'];
+      const sortColumnMap = {
+        TransactionDate: 'TransactionDate',
+        InvoiceId: 'InvoiceId',
+        CustomerName: 'CustomerName',
+        InvoiceCode: 'Code',
+        Code: 'Code',
+        TotalAmount: 'TotalAmount',
+        PayingAmount: 'PayingAmount'
+      };
       const validSortOrder = ['asc', 'desc'];
-      const sortColumn = validSortBy.includes(sortBy) ? sortBy : 'TransactionDate';
+      const sortColumn = sortColumnMap[sortBy] || 'TransactionDate';
       const sortDirection = validSortOrder.includes(sortOrder.toLowerCase()) ? sortOrder.toUpperCase() : 'DESC';
 
       // Add pagination

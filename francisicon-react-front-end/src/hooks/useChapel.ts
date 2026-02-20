@@ -1,17 +1,17 @@
 import { useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '../store';
-import { 
-  loadChapels, 
-  loadChapelById, 
-  setSelectedChapel, 
-  clearError, 
-  resetChapelState 
+import {
+  loadChapels,
+  loadChapelById,
+  setSelectedChapel,
+  clearError,
+  resetChapelState
 } from '../store/chapelSlice';
 
 export function useChapel() {
   const dispatch = useDispatch<AppDispatch>();
-  
+
   const {
     chapels,
     selectedChapel,
@@ -23,11 +23,13 @@ export function useChapel() {
 
   // Load chapels on component mount
   useEffect(() => {
-    if (!isDataLoaded && !loading) {
+    // Only load if data is not loaded, we aren't currently loading, and there's no error
+    // If there's an error, we rely on manual retry or error clearing to trigger a reload
+    if (!isDataLoaded && !loading && !error) {
       console.log('Loading chapels on component mount...');
       dispatch(loadChapels(1)); // Default church ID is 1
     }
-  }, [dispatch, isDataLoaded, loading]);
+  }, [dispatch, isDataLoaded, loading, error]);
 
   const handleLoadChapels = useCallback((churchId: number = 1) => {
     dispatch(loadChapels(churchId));
@@ -67,14 +69,14 @@ export function useChapel() {
     error,
     lastErrorType,
     isDataLoaded,
-    
+
     // Actions
     handleLoadChapels,
     handleLoadChapelById,
     handleSelectChapel,
     handleClearError,
     handleResetChapelState,
-    
+
     // Helper functions
     getChapelById,
     getChapelByCode,

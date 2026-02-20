@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GlobalSearch Component Test</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        
+        // Simple test component to verify the mapping works
+        const TestComponent = () => {
+            const [results, setResults] = useState([]);
+            const [loading, setLoading] = useState(false);
+            
+            // Mock API response data
+            const mockData = {
+                success: true,
+                message: "Global search completed successfully",
+                data: {
+                    results: [
+                        {
+                            id: "application-5231",
+                            entityType: "niche-application",
+                            code: "5706-0",
+                            churchName: "",
+                            relevance: "Medium",
+                            applicantName: "Nancy Tey Swee Nai",
+                            nomineeName: "Ang I-Ming",
+                            applicationDate: "2022-03-28T06:06:41.393Z",
+                            status: 0,
+                            email: "",
+                            mobile: "",
+                            nicheCode: "",
+                            chapelName: ""
+                        },
+                        {
+                            id: "application-3989",
+                            entityType: "niche-application",
+                            code: "5502-0",
+                            churchName: "",
+                            relevance: "Medium",
+                            applicantName: "Annabelle Leong Fong Onn",
+                            nomineeName: "Ang I-Ming",
+                            applicationDate: "2021-02-01T06:06:50.147Z",
+                            status: 0,
+                            email: "",
+                            mobile: "",
+                            nicheCode: "",
+                            chapelName: ""
+                        }
+                    ],
+                    pagination: {
+                        page: 1,
+                        pageSize: 50,
+                        totalResults: 2,
+                        totalPages: 1,
+                        hasNextPage: false,
+                        hasPreviousPage: false
+                    },
+                    executionTime: 15,
+                    searchMethod: "meilisearch"
+                }
+            };
+            
+            const simulateSearch = () => {
+                setLoading(true);
+                setTimeout(() => {
+                    setResults(mockData.data.results);
+                    setLoading(false);
+                }, 1000);
+            };
+            
+            const formatDate = (dateString) => {
+                if (!dateString) return '';
+                try {
+                    const date = new Date(dateString);
+                    return date.toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                    });
+                } catch {
+                    return dateString.toString();
+                }
+            };
+            
+            return (
+                <div className="max-w-6xl mx-auto p-4 bg-white rounded-lg shadow-md">
+                    <h1 className="text-3xl font-bold text-gray-800 mb-6">Global Search Test</h1>
+                    
+                    <button 
+                        onClick={simulateSearch}
+                        disabled={loading}
+                        className="bg-blue-600 text-white px-4 py-2 rounded mb-4 hover:bg-blue-700 disabled:opacity-50"
+                    >
+                        {loading ? 'Loading...' : 'Load Mock Data'}
+                    </button>
+                    
+                    {results.length > 0 && (
+                        <div className="mb-6">
+                            <h2 className="text-xl font-semibold mb-4">
+                                Search Results ({results.length} found)
+                            </h2>
+                            
+                            <div className="space-y-4">
+                                {results.map((result, index) => (
+                                    <div key={`${result.id}-${index}`} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                        <div className="border-b border-gray-200 pb-3 mb-3">
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex items-center">
+                                                    <span className="mr-2">📋</span>
+                                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                        {result.entityType === 'niche-application' ? 'Niche Application' : result.entityType}
+                                                    </span>
+                                                </div>
+                                                <span className="text-sm text-gray-500">Relevance: {result.relevance}</span>
+                                            </div>
+                                            <h3 className="font-bold text-lg mt-1">{result.code}</h3>
+                                            <p className="text-gray-700"><span className="font-semibold">Applicant:</span> {result.applicantName}</p>
+                                            <p className="text-gray-700"><span className="font-semibold">Nominee:</span> {result.nomineeName}</p>
+                                            <p className="text-gray-700"><span className="font-semibold">Applied Date:</span> {formatDate(result.applicationDate)}</p>
+                                            <p className="text-gray-700"><span className="font-semibold">Status:</span> {result.status}</p>
+                                            {result.nicheCode && <p className="text-gray-700"><span className="font-semibold">Niche:</span> {result.nicheCode}</p>}
+                                            {result.chapelName && <p className="text-gray-700"><span className="font-semibold">Chapel:</span> {result.chapelName}</p>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TestComponent />);
+    </script>
+</body>
+</html>

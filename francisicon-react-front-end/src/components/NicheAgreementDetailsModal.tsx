@@ -59,8 +59,16 @@ export function NicheAgreementDetailsModal({
 
   const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
+
+    // If it's just a 4-digit year, return it as-is
+    const str = String(dateString).trim();
+    if (/^\d{4}$/.test(str)) return str;
+
     try {
-      return new Date(dateString).toLocaleDateString('en-SG', {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+
+      return date.toLocaleDateString('en-SG', {
         year: 'numeric',
         month: 'short',
         day: 'numeric'
@@ -77,6 +85,9 @@ export function NicheAgreementDetailsModal({
       minimumFractionDigits: 2
     }).format(amount);
   };
+
+  const hasInvoice = Boolean(agreementData?.invoice?.invoiceNo);
+  const hasReceipt = Boolean(agreementData?.invoice?.receiptNo);
 
 
 
@@ -138,33 +149,30 @@ export function NicheAgreementDetailsModal({
               <nav className="flex bg-gray-50 border-b border-gray-200 px-6">
                 <button
                   onClick={() => setActiveTab('general')}
-                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${
-                    activeTab === 'general'
-                      ? 'text-[#802429] border-b-[#802429]'
-                      : 'text-gray-600 border-transparent hover:text-[#802429]'
-                  }`}
+                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${activeTab === 'general'
+                    ? 'text-[#802429] border-b-[#802429]'
+                    : 'text-gray-600 border-transparent hover:text-[#802429]'
+                    }`}
                   style={{ borderBottomWidth: activeTab === 'general' ? '3px' : '0' }}
                 >
                   General Details
                 </button>
                 <button
                   onClick={() => setActiveTab('financial')}
-                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${
-                    activeTab === 'financial'
-                      ? 'text-[#802429] border-b-[#802429]'
-                      : 'text-gray-600 border-transparent hover:text-[#802429]'
-                  }`}
+                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${activeTab === 'financial'
+                    ? 'text-[#802429] border-b-[#802429]'
+                    : 'text-gray-600 border-transparent hover:text-[#802429]'
+                    }`}
                   style={{ borderBottomWidth: activeTab === 'financial' ? '3px' : '0' }}
                 >
                   Financials & Billing
                 </button>
                 <button
                   onClick={() => setActiveTab('attachments')}
-                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${
-                    activeTab === 'attachments'
-                      ? 'text-[#802429] border-b-[#802429]'
-                      : 'text-gray-600 border-transparent hover:text-[#802429]'
-                  }`}
+                  className={`px-6 py-4 font-semibold transition-colors border-b-3 ${activeTab === 'attachments'
+                    ? 'text-[#802429] border-b-[#802429]'
+                    : 'text-gray-600 border-transparent hover:text-[#802429]'
+                    }`}
                   style={{ borderBottomWidth: activeTab === 'attachments' ? '3px' : '0' }}
                 >
                   Attachments ({agreementData.metadata.beneficiaryCount || 0})
@@ -254,15 +262,13 @@ export function NicheAgreementDetailsModal({
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Date of Birth</span>
                                   <span className="font-semibold text-sm">
-                                    {beneficiary.dateOfBirth && !beneficiary.dateOfBirth.startsWith('01-Jan-') ? beneficiary.dateOfBirth : 'N/A'}
+                                    {beneficiary.dateOfBirth || 'N/A'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Birth Year</span>
                                   <span className="font-semibold text-sm">
-                                    {beneficiary.birthYear || 
-                                     (beneficiary.dateOfBirth && beneficiary.dateOfBirth.startsWith('01-Jan-') ? 
-                                       beneficiary.dateOfBirth.split('-')[2] : 'N/A')}
+                                    {beneficiary.birthYear || 'N/A'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">
@@ -285,8 +291,8 @@ export function NicheAgreementDetailsModal({
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">
                                   <span className="text-gray-600 text-sm">Status</span>
-                                  <span className="font-semibold text-sm">
-                                    {beneficiary.status || 'N/A'}
+                                  <span className="font-semibold text-sm capitalize">
+                                    {beneficiary.lifeStatus || beneficiary.status || 'N/A'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-pink-100">
@@ -325,14 +331,18 @@ export function NicheAgreementDetailsModal({
                             <td className="px-3 py-3 text-sm border-b border-gray-100">
                               Niche Fee ({agreementData.niche.location?.chapel?.chapelName || agreementData.niche.chapelName} {agreementData.niche.code})
                             </td>
-                            <td className="px-3 py-3 text-sm border-b border-gray-100">{agreementData.invoice.invoiceNo || 'N/A'}</td>
+                            <td className="px-3 py-3 text-sm border-b border-gray-100">{hasInvoice ? agreementData.invoice.invoiceNo : ''}</td>
                             <td className="px-3 py-3 text-sm border-b border-gray-100">
-                              <span className="text-green-600 font-bold">
-                                {agreementData.invoice.invoicePayingAmount > 0 ? 'PAID' : 'PENDING'}
-                              </span>
+                              {hasInvoice ? (
+                                <span className="text-green-600 font-bold">
+                                  {agreementData.invoice.invoicePayingAmount > 0 ? 'PAID' : 'PENDING'}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 font-bold">-</span>
+                              )}
                             </td>
                             <td className="px-3 py-3 text-sm font-bold text-right border-b border-gray-100">
-                              {formatCurrency(agreementData.niche.totalAmount || 0)}
+                              {hasInvoice ? formatCurrency(agreementData.niche.totalAmount || 0) : ''}
                             </td>
                           </tr>
                           {agreementData.invoice.taxAmount > 0 && (
@@ -349,6 +359,22 @@ export function NicheAgreementDetailsModal({
                               </td>
                             </tr>
                           )}
+                          <tr>
+                            <td className="px-3 py-3 text-sm border-b border-gray-100">
+                              Receipt
+                            </td>
+                            <td className="px-3 py-3 text-sm border-b border-gray-100">{hasReceipt ? agreementData.invoice.receiptNo : ''}</td>
+                            <td className="px-3 py-3 text-sm border-b border-gray-100">
+                              {hasReceipt ? (
+                                <span className="text-green-600 font-bold">PAID</span>
+                              ) : (
+                                <span className="text-gray-400 font-bold">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-sm font-bold text-right border-b border-gray-100">
+                              {hasReceipt ? formatCurrency(agreementData.invoice.receiptPayingAmount || agreementData.invoice.receiptAmount || 0) : ''}
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
                       {(() => {

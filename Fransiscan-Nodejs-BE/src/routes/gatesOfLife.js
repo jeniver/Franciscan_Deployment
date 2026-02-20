@@ -37,6 +37,17 @@ router.get(
 );
 
 /**
+ * @route   GET /api/gates-of-life/:code/pdf-data
+ * @desc    Get data for Gate of Life agreement PDF/Form
+ * @access  Private (JWT required)
+ */
+router.get(
+  '/:code/pdf-data',
+  authenticateToken,
+  (req, res) => GateOfLifeController.getInvoicePdf(req, res)
+);
+
+/**
  * @route   GET /api/gates-of-life/:code
  * @desc    Get a Gate of Life application by code
  * @access  Private (JWT required)

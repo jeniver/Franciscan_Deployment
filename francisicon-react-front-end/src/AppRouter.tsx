@@ -1,20 +1,22 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { App } from './App';
 import { LoginPage } from './pages/LoginPage';
-import { ReceiptPage } from './pages/ReceiptPage';
 import { GatesOfLifePage } from './pages/GatesOfLifePage';
 import { WakeRoomPage } from './pages/WakeRoomPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { MonthlyReceiptsReportPage } from './pages/MonthlyReceiptsReportPage';
+import { ReceiptRegisterReportPage } from './pages/ReceiptRegisterReportPage';
 import { MonthlyWakeRoomsReportPage } from './pages/MonthlyWakeRoomsReportPage';
 import { MonthlyInscriptionsReportPage } from './pages/MonthlyInscriptionsReportPage';
 import { MonthlyGOAReportPage } from './pages/MonthlyGOAReportPage';
 import { MonthlyGSTReportPage } from './pages/MonthlyGSTReportPage';
 import { NichesReportPage } from './pages/NichesReportPage';
 import { MiscReceiptPage } from './pages/MiscReceiptPage';
+import { MiscReceiptCreatePage } from './pages/MiscReceiptCreatePage';
 import { MiscInvoicePage } from './pages/MiscInvoicePage';
 import { InvoiceAndReceiptPage } from './pages/InvoiceAndReceiptPage';
+import { CreateInvoicePage } from './pages/CreateInvoicePage';
+import { CreateReceiptPage } from './pages/CreateReceiptPage';
 import { InvoiceAndReceiptManagementPage } from './pages/InvoiceAndReceiptManagementPage';
 import { InscriptionPage } from './pages/InscriptionPage';
 import { InscriptionManagementPage } from './pages/InscriptionManagementPage';
@@ -22,6 +24,8 @@ import { InscriptionAgreementPage } from './pages/InscriptionAgreementPage';
 import { NichiBookingPage } from './pages/NichiBookingPage';
 import { GlobalSearchTestPage } from './components/GlobalSearchTestPage';
 import { InfiniteLoopTest } from './components/InfiniteLoopTest';
+import PricingManagementPage from './pages/PricingManagementPage';
+import { PersonProfilePage } from './pages/PersonProfilePage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 
 export function AppRouter() {
@@ -62,22 +66,52 @@ export function AppRouter() {
         } />
         <Route path="/invoice-receipt" element={
           <ProtectedRoute>
-            <InvoiceAndReceiptPage />
+            <CreateInvoicePage />
           </ProtectedRoute>
         } />
-        <Route path="/invoice-receipt/:invoiceCode" element={
+        <Route path="/invoice-receipt/:code" element={
+          <ProtectedRoute>
+            <CreateInvoicePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/legacy-invoice-receipt" element={
           <ProtectedRoute>
             <InvoiceAndReceiptPage />
           </ProtectedRoute>
         } />
-        <Route path="/1/invoice-receipt" element={
+        <Route path="/legacy-invoice-receipt/:invoiceCode" element={
           <ProtectedRoute>
             <InvoiceAndReceiptPage />
           </ProtectedRoute>
         } />
-        <Route path="/1/invoice-receipt/:invoiceCode" element={
+        <Route path="/:churchId/invoice-receipt" element={
           <ProtectedRoute>
-            <InvoiceAndReceiptPage />
+            <CreateInvoicePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/:churchId/invoice-receipt/:code" element={
+          <ProtectedRoute>
+            <CreateInvoicePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/create-invoice" element={
+          <ProtectedRoute>
+            <CreateInvoicePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/create-invoice/:code" element={
+          <ProtectedRoute>
+            <CreateInvoicePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/create-receipt" element={
+          <ProtectedRoute>
+            <CreateReceiptPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/create-receipt/:code" element={
+          <ProtectedRoute>
+            <CreateReceiptPage />
           </ProtectedRoute>
         } />
         <Route path="/gates-of-life" element={
@@ -85,7 +119,17 @@ export function AppRouter() {
             <GatesOfLifePage />
           </ProtectedRoute>
         } />
-        <Route path="/gate-of-life/edit/:applicationCode" element={
+        <Route path="/gates-of-life/new" element={
+          <ProtectedRoute>
+            <GatesOfLifePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/gates-of-life/view/:applicationCode" element={
+          <ProtectedRoute>
+            <GatesOfLifePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/gates-of-life/edit/:applicationCode" element={
           <ProtectedRoute>
             <GatesOfLifePage />
           </ProtectedRoute>
@@ -120,6 +164,11 @@ export function AppRouter() {
             <WakeRoomPage />
           </ProtectedRoute>
         } />
+        <Route path="/wake-room/new" element={
+          <ProtectedRoute>
+            <WakeRoomPage />
+          </ProtectedRoute>
+        } />
         <Route path="/wake-room/edit/:bookingCode" element={
           <ProtectedRoute>
             <WakeRoomPage />
@@ -133,6 +182,11 @@ export function AppRouter() {
         <Route path="/reports/monthly-receipts" element={
           <ProtectedRoute>
             <MonthlyReceiptsReportPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/reports/receipt-register" element={
+          <ProtectedRoute>
+            <ReceiptRegisterReportPage />
           </ProtectedRoute>
         } />
         <Route path="/reports/monthly-inscriptions" element={
@@ -165,6 +219,11 @@ export function AppRouter() {
             <MiscReceiptPage />
           </ProtectedRoute>
         } />
+        <Route path="/misc-receipt/new" element={
+          <ProtectedRoute>
+            <MiscReceiptCreatePage />
+          </ProtectedRoute>
+        } />
         <Route path="/misc-invoice" element={
           <ProtectedRoute>
             <MiscInvoicePage />
@@ -178,6 +237,21 @@ export function AppRouter() {
         <Route path="/global-search-test" element={
           <ProtectedRoute>
             <GlobalSearchTestPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/pricing" element={
+          <ProtectedRoute>
+            <PricingManagementPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/persons" element={
+          <ProtectedRoute>
+            <PersonProfilePage />
+          </ProtectedRoute>
+        } />
+        <Route path="/person/:personId" element={
+          <ProtectedRoute>
+            <PersonProfilePage />
           </ProtectedRoute>
         } />
         <Route path="/infinite-loop-test" element={

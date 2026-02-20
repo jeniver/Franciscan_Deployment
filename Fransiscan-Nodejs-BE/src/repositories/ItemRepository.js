@@ -17,6 +17,38 @@ class ItemRepository {
   }
 
   /**
+   * Get an item by its ID.
+   * @param {number} itemId
+   * @param {number} churchId
+   * @returns {Promise<Object|null>}
+   */
+  async getItemById(itemId, churchId) {
+    try {
+      const query = `
+        SELECT
+          ItemId,
+          Name,
+          Code,
+          Price,
+          ChurchId,
+          IsRefType,
+          DocType
+        FROM ${this.tableName} WITH(NOLOCK)
+        WHERE ItemId = @itemId AND ChurchId = @churchId
+      `;
+
+      const result = await executeQuery(query, { itemId: parseInt(itemId), churchId: parseInt(churchId) });
+      return result.recordset[0] || null;
+    } catch (error) {
+      logger.error('ItemRepository: Error getting item by ID', {
+        itemId,
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get all items for a given church.
    * Equivalent to ASP.NET InvoiceBL.GetAllItems().
    *
@@ -36,10 +68,10 @@ class ItemRepository {
           DocType
         FROM ${this.tableName} WITH(NOLOCK)
         WHERE ChurchId = @churchId
-        ORDER BY Name
+        ORDER BY LEN(Code), Code
       `;
 
-      const result = await executeQuery(query, { churchId });
+      const result = await executeQuery(query, { churchId: parseInt(churchId) });
       return result.recordset || [];
     } catch (error) {
       logger.error('ItemRepository: Error getting all items', {
@@ -65,7 +97,7 @@ class ItemRepository {
 
     // Always filter by church
     const whereClauses = ['ChurchId = @churchId'];
-    const params = { churchId };
+    const params = { churchId: parseInt(churchId) };
 
     switch (upper) {
       case 'NICHES':
@@ -121,7 +153,7 @@ class ItemRepository {
           DocType
         FROM ${this.tableName} WITH(NOLOCK)
         WHERE ${where}
-        ORDER BY Name
+        ORDER BY LEN(Code), Code
       `;
 
       const result = await executeQuery(query, params);
@@ -131,6 +163,116 @@ class ItemRepository {
         category,
         error: error.message,
         stack: error.stack
+      });
+      throw error;
+    }
+  }
+  /**
+   * Create a new item.
+   * @param {Object} item - Item data
+   * @param {number} churchId - Church ID
+   * @returns {Promise<Object>} Created item
+   */
+  async create(item, churchId) {
+    try {
+      // Since ItemId is not an identity column, we must find the next available ID
+      const maxIdQuery = `SELECT MAX(ItemId) as MaxId FROM ${this.tableName}`;
+      const maxIdResult = await executeQuery(maxIdQuery);
+      const nextId = (maxIdResult.recordset[0].MaxId || 0) + 1;
+
+      const query = `
+        INSERT INTO ${this.tableName} (
+          ItemId, Name, Code, Price, ChurchId, IsRefType, DocType
+        )
+        OUTPUT INSERTED.*
+        VALUES (
+          @itemId, @name, @code, @price, @churchId, @isRefType, @docType
+        )
+      `;
+
+      const params = {
+        itemId: parseInt(nextId),
+        name: item.name,
+        code: item.code,
+        price: parseFloat(item.price || 0),
+        churchId: parseInt(churchId),
+        isRefType: item.isRefType !== undefined ? item.isRefType : true,
+        docType: item.docType || 'OTHERS'
+      };
+
+      const result = await executeQuery(query, params);
+      return result.recordset[0];
+    } catch (error) {
+      logger.error('ItemRepository: Error creating item', {
+        error: error.message,
+        item
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing item.
+   * @param {number} itemId - Item ID
+   * @param {Object} item - Updated item data
+   * @param {number} churchId - Church ID
+   * @returns {Promise<Object|null>} Updated item or null
+   */
+  async update(itemId, item, churchId) {
+    try {
+      const query = `
+        UPDATE ${this.tableName}
+        SET
+          Name = @name,
+          Code = @code,
+          Price = @price,
+          IsRefType = @isRefType,
+          DocType = @docType
+        OUTPUT INSERTED.*
+        WHERE ItemId = @itemId AND ChurchId = @churchId
+      `;
+
+      const params = {
+        itemId: parseInt(itemId),
+        churchId: parseInt(churchId),
+        name: item.name,
+        code: item.code,
+        price: parseFloat(item.price || 0),
+        isRefType: item.isRefType !== undefined ? item.isRefType : true,
+        docType: item.docType || 'OTHERS'
+      };
+
+      const result = await executeQuery(query, params);
+      return result.recordset[0] || null;
+    } catch (error) {
+      logger.error('ItemRepository: Error updating item', {
+        itemId,
+        error: error.message,
+        item
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Delete an item.
+   * @param {number} itemId - Item ID
+   * @param {number} churchId - Church ID
+   * @returns {Promise<boolean>} True if deleted
+   */
+  async delete(itemId, churchId) {
+    try {
+      const query = `
+        DELETE FROM ${this.tableName}
+        WHERE ItemId = @itemId AND ChurchId = @churchId
+      `;
+
+      const result = await executeQuery(query, { itemId: parseInt(itemId), churchId: parseInt(churchId) });
+      return result.rowsAffected[0] > 0;
+    } catch (error) {
+      logger.error('ItemRepository: Error deleting item', {
+        itemId,
+        error: error.message
       });
       throw error;
     }

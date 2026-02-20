@@ -100,11 +100,11 @@ class NicheConcentForm {
     const decodeValue = (value) => {
       switch (value) {
         case 1:
-          return 'living';
+          return 'Living';
         case 2:
-          return 'deceased';
+          return 'Deceased';
         case 3:
-          return 'lostCapacity';
+          return 'Lost Capacity';
         default:
           return null;
       }
