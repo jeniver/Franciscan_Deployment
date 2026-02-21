@@ -54,7 +54,6 @@ class NicheAgreement {
     this.nominee2OfficeTelNo = data.nominee2OfficeTelNo || null;
     this.nominee2Relationship = data.nominee2Relationship || null;
 
-    console.log('Nomine 2 location', data.nominee2AddressLine1, data.nominee2AddressLine2, data.nominee2AddressCity, data.nominee2AddressCountry, data.nominee2AddressState)
 
     // Beneficiary 1 details
     this.beneName_1 = data.beneName_1 || null;
@@ -397,7 +396,8 @@ class NicheAgreement {
           birthYear: this.beneBirthYear_1,
           relationshipToNominee: this.ben1_NomineeRelationship,
           relationshipToNominee2: this.ben1_Nominee2Relationship,
-          lifeStatus: this.beneLifeStatus_1
+          status: this.beneStatus_1 || 'Not Occupied',
+          lifeStatus: this.beneLifeStatus_1 || this.beneStatus_1 || null
         },
         {
           name: this.beneName_2,
@@ -409,7 +409,8 @@ class NicheAgreement {
           birthYear: this.beneBirthYear_2,
           relationshipToNominee: this.ben2_NomineeRelationship,
           relationshipToNominee2: this.ben2_Nominee2Relationship,
-          lifeStatus: this.beneLifeStatus_2
+          status: this.beneStatus_2 || 'Not Occupied',
+          lifeStatus: this.beneLifeStatus_2 || this.beneStatus_2 || null
         }
       ].filter(bene => bene.name), // Only include beneficiaries with names
 

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { AgreementViewerModal } from './AgreementViewerModal';
+import { PrinterIcon } from 'lucide-react';
 import { fetchSecondNomineeAgreementDataForViewer } from '../utils/secondNomineeAgreementHandler';
 
 interface PrintSecondNomineeButtonProps {
   applicationNumber: string;
 }
 
-export const PrintSecondNomineeButton: React.FC<PrintSecondNomineeButtonProps> = ({ 
-  applicationNumber 
+export const PrintSecondNomineeButton: React.FC<PrintSecondNomineeButtonProps> = ({
+  applicationNumber
 }) => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [secondNomineeData, setSecondNomineeData] = useState<any>(null);
@@ -23,7 +24,7 @@ export const PrintSecondNomineeButton: React.FC<PrintSecondNomineeButtonProps> =
       setError('Application number is required to print 2nd nominee agreement');
       return;
     }
-    
+
     try {
       setLoading(true);
       setError(null);
@@ -64,11 +65,12 @@ export const PrintSecondNomineeButton: React.FC<PrintSecondNomineeButtonProps> =
       <button
         onClick={handleClick}
         disabled={loading || !isApplicationNumberValid}
-        className={`px-4 py-2 rounded transition-colors disabled:opacity-50 ${isApplicationNumberValid && !loading ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-400 text-gray-700 cursor-not-allowed'}`}
+        className={`inline-flex items-center gap-2 px-4 py-2 rounded transition-colors disabled:opacity-50 ${isApplicationNumberValid && !loading ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-400 text-gray-700 cursor-not-allowed'}`}
       >
-        {!isApplicationNumberValid ? 'No App. Number' : loading ? 'Loading...' : 'Print 2nd Nominee Agreement'}
+        <PrinterIcon className="w-4 h-4" />
+        {!isApplicationNumberValid ? 'No App. Number' : loading ? 'Loading...' : 'Print Insertion (2nd Nominee)'}
       </button>
-      
+
       <AgreementViewerModal
         isOpen={showModal}
         onClose={handleClose}

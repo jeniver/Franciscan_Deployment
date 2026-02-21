@@ -28,6 +28,14 @@ export interface Niche {
   statusColor: string;
   isAvailable: boolean;
   churchId: number;
+  // Location fields
+  wallId?: number;
+  wallCode?: string;
+  wallName?: string;
+  rowCode?: string;
+  rowLevel?: string | number;
+  chapelId?: number;
+  chapelName?: string;
 }
 
 export interface Row {
@@ -98,7 +106,7 @@ export const nicheService = {
 
       // Create cache key
       const cacheKey = `${chapelId}-${churchId}`;
-      
+
       // Check cache first
       const cached = nicheCache.get(cacheKey);
       if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
@@ -137,32 +145,32 @@ export const nicheService = {
         debounceTimer = setTimeout(async () => {
           try {
             console.log(`Fetching niche data for chapel ${chapelId} from API`);
-            
+
             // Create a timeout promise
             const timeoutPromise = new Promise((_, timeoutReject) => {
               setTimeout(() => timeoutReject(new Error('Request timeout')), REQUEST_TIMEOUT);
             });
-            
+
             // Race between API call and timeout
             const response = await Promise.race([
               api.get(`/api/niches/chapel/${chapelId}/niches?churchId=${churchId}`),
               timeoutPromise
             ]);
-            
+
             if (response.data.success) {
               // Cache the response
               nicheCache.set(cacheKey, {
                 data: response.data,
                 timestamp: Date.now()
               });
-              
+
               // Clean up old cache entries
               nicheCache.forEach((value, key) => {
                 if ((Date.now() - value.timestamp) > CACHE_DURATION) {
                   nicheCache.delete(key);
                 }
               });
-              
+
               resolve(response.data);
             } else {
               reject(new NicheError(response.data.message || 'Failed to retrieve niches'));
@@ -180,7 +188,7 @@ export const nicheService = {
       if (error instanceof NicheError) {
         throw error;
       }
-      
+
       if (error.response?.status === 401) {
         throw new NicheError('Authentication required', 'auth', 401);
       } else if (error.response?.status === 404) {
@@ -208,13 +216,13 @@ export const nicheService = {
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Request timeout')), REQUEST_TIMEOUT);
       });
-      
+
       // Race between API call and timeout
       const response = await Promise.race([
         api.get(`/api/niches/${nicheId}`),
         timeoutPromise
       ]);
-      
+
       if (response.data.success) {
         return response.data.data;
       } else {
@@ -224,7 +232,7 @@ export const nicheService = {
       if (error instanceof NicheError) {
         throw error;
       }
-      
+
       if (error.message === 'Request timeout') {
         throw new NicheError('Request timed out. Please try again.', 'network');
       } else if (error.response?.status === 401) {

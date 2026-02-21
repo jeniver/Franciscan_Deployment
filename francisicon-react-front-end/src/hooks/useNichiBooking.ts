@@ -326,7 +326,18 @@ export function useNichiBooking() {
 
         const result = await dispatch(createNichiApplication(formData)).unwrap();
 
-        showSuccess('Success', `Nichi application created successfully: ${result.applicationCode || formData.refDocNumber}`);
+        // Auto-confirm booking so application moves from Draft(1) to Booked(3)
+        const appCode = result?.applicationCode || result?.code || (result as any)?.applicationNumber || formData.refDocNumber;
+        console.log('[handleCreateNichiApplication] Attempting auto-confirm for:', appCode, 'result keys:', result ? Object.keys(result) : 'null');
+        try {
+          const { confirmBookingService } = await import('../services/confirmBookingService');
+          await confirmBookingService.confirmBooking(appCode);
+          showSuccess('Success', `Application created and booking confirmed: ${appCode}`);
+        } catch (confirmErr: any) {
+          console.error('[handleCreateNichiApplication] Auto-confirm failed:', confirmErr?.message || confirmErr);
+          showSuccess('Success', `Application created: ${appCode} (confirm booking manually if needed)`);
+        }
+
         return result;
       } catch (error: any) {
         const errorMessage = error?.message || 'Failed to create Nichi application';

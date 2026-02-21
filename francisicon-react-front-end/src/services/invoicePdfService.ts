@@ -202,10 +202,10 @@ const generateInvoiceHtmlTemplate = (data: InvoiceData): string => {
             <tr>
                 <td class="text-left">${item.description}</td>
                 <td class="text-left">${refNo}</td>
-                <td>${item.gstPercent.toFixed(1)}</td>
                 <td>${item.quantity.toFixed(2)}</td>
-                <td>$ ${formatCurrency(item.unitPrice)}</td>
-                <td>$ ${formatCurrency(item.amount)}</td>
+                <td class="text-right">$ ${formatCurrency(item.unitPrice)}</td>
+                <td>${item.gstPercent.toFixed(1)}%</td>
+                <td class="text-right">$ ${formatCurrency(item.amount)}</td>
             </tr>
   `).join('');
 
@@ -440,12 +440,12 @@ const generateInvoiceHtmlTemplate = (data: InvoiceData): string => {
     <table>
         <thead>
             <tr>
-                <th style="width: 35%;">Description</th>
-                <th style="width: 20%;">Ref No.</th>
-                <th style="width: 8%;">GST %</th>
+                <th style="width: 30%;">Description</th>
+                <th style="width: 18%;">Ref No.</th>
                 <th style="width: 8%;">Qty</th>
-                <th style="width: 14%;">Price</th>
-                <th style="width: 15%;">Amount</th>
+                <th style="width: 14%;">Unit Price</th>
+                <th style="width: 8%;">GST %</th>
+                <th style="width: 14%;">Amount</th>
             </tr>
         </thead>
         <tbody>

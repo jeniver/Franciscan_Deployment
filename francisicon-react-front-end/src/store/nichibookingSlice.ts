@@ -127,7 +127,7 @@ const initialState: NichiBookingState = {
   nichiUnitPrice: 0,
   refDocNumber: '',
   lineTaxPercent: 9, // Default tax percent for Nichi (NAPP)
-  itemId: 6, // Default item ID for Nichi (from curl example)
+  itemId: 0, // 0 = not set; resolved from rowLevel or fallback to 6
   remarks: '',
   deceasedDetails: [],
   selectedBibleChoiceId: null,
@@ -193,7 +193,11 @@ export const createNichiApplication = createAsyncThunk<
       // Create the application
       const response = await nichiApplicationService.createNichiApplication(applicationRequest);
       
-      return response.data;
+      const resultData = response.data || {} as any;
+      if (!resultData.applicationCode && (response as any).code) {
+        resultData.applicationCode = (response as any).code;
+      }
+      return resultData;
     } catch (error: any) {
       if (error instanceof NichiApplicationError) {
         return rejectWithValue({
@@ -235,11 +239,16 @@ export const createNichiBookingInvoice = createAsyncThunk<
       quantity,
       unitAmount,
       refDocNumber,
-      itemId = 6, // Default item ID for Nichi
+      itemId,
       lineTaxPercent = 9, // Default tax percent for NAPP
     },
-    { rejectWithValue }
+    { rejectWithValue, getState }
   ) => {
+    const resolvedItemId = (itemId && itemId > 0)
+      ? itemId
+      : ((getState() as any).nichibooking?.rowLevel
+          ? Number((getState() as any).nichibooking.rowLevel) || 6
+          : 6);
     try {
       // Validate inputs
       if (!invoiceNumber || invoiceNumber.trim() === '') {
@@ -279,7 +288,7 @@ export const createNichiBookingInvoice = createAsyncThunk<
 
       // Create invoice detail following NAPP format
       const detail: InvoiceDetail = {
-        itemId,
+        itemId: resolvedItemId,
         quantity,
         unitAmount,
         refDocNumber,

@@ -1,4 +1,4 @@
-﻿const { executeQuery } = require('../config/database');
+const { executeQuery } = require('../config/database');
 const logger = require('../utils/logger');
 
 /**
@@ -176,7 +176,7 @@ class ItemRepository {
   async create(item, churchId) {
     try {
       // Since ItemId is not an identity column, we must find the next available ID
-      const maxIdQuery = `SELECT MAX(ItemId) as MaxId FROM ${this.tableName}`;
+      const maxIdQuery = `SELECT MAX(ItemId) as MaxId FROM ${this.tableName} WITH (NOLOCK)`;
       const maxIdResult = await executeQuery(maxIdQuery);
       const nextId = (maxIdResult.recordset[0].MaxId || 0) + 1;
 

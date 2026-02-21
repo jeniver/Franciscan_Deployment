@@ -13,6 +13,13 @@ class Niche {
     this.status = parseInt(data.Status || data.status || 0);
     this.churchId = data.ChurchId || data.churchId;
 
+    // Location information (if provided from joins)
+    this.wallId = data.NicheWallId || data.wallId;
+    this.wallCode = data.WallCode || data.wallCode;
+    this.wallName = data.WallName || data.wallName;
+    this.rowCode = data.RowCode || data.rowCode;
+    this.rowLevel = data.NicheLevel || data.rowLevel;
+
     // Derived properties
     this.statusText = this.getStatusText();
     this.statusColor = this.getStatusColor();
@@ -63,7 +70,12 @@ class Niche {
       statusText: this.statusText,
       statusColor: this.statusColor,
       isAvailable: this.isAvailable,
-      churchId: this.churchId
+      churchId: this.churchId,
+      wallId: this.wallId,
+      wallCode: this.wallCode,
+      wallName: this.wallName,
+      rowNumber: this.rowCode,
+      rowLevel: this.rowLevel
     };
   }
 }

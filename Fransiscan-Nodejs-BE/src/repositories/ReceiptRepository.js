@@ -53,7 +53,7 @@ class ReceiptRepository extends BaseRepository {
 
       const query = `
         SELECT TOP 10 Code, ReceiptId, ChurchId, Status, TransactionDate, CustomerName
-        FROM Receipt 
+        FROM Receipt WITH (NOLOCK)
         WHERE Code LIKE @pattern OR Code LIKE @pattern2
         ORDER BY ReceiptId DESC
       `;
@@ -109,7 +109,7 @@ class ReceiptRepository extends BaseRepository {
       const likeValue = `%${String(code).trim().replace(/[%_]/g, '')}%`;
       let query = `
         SELECT TOP 5 Code, InvoiceId, ChurchId, Status
-        FROM Invoice
+        FROM Invoice WITH (NOLOCK)
         WHERE Code LIKE @likeValue
       `;
       const params = { likeValue };
@@ -166,7 +166,7 @@ class ReceiptRepository extends BaseRepository {
         for (const codeVar of codeVariations) {
           // Try exact match (case-sensitive)
           let query = `
-            SELECT * FROM Receipt 
+            SELECT * FROM Receipt WITH (NOLOCK)
             WHERE Code = @code AND ChurchId = @churchId
           `;
           const params = { code: codeVar, churchId };
@@ -179,7 +179,7 @@ class ReceiptRepository extends BaseRepository {
 
           // Try case-insensitive match with UPPER
           query = `
-            SELECT * FROM Receipt 
+            SELECT * FROM Receipt WITH (NOLOCK)
             WHERE UPPER(LTRIM(RTRIM(Code))) = UPPER(LTRIM(RTRIM(@code))) AND ChurchId = @churchId
           `;
           result = await executeQuery(query, params);
@@ -195,7 +195,7 @@ class ReceiptRepository extends BaseRepository {
           for (const codeVar of codeVariations) {
             // Try exact match
             let fallbackQuery = `
-              SELECT * FROM Receipt 
+              SELECT * FROM Receipt WITH (NOLOCK)
               WHERE Code = @code
             `;
             let fallbackResult = await executeQuery(fallbackQuery, { code: codeVar });
@@ -207,7 +207,7 @@ class ReceiptRepository extends BaseRepository {
 
             // Try case-insensitive match with UPPER
             fallbackQuery = `
-              SELECT * FROM Receipt 
+              SELECT * FROM Receipt WITH (NOLOCK)
               WHERE UPPER(LTRIM(RTRIM(Code))) = UPPER(LTRIM(RTRIM(@code)))
             `;
             fallbackResult = await executeQuery(fallbackQuery, { code: codeVar });
@@ -236,7 +236,7 @@ class ReceiptRepository extends BaseRepository {
         for (const codeVar of codeVariations) {
           // Try exact match
           let query = `
-        SELECT * FROM Receipt 
+        SELECT * FROM Receipt WITH (NOLOCK)
         WHERE Code = @code
       `;
           let result = await executeQuery(query, { code: codeVar });
@@ -247,7 +247,7 @@ class ReceiptRepository extends BaseRepository {
 
           // Try case-insensitive match with UPPER
           query = `
-            SELECT * FROM Receipt 
+            SELECT * FROM Receipt WITH (NOLOCK)
             WHERE UPPER(LTRIM(RTRIM(Code))) = UPPER(LTRIM(RTRIM(@code)))
           `;
           result = await executeQuery(query, { code: codeVar });
@@ -294,7 +294,7 @@ class ReceiptRepository extends BaseRepository {
   async findByInvoiceId(invoiceId, churchId = null) {
     try {
       let query = `
-        SELECT * FROM Receipt 
+        SELECT * FROM Receipt WITH (NOLOCK)
         WHERE InvoiceId = @invoiceId
       `;
       const params = { invoiceId };
@@ -325,7 +325,7 @@ class ReceiptRepository extends BaseRepository {
 
       const normalizedCode = this.normalizeReceiptCode(code);
       let query = `
-        SELECT ReceiptId FROM Receipt 
+        SELECT ReceiptId FROM Receipt WITH (NOLOCK)
         WHERE Code = @code
       `;
 
@@ -335,7 +335,7 @@ class ReceiptRepository extends BaseRepository {
       }
 
       query = `
-        SELECT ReceiptId FROM Receipt 
+        SELECT ReceiptId FROM Receipt WITH (NOLOCK)
         WHERE UPPER(LTRIM(RTRIM(Code))) = UPPER(LTRIM(RTRIM(@code)))
       `;
 
@@ -359,8 +359,8 @@ class ReceiptRepository extends BaseRepository {
     try {
       const query = `
         SELECT TOP 1 r.ReceiptId, r.Code, r.TransactionDate, r.Status
-        FROM Receipt r
-        INNER JOIN MisalaniousReceiptDetail rd ON r.ReceiptId = rd.ReceiptId
+        FROM Receipt r WITH (NOLOCK)
+        INNER JOIN MisalaniousReceiptDetail rd WITH (NOLOCK) ON r.ReceiptId = rd.ReceiptId
         WHERE rd.RefDocNumber = @refDocNumber
         AND r.ChurchId = @churchId
         AND r.Status > 0
@@ -481,8 +481,8 @@ class ReceiptRepository extends BaseRepository {
         : '';
 
       const baseSelect = `
-        FROM Receipt r
-        LEFT JOIN Invoice i ON i.InvoiceId = r.InvoiceId
+        FROM Receipt r WITH (NOLOCK)
+        LEFT JOIN Invoice i WITH (NOLOCK) ON i.InvoiceId = r.InvoiceId
         ${whereClause}
       `;
 
@@ -1264,7 +1264,7 @@ class ReceiptRepository extends BaseRepository {
 
       // Use DISTINCT to prevent duplicates, selecting by ReceiptId to ensure uniqueness
       let query = `
-        SELECT DISTINCT r.* FROM Receipt r
+        SELECT DISTINCT r.* FROM Receipt r WITH (NOLOCK)
         WHERE r.TransactionDate BETWEEN @fromDate AND @toDate
       `;
       const params = { fromDate, toDate };
@@ -1359,8 +1359,8 @@ class ReceiptRepository extends BaseRepository {
             id.LineTotalAmount,
             id.LineTaxPercent,
             id.LineTaxAmount
-          FROM Invoice i
-          LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
+          FROM Invoice i WITH (NOLOCK)
+          LEFT JOIN InvoiceDetail id WITH (NOLOCK) ON i.InvoiceId = id.InvoiceId
           WHERE i.Code = @invoiceCode
           ${baseWhere ? `AND ${baseWhere}` : ''}
           ${refDocNameFilter}
@@ -1391,8 +1391,8 @@ class ReceiptRepository extends BaseRepository {
             id.LineTotalAmount,
             id.LineTaxPercent,
             id.LineTaxAmount
-          FROM Invoice i
-          LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
+          FROM Invoice i WITH (NOLOCK)
+          LEFT JOIN InvoiceDetail id WITH (NOLOCK) ON i.InvoiceId = id.InvoiceId
           WHERE UPPER(LTRIM(RTRIM(i.Code))) = @invoiceCodeUpper
           ${baseWhere ? `AND ${baseWhere}` : ''}
           ${refDocNameFilter}
@@ -1427,8 +1427,8 @@ class ReceiptRepository extends BaseRepository {
               id.LineTotalAmount,
               id.LineTaxPercent,
               id.LineTaxAmount
-            FROM Invoice i
-            LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
+            FROM Invoice i WITH (NOLOCK)
+            LEFT JOIN InvoiceDetail id WITH (NOLOCK) ON i.InvoiceId = id.InvoiceId
             WHERE i.Code = @invoiceCode
             ${baseWhere ? `AND ${baseWhere}` : ''}
           `;
@@ -1454,8 +1454,8 @@ class ReceiptRepository extends BaseRepository {
               id.LineTotalAmount,
               id.LineTaxPercent,
               id.LineTaxAmount
-            FROM Invoice i
-            LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
+            FROM Invoice i WITH (NOLOCK)
+            LEFT JOIN InvoiceDetail id WITH (NOLOCK) ON i.InvoiceId = id.InvoiceId
             WHERE UPPER(LTRIM(RTRIM(i.Code))) = @invoiceCodeUpper
             ${baseWhere ? `AND ${baseWhere}` : ''}
           `;
@@ -1483,8 +1483,8 @@ class ReceiptRepository extends BaseRepository {
               id.LineTotalAmount,
               id.LineTaxPercent,
               id.LineTaxAmount
-            FROM Invoice i
-            LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
+            FROM Invoice i WITH (NOLOCK)
+            LEFT JOIN InvoiceDetail id WITH (NOLOCK) ON i.InvoiceId = id.InvoiceId
             WHERE UPPER(LTRIM(RTRIM(i.Code))) = @invoiceCodeUpper
             ${churchId ? 'AND i.ChurchId = @churchId' : ''}
           `;
@@ -1535,8 +1535,8 @@ class ReceiptRepository extends BaseRepository {
             id.LineTotalAmount,
             id.LineTaxPercent,
             id.LineTaxAmount
-          FROM Invoice i
-          LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
+          FROM Invoice i WITH (NOLOCK)
+          LEFT JOIN InvoiceDetail id WITH (NOLOCK) ON i.InvoiceId = id.InvoiceId
           WHERE ${baseWhereRef}
             AND id.RefDocNumber = @refDocNumber
         `;
@@ -1563,8 +1563,8 @@ class ReceiptRepository extends BaseRepository {
             id.LineTotalAmount,
             id.LineTaxPercent,
             id.LineTaxAmount
-          FROM Invoice i
-          LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
+          FROM Invoice i WITH (NOLOCK)
+          LEFT JOIN InvoiceDetail id WITH (NOLOCK) ON i.InvoiceId = id.InvoiceId
           WHERE ${baseWhereRef}
             AND UPPER(LTRIM(RTRIM(id.RefDocNumber))) = @refDocNumberUpper
         `;
@@ -1595,7 +1595,7 @@ class ReceiptRepository extends BaseRepository {
       const invoiceQuery = `
         SELECT 
           i.*
-        FROM Invoice i
+        FROM Invoice i WITH (NOLOCK)
         WHERE i.InvoiceId = @invoiceId
       `;
 
@@ -1621,7 +1621,7 @@ class ReceiptRepository extends BaseRepository {
           id.LineTotalAmount,
           id.LineTaxPercent,
           id.LineTaxAmount
-        FROM InvoiceDetail id
+        FROM InvoiceDetail id WITH (NOLOCK)
         WHERE id.InvoiceId = @invoiceId
         ORDER BY id.InvoiceDetailId
       `;

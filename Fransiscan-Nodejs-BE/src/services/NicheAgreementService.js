@@ -176,27 +176,6 @@ class NicheAgreementService {
         remarks: nicheAgreement.remarks || nicheAgreement.Remarks || null
       };
 
-      // Add deceased details from inscription if available.
-      // Keep application-level deceased fields as fallback when inscription is not created yet.
-      if (includeDeceasedDetails) {
-        const inscriptionDeceased = await this.getDeceasedDetails(nicheAgreement.applicationCode);
-        const currentDeceased = agreementData.deceased || {};
-
-        agreementData.deceased = {
-          deceased1: {
-            name: inscriptionDeceased?.deceased1?.name || currentDeceased?.deceased1?.name || null,
-            dateDied: inscriptionDeceased?.deceased1?.dateDied || currentDeceased?.deceased1?.dateDied || null,
-            internmentDate: inscriptionDeceased?.deceased1?.internmentDate || currentDeceased?.deceased1?.internmentDate || null,
-            deathCertificateNo: inscriptionDeceased?.deceased1?.deathCertificateNo || currentDeceased?.deceased1?.deathCertificateNo || null
-          },
-          deceased2: {
-            name: inscriptionDeceased?.deceased2?.name || currentDeceased?.deceased2?.name || null,
-            dateDied: inscriptionDeceased?.deceased2?.dateDied || currentDeceased?.deceased2?.dateDied || null,
-            internmentDate: inscriptionDeceased?.deceased2?.internmentDate || currentDeceased?.deceased2?.internmentDate || null,
-            deathCertificateNo: inscriptionDeceased?.deceased2?.deathCertificateNo || currentDeceased?.deceased2?.deathCertificateNo || null
-          }
-        };
-      }
 
       // Use central DateService for consistent formatting
       const formatDate = (date) => dateService.formatForUI(date);
@@ -233,11 +212,11 @@ class NicheAgreementService {
           birthYear: nicheAgreement.beneBirthYear_1,
           relationshipToNominee1: nicheAgreement.ben1_NomineeRelationship,
           relationshipToNominee2: nicheAgreement.ben1_Nominee2Relationship,
-          status: 'Occupied',
+          status: nicheAgreement.beneStatus_1 || 'Not Occupied',
           sex: nicheAgreement.beneIsMale_1 !== null && nicheAgreement.beneIsMale_1 !== undefined
             ? (nicheAgreement.beneIsMale_1 ? 'Male' : 'Female')
             : null,
-          lifeStatus: nicheAgreement.beneLifeStatus_1
+          lifeStatus: nicheAgreement.beneLifeStatus_1 || nicheAgreement.beneStatus_1 || null
         });
       }
 
@@ -271,11 +250,11 @@ class NicheAgreementService {
           birthYear: nicheAgreement.beneBirthYear_2,
           relationshipToNominee1: nicheAgreement.ben2_NomineeRelationship,
           relationshipToNominee2: nicheAgreement.ben2_Nominee2Relationship,
-          status: 'Occupied',
+          status: nicheAgreement.beneStatus_2 || 'Not Occupied',
           sex: nicheAgreement.beneIsMale_2 !== null && nicheAgreement.beneIsMale_2 !== undefined
             ? (nicheAgreement.beneIsMale_2 ? 'Male' : 'Female')
             : null,
-          lifeStatus: nicheAgreement.beneLifeStatus_2
+          lifeStatus: nicheAgreement.beneLifeStatus_2 || nicheAgreement.beneStatus_2 || null
         });
       }
 
@@ -289,6 +268,52 @@ class NicheAgreementService {
         agreementData.invoice.invoiceDate = formatDate(agreementData.invoice.invoiceDate);
         agreementData.invoice.receiptDate = formatDate(agreementData.invoice.receiptDate);
       }
+
+      // Populate deceased details from inscription if available.
+      // Keep application-level deceased fields as fallback when inscription is not created yet.
+      if (includeDeceasedDetails) {
+        const inscriptionDeceased = await this.getDeceasedDetails(nicheAgreement.applicationCode);
+        const currentDeceased = agreementData.deceased || {};
+
+        agreementData.deceased = {
+          deceased1: {
+            name: inscriptionDeceased?.deceased1?.name || currentDeceased?.deceased1?.name || null,
+            dateDied: inscriptionDeceased?.deceased1?.dateDied || currentDeceased?.deceased1?.dateDied || null,
+            internmentDate: inscriptionDeceased?.deceased1?.internmentDate || currentDeceased?.deceased1?.internmentDate || null,
+            deathCertificateNo: inscriptionDeceased?.deceased1?.deathCertificateNo || currentDeceased?.deceased1?.deathCertificateNo || null
+          },
+          deceased2: {
+            name: inscriptionDeceased?.deceased2?.name || currentDeceased?.deceased2?.name || null,
+            dateDied: inscriptionDeceased?.deceased2?.dateDied || currentDeceased?.deceased2?.dateDied || null,
+            internmentDate: inscriptionDeceased?.deceased2?.internmentDate || currentDeceased?.deceased2?.internmentDate || null,
+            deathCertificateNo: inscriptionDeceased?.deceased2?.deathCertificateNo || currentDeceased?.deceased2?.deathCertificateNo || null
+          }
+        };
+      }
+
+      // Handle Storage Period Logic
+      if (!agreementData.storage) {
+        agreementData.storage = { storageFrom: null, storageTo: null };
+      }
+
+      // If storageFrom is missing, use internment date from deceased1
+      if (!agreementData.storage.storageFrom && agreementData.deceased?.deceased1?.internmentDate) {
+        agreementData.storage.storageFrom = agreementData.deceased.deceased1.internmentDate;
+        logger.info(`[processNicheAgreementData] Set storageFrom to internmentDate: ${agreementData.storage.storageFrom}`);
+      }
+
+      // If storageFrom exists, calculate storageTo (30 years minus 1 day)
+      if (agreementData.storage.storageFrom && !agreementData.storage.storageTo) {
+        const fromDate = dateService.parseDate(agreementData.storage.storageFrom);
+        if (fromDate) {
+          const toDate = new Date(fromDate);
+          toDate.setFullYear(toDate.getFullYear() + 30);
+          toDate.setDate(toDate.getDate() - 1);
+          agreementData.storage.storageTo = toDate.toISOString();
+          logger.info(`[processNicheAgreementData] Calculated storageTo: ${agreementData.storage.storageTo}`);
+        }
+      }
+
       if (agreementData.deceased) {
         if (agreementData.deceased.deceased1) {
           agreementData.deceased.deceased1.dateDied = formatDate(agreementData.deceased.deceased1.dateDied);
@@ -299,6 +324,7 @@ class NicheAgreementService {
           agreementData.deceased.deceased2.internmentDate = formatDate(agreementData.deceased.deceased2.internmentDate);
         }
       }
+
       if (agreementData.storage) {
         agreementData.storage.storageFrom = formatDate(agreementData.storage.storageFrom);
         agreementData.storage.storageTo = formatDate(agreementData.storage.storageTo);

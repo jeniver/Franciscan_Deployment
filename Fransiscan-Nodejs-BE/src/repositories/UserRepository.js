@@ -22,7 +22,7 @@ class UserRepository extends BaseRepository {
    */
   async findByUsername(username) {
     try {
-      const query = 'SELECT * FROM [User] WHERE UserName = @username';
+      const query = 'SELECT * FROM [User] WITH (NOLOCK) WHERE UserName = @username';
       const result = await executeQuery(query, { username });
       return result.recordset[0] ? new User(result.recordset[0]) : null;
     } catch (error) {
@@ -38,7 +38,7 @@ class UserRepository extends BaseRepository {
    */
   async findByEmail(email) {
     try {
-      const query = 'SELECT * FROM [User] WHERE Email = @email';
+      const query = 'SELECT * FROM [User] WITH (NOLOCK) WHERE Email = @email';
       const result = await executeQuery(query, { email });
       return result.recordset[0] ? new User(result.recordset[0]) : null;
     } catch (error) {
@@ -107,7 +107,7 @@ class UserRepository extends BaseRepository {
       const offset = (page - 1) * limit;
 
       const query = `
-        SELECT * FROM [User] 
+        SELECT * FROM [User] WITH (NOLOCK)
         WHERE ChurchId = @churchId
         ORDER BY UserId DESC
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY

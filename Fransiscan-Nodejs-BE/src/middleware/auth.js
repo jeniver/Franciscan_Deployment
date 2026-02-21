@@ -1,8 +1,7 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 
-// Log environment variables for debugging
-console.log('Auth middleware - JWT_SECRET:', process.env.JWT_SECRET);
+// Auth middleware loaded
 
 // Simple mapping between numeric role IDs and role names
 // This keeps backward compatibility with existing tokens that only include roleId
@@ -31,9 +30,7 @@ const authenticateToken = (req, res, next) => {
 
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) {
-      logger.error('Token verification failed:', err);
-      logger.error('JWT Secret:', process.env.JWT_SECRET);
-      logger.error('Token:', token);
+      logger.error('Token verification failed:', err.message);
       return res.status(403).json({
         success: false,
         error: 'Invalid or expired token'

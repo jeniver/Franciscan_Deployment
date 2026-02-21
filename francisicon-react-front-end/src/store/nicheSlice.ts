@@ -7,22 +7,22 @@ export interface NicheState {
   walls: Wall[];
   niches: Niche[];
   statistics: NicheStatistics | null;
-  
+
   // Pagination
   currentPage: number;
   nichesPerPage: number;
   totalNiches: number;
-  
+
   // Selection
   selectedNiches: number[];
   selectedNiche: Niche | null;
-  
+
   // UI State
   loading: boolean;
   error: string | null;
   lastErrorType: 'auth' | 'network' | 'validation' | 'server' | null;
   isDataLoaded: boolean;
-  
+
   // Request tracking to prevent duplicates
   lastLoadedChapelId: number | null;
   isRequestInProgress: boolean;
@@ -52,15 +52,15 @@ export const loadNichesByChapel = createAsyncThunk(
   async ({ chapelId, churchId }: { chapelId: number; churchId?: number }, { rejectWithValue, getState }) => {
     try {
       const state = getState() as { niche: NicheState };
-      
+
       // Check if we already have data for this chapel and request is not in progress
-      if (state.niche.lastLoadedChapelId === chapelId && 
-          state.niche.isDataLoaded && 
-          !state.niche.isRequestInProgress) {
+      if (state.niche.lastLoadedChapelId === chapelId &&
+        state.niche.isDataLoaded &&
+        !state.niche.isRequestInProgress) {
         console.log(`Niche data for chapel ${chapelId} already loaded, skipping request`);
         return { skip: true, chapelId };
       }
-      
+
       // Check if request is already in progress for this chapel
       if (state.niche.isRequestInProgress && state.niche.lastLoadedChapelId === chapelId) {
         console.log(`Request already in progress for chapel ${chapelId}, skipping duplicate`);
@@ -164,28 +164,48 @@ export const nicheSlice = createSlice({
       .addCase(loadNichesByChapel.fulfilled, (state, action) => {
         state.loading = false;
         state.isRequestInProgress = false;
-        
+
         // Check if this was a skipped request
-        if (action.payload.skip) {
+        if ('skip' in action.payload && action.payload.skip) {
           console.log(`Skipped loading niches for chapel ${action.payload.chapelId}`);
           return;
         }
-        
-        state.chapel = action.payload.chapel;
-        state.walls = action.payload.walls;
-        state.statistics = action.payload.statistics || null;
-        state.lastLoadedChapelId = action.payload.chapelId;
-        
+
+        const payload = action.payload as {
+          chapel: Chapel;
+          walls: Wall[];
+          statistics?: NicheStatistics;
+          chapelId: number
+        };
+
+        state.chapel = payload.chapel;
+        state.walls = payload.walls;
+        state.statistics = payload.statistics || null;
+        state.lastLoadedChapelId = payload.chapelId;
+
         // Flatten all niches from all walls and rows
         const allNiches: Niche[] = [];
-        action.payload.walls.forEach(wall => {
-          wall.rows.forEach(row => {
+        const chapelData = payload.chapel;
+
+        payload.walls.forEach((wall: any) => {
+          wall.rows.forEach((row: any) => {
             if (Array.isArray(row.niches)) {
-              allNiches.push(...row.niches);
+              row.niches.forEach((niche: any) => {
+                allNiches.push({
+                  ...niche,
+                  wallId: wall.wallId,
+                  wallCode: wall.wallCode,
+                  wallName: wall.wallName,
+                  rowNumber: row.rowCode,
+                  rowLevel: row.level,
+                  chapelId: chapelData?.chapelId,
+                  chapelName: chapelData?.chapelName
+                });
+              });
             }
           });
         });
-        
+
         state.niches = allNiches;
         state.totalNiches = allNiches.length;
         state.isDataLoaded = true;
@@ -221,7 +241,7 @@ export const nicheSlice = createSlice({
   },
 });
 
-export const { 
+export const {
   setSelectedNiches,
   addSelectedNiche,
   removeSelectedNiche,

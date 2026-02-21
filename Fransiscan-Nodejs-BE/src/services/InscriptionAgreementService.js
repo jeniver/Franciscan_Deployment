@@ -116,15 +116,20 @@ class InscriptionAgreementService {
    * @private
    */
   enhancePdfData(pdfData) {
+    // Format dates consistently as "DD-Mon-YYYY" (e.g. "19-Feb-2026") to match invoice/receipt templates
     const formatSafeDate = (rawValue) => {
       if (!rawValue) return '';
       const value = String(rawValue).trim();
+
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const pad = (n) => String(n).padStart(2, '0');
+      const fmt = (dt) => `${pad(dt.getDate())}-${months[dt.getMonth()]}-${dt.getFullYear()}`;
+
       const parsed = new Date(value);
       if (!isNaN(parsed.getTime())) {
-        return parsed.toLocaleDateString('en-SG');
+        return fmt(parsed);
       }
 
-      // Fallback for values like "17-Feb-2026" that can be locale-dependent
       const ddMmmYyyy = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/;
       const match = value.match(ddMmmYyyy);
       if (match) {
@@ -137,12 +142,11 @@ class InscriptionAgreementService {
         if (month !== undefined) {
           const dt = new Date(Number(y), month, Number(d));
           if (!isNaN(dt.getTime())) {
-            return dt.toLocaleDateString('en-SG');
+            return fmt(dt);
           }
         }
       }
 
-      // Keep original instead of blank if parsing fails.
       return value;
     };
 
@@ -178,17 +182,29 @@ class InscriptionAgreementService {
         ].filter(Boolean).join(' - ')
       },
 
-      // Enhanced inscription details
-      inscription: {
-        ...pdfData.inscription,
-        hasBibleText: !!pdfData.inscription.bibleText,
-        hasAdditionalPhrase: !!pdfData.inscription.additionalPhrase,
-        fullInscription: [
-          pdfData.inscription.bibleChoiceText,
-          pdfData.inscription.bibleText,
-          pdfData.inscription.additionalPhrase
-        ].filter(Boolean).join('\n\n')
-      },
+      // Enhanced inscription details (deduplicate bible text and additional phrase)
+      inscription: (() => {
+        const parts = [];
+        const choiceText = (pdfData.inscription.bibleChoiceText || '').trim();
+        const bibleText = (pdfData.inscription.bibleText || '').trim();
+        const additionalPhrase = (pdfData.inscription.additionalPhrase || '').trim();
+
+        if (choiceText) parts.push(choiceText);
+        if (bibleText && bibleText.toLowerCase() !== choiceText.toLowerCase()) parts.push(bibleText);
+        if (additionalPhrase
+          && additionalPhrase.toLowerCase() !== choiceText.toLowerCase()
+          && additionalPhrase.toLowerCase() !== bibleText.toLowerCase()
+        ) {
+          parts.push(additionalPhrase);
+        }
+
+        return {
+          ...pdfData.inscription,
+          hasBibleText: !!bibleText || !!choiceText,
+          hasAdditionalPhrase: !!additionalPhrase,
+          fullInscription: parts.join('\n\n')
+        };
+      })(),
 
       // Enhanced deceased section
       deceased: pdfData.deceased.map((person, index) => ({

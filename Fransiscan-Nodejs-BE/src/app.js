@@ -7,8 +7,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
-// Log environment variables for debugging
-console.log('JWT_SECRET from .env:', process.env.JWT_SECRET);
+// App initialization
 
 const logger = require('./utils/logger');
 const { errorHandler, notFoundHandler, asyncHandler, validateInput, rateLimit: customRateLimit } = require('./middleware/errorHandler');
@@ -43,7 +42,7 @@ const bibleChoicesRoutes = require('./routes/bibleChoices');
 const globalSearchRoutes = require('./routes/globalSearch');
 
 const app = express();
-app.set('etag', false);
+app.set('etag', 'weak');
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || 'localhost';
 
@@ -78,11 +77,13 @@ app.use(cors({
   maxAge: 86400 // 24 hours
 }));
 
-// Disable downstream caching so API responses always include a body
+// Cache control: allow brief browser caching for GET, prevent caching for mutations
 app.use((req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
+  if (req.method === 'GET') {
+    res.set('Cache-Control', 'private, max-age=30');
+  } else {
+    res.set('Cache-Control', 'no-store');
+  }
   next();
 });
 
@@ -128,76 +129,28 @@ app.use(morgan('combined', {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request timeout middleware - ensure API responds within reasonable time
-// This prevents requests from hanging indefinitely and causing frontend timeouts
-// Increased to 70 seconds to allow for 60s database queries + network overhead
+// Request timeout middleware - only patches res.end (json/send call end internally)
 const REQUEST_TIMEOUT_MS = parseInt(process.env.REQUEST_TIMEOUT_MS) || 70000;
 
 app.use((req, res, next) => {
-  // Flag to track if timeout response was sent
-  let timeoutId = null;
-  let timeoutHandled = false;
-
-  // Create a timeout handler
-  const timeoutHandler = () => {
-    if (!timeoutHandled && !res.headersSent) {
-      timeoutHandled = true;
+  const timeoutId = setTimeout(() => {
+    if (!res.headersSent) {
       req.timedOut = true;
-
       logger.warn(`Request timeout for ${req.method} ${req.path} after ${REQUEST_TIMEOUT_MS}ms`);
-
-      // Send timeout response
-      try {
-        res.status(504).json({
-          success: false,
-          error: {
-            code: 'REQUEST_TIMEOUT',
-            message: 'Request timeout - The server took too long to respond. Please try again with more specific filters or contact support.'
-          }
-        });
-      } catch (err) {
-        // Response already sent, ignore
-        logger.warn('Timeout handler: Response already sent, ignoring');
-      }
+      res.status(504).json({
+        success: false,
+        error: {
+          code: 'REQUEST_TIMEOUT',
+          message: 'Request timeout - The server took too long to respond. Please try again.'
+        }
+      });
     }
-  };
+  }, REQUEST_TIMEOUT_MS);
 
-  // Set timeout timer
-  timeoutId = setTimeout(timeoutHandler, REQUEST_TIMEOUT_MS);
-
-  // Clear timeout when response is sent
-  const originalEnd = res.end.bind(res);
+  const originalEnd = res.end;
   res.end = function (...args) {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
+    clearTimeout(timeoutId);
     return originalEnd.apply(this, args);
-  };
-
-  // Also clear on json/send
-  const originalJson = res.json.bind(res);
-  res.json = function (body) {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-    if (!res.headersSent && !timeoutHandled) {
-      return originalJson(body);
-    }
-    return res;
-  };
-
-  const originalSend = res.send.bind(res);
-  res.send = function (...args) {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-    if (!res.headersSent && !timeoutHandled) {
-      return originalSend.apply(this, args);
-    }
-    return res;
   };
 
   next();

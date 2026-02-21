@@ -8,7 +8,6 @@ import React, {
 import {
   UsersIcon,
   PlusIcon,
-  PrinterIcon,
   Trash2Icon,
   AlertCircleIcon,
 } from 'lucide-react'
@@ -18,6 +17,7 @@ import { UpdateApplicationButton } from '../components/UpdateApplicationButton'
 import { usePersonLookup } from '../hooks/usePersonLookup'
 import { PersonData } from '../services/personService'
 import { Loader2, SearchIcon, CheckCircle2, X } from 'lucide-react'
+import { PrintSecondBeneficiaryButton } from '../components/PrintSecondBeneficiaryButton'
 interface BeneficiaryDetailsProps {
   formData: any
   setFormData: (data: any) => void
@@ -935,14 +935,6 @@ export function BeneficiaryDetails({
                       value: 'Occupied',
                       label: 'Occupied',
                     },
-                    {
-                      value: 'Active',
-                      label: 'Active',
-                    },
-                    {
-                      value: 'Inactive',
-                      label: 'Inactive',
-                    },
                   ]}
                   disabled={isReadOnly}
                 />
@@ -968,10 +960,12 @@ export function BeneficiaryDetails({
           <PlusIcon className="w-4 h-4" />
           Add Beneficiary
         </button>
-        <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors">
-          <PrinterIcon className="w-4 h-4" />
-          Print Insertion
-        </button>
+
+        {formData.applicationNumber && (
+          <>
+            <PrintSecondBeneficiaryButton applicationNumber={formData.applicationNumber} />
+          </>
+        )}
 
         {/* Update Application Button */}
         <UpdateApplicationButton

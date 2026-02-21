@@ -433,6 +433,27 @@ class NicheAgreementRepository extends BaseRepository {
         nicheAgreement.beneBirthYear_2 = this.formatBirthYear(bene2.BirthYear);
       }
 
+      // Supplementary: Read BeneficiaryStatus from NicheBookingBeneficiary
+      try {
+        const statusQuery = `
+          SELECT TOP 2 nbb.Name, nbb.BeneficiaryStatus
+          FROM NicheBooking nb WITH (NOLOCK)
+          INNER JOIN NicheBookingBeneficiary nbb WITH (NOLOCK) ON nb.NicheBookingId = nbb.NicheBookingId
+          WHERE nb.NicheApplicationId = @nicheApplicationId
+            AND nbb.BeneficiaryStatus >= 0
+          ORDER BY nbb.NicheBookingBeneficiaryId
+        `;
+        const statusResult = await executeQuery(statusQuery, { nicheApplicationId }, { timeout: 10000 });
+        if (statusResult.recordset.length > 0) {
+          nicheAgreement.beneStatus_1 = statusResult.recordset[0].BeneficiaryStatus === 1 ? 'Occupied' : 'Not Occupied';
+        }
+        if (statusResult.recordset.length > 1) {
+          nicheAgreement.beneStatus_2 = statusResult.recordset[1].BeneficiaryStatus === 1 ? 'Occupied' : 'Not Occupied';
+        }
+      } catch (statusError) {
+        logger.warn('[addBeneficiaries] Could not fetch beneficiary status from NicheBookingBeneficiary:', statusError.message);
+      }
+
       // FALLBACK: If no data found, try NicheBookingBeneficiary (legacy/booking data)
       if (!nicheAgreement.beneName_1 && !nicheAgreement.beneName_2) {
         logger.info(`[addBeneficiaries] No data in NicheApplicationBeneficiary, trying NicheBookingBeneficiary`);
@@ -447,7 +468,8 @@ class NicheAgreementRepository extends BaseRepository {
             DateOfBirth,
             BirthYear,
             RelationshipToNominee1,
-            RelationshipToNominee2
+            RelationshipToNominee2,
+            nbb.BeneficiaryStatus
           FROM NicheBooking nb WITH (NOLOCK)
           INNER JOIN NicheBookingBeneficiary nbb WITH (NOLOCK) ON nb.NicheBookingId = nbb.NicheBookingId
           WHERE nb.NicheApplicationId = @nicheApplicationId
@@ -480,6 +502,7 @@ class NicheAgreementRepository extends BaseRepository {
 
           nicheAgreement.ben1_NomineeRelationship = bene1.RelationshipToNominee1 || null;
           nicheAgreement.ben1_Nominee2Relationship = bene1.RelationshipToNominee2 || null;
+          nicheAgreement.beneStatus_1 = bene1.BeneficiaryStatus === 1 ? 'Occupied' : 'Not Occupied';
         }
 
         if (fallbackResult.recordset.length > 1) {
@@ -506,6 +529,7 @@ class NicheAgreementRepository extends BaseRepository {
 
           nicheAgreement.ben2_NomineeRelationship = bene2.RelationshipToNominee1 || null;
           nicheAgreement.ben2_Nominee2Relationship = bene2.RelationshipToNominee2 || null;
+          nicheAgreement.beneStatus_2 = bene2.BeneficiaryStatus === 1 ? 'Occupied' : 'Not Occupied';
         }
       }
 
@@ -1053,24 +1077,32 @@ class NicheAgreementRepository extends BaseRepository {
           const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscription.InscriptionCode, null);
 
           if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
-            const inscriptionItems = inscriptionData.items.map(inscriptionItem => ({
-              itemId: inscriptionItem.ItemId || null,
-              itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
-              itemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
-              itemPrice: inscriptionItem.Price || 0,
-              itemDocType: inscriptionItem.DocType || 'INCR',
-              quantity: 1,
-              unitAmount: inscriptionItem.Price || 0,
-              payingAmount: inscriptionItem.Price || 0,
-              totalPayingAmount: inscriptionItem.Price || 0,
-              refDocNumber: inscription.InscriptionCode,
-              refDocName: 'INCR',
-              refType: 'INCR',
-              outstandingAmount: 0,
-              lineTotalAmount: inscriptionItem.Price || 0,
-              lineTaxPercent: 9,
-              lineTaxAmount: ((inscriptionItem.Price || 0) * 9) / 100
-            }));
+            const inscriptionItems = inscriptionData.items.map(inscriptionItem => {
+              const price = inscriptionItem.Price || 0;
+              const tax = (price * 9) / 100;
+              return {
+                itemId: inscriptionItem.ItemId || null,
+                itemName: inscriptionItem.Name || inscriptionItem.ItemName || 'Inscription Item',
+                itemCode: inscriptionItem.Code || inscriptionItem.ItemCode || null,
+                itemPrice: price,
+                itemDocType: inscriptionItem.DocType || 'INCR',
+                quantity: 1,
+                unitPrice: price,
+                taxAmount: tax,
+                lineTotal: price + tax,
+                lineNet: price,
+                unitAmount: price,
+                payingAmount: price,
+                totalPayingAmount: price,
+                refDocNumber: inscription.InscriptionCode,
+                refDocName: 'INCR',
+                refType: 'INCR',
+                outstandingAmount: 0,
+                lineTotalAmount: price,
+                lineTaxPercent: 9,
+                lineTaxAmount: tax
+              };
+            });
 
             nicheAgreement.inscriptionItems = inscriptionItems;
           }

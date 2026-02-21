@@ -64,15 +64,15 @@ class NicheBookingRepository {
           nominee.EmailID AS NomineeEmailID,
           nominee2.Name AS Nominee2Name,
           nominee2.IDNo AS Nominee2IDNo
-        FROM NicheBooking nb
-        INNER JOIN NicheApplication na ON nb.NicheApplicationId = na.NicheApplicationId
-        INNER JOIN Niche n ON nb.NicheId = n.NicheId
-        INNER JOIN NicheRow nr ON n.NicheRowId = nr.NicheRowId
-        INNER JOIN NicheWall nw ON nr.NicheWallId = nw.NicheWallId
-        INNER JOIN Chapel c ON nw.ChapelId = c.ChapelId
-        LEFT JOIN Person contact ON nb.ContactPersonId = contact.PersonId
-        LEFT JOIN Person nominee ON nb.NomineeId = nominee.PersonId
-        LEFT JOIN Person nominee2 ON nb.NomineeId2 = nominee2.PersonId
+        FROM NicheBooking nb WITH (NOLOCK)
+        INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+        INNER JOIN Niche n WITH (NOLOCK) ON nb.NicheId = n.NicheId
+        INNER JOIN NicheRow nr WITH (NOLOCK) ON n.NicheRowId = nr.NicheRowId
+        INNER JOIN NicheWall nw WITH (NOLOCK) ON nr.NicheWallId = nw.NicheWallId
+        INNER JOIN Chapel c WITH (NOLOCK) ON nw.ChapelId = c.ChapelId
+        LEFT JOIN Person contact WITH (NOLOCK) ON nb.ContactPersonId = contact.PersonId
+        LEFT JOIN Person nominee WITH (NOLOCK) ON nb.NomineeId = nominee.PersonId
+        LEFT JOIN Person nominee2 WITH (NOLOCK) ON nb.NomineeId2 = nominee2.PersonId
         WHERE na.Code = @code AND nb.BookingStatus > 0
       `;
 
@@ -123,8 +123,8 @@ class NicheBookingRepository {
 
       // Get beneficiaries
       const beneficiariesQuery = `
-        SELECT * FROM NicheBookingBeneficiary 
-        WHERE NicheBookingId = @bookingId AND BeneficiaryStatus > 0
+        SELECT * FROM NicheBookingBeneficiary WITH (NOLOCK)
+        WHERE NicheBookingId = @bookingId AND BeneficiaryStatus >= 0
         ORDER BY NicheBookingBeneficiaryId
       `;
 
@@ -170,19 +170,19 @@ class NicheBookingRepository {
           nominee.Name AS NomineeName,
           nominee.IDNo AS NomineeIDNo,
           beneficiary.Name AS BeneficiaryName
-        FROM NicheBooking nb
-        INNER JOIN NicheApplication na ON nb.NicheApplicationId = na.NicheApplicationId
-        INNER JOIN Niche n ON nb.NicheId = n.NicheId
-        INNER JOIN NicheRow nr ON n.NicheRowId = nr.NicheRowId
-        INNER JOIN NicheWall nw ON nr.NicheWallId = nw.NicheWallId
-        INNER JOIN Chapel c ON nw.ChapelId = c.ChapelId
-        LEFT JOIN Person contact ON nb.ContactPersonId = contact.PersonId
-        LEFT JOIN Person nominee ON nb.NomineeId = nominee.PersonId
-        LEFT JOIN NicheBookingBeneficiary nbb ON nb.NicheBookingId = nbb.NicheBookingId
+        FROM NicheBooking nb WITH (NOLOCK)
+        INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+        INNER JOIN Niche n WITH (NOLOCK) ON nb.NicheId = n.NicheId
+        INNER JOIN NicheRow nr WITH (NOLOCK) ON n.NicheRowId = nr.NicheRowId
+        INNER JOIN NicheWall nw WITH (NOLOCK) ON nr.NicheWallId = nw.NicheWallId
+        INNER JOIN Chapel c WITH (NOLOCK) ON nw.ChapelId = c.ChapelId
+        LEFT JOIN Person contact WITH (NOLOCK) ON nb.ContactPersonId = contact.PersonId
+        LEFT JOIN Person nominee WITH (NOLOCK) ON nb.NomineeId = nominee.PersonId
+        LEFT JOIN NicheBookingBeneficiary nbb WITH (NOLOCK) ON nb.NicheBookingId = nbb.NicheBookingId
         LEFT JOIN (
           SELECT DISTINCT NicheBookingId, Name 
-          FROM NicheBookingBeneficiary 
-          WHERE BeneficiaryStatus > 0
+          FROM NicheBookingBeneficiary WITH (NOLOCK)
+          WHERE BeneficiaryStatus >= 0
         ) beneficiary ON nb.NicheBookingId = beneficiary.NicheBookingId
         WHERE nb.ChurchId = @churchId 
         AND nb.BookingStatus > 0
@@ -457,8 +457,8 @@ class NicheBookingRepository {
       // Get booking first
       const getQuery = `
         SELECT nb.NicheBookingId, nb.NicheId 
-        FROM NicheBooking nb
-        INNER JOIN NicheApplication na ON nb.NicheApplicationId = na.NicheApplicationId
+        FROM NicheBooking nb WITH (NOLOCK)
+        INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
         WHERE na.Code = @code
       `;
 
@@ -507,8 +507,8 @@ class NicheBookingRepository {
           nb.*,
           na.Code AS ApplicationCode,
           na.ApplicantName
-        FROM NicheBooking nb
-        INNER JOIN NicheApplication na ON nb.NicheApplicationId = na.NicheApplicationId
+        FROM NicheBooking nb WITH (NOLOCK)
+        INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
         WHERE nb.NicheId = @nicheId AND nb.BookingStatus > 0
       `;
 
@@ -534,8 +534,8 @@ class NicheBookingRepository {
 
       const query = `
         SELECT TOP 1 ${selectFields}
-        FROM NicheBooking nb
-        INNER JOIN NicheApplication na ON nb.NicheApplicationId = na.NicheApplicationId
+        FROM NicheBooking nb WITH (NOLOCK)
+        INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
         WHERE nb.NicheApplicationId = @nicheApplicationId
           AND nb.BookingStatus > 0
       `;
@@ -563,10 +563,10 @@ class NicheBookingRepository {
 
       const query = `
         SELECT TOP 1 ${selectFields}
-        FROM NicheBooking nb
-        INNER JOIN NicheApplication na ON nb.NicheApplicationId = na.NicheApplicationId
-        LEFT JOIN Person contact ON nb.ContactPersonId = contact.PersonId
-        LEFT JOIN Person nominee ON nb.NomineeId = nominee.PersonId
+        FROM NicheBooking nb WITH (NOLOCK)
+        INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+        LEFT JOIN Person contact WITH (NOLOCK) ON nb.ContactPersonId = contact.PersonId
+        LEFT JOIN Person nominee WITH (NOLOCK) ON nb.NomineeId = nominee.PersonId
         WHERE nb.BookingStatus > 0
           AND nb.ChurchId = @churchId
           AND (
@@ -589,7 +589,7 @@ class NicheBookingRepository {
     try {
       const query = `
         SELECT PersonId, Name, IDNo, EmailID, ChurchId
-        FROM Person
+        FROM Person WITH (NOLOCK)
         WHERE PersonId = @personId
       `;
 

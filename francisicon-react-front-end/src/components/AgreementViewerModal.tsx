@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { AgreementPdfTemplate } from './AgreementPdfTemplate'
 import { NomineeAgreement } from './NomineeAgreementPdfView'
+import { BeneficiaryAgreement } from './BeneficiaryAgreementPdfView'
 import { GatesOfLifeAgreementTemplate } from './GatesOfLifeAgreementTemplate'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
@@ -16,15 +17,17 @@ interface AgreementViewerModalProps {
   onClose: () => void
   agreementData: any | null
   secoundNomineeAgreement: any | null
+  secoundBeneficiaryAgreement?: any | null
   applicationNumber: string
   loading?: boolean
-  templateType?: 'niche' | 'nominee' | 'gateOfLife'
+  templateType?: 'niche' | 'nominee' | 'gateOfLife' | 'beneficiary'
 }
 export function AgreementViewerModal({
   isOpen,
   onClose,
   agreementData,
   secoundNomineeAgreement,
+  secoundBeneficiaryAgreement,
   applicationNumber,
   loading = false,
   templateType = 'niche',
@@ -390,6 +393,10 @@ export function AgreementViewerModal({
                   nominee={secoundNomineeAgreement.nominee}
                   agreementDate={secoundNomineeAgreement.agreementDate}
                 />
+              </div>
+            ) : templateType === 'beneficiary' && secoundBeneficiaryAgreement ? (
+              <div ref={contentRef}>
+                <BeneficiaryAgreement data={secoundBeneficiaryAgreement} />
               </div>
             ) : templateType === 'gateOfLife' && agreementData ? (
               <div ref={contentRef}>

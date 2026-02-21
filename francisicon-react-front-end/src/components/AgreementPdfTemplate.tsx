@@ -52,8 +52,8 @@ interface AgreementPdfTemplateProps {
       birthYear?: number
       relationshipToNominee1?: string
       relationshipToNominee2?: string
-      status: string;
-      sex: string;
+      status?: string;
+      sex?: string;
       lifeStatus?: string;
     }>
     niche?: {
@@ -194,7 +194,8 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
     7000
   const chapelName =
     niche?.chapelName || niche?.location?.chapel?.chapelName || ''
-  const nicheNumber = niche?.number || ''
+  const nicheNo = niche?.code || niche?.number || ''
+  const nicheLevel = niche?.location?.row?.level || ''
   const wallName = niche?.wallName || niche?.location?.wall?.wallName || ''
   const wallPrice = niche?.location?.row?.rowPrice || niche?.rowPrice || niche?.wallPrice || niche?.totalAmount || 0
   const footerAgreementDate = formatDate(agreementDate || appliedDate)
@@ -206,8 +207,8 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   const applicantOfficeTelNo = applicant?.officeTelNo || ''
   const applicantEmail = applicant?.email || ''
   const applicantIsCatholicText = applicant?.isCatholic ? 'Yes' : 'No'
-  const beneficiary1 = (beneficiaries && beneficiaries[0]) || null
-  const beneficiary2 = (beneficiaries && beneficiaries[1]) || null
+  const beneficiary1 = beneficiaries?.[0] || null
+  const beneficiary2 = beneficiaries?.[1] || null
   const deceased1 = deceased?.deceased1 || null
   const deceased2 = deceased?.deceased2 || null
   const firstIntermentDate = formatDate(deceased1?.internmentDate)
@@ -218,16 +219,17 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   const secondDeceasedDeathCert = deceased2?.deathCertificateNo || ''
   const firstDeceasedDate = formatDate(deceased1?.dateDied)
   const secondDeceasedDate = formatDate(deceased2?.dateDied)
-  const storageFromRaw = storage?.storageFrom;
-  const storageFrom = formatDate(storageFromRaw);
+  const storageFromValue = storage?.storageFrom || deceased1?.internmentDate;
+  const storageFrom = formatDate(storageFromValue);
   let storageTo = formatDate(storage?.storageTo);
 
-  // Auto-calculate storageTo as 30 years after storageFrom if storageFrom exists and storageTo is not provided
-  if (storageFromRaw && !storage?.storageTo) {
-    const fromDate = new Date(storageFromRaw);
+  // Auto-calculate storageTo as 30 years minus 1 day after storageFrom if storageFrom exists and storageTo is not provided
+  if (storageFromValue && !storage?.storageTo) {
+    const fromDate = new Date(storageFromValue);
     if (!isNaN(fromDate.getTime())) {
       const toDate = new Date(fromDate);
       toDate.setFullYear(fromDate.getFullYear() + 30);
+      toDate.setDate(toDate.getDate() - 1);
       storageTo = formatDate(toDate.toISOString());
     }
   }
@@ -435,10 +437,17 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
           <span className="flex-1 border-b border-black px-1 text-center">
             {chapelName}
           </span>
-          <span>Niche No:</span>
-          <span className="w-16 border-b border-black px-1 text-center">
-            {nicheNumber}
-          </span>
+          {/* <span className="w-16 border-b border-black px-1 text-center">
+            {nicheNo}
+          </span> */}
+          {nicheLevel && (
+            <>
+              <span className="ml-1">Niche No :</span>
+              <span className="w-12 border-b border-black px-1 text-center">
+                {nicheNo}
+              </span>
+            </>
+          )}
           <span>of an urn(s) containing the ashes of</span>
         </div>
 
@@ -480,7 +489,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             <TableRow>
               <LabelCell width="w-36">Catholic</LabelCell>
               <ValueCell>
-                {beneficiary1?.isCatholic ? 'Yes' : 'No'}
+                {beneficiary1 ? (beneficiary1.isCatholic ? 'Yes' : 'No') : ''}
               </ValueCell>
               <LabelCell width="w-28" className="border-l border-black">
                 {'\u00A0'}
@@ -547,9 +556,11 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </TableRow>
             <TableRow>
               <LabelCell width="w-36">Catholic</LabelCell>
+
               <ValueCell>
-                {beneficiary2?.isCatholic ? 'Yes' : 'No'}
+                {beneficiary2 ? (beneficiary2.isCatholic ? 'Yes' : 'No') : ''}
               </ValueCell>
+
               <LabelCell width="w-28" className="border-l border-black">
                 {'\u00A0'}
               </LabelCell>
@@ -801,7 +812,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             <div className="w-32 p-1 pl-2 font-medium border-r border-black">
               Niche No
             </div>
-            <div className="w-32 p-1 pl-2">{nicheNumber}</div>
+            <div className="w-32 p-1 pl-2">{nicheNo}</div>
           </div>
           <div className="flex border-b border-black">
             <div className="w-32 p-1 pl-2 font-medium border-r border-black">

@@ -177,7 +177,7 @@ class NicheApplicationRepository {
 
       // Build WHERE clauses with optimized SQL (no UPPER() to allow index usage)
       // Use COLLATE SQL_Latin1_General_CP1_CI_AS for case-insensitive comparison
-      const whereClauses = ['ChurchId = @churchId', 'Status > 0'];
+      const whereClauses = ['app.ChurchId = @churchId', 'app.Status > 0'];
       const queryParams = { churchId };
 
       // Application Code search - optimized for index usage
@@ -185,7 +185,7 @@ class NicheApplicationRepository {
         const trimmedCode = String(applicationCode).trim();
         if (trimmedCode) {
           // Use LIKE with COLLATE for case-insensitive search that can use indexes
-          whereClauses.push('Code COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @applicationCode');
+          whereClauses.push('app.Code COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @applicationCode');
           queryParams.applicationCode = `${trimmedCode}%`;
         }
       }
@@ -198,7 +198,7 @@ class NicheApplicationRepository {
           // Fallback to contains search if prefix doesn't make sense
           const isPrefixSearch = /^[A-Za-z0-9]/.test(trimmedName);
           queryParams.applicantName = isPrefixSearch ? `${trimmedName}%` : `%${trimmedName}%`;
-          whereClauses.push('ApplicantName COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @applicantName');
+          whereClauses.push('app.ApplicantName COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @applicantName');
         }
       }
 
@@ -211,7 +211,7 @@ class NicheApplicationRepository {
           // Prefer prefix search for better index usage
           const isPrefixSearch = /^[A-Za-z0-9]/.test(trimmedName);
           queryParams.nomineeName = isPrefixSearch ? `${trimmedName}%` : `%${trimmedName}%`;
-          whereClauses.push('NomineeName COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @nomineeName');
+          whereClauses.push('app.NomineeName COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @nomineeName');
         }
       }
 
@@ -226,11 +226,11 @@ class NicheApplicationRepository {
           queryParams.searchTerm = searchPattern;
 
           whereClauses.push(`(
-            Code COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
-            OR ApplicantName COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
-            OR NomineeName COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
-            OR ApplicantIDNo COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
-            OR NomineeIDNo COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
+            app.Code COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
+            OR app.ApplicantName COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
+            OR app.NomineeName COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
+            OR app.ApplicantIDNo COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
+            OR app.NomineeIDNo COLLATE SQL_Latin1_General_CP1_CI_AS LIKE @searchTerm
           )`);
 
           // For wildcard searches (contains pattern with leading %), add default date range filter 
@@ -241,7 +241,7 @@ class NicheApplicationRepository {
             const oneYearAgo = new Date();
             oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
             oneYearAgo.setHours(0, 0, 0, 0);
-            whereClauses.push('AgreementDate >= @minSearchDate');
+            whereClauses.push('app.AgreementDate >= @minSearchDate');
             queryParams.minSearchDate = oneYearAgo;
             logger.debug('Added default date range filter (last 12 months) for wildcard search without date range');
           }
@@ -251,7 +251,7 @@ class NicheApplicationRepository {
       // Status filter
       const parsedStatus = parseStatusValue(status);
       if (parsedStatus !== null) {
-        whereClauses.push('Status = @status');
+        whereClauses.push('app.Status = @status');
         queryParams.status = parsedStatus;
       }
 
@@ -261,7 +261,7 @@ class NicheApplicationRepository {
         // Ensure fromDate starts at beginning of day (00:00:00.000) for proper comparison
         const fromDateStart = new Date(parsedFromDate);
         fromDateStart.setHours(0, 0, 0, 0);
-        whereClauses.push('AgreementDate >= @fromDate');
+        whereClauses.push('app.AgreementDate >= @fromDate');
         queryParams.fromDate = fromDateStart;
       }
 
@@ -270,7 +270,7 @@ class NicheApplicationRepository {
         // Ensure toDate ends at end of day (23:59:59.999) to include the full day
         const toDateEnd = new Date(parsedToDate);
         toDateEnd.setHours(23, 59, 59, 999);
-        whereClauses.push('AgreementDate <= @toDate');
+        whereClauses.push('app.AgreementDate <= @toDate');
         queryParams.toDate = toDateEnd;
       }
 
@@ -288,7 +288,7 @@ class NicheApplicationRepository {
         const defaultDateStart = new Date();
         defaultDateStart.setMonth(defaultDateStart.getMonth() - defaultMonths);
         defaultDateStart.setHours(0, 0, 0, 0);
-        whereClauses.push('AgreementDate >= @defaultFromDate');
+        whereClauses.push('app.AgreementDate >= @defaultFromDate');
         queryParams.defaultFromDate = defaultDateStart;
         logger.info(`Added default date range filter (last ${defaultMonths} months) for query without filters to prevent full table scan`);
       }
@@ -303,7 +303,7 @@ class NicheApplicationRepository {
           const oneYearAgo = new Date();
           oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
           oneYearAgo.setHours(0, 0, 0, 0);
-          whereClauses.push('AgreementDate >= @minDateForWildcard');
+          whereClauses.push('app.AgreementDate >= @minDateForWildcard');
           queryParams.minDateForWildcard = oneYearAgo;
           logger.debug('Added date filter for wildcard search to improve performance');
         }
@@ -330,7 +330,7 @@ class NicheApplicationRepository {
           // WITH (NOLOCK) for better performance, and proper indexing should be in place
           const countQuery = `
             SELECT COUNT(*) AS Total
-            FROM NicheApplication WITH (NOLOCK)
+            FROM NicheApplication app WITH (NOLOCK)
             ${whereClause}
           `;
 
@@ -387,26 +387,28 @@ class NicheApplicationRepository {
       if (lightweightMode) {
         // Lightweight columns for list views - only essential fields
         columnsList = `
-          NicheApplicationId, Code, NicheId, AppliedDate, AgreementDate, Status,
-          ApplicantName, NomineeName, Amount, DefaultAmount, ChurchId, RefDocType
+          app.NicheApplicationId, app.Code, app.NicheId, app.AppliedDate, app.AgreementDate, app.Status,
+          app.ApplicantName, app.NomineeName, app.Amount, app.DefaultAmount, app.ChurchId, app.RefDocType,
+          n.Code AS NicheCode, r.NicheLevel, r.Code AS RowCode
         `;
       } else {
         // Full columns for detail views - all fields
         columnsList = `
-          NicheApplicationId, Code, NicheId, AppliedDate, AgreementDate, Status,
-          ApplicantName, ApplicantIDNo, ApplicantEmailID, ApplicantMobileNo,
-          ApplicantHomeTelNo, ApplicantOfficeTelNo, ApplicantIsCatholic,
-          ApplicantAddressNo, ApplicantAddressLine1, ApplicantAddressLine2,
-          ApplicantAddressCity, ApplicantAddressState, ApplicantAddressCountry,
-          NomineeName, NomineeIDNo, NomineeEmailID, NomineeMobileNo,
-          NomineeHomeTelNo, NomineeOfficeTelNo, NomineeRelationship, NomineeIsCatholic,
-          NomineeAddressNo, NomineeAddressLine1, NomineeAddressLine2,
-          NomineeAddressCity, NomineeAddressState, NomineeAddressCountry,
-          NomineeName2, NomineeIDNo2, NomineeEmailID2, NomineeMobileNo2,
-          NomineeHomeTelNo2, NomineeOfficeTelNo2, NomineeRelationship2, NomineeIsCatholic2,
-          NomineeAddressNo2, NomineeAddressLine12, NomineeAddressLine22,
-          NomineeAddressCity2, NomineeAddressState2, NomineeAddressCountry2,
-          Amount, DefaultAmount, ChurchId, UserId, Remarks, RefDocType
+          app.NicheApplicationId, app.Code, app.NicheId, app.AppliedDate, app.AgreementDate, app.Status,
+          app.ApplicantName, app.ApplicantIDNo, app.ApplicantEmailID, app.ApplicantMobileNo,
+          app.ApplicantHomeTelNo, app.ApplicantOfficeTelNo, app.ApplicantIsCatholic,
+          app.ApplicantAddressNo, app.ApplicantAddressLine1, app.ApplicantAddressLine2,
+          app.ApplicantAddressCity, app.ApplicantAddressState, app.ApplicantAddressCountry,
+          app.NomineeName, app.NomineeIDNo, app.NomineeEmailID, app.NomineeMobileNo,
+          app.NomineeHomeTelNo, app.NomineeOfficeTelNo, app.NomineeRelationship, app.NomineeIsCatholic,
+          app.NomineeAddressNo, app.NomineeAddressLine1, app.NomineeAddressLine2,
+          app.NomineeAddressCity, app.NomineeAddressState, app.NomineeAddressCountry,
+          app.NomineeName2, app.NomineeIDNo2, app.NomineeEmailID2, app.NomineeMobileNo2,
+          app.NomineeHomeTelNo2, app.NomineeOfficeTelNo2, app.NomineeRelationship2, app.NomineeIsCatholic2,
+          app.NomineeAddressNo2, app.NomineeAddressLine12, app.NomineeAddressLine22,
+          app.NomineeAddressCity2, app.NomineeAddressState2, app.NomineeAddressCountry2,
+          app.Amount, app.DefaultAmount, app.ChurchId, app.UserId, app.Remarks, app.RefDocType,
+          n.Code AS NicheCode, r.NicheLevel, r.Code AS RowCode
         `;
       }
 
@@ -432,9 +434,11 @@ class NicheApplicationRepository {
 
       const dataQuery = `
         SELECT ${columnsList}
-        FROM NicheApplication ${indexHint}
+        FROM NicheApplication app ${indexHint}
+        LEFT JOIN Niche n WITH (NOLOCK) ON app.NicheId = n.NicheId
+        LEFT JOIN NicheRow r WITH (NOLOCK) ON n.NicheRowlId = r.NicheRowlId
         ${whereClause}
-        ORDER BY AgreementDate DESC, NicheApplicationId DESC
+        ORDER BY app.AgreementDate DESC, app.NicheApplicationId DESC
         OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
       `;
 
@@ -1298,7 +1302,7 @@ class NicheApplicationRepository {
     try {
       const query = `
         SELECT Code, NicheApplicationId 
-        FROM NicheApplication 
+        FROM NicheApplication WITH (NOLOCK)
         WHERE NicheId = @nicheId 
         AND CAST(AgreementDate AS DATE) = CAST(@agreementDate AS DATE)
         AND Status > 0

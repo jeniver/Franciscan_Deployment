@@ -853,7 +853,7 @@ class NicheBookingService {
 
       await NicheBookingRepository.updateBeneficiaryStatus(
         beneficiary.nicheBookingBeneficiaryId,
-        0 // Inactive
+        -1 // Deactivated (0 = Not Occupied, 1 = Occupied)
       );
 
       return {

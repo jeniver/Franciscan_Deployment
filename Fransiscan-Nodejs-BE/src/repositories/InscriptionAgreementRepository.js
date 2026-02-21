@@ -285,6 +285,20 @@ class InscriptionAgreementRepository {
       // Return the first (and typically only) inscription request
       const agreementDetails = Object.values(groupedResults)[0];
 
+      // Try to fetch CrossType separately (column may not exist in all schemas)
+      try {
+        const ctResult = await executeQuery(
+          `SELECT CrossType FROM NicheInscriptionRequest WITH(NOLOCK) WHERE NicheInscriptionRequestId = @id`,
+          { id: agreementDetails.NicheInscriptionRequestId },
+          { timeout: 3000 }
+        );
+        if (ctResult.recordset && ctResult.recordset.length > 0) {
+          agreementDetails.CrossType = ctResult.recordset[0].CrossType || null;
+        }
+      } catch {
+        agreementDetails.CrossType = null;
+      }
+
       logger.info(`Found inscription agreement details for code: ${searchCode}`, {
         inscriptionId: agreementDetails.NicheInscriptionRequestId,
         code: agreementDetails.InscriptionCode,
@@ -403,7 +417,7 @@ class InscriptionAgreementRepository {
         applicationCode: agreementDetails.ApplicationCode,
         createdDate: agreementDetails.InscriptionCreatedOn,
 
-        // Applicant section
+        // Applicant section (include structured address fields for proper formatting)
         applicant: {
           name: agreementDetails.ApplicantName,
           nric: agreementDetails.ApplicantIDNo,
@@ -417,7 +431,13 @@ class InscriptionAgreementRepository {
             agreementDetails.ApplicantAddressCity,
             agreementDetails.ApplicantAddressState,
             agreementDetails.ApplicantAddressCountry
-          )
+          ),
+          addressNo: agreementDetails.ApplicantAddressNo,
+          addressLine1: agreementDetails.ApplicantAddressLine1,
+          addressLine2: agreementDetails.ApplicantAddressLine2,
+          addressCity: agreementDetails.ApplicantAddressCity,
+          addressState: agreementDetails.ApplicantAddressState,
+          addressCountry: agreementDetails.ApplicantAddressCountry
         },
 
         // Niche details

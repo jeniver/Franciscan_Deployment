@@ -106,17 +106,17 @@ export function TaxInvoice({
                 Ref No.
               </th>
               <th className="border border-black px-3 py-2 text-center font-bold uppercase tracking-wide">
-                GST %
-              </th>
-              <th className="border border-black px-3 py-2 text-center font-bold uppercase tracking-wide">
                 Qty
               </th>
               <th className="border border-black px-3 py-2 text-right font-bold uppercase tracking-wide">
-                Price
+                Unit Price
               </th>
-              {/* <th className="border border-black px-3 py-2 text-right font-bold uppercase tracking-wide">
+              <th className="border border-black px-3 py-2 text-center font-bold uppercase tracking-wide">
+                GST %
+              </th>
+              <th className="border border-black px-3 py-2 text-right font-bold uppercase tracking-wide">
                 Amount
-              </th> */}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -131,17 +131,17 @@ export function TaxInvoice({
                   {item.referenceNo || 'N/A'}
                 </td>
                 <td className="border border-black px-3 py-3 text-center">
-                  {(item.gstPercent || 0).toFixed(1)}%
-                </td>
-                <td className="border border-black px-3 py-3 text-center">
-                  {(item.qty || 0).toFixed(2)}
+                  {(item.qty || item.quantity || 0).toFixed(2)}
                 </td>
                 <td className="border border-black px-3 py-3 text-right">
                   ${(item.unitPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </td>
-                {/* <td className="border border-black px-3 py-3 text-right font-medium">
-                  ${(item.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </td> */}
+                <td className="border border-black px-3 py-3 text-center">
+                  {(item.gstPercent || 0).toFixed(1)}%
+                </td>
+                <td className="border border-black px-3 py-3 text-right font-medium">
+                  ${((item.unitPrice || 0) * (item.qty || item.quantity || 1)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </td>
               </tr>
             ))}
           </tbody>

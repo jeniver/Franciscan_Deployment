@@ -22,7 +22,7 @@ class PersonRepository extends BaseRepository {
    */
   async findByEmail(email) {
     try {
-      const query = 'SELECT * FROM Persons WHERE EmailID = @email';
+      const query = 'SELECT * FROM Persons WITH (NOLOCK) WHERE EmailID = @email';
       const result = await executeQuery(query, { email });
       return result.recordset[0] ? new Person(result.recordset[0]) : null;
     } catch (error) {
@@ -43,7 +43,7 @@ class PersonRepository extends BaseRepository {
       const offset = (page - 1) * limit;
 
       const query = `
-        SELECT * FROM Persons 
+        SELECT * FROM Persons WITH (NOLOCK)
         WHERE ChurchId = @churchId
         ORDER BY Name
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
@@ -69,7 +69,7 @@ class PersonRepository extends BaseRepository {
       const offset = (page - 1) * limit;
 
       const query = `
-        SELECT * FROM Persons 
+        SELECT * FROM Persons WITH (NOLOCK)
         WHERE Name LIKE @searchTerm
         ORDER BY Name
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
@@ -95,8 +95,8 @@ class PersonRepository extends BaseRepository {
 
       const query = `
         SELECT p.*, c.Name as ChurchName, c.Address as ChurchAddress
-        FROM Persons p
-        LEFT JOIN Churches c ON p.ChurchId = c.ChurchId
+        FROM Persons p WITH (NOLOCK)
+        LEFT JOIN Churches c WITH (NOLOCK) ON p.ChurchId = c.ChurchId
         ORDER BY p.Name
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
       `;
@@ -123,7 +123,7 @@ class PersonRepository extends BaseRepository {
 
       const query = `
         SELECT TOP 1 *
-        FROM Person
+        FROM Person WITH (NOLOCK)
         WHERE IDNo = @idNo
         ${churchId ? 'AND ChurchId = @churchId' : ''}
         ORDER BY PersonId DESC

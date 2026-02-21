@@ -66,6 +66,7 @@ export interface NichiBeneficiary {
   relationshipToNominee2?: string;
   status?: string;
   sex?: string;
+  lifeStatus?: string;
 }
 
 export interface NichiNicheLocation {

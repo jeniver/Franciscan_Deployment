@@ -32,7 +32,7 @@ class InvoiceRepository extends BaseRepository {
       // NOTE: Using correct table name "Invoice" (not "Invoices")
       // WARNING: PersonId column does not exist in ASP.NET schema
       const query = `
-        SELECT * FROM Invoice 
+        SELECT * FROM Invoice WITH (NOLOCK)
         WHERE PersonId = @personId
         ORDER BY TransactionDate DESC
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
@@ -59,7 +59,7 @@ class InvoiceRepository extends BaseRepository {
 
       // NOTE: Using correct table name "Invoice" (not "Invoices")
       const query = `
-        SELECT * FROM Invoice 
+        SELECT * FROM Invoice WITH (NOLOCK)
         WHERE ChurchId = @churchId
           AND Status > 0
         ORDER BY TransactionDate DESC
@@ -89,7 +89,7 @@ class InvoiceRepository extends BaseRepository {
       // WARNING: DueDate column does not exist in ASP.NET schema
       // In ASP.NET schema: Status 0=Deleted, 1=Active, 2=Paid
       const query = `
-        SELECT * FROM Invoice 
+        SELECT * FROM Invoice WITH (NOLOCK)
         WHERE Status = 1
         ORDER BY TransactionDate ASC
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
@@ -553,11 +553,16 @@ class InvoiceRepository extends BaseRepository {
       }
 
       // Build details array: niche item + inscription items
+      const nicheItemName = item?.ItemName || 'Niche Fee';
+      const enhancedItemName = (nicheDetails && nicheDetails.NicheLevel)
+        ? `${nicheItemName} (Level ${nicheDetails.NicheLevel})`
+        : nicheItemName;
+
       const allDetails = [{
         invoiceDetailId: null,
         invoiceId: null,
         itemId: item?.ItemId || null,
-        itemName: item?.ItemName || 'Niche',
+        itemName: enhancedItemName,
         itemCode: item?.ItemCode || null,
         itemPrice: itemPrice,
         itemDocType: item?.DocType || null,
@@ -1478,7 +1483,7 @@ SELECT TOP 2
       const query = `
         SELECT TOP 1 i.*
   FROM Invoice i WITH(NOLOCK)
-        INNER JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
+        INNER JOIN InvoiceDetail id WITH (NOLOCK) ON i.InvoiceId = id.InvoiceId
         WHERE i.CustomerName = @customerName
           AND id.ItemId = @itemId
           AND id.RefDocNumber = @refDocNumber

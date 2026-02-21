@@ -28,11 +28,11 @@ class NicheRepository {
 
       // Use reasonable timeout for simple lookup query (15s should be enough)
       const result = await executeQuery(query, { churchId }, { timeout: 15000 });
-      
+
       if (!result || !result.recordset) {
         return [];
       }
-      
+
       return result.recordset.map(row => new Chapel(row));
     } catch (error) {
       logger.error(`Error getting chapels for church ${churchId}:`, {
@@ -109,16 +109,19 @@ class NicheRepository {
     try {
       const query = `
         SELECT 
-          NicheId,
-          NicheRowlId,
-          Code,
-          DefaultAmount,
-          AppearanceDescription,
-          Status,
-          ChurchId
-        FROM Niche WITH (NOLOCK)
-        WHERE NicheRowlId = @rowId
-        ORDER BY NicheId
+          n.NicheId,
+          n.NicheRowlId,
+          n.Code,
+          n.DefaultAmount,
+          n.AppearanceDescription,
+          n.Status,
+          n.ChurchId,
+          r.NicheLevel,
+          r.Code AS RowCode
+        FROM Niche n WITH (NOLOCK)
+        INNER JOIN NicheRow r WITH (NOLOCK) ON n.NicheRowlId = r.NicheRowlId
+        WHERE n.NicheRowlId = @rowId
+        ORDER BY n.NicheId
       `;
 
       const result = await executeQuery(query, { rowId });
@@ -170,9 +173,13 @@ class NicheRepository {
           n.Status,
           n.ChurchId,
           r.NicheLevel,
-          r.Code AS RowCode
+          r.Code AS RowCode,
+          w.Code AS WallCode,
+          w.Name AS WallName,
+          w.NicheWallId
         FROM Niche n WITH (NOLOCK)
         INNER JOIN NicheRow r WITH (NOLOCK) ON n.NicheRowlId = r.NicheRowlId
+        INNER JOIN NicheWall w WITH (NOLOCK) ON r.NicheWallId = w.NicheWallId
         WHERE r.NicheWallId = @wallId
         ORDER BY r.NicheLevel, r.NicheRowlId, n.NicheId
       `;

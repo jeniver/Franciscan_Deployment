@@ -508,10 +508,10 @@ export function NicheDetails({
               value={formData.nicheCode || ''}
               onChange={(e) => handleNicheCodeChange(e.target.value)}
               className={`w-full px-4 py-2.5 border-2 rounded-lg focus:ring-2 focus:ring-[#8b5a2b] focus:border-transparent font-medium ${isExistingApplication || isReadOnly
-                  ? 'bg-gray-100 cursor-not-allowed border-gray-300'
-                  : selectedNiches.length > 0 && formData.nicheCode
-                    ? 'bg-[#8b5a2b] text-white border-[#8b5a2b] placeholder-white placeholder-opacity-70'
-                    : 'bg-white border-gray-300'
+                ? 'bg-gray-100 cursor-not-allowed border-gray-300'
+                : selectedNiches.length > 0 && formData.nicheCode
+                  ? 'bg-[#8b5a2b] text-white border-[#8b5a2b] placeholder-white placeholder-opacity-70'
+                  : 'bg-white border-gray-300'
                 }`}
               placeholder={selectedNiches.length > 0 ? formData.nicheCode || "Enter niche code" : "Enter niche code (e.g., 1201)"}
               disabled={isExistingApplication || isReadOnly}
@@ -535,33 +535,7 @@ export function NicheDetails({
               </div>
             )}
           </div>
-          {/* Checkboxes below Niche Code input */}
-          <div className="mt-2 space-y-1.5">
-            <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.nicheCode && niches.length > 0 && niches.find(n => {
-                  const nicheCode = String(n.code || '').toLowerCase();
-                  const formCode = String(formData.nicheCode || '').toLowerCase();
-                  return nicheCode === formCode;
-                }) ? true : false}
-                readOnly
-                className="w-3.5 h-3.5 text-[#8b5a2b] border-gray-300 rounded focus:ring-[#8b5a2b] cursor-default"
-              />
-              <span>Niche found and highlighted in grid</span>
-            </label>
-            {isExistingApplication && (
-              <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={true}
-                  readOnly
-                  className="w-3.5 h-3.5 text-[#8b5a2b] border-gray-300 rounded focus:ring-[#8b5a2b] cursor-default"
-                />
-                <span>Niche code is read-only when viewing existing application</span>
-              </label>
-            )}
-          </div>
+
 
           {/* Selected Niche Numbers Display */}
           {/* {selectedNiches && selectedNiches.length > 0 && (
@@ -595,49 +569,7 @@ export function NicheDetails({
         </div>
       </div>
 
-      {/* Niche Location Information (from API response) */}
-      {/* {(formData.wallName || formData.rowNumber) && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-medium text-blue-900">Niche Location Information</h4>
-              {matchingNicheByLocation && (
-                <button
-                  onClick={() => {
-                    const nicheIndex = niches.findIndex(n => n.nicheId === matchingNicheByLocation.nicheId);
-                    if (nicheIndex >= 0) {
-                      const pageNumber = Math.ceil((nicheIndex + 1) / nichesPerPage);
-                      handleSetCurrentPage(pageNumber);
-                      handleSelectNiche(matchingNicheByLocation.nicheId);
-                    }
-                  }}
-                  className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  title={`Show niche ${matchingNicheByLocation.code} in grid`}
-                >
-                  Show in Grid
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-blue-800">Wall:</span>
-                <span className="ml-2 text-blue-700">{formData.wallName || 'N/A'}</span>
-              </div>
-              <div>
-                <span className="font-medium text-blue-800">Row:</span>
-                <span className="ml-2 text-blue-700">{formData.rowNumber || 'N/A'}</span>
-              </div>
-              <div>
-                <span className="font-medium text-blue-800">Level:</span>
-                <span className="ml-2 text-blue-700">{formData.rowLevel || 'N/A'}</span>
-              </div>
-            </div>
-            {matchingNicheByLocation && (
-              <div className="mt-2 text-xs text-blue-600">
-                ✓ Matching niche found: <span className="font-semibold">{matchingNicheByLocation.code}</span>
-              </div>
-            )}
-          </div>
-        )} */}
+
 
       {/* Niche Selection Grid */}
       <div className="mb-6">
@@ -698,8 +630,8 @@ export function NicheDetails({
                   key={pageNum}
                   onClick={() => goToPage(pageNum)}
                   className={`px-3 py-2 text-sm font-bold rounded-lg transition-colors ${currentPage === pageNum
-                      ? 'bg-[#8b5a2b] text-white'
-                      : 'text-gray-900 bg-white border-2 border-gray-400 hover:bg-gray-50'
+                    ? 'bg-[#8b5a2b] text-white'
+                    : 'text-gray-900 bg-white border-2 border-gray-400 hover:bg-gray-50'
                     }`}
                 >
                   {pageNum}

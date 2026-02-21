@@ -19,7 +19,7 @@ class BaseRepository {
       const { page = 1, limit = 10, where = '', orderBy = '', params = {} } = options;
       const offset = (page - 1) * limit;
 
-      let query = `SELECT * FROM ${this.tableName}`;
+      let query = `SELECT * FROM ${this.tableName} WITH (NOLOCK)`;
 
       if (where) {
         query += ` WHERE ${where}`;
@@ -46,7 +46,7 @@ class BaseRepository {
    */
   async findById(id) {
     try {
-      const query = `SELECT * FROM ${this.tableName} WHERE ${this.getPrimaryKey()} = @id`;
+      const query = `SELECT * FROM ${this.tableName} WITH (NOLOCK) WHERE ${this.getPrimaryKey()} = @id`;
       const result = await executeQuery(query, { id });
       return result.recordset[0] || null;
     } catch (error) {
@@ -131,7 +131,7 @@ class BaseRepository {
    */
   async count(where = '', params = {}) {
     try {
-      let query = `SELECT COUNT(*) as total FROM ${this.tableName}`;
+      let query = `SELECT COUNT(*) as total FROM ${this.tableName} WITH (NOLOCK)`;
 
       if (where) {
         query += ` WHERE ${where}`;

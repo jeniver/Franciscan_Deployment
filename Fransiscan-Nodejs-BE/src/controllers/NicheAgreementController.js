@@ -479,10 +479,26 @@ class NicheAgreementController extends BaseController {
         includeDeceasedDetails: false
       });
 
-      // Check if 2nd nominee exists
-      if (!agreementDetails.nominee2 || !agreementDetails.nominee2.name) {
-        return this.sendError(res, 'No 2nd nominee found for this application', 404);
-      }
+      // Resolve nominee data: prefer nominee2, fall back to nominee1 so the
+      // agreement can still be viewed when only one nominee exists.
+      const nomineeSource = agreementDetails.nominee2 || agreementDetails.nominee || {};
+
+      const mapNominee = (n) => n ? {
+        name: n.name,
+        idNo: n.idNo,
+        address: n.address,
+        addressNo: n.addressNo,
+        addressLine1: n.addressLine1,
+        addressLine2: n.addressLine2,
+        addressCity: n.addressCity,
+        addressState: n.addressState,
+        addressCountry: n.addressCountry,
+        mobileNo: n.mobileNo,
+        email: n.email,
+        relationship: n.relationship,
+        homeTelNo: n.homeTelNo || '',
+        officeTelNo: n.officeTelNo || ''
+      } : null;
 
       // Structure data specifically for 2nd Nominee Agreement PDF generation
       const pdfData = {
@@ -491,14 +507,12 @@ class NicheAgreementController extends BaseController {
         applicationNumber: agreementDetails.applicationCode,
         generatedAt: new Date().toISOString(),
 
-        // Application Information
         application: {
           applicationNumber: agreementDetails.applicationCode,
           appliedDate: agreementDetails.appliedDate,
           agreementDate: agreementDetails.agreementDate
         },
 
-        // Applicant Information
         applicant: {
           name: agreementDetails.applicant.name,
           idNo: agreementDetails.applicant.idNo,
@@ -516,43 +530,10 @@ class NicheAgreementController extends BaseController {
           isCatholic: agreementDetails.applicant.isCatholic
         },
 
-        // 1st Nominee Information
-        nominee1: agreementDetails.nominee ? {
-          name: agreementDetails.nominee.name,
-          idNo: agreementDetails.nominee.idNo,
-          address: agreementDetails.nominee.address,
-          addressNo: agreementDetails.nominee.addressNo,
-          addressLine1: agreementDetails.nominee.addressLine1,
-          addressLine2: agreementDetails.nominee.addressLine2,
-          addressCity: agreementDetails.nominee.addressCity,
-          addressState: agreementDetails.nominee.addressState,
-          addressCountry: agreementDetails.nominee.addressCountry,
-          mobileNo: agreementDetails.nominee.mobileNo,
-          email: agreementDetails.nominee.email,
-          relationship: agreementDetails.nominee.relationship,
-          homeTelNo: agreementDetails.nominee.homeTelNo || '',
-          officeTelNo: agreementDetails.nominee.officeTelNo || ''
-        } : null,
+        nominee1: mapNominee(agreementDetails.nominee),
 
-        // 2nd Nominee Information
-        nominee2: {
-          name: agreementDetails.nominee2.name,
-          idNo: agreementDetails.nominee2.idNo,
-          address: agreementDetails.nominee2.address,
-          addressNo: agreementDetails.nominee2.addressNo,
-          addressLine1: agreementDetails.nominee2.addressLine1,
-          addressLine2: agreementDetails.nominee2.addressLine2,
-          addressCity: agreementDetails.nominee2.addressCity,
-          addressState: agreementDetails.nominee2.addressState,
-          addressCountry: agreementDetails.nominee2.addressCountry,
-          mobileNo: agreementDetails.nominee2.mobileNo,
-          email: agreementDetails.nominee2.email,
-          relationship: agreementDetails.nominee2.relationship,
-          homeTelNo: agreementDetails.nominee2.homeTelNo || '',
-          officeTelNo: agreementDetails.nominee2.officeTelNo || ''
-        },
+        nominee2: mapNominee(nomineeSource),
 
-        // Niche Information
         niche: {
           number: agreementDetails.niche.number,
           rowNumber: agreementDetails.niche.rowNumber,
@@ -560,10 +541,8 @@ class NicheAgreementController extends BaseController {
           chapelName: agreementDetails.niche.chapelName
         },
 
-        // Beneficiaries Information
         beneficiaries: agreementDetails.beneficiaries || [],
 
-        // Report Information for Crystal Reports
         crystalReport: {
           reportPath: 'Reports/ChangeNominee.rpt',
           reportName: 'ChangeNominee',
@@ -571,15 +550,13 @@ class NicheAgreementController extends BaseController {
           parameters: {
             applicationCode: agreementDetails.applicationCode,
             applicantName: agreementDetails.applicant.name,
-            nominee2Name: agreementDetails.nominee2.name,
+            nominee2Name: nomineeSource.name || '',
             nicheNumber: agreementDetails.niche.number
           }
         },
 
-        // Print Ready Status
         printReady: agreementDetails.printReady || {},
 
-        // Metadata
         metadata: agreementDetails.metadata || {}
       };
 

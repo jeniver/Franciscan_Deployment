@@ -136,7 +136,7 @@ class EngraveApplicationRepository {
         // Check if this code already exists
         const existingQuery = `
           SELECT TOP 1 Code 
-          FROM NicheInscriptionRequest 
+          FROM NicheInscriptionRequest WITH (NOLOCK)
           WHERE Code = @code AND ChurchId = @churchId
         `;
         const existingResult = await executeRawQuery(existingQuery, {
@@ -148,7 +148,7 @@ class EngraveApplicationRepository {
           // Code already exists, append suffix
           const lastCodeQuery = `
             SELECT TOP 1 Code 
-            FROM NicheInscriptionRequest 
+            FROM NicheInscriptionRequest WITH (NOLOCK)
             WHERE Code LIKE @codePattern AND ChurchId = @churchId
             ORDER BY NicheInscriptionRequestId DESC
           `;
@@ -171,7 +171,7 @@ class EngraveApplicationRepository {
         // Generate sequential number: I-1, I-2, etc.
         const lastCodeQuery = `
           SELECT TOP 1 Code 
-          FROM NicheInscriptionRequest 
+          FROM NicheInscriptionRequest WITH (NOLOCK)
           WHERE ChurchId = @churchId 
             AND Code LIKE 'I-%'
             AND Code NOT LIKE 'I-%-%'
@@ -905,7 +905,7 @@ class EngraveApplicationRepository {
       // Check if application exists
       const checkQuery = `
         SELECT NicheInscriptionRequestId 
-        FROM NicheInscriptionRequest 
+        FROM NicheInscriptionRequest WITH (NOLOCK)
         WHERE Code = @code
       `;
 

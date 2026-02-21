@@ -24,6 +24,7 @@ export interface Beneficiary {
   fullName?: string;
   nric?: string;
   status?: string;
+  lifeStatus?: string;
   religion?: string;
   dateOfBirth?: string;
   relationshipToNominee1?: string;

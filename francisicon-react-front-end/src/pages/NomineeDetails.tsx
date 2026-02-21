@@ -419,7 +419,14 @@ export function NomineeDetails({
       unitNo: person.addressCity?.replace('#', '') || '',
       postalCode: person.addressState || '',
       country: person.addressCountry || 'Singapore',
-      address: person.address || ''
+      address: buildLegacyAddress({
+        block: isBlock ? 'Block' : 'No',
+        blockNo: person.addressLine1 || '',
+        streetName: person.addressLine2 || '',
+        unitNo: person.addressCity || '',
+        postalCode: person.addressState || '',
+        country: person.addressCountry || 'Singapore'
+      })
     };
 
     const nomineeToUpdate = nominees[index];
@@ -718,13 +725,8 @@ export function NomineeDetails({
             />
 
           </div>
-          <>{console.log("hjhjjhjjhjhjhj", formData)}</>
           {/* Second Nominee Agreement Button for second nominee */}
-          {index === 1 && (
-            <div className="mt-4 flex justify-end">
-              <PrintSecondNomineeButton applicationNumber={formData.applicationNumber} />
-            </div>
-          )}
+         
         </div>
       ))}
 
@@ -740,13 +742,21 @@ export function NomineeDetails({
             Add Nominee
           </button>
 
+          {formData.applicationNumber && (
+            <div className="mt-4 flex justify-end">
+              <PrintSecondNomineeButton applicationNumber={formData.applicationNumber} />
+            </div>
+          )}
+
           {/* Update Application Button */}
           <UpdateApplicationButton
             formData={formData}
             isReadOnly={isReadOnly}
           />
+          
         </div>
       )}
+
 
       {/* Empty State */}
       {nominees.length === 0 && (
@@ -762,8 +772,10 @@ export function NomineeDetails({
               <PlusIcon className="w-4 h-4 mr-2" />
               Add Nominee
             </button>
+            
 
             {/* Update Application Button for empty state */}
+            
             <UpdateApplicationButton
               formData={formData}
               isReadOnly={isReadOnly}
@@ -772,6 +784,7 @@ export function NomineeDetails({
           </div>
         </div>
       )}
+    
     </div>
   </div>;
 }

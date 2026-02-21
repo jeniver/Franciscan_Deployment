@@ -29,7 +29,7 @@ export function InvoiceItemTable({
     receiptItems = [],
     disabled = false
 }: InvoiceItemTableProps) {
-    const GST_OPTIONS = [7, 8, 9, 10, 11];
+    const GST_OPTIONS = [0, 7, 8, 9, 10, 11];
 
     const toNumber = (value: unknown): number => {
         const parsed = Number(value);
@@ -153,8 +153,8 @@ export function InvoiceItemTable({
                         <th className="px-3 py-2 text-left w-40">Ref No</th>
                         <th className="px-3 py-2 text-right w-20">Qty</th>
                         <th className="px-3 py-2 text-right w-32">Unit Price</th>
-                        <th className="px-3 py-2 text-right w-32">Amount</th>
                         <th className="px-3 py-2 text-right w-24">GST %</th>
+                        <th className="px-3 py-2 text-right w-32">Amount</th>
                         <th className="px-1 py-2 w-10"></th>
                     </tr>
                 </thead>
@@ -214,6 +214,18 @@ export function InvoiceItemTable({
                                 />
                             </td>
                             <td className="px-2 py-2">
+                                <select
+                                    value={item.taxPercent}
+                                    onChange={(e) => handleUpdateItem(item.id, { taxPercent: Number(e.target.value) })}
+                                    disabled={disabled}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded focus:border-[#4b3621] outline-none text-right"
+                                >
+                                    {GST_OPTIONS.map((rate) => (
+                                        <option key={rate} value={rate}>{rate}%</option>
+                                    ))}
+                                </select>
+                            </td>
+                            <td className="px-2 py-2">
                                 <input
                                     type="text"
                                     inputMode="decimal"
@@ -228,18 +240,7 @@ export function InvoiceItemTable({
                                     className="w-full px-2 py-1 border border-gray-300 rounded focus:border-[#4b3621] outline-none text-right font-medium"
                                 />
                             </td>
-                            <td className="px-2 py-2">
-                                <select
-                                    value={item.taxPercent}
-                                    onChange={(e) => handleUpdateItem(item.id, { taxPercent: Number(e.target.value) })}
-                                    disabled={disabled}
-                                    className="w-full px-2 py-1 border border-gray-300 rounded focus:border-[#4b3621] outline-none text-right"
-                                >
-                                    {GST_OPTIONS.map((rate) => (
-                                        <option key={rate} value={rate}>{rate}%</option>
-                                    ))}
-                                </select>
-                            </td>
+
                             <td className="px-1 py-2 text-center">
                                 <button
                                     onClick={() => handleRemoveItem(item.id)}

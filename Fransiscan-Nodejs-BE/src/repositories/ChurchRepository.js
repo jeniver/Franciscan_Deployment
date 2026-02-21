@@ -22,7 +22,7 @@ class ChurchRepository extends BaseRepository {
    */
   async findByName(name) {
     try {
-      const query = 'SELECT * FROM Churches WHERE Name = @name';
+      const query = 'SELECT * FROM Churches WITH (NOLOCK) WHERE Name = @name';
       const result = await executeQuery(query, { name });
       return result.recordset[0] ? new Church(result.recordset[0]) : null;
     } catch (error) {
@@ -42,7 +42,7 @@ class ChurchRepository extends BaseRepository {
       const offset = (page - 1) * limit;
 
       const query = `
-        SELECT * FROM Churches 
+        SELECT * FROM Churches WITH (NOLOCK)
         WHERE Active = 1
         ORDER BY Name
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
@@ -68,7 +68,7 @@ class ChurchRepository extends BaseRepository {
       const offset = (page - 1) * limit;
 
       const query = `
-        SELECT * FROM Churches 
+        SELECT * FROM Churches WITH (NOLOCK)
         WHERE Name LIKE @searchTerm
         ORDER BY Name
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY

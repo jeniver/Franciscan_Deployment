@@ -294,16 +294,16 @@ class ReportRepository {
             WHEN r.Address IS NOT NULL AND r.Address != '' THEN r.Address
             ELSE @address
           END as Address
-        FROM Receipt r
-        INNER JOIN Invoice d ON r.InvoiceId = d.InvoiceId
-        LEFT JOIN InvoiceDetail k ON k.InvoiceId = r.InvoiceId
-        LEFT JOIN NicheApplication i ON i.Code = k.RefDocNumber
-        LEFT JOIN Niche e ON e.NicheId = i.NicheId
-        LEFT JOIN NicheRow f ON f.NicheRowlId = e.NicheRowlId
-        LEFT JOIN NicheWall g ON g.NicheWallId = f.NicheWallId
-        LEFT JOIN Chapel h ON h.ChurchId = g.ChurchId AND h.ChapelId = g.ChapelId
-        LEFT JOIN MisalaniousReceiptDetail mrd ON mrd.ReceiptId = r.ReceiptId
-        LEFT JOIN Item c ON c.ItemId = mrd.ItemId
+        FROM Receipt r WITH (NOLOCK)
+        INNER JOIN Invoice d WITH (NOLOCK) ON r.InvoiceId = d.InvoiceId
+        LEFT JOIN InvoiceDetail k WITH (NOLOCK) ON k.InvoiceId = r.InvoiceId
+        LEFT JOIN NicheApplication i WITH (NOLOCK) ON i.Code = k.RefDocNumber
+        LEFT JOIN Niche e WITH (NOLOCK) ON e.NicheId = i.NicheId
+        LEFT JOIN NicheRow f WITH (NOLOCK) ON f.NicheRowlId = e.NicheRowlId
+        LEFT JOIN NicheWall g WITH (NOLOCK) ON g.NicheWallId = f.NicheWallId
+        LEFT JOIN Chapel h WITH (NOLOCK) ON h.ChurchId = g.ChurchId AND h.ChapelId = g.ChapelId
+        LEFT JOIN MisalaniousReceiptDetail mrd WITH (NOLOCK) ON mrd.ReceiptId = r.ReceiptId
+        LEFT JOIN Item c WITH (NOLOCK) ON c.ItemId = mrd.ItemId
         WHERE d.Code = @invoiceCode
       `;
 
@@ -345,9 +345,9 @@ class ReportRepository {
           i.Country as AddressCountry,
           -- Also include TransactionDate as InvoiceDate for backward compatibility
           i.TransactionDate as InvoiceDate
-        FROM Invoice i
-        LEFT JOIN InvoiceDetail id ON i.InvoiceId = id.InvoiceId
-        LEFT JOIN Receipt r ON r.InvoiceId = i.InvoiceId
+        FROM Invoice i WITH (NOLOCK)
+        LEFT JOIN InvoiceDetail id WITH (NOLOCK) ON i.InvoiceId = id.InvoiceId
+        LEFT JOIN Receipt r WITH (NOLOCK) ON r.InvoiceId = i.InvoiceId
         WHERE i.TransactionDate >= @fromDate 
           AND i.TransactionDate <= @toDate
         ORDER BY i.TransactionDate DESC, i.Code
@@ -393,15 +393,15 @@ class ReportRepository {
           p_nom.Name as NomineeName,
           p_nom.MobileNo as NomineeMobile,
           p_nom.IDNo as NomineeIDNo
-        FROM NicheInscriptionRequest nir
-        INNER JOIN NicheInscriptionRequestDecesed nird ON nird.NicheInscriptionRequestId = nir.NicheInscriptionRequestId
-        INNER JOIN NicheBooking nb ON nb.NicheBookingId = nir.NicheBookingId
-        INNER JOIN Niche n ON n.NicheId = nb.NicheId
-        INNER JOIN NicheRow nr ON nr.NicheRowlId = n.NicheRowlId
-        INNER JOIN NicheWall nw ON nw.NicheWallId = nr.NicheWallId
-        INNER JOIN Chapel c ON c.ChapelId = nw.ChapelId AND c.ChurchId = nw.ChurchId
-        LEFT JOIN Person p_app ON p_app.PersonId = nb.ContactPersonId
-        LEFT JOIN Person p_nom ON p_nom.PersonId = nb.NomineeId
+        FROM NicheInscriptionRequest nir WITH (NOLOCK)
+        INNER JOIN NicheInscriptionRequestDecesed nird WITH (NOLOCK) ON nird.NicheInscriptionRequestId = nir.NicheInscriptionRequestId
+        INNER JOIN NicheBooking nb WITH (NOLOCK) ON nb.NicheBookingId = nir.NicheBookingId
+        INNER JOIN Niche n WITH (NOLOCK) ON n.NicheId = nb.NicheId
+        INNER JOIN NicheRow nr WITH (NOLOCK) ON nr.NicheRowlId = n.NicheRowlId
+        INNER JOIN NicheWall nw WITH (NOLOCK) ON nw.NicheWallId = nr.NicheWallId
+        INNER JOIN Chapel c WITH (NOLOCK) ON c.ChapelId = nw.ChapelId AND c.ChurchId = nw.ChurchId
+        LEFT JOIN Person p_app WITH (NOLOCK) ON p_app.PersonId = nb.ContactPersonId
+        LEFT JOIN Person p_nom WITH (NOLOCK) ON p_nom.PersonId = nb.NomineeId
         WHERE nir.Code = @insCode
       `;
 

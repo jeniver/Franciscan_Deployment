@@ -876,19 +876,25 @@ const buildApplicationResponse = (
     ? buildAddressString(applicationJson.nominee2.address || {})
     : null;
 
-  const beneficiariesForResponse = (applicationJson.beneficiaries || []).map((beneficiary, index) => ({
-    index: index + 1,
-    name: beneficiary.name,
-    fullName: beneficiary.name,
-    relationship: beneficiary.relationshipToApplicant,
-    relationshipToApplicant: beneficiary.relationshipToApplicant,
-    idNo: beneficiary.idNo,
-    nric: beneficiary.idNo,
-    dateOfBirth: beneficiary.dateOfBirth,
-    birthYear: beneficiary.birthYear,
-    isCatholic: beneficiary.isCatholic,
-    isMale: beneficiary.isMale
-  }));
+  const rawPayloadBeneficiaries = Array.isArray(requestPayload.beneficiaries) ? requestPayload.beneficiaries : [];
+  const beneficiariesForResponse = (applicationJson.beneficiaries || []).map((beneficiary, index) => {
+    const resolvedStatus = beneficiary.status || rawPayloadBeneficiaries[index]?.status || 'Not Occupied';
+    return {
+      index: index + 1,
+      name: beneficiary.name,
+      fullName: beneficiary.name,
+      relationship: beneficiary.relationshipToApplicant,
+      relationshipToApplicant: beneficiary.relationshipToApplicant,
+      idNo: beneficiary.idNo,
+      nric: beneficiary.idNo,
+      dateOfBirth: beneficiary.dateOfBirth,
+      birthYear: beneficiary.birthYear,
+      isCatholic: beneficiary.isCatholic,
+      isMale: beneficiary.isMale,
+      status: resolvedStatus,
+      lifeStatus: beneficiary.lifeStatus || resolvedStatus
+    };
+  });
 
   const beneficiary1 = beneficiariesForResponse[0] || null;
   const beneficiary2Response = beneficiariesForResponse[1] || null;
@@ -1827,19 +1833,25 @@ class NicheApplicationService {
       : null;
 
     // Transform beneficiaries to response format
-    const beneficiariesForResponse = (applicationJson.beneficiaries || []).map((beneficiary, index) => ({
-      name: beneficiary.name,
-      idNo: beneficiary.idNo,
-      isCatholic: beneficiary.isCatholic,
-      isMale: beneficiary.isMale,
-      relationshipToApplicant: beneficiary.relationshipToApplicant,
-      dateOfBirth: beneficiary.dateOfBirth,
-      birthYear: beneficiary.birthYear,
-      relationshipToNominee1: beneficiary.relationshipToNominee1,
-      relationshipToNominee2: beneficiary.relationshipToNominee2,
-      status: beneficiary.status || 'Not Occupied',
-      sex: beneficiary.isMale ? 'Male' : 'Female'
-    }));
+    // Resolve status from requestData (frontend payload) since NicheApplicationBeneficiary has no status column
+    const rawBeneficiaries = Array.isArray(requestData?.beneficiaries) ? requestData.beneficiaries : [];
+    const beneficiariesForResponse = (applicationJson.beneficiaries || []).map((beneficiary, index) => {
+      const resolvedStatus = beneficiary.status || rawBeneficiaries[index]?.status || 'Not Occupied';
+      return {
+        name: beneficiary.name,
+        idNo: beneficiary.idNo,
+        isCatholic: beneficiary.isCatholic,
+        isMale: beneficiary.isMale,
+        relationshipToApplicant: beneficiary.relationshipToApplicant,
+        dateOfBirth: beneficiary.dateOfBirth,
+        birthYear: beneficiary.birthYear,
+        relationshipToNominee1: beneficiary.relationshipToNominee1,
+        relationshipToNominee2: beneficiary.relationshipToNominee2,
+        status: resolvedStatus,
+        sex: beneficiary.isMale ? 'Male' : 'Female',
+        lifeStatus: beneficiary.lifeStatus || resolvedStatus
+      };
+    });
 
     // Transform nominees to response format
     const nomineesForResponse = [];
@@ -1984,6 +1996,36 @@ class NicheApplicationService {
       }
 
       const responseData = buildApplicationResponse(applicationValue);
+
+      // Enrich beneficiaries with BeneficiaryStatus from NicheBookingBeneficiary
+      if (responseData && responseData.beneficiaries) {
+        try {
+          const { executeQuery } = require('../config/database');
+          const statusResult = await executeQuery(
+            `SELECT TOP 5 nbb.Name, nbb.BeneficiaryStatus
+             FROM NicheBooking nb WITH (NOLOCK)
+             INNER JOIN NicheBookingBeneficiary nbb WITH (NOLOCK) ON nb.NicheBookingId = nbb.NicheBookingId
+             WHERE nb.NicheApplicationId = @appId
+               AND nbb.BeneficiaryStatus >= 0
+             ORDER BY nbb.NicheBookingBeneficiaryId`,
+            { appId: applicationValue.nicheApplicationId },
+            { timeout: 10000 }
+          );
+          const statusRecords = statusResult.recordset || [];
+          responseData.beneficiaries.forEach((bene, idx) => {
+            const match = statusRecords.find(r =>
+              r.Name && bene.name && r.Name.trim().toLowerCase() === bene.name.trim().toLowerCase()
+            ) || statusRecords[idx];
+            if (match) {
+              bene.status = match.BeneficiaryStatus === 1 ? 'Occupied' : 'Not Occupied';
+              bene.lifeStatus = match.BeneficiaryStatus === 1 ? 'Occupied' : 'Not Occupied';
+            }
+          });
+        } catch (statusErr) {
+          logger.warn('[getApplicationByCode] Could not enrich beneficiary status:', statusErr.message);
+        }
+      }
+
       const consentFormsPayload = buildConsentFormsPayload({
         selections: consentFormValue?.consentForms,
         consentRecord: consentFormValue
@@ -2338,6 +2380,9 @@ class NicheApplicationService {
         application,
         beneficiaries // Pass the actual beneficiaries array
       );
+
+      // Sync beneficiary status to NicheBookingBeneficiary (the only table with a BeneficiaryStatus column)
+      await this._syncBeneficiaryStatusToBooking(existing, data, beneficiaries);
 
       let consentFormsPayload = null;
       if (shouldPersistConsent) {
@@ -2726,6 +2771,178 @@ class NicheApplicationService {
    * @param {number} churchId - Church ID for ACL
    * @returns {Promise<Object>} Result with success status and updated application data
    */
+
+  /**
+   * Sync beneficiary "Occupied/Not Occupied" status from the frontend payload
+   * into NicheBookingBeneficiary.BeneficiaryStatus (the only DB column that stores this).
+   * Also updates Niche.Status to 4 (Occupied) / 5 (Partially Occupied) / 3 (Booked)
+   * when the application has an inscription with deceased data.
+   */
+  async _syncBeneficiaryStatusToBooking(existingApplication, rawPayload, beneficiaryEntities) {
+    try {
+      const { executeQuery } = require('../config/database');
+      const nicheApplicationId = existingApplication.nicheApplicationId;
+
+      // Extract raw status values from the payload (before buildBeneficiaryEntity dropped them)
+      const rawStatuses = [];
+      if (Array.isArray(rawPayload.beneficiaries)) {
+        rawPayload.beneficiaries.forEach(b => {
+          rawStatuses.push(b.status || 'Not Occupied');
+        });
+      } else {
+        ['beneficiary1', 'beneficiary2', 'beneficiary3'].forEach(prefix => {
+          const statusField = rawPayload[`${prefix}Status`] || rawPayload[prefix]?.status;
+          if (statusField !== undefined) rawStatuses.push(statusField);
+        });
+      }
+
+      if (rawStatuses.length === 0 && beneficiaryEntities.length === 0) return;
+
+      // Find the NicheBooking for this application
+      const bookingResult = await executeQuery(
+        `SELECT TOP 1 NicheBookingId FROM NicheBooking WITH (NOLOCK) WHERE NicheApplicationId = @appId`,
+        { appId: nicheApplicationId },
+        { timeout: 10000 }
+      );
+
+      if (!bookingResult.recordset || bookingResult.recordset.length === 0) {
+        logger.info('[_syncBeneficiaryStatusToBooking] No NicheBooking found for application, skipping status sync');
+        return;
+      }
+
+      const bookingId = bookingResult.recordset[0].NicheBookingId;
+
+      // Get existing NicheBookingBeneficiary records (exclude deactivated)
+      const nbbResult = await executeQuery(
+        `SELECT NicheBookingBeneficiaryId, Name, IDNo, BeneficiaryStatus
+         FROM NicheBookingBeneficiary WITH (NOLOCK)
+         WHERE NicheBookingId = @bookingId AND BeneficiaryStatus >= 0
+         ORDER BY NicheBookingBeneficiaryId`,
+        { bookingId },
+        { timeout: 10000 }
+      );
+
+      const nbbRecords = nbbResult.recordset || [];
+
+      // Parse status string to DB integer using the same logic as NicheBookingService
+      const parseStatus = (val) => {
+        if (val === undefined || val === null) return 1;
+        if (typeof val === 'number') return val;
+        const normalized = String(val).trim().toLowerCase();
+        if (['active', 'occupied', 'confirmed'].includes(normalized)) return 1;
+        if (['inactive', 'not occupied', 'pending', 'available'].includes(normalized)) return 0;
+        if (['deceased', 'released', 'closed'].includes(normalized)) return 2;
+        return 1;
+      };
+
+      // Match beneficiaries by name or IDNo (case-insensitive) and update status
+      for (let i = 0; i < beneficiaryEntities.length; i++) {
+        const entity = beneficiaryEntities[i];
+        // Use raw status from frontend payload, aligned by name match rather than index
+        const rawMatch = Array.isArray(rawPayload.beneficiaries)
+          ? rawPayload.beneficiaries.find(b =>
+              b.name && entity.name &&
+              b.name.trim().toLowerCase() === entity.name.trim().toLowerCase()
+            )
+          : undefined;
+        const statusValue = rawMatch?.status ?? (rawStatuses[i] !== undefined ? rawStatuses[i] : 'Not Occupied');
+        const dbStatus = parseStatus(statusValue);
+
+        // Find matching NicheBookingBeneficiary by name first, then by IDNo
+        let match = nbbRecords.find(r =>
+          r.Name && entity.name &&
+          r.Name.trim().toLowerCase() === entity.name.trim().toLowerCase()
+        );
+        if (!match && entity.idNo) {
+          match = nbbRecords.find(r =>
+            r.IDNo && entity.idNo &&
+            r.IDNo.trim().toLowerCase() === entity.idNo.trim().toLowerCase()
+          );
+        }
+        // Fall back to positional matching if only one record
+        if (!match && nbbRecords.length === 1 && beneficiaryEntities.length === 1) {
+          match = nbbRecords[0];
+        }
+
+        if (match && match.BeneficiaryStatus !== dbStatus) {
+          await executeQuery(
+            `UPDATE NicheBookingBeneficiary SET BeneficiaryStatus = @status WHERE NicheBookingBeneficiaryId = @id`,
+            { status: dbStatus, id: match.NicheBookingBeneficiaryId },
+            { timeout: 10000 }
+          );
+          logger.info(`[_syncBeneficiaryStatusToBooking] Updated BeneficiaryStatus to ${dbStatus} for ${entity.name}`);
+        } else if (!match) {
+          logger.warn(`[_syncBeneficiaryStatusToBooking] No NicheBookingBeneficiary match for "${entity.name}" (idNo: ${entity.idNo})`);
+        }
+      }
+
+      // Check if niche should transition to Occupied (4) / Partially Occupied (5) / Booked (3)
+      await this._checkAndUpdateNicheOccupancy(nicheApplicationId, existingApplication.nicheId, bookingId);
+    } catch (error) {
+      logger.warn('[_syncBeneficiaryStatusToBooking] Non-fatal error syncing beneficiary status:', error.message);
+    }
+  }
+
+  /**
+   * Check if a niche should be marked Occupied based on:
+   * 1) At least one beneficiary with BeneficiaryStatus = 1 (Occupied)
+   * 2) An inscription exists with deceased/internment data
+   */
+  async _checkAndUpdateNicheOccupancy(nicheApplicationId, nicheId, bookingId) {
+    try {
+      const { executeQuery } = require('../config/database');
+
+      if (!nicheId) return;
+
+      // Count occupied vs total beneficiaries
+      const countResult = await executeQuery(
+        `SELECT
+           COUNT(*) AS totalBeneficiaries,
+           SUM(CASE WHEN BeneficiaryStatus = 1 THEN 1 ELSE 0 END) AS occupiedCount
+         FROM NicheBookingBeneficiary WITH (NOLOCK)
+         WHERE NicheBookingId = @bookingId`,
+        { bookingId },
+        { timeout: 10000 }
+      );
+
+      const { totalBeneficiaries, occupiedCount } = countResult.recordset[0] || {};
+
+      // Check if inscription exists with deceased data (internment has occurred)
+      const inscriptionResult = await executeQuery(
+        `SELECT TOP 1 nird.InternmentDate
+         FROM NicheInscriptionRequest nir WITH (NOLOCK)
+         INNER JOIN NicheInscriptionRequestDecesed nird WITH (NOLOCK)
+           ON nir.NicheInscriptionRequestId = nird.NicheInscriptionRequestId
+         WHERE nir.NicheBookingId = @bookingId
+           AND nird.InternmentDate IS NOT NULL`,
+        { bookingId },
+        { timeout: 10000 }
+      );
+
+      const hasInternment = inscriptionResult.recordset && inscriptionResult.recordset.length > 0;
+
+      let newStatus;
+      if (occupiedCount > 0 && hasInternment) {
+        newStatus = (occupiedCount >= totalBeneficiaries) ? 4 : 5; // 4=Occupied, 5=Partially Occupied
+      } else if (occupiedCount > 0) {
+        newStatus = (occupiedCount >= totalBeneficiaries) ? 4 : 5;
+      } else {
+        newStatus = 3; // Revert to Booked
+      }
+
+      // Only update if current status is 3, 4, or 5 (don't change other statuses like 0, 1, 2)
+      await executeQuery(
+        `UPDATE Niche SET Status = @newStatus WHERE NicheId = @nicheId AND Status IN (3, 4, 5)`,
+        { newStatus, nicheId },
+        { timeout: 10000 }
+      );
+
+      logger.info(`[_checkAndUpdateNicheOccupancy] Niche ${nicheId}: occupied=${occupiedCount}/${totalBeneficiaries}, internment=${hasInternment}, newStatus=${newStatus}`);
+    } catch (error) {
+      logger.warn('[_checkAndUpdateNicheOccupancy] Non-fatal error checking niche occupancy:', error.message);
+    }
+  }
+
   async confirmBooking(code, churchId) {
     try {
       // Check existing application

@@ -22,6 +22,12 @@ export interface InscriptionAgreementData {
     mobile?: string;
     phone?: string;
     address: string;
+    addressNo?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    addressCity?: string;
+    addressState?: string;
+    addressCountry?: string;
     fullContact?: string;
   };
   

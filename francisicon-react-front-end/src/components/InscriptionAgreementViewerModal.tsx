@@ -16,28 +16,13 @@ import inscriptionAgreementService, {
 } from '../services/inscriptionAgreementService'
 import { invoiceService } from '../services/invoiceService'
 import { paymentModeToLabel } from '../utils/paymentMode'
+import addressUtils from '../utils/addressUtils'
 
 interface InscriptionAgreementViewerModalProps {
   isOpen: boolean
   onClose: () => void
   inscriptionCode: string
   initialData?: InscriptionAgreementData | null
-}
-
-interface DeceasedDetails {
-  name: string
-  deathCertNo: string
-  dateBorn: string
-  dateDied: string
-}
-
-interface PaymentItem {
-  date: string
-  invReceipt: string
-  description: string
-  amount: number
-  gst: string
-  totalAmount: number
 }
 
 export function InscriptionAgreementViewerModal({
@@ -78,7 +63,19 @@ export function InscriptionAgreementViewerModal({
           try {
             const invoiceData = await invoiceService.getInvoiceByCode(inscriptionCode, 'INCR')
             const hasInvoice = Boolean(invoiceData?.hasInvoice && invoiceData?.code)
-            const hasReceipt = Boolean(invoiceData?.hasReceipt && invoiceData?.receiptCode)
+            // Receipt data may be nested under invoiceData.receipt or flat at top level
+            const rcpt = invoiceData?.receipt
+            const receiptCode = invoiceData?.receiptCode || rcpt?.receiptCode || ''
+            const hasReceipt = Boolean(invoiceData?.hasReceipt && receiptCode)
+
+            const fmtPaymentDate = (raw: any) => {
+              if (!raw) return ''
+              const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+              const pad = (n: number) => String(n).padStart(2, '0')
+              const d = new Date(raw)
+              if (!isNaN(d.getTime())) return `${pad(d.getDate())}-${months[d.getMonth()]}-${d.getFullYear()}`
+              return String(raw).trim()
+            }
 
             const paymentRows = []
             if (hasInvoice) {
@@ -86,11 +83,9 @@ export function InscriptionAgreementViewerModal({
               const invoiceTax = Number(invoiceData?.summary?.totalTax ?? invoiceData?.taxAmount ?? 0)
               const invoiceTotal = Number(invoiceData?.summary?.grandTotal ?? invoiceData?.totalAmount ?? 0)
               paymentRows.push({
-                date: invoiceData?.transactionDate
-                  ? new Date(invoiceData.transactionDate).toLocaleDateString('en-SG')
-                  : '',
+                date: fmtPaymentDate(invoiceData?.transactionDate),
                 invReceipt: invoiceData?.code || '',
-                description: invoiceData?.applicationCode || inscriptionCode,
+                description: invoiceData?.refDocNumber || invoiceData?.applicationCode || inscriptionCode,
                 amount: Number.isFinite(invoiceSubtotal) ? invoiceSubtotal : 0,
                 gst: Number.isFinite(invoiceTax) ? `$ ${invoiceTax.toFixed(2)}` : '',
                 totalAmount: Number.isFinite(invoiceTotal) ? invoiceTotal : 0,
@@ -99,18 +94,17 @@ export function InscriptionAgreementViewerModal({
 
             if (hasReceipt) {
               const resolvedPaymentMode = paymentModeToLabel(
-                invoiceData?.receiptPaymentMode ?? invoiceData?.paymentMode
+                rcpt?.receiptPaymentMode ?? invoiceData?.receiptPaymentMode ?? invoiceData?.paymentMode
               )
               const receiptAmount = Number(
-                invoiceData?.receiptPayingAmount
-                ?? invoiceData?.receiptTotalAmount
+                rcpt?.receiptPayingAmount ?? invoiceData?.receiptPayingAmount
+                ?? rcpt?.receiptTotalAmount ?? invoiceData?.receiptTotalAmount
                 ?? 0
               )
+              const receiptDate = rcpt?.receiptDate ?? invoiceData?.receiptDate
               paymentRows.push({
-                date: invoiceData?.receiptDate
-                  ? new Date(invoiceData.receiptDate).toLocaleDateString('en-SG')
-                  : '',
-                invReceipt: invoiceData?.receiptCode || '',
+                date: fmtPaymentDate(receiptDate),
+                invReceipt: receiptCode,
                 description: resolvedPaymentMode,
                 amount: 0,
                 gst: '',
@@ -381,28 +375,32 @@ export function InscriptionAgreementViewerModal({
 
   if (!isOpen) return null
 
+  // Consistent date formatter: DD-Mon-YYYY (e.g. "19-Feb-2026") matching invoice/receipt
+  const formatDate = (raw: string | undefined | null): string => {
+    if (!raw) return ''
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const d = new Date(raw)
+    if (!isNaN(d.getTime())) return `${pad(d.getDate())}-${months[d.getMonth()]}-${d.getFullYear()}`
+    return String(raw).trim()
+  }
+
   // Map backend data to component props
   const mapAgreementDataToProps = (data: InscriptionAgreementData) => {
     if (!data) return null
 
-    // Format deceased details
-    const deceased1 = data.deceased?.[0] ? {
-      name: data.deceased[0].name || '',
-      deathCertNo: data.deceased[0].deathCertificateNo || '',
-      dateBorn: data.deceased[0].formattedDates?.birth ||
-        (data.deceased[0].dateOfBirth ? new Date(data.deceased[0].dateOfBirth).toLocaleDateString('en-SG') : ''),
-      dateDied: data.deceased[0].formattedDates?.death ||
-        (data.deceased[0].dateOfDeath ? new Date(data.deceased[0].dateOfDeath).toLocaleDateString('en-SG') : ''),
-    } : { name: '', deathCertNo: '', dateBorn: '', dateDied: '' }
+    // Build structured address lines using addressUtils (same as invoice/receipt)
+    const applicantAddressLines = addressUtils.buildAddressLines(data.applicant || {} as any)
 
-    const deceased2 = data.deceased?.[1] ? {
-      name: data.deceased[1].name || '',
-      deathCertNo: data.deceased[1].deathCertificateNo || '',
-      dateBorn: data.deceased[1].formattedDates?.birth ||
-        (data.deceased[1].dateOfBirth ? new Date(data.deceased[1].dateOfBirth).toLocaleDateString('en-SG') : ''),
-      dateDied: data.deceased[1].formattedDates?.death ||
-        (data.deceased[1].dateOfDeath ? new Date(data.deceased[1].dateOfDeath).toLocaleDateString('en-SG') : ''),
-    } : { name: '', deathCertNo: '', dateBorn: '', dateDied: '' }
+    const mapDeceased = (deceased: typeof data.deceased[0] | undefined) => {
+      if (!deceased) return { name: '', deathCertNo: '', dateBorn: '', dateDied: '' }
+      return {
+        name: deceased.name || '',
+        deathCertNo: deceased.deathCertificateNo || '',
+        dateBorn: deceased.formattedDates?.birth || formatDate(deceased.dateOfBirth),
+        dateDied: deceased.formattedDates?.death || formatDate(deceased.dateOfDeath),
+      }
+    }
 
     const payments = Array.isArray(data.payments) ? data.payments : []
 
@@ -411,20 +409,22 @@ export function InscriptionAgreementViewerModal({
       chapelName: data.niche?.chapel || '',
       nicheNo: data.niche?.code || '',
       applicantName: data.applicant?.name || '',
-      address: data.applicant?.address || '',
+      addressLines: applicantAddressLines,
       telOff: data.applicant?.phone || '',
-      telRes: data.contactPerson?.phone || '',
+      telRes: data.contactPerson?.mobile || '',
       telHP: data.applicant?.mobile || '',
       crossType: data.inscription?.crossType || 'Crucifix',
-      deceased1,
-      deceased2,
+      deceased1: mapDeceased(data.deceased?.[0]),
+      deceased2: mapDeceased(data.deceased?.[1]),
       bibleInscriptionNumber: data.inscription?.bibleChoiceId?.toString() || '',
-      dateOfInterment: data.deceased?.[0]?.formattedDates?.internment || data.deceased?.[0]?.internmentDate || '',
-      timeOfInterment: '11:00AM',
+      dateOfInterment: data.deceased?.[0]?.formattedDates?.internment || formatDate(data.deceased?.[0]?.internmentDate),
+      timeOfInterment: data.deceased?.[0]?.internmentDate
+        ? new Date(data.deceased[0].internmentDate!).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).replace(/ /g, '')
+        : '',
       bibleInscriptionText: data.inscription?.fullInscription || '',
       payments,
       signatureName: data.applicant?.name || '',
-      signatureDate: data.formattedDate || new Date().toLocaleDateString('en-SG'),
+      signatureDate: data.formattedDate || formatDate(new Date().toISOString()),
     }
   }
 
@@ -504,73 +504,162 @@ export function InscriptionAgreementViewerModal({
 }
 
 function InscriptionAgreementView({
-  inscriptionNo, chapelName, nicheNo, applicantName, address, telOff, telRes, telHP, crossType, deceased1, deceased2, bibleInscriptionNumber, dateOfInterment, timeOfInterment, bibleInscriptionText, payments, signatureName, signatureDate
+  inscriptionNo, chapelName, nicheNo, applicantName, addressLines, telOff, telRes, telHP, crossType, deceased1, deceased2, bibleInscriptionNumber, dateOfInterment, timeOfInterment, bibleInscriptionText, payments, signatureName, signatureDate
 }: any) {
   const safePayments = Array.isArray(payments) ? payments : []
+  const safeAddressLines: string[] = Array.isArray(addressLines) ? addressLines : []
 
   return (
-    <div className="w-full max-w-[210mm] mx-auto bg-white p-12 shadow-lg text-black font-serif text-sm leading-tight print:shadow-none print:p-0">
-      <div className="mb-6">
-        <h1 className="font-bold text-sm">Franciscan Columbarium a ministry of</h1>
-        <h2 className="font-bold text-sm">The Order of Friars Minor (Singapore) Ltd Co & GST Reg No. 2010163236M</h2>
-        <p>5 Bukit Batok East Ave 2, Singapore 659918</p>
-        <p>Telephone: 6560-6361, Fax: 6566-2852, Email: franciscan.columbarium@gmail.com</p>
+    <div className="w-full max-w-[210mm] mx-auto bg-white p-12 shadow-lg text-black font-sans text-[11px] leading-tight print:shadow-none print:p-0">
+      {/* Header Section */}
+      <div className="mb-4">
+        <h1 className="font-bold text-[12px]">Franciscan Columbarium a ministry of</h1>
+        <h2 className="font-bold text-[12px] mt-1">The Order of Friars Minor (Singapore) Ltd Co & GST Reg No. 2010163236M</h2>
+        <p className="font-bold text-[10px]">(Co Reg no.2010163236M)</p>
+        <p className="mt-1">5 Bukit Batok East Ave 2</p>
+        <p>Singapore 659918</p>
+        <p>Telephone : 6560-6361, Fax : 6566-2852, &nbsp;&nbsp;&nbsp; E-mail : franciscan.columbarium@gmail.com</p>
       </div>
-      <h2 className="text-center italic text-xl mb-4">"Request for inscription plaque"</h2>
-      <div className="flex justify-end items-baseline mb-2">
-        <span className="mr-2">Inscription No:</span>
-        <span className="w-24 text-center">{inscriptionNo}</span>
+
+      <h2 className="text-center italic text-xl mb-4 font-normal">"Request for inscription plaque"</h2>
+
+      {/* Inscription No and Niche Table */}
+      <div className="flex justify-end items-center mb-1 text-[12px]">
+        <span className="mr-2">Inscription No :</span>
+        <span className="w-24 text-left">{inscriptionNo}</span>
       </div>
-      <div className="border border-black mb-4 flex">
-        <div className="w-32 p-1 border-r border-black">Chapel</div>
-        <div className="flex-1 p-1 border-r border-black">{chapelName}</div>
-        <div className="w-24 p-1 border-r border-black">Niche No</div>
-        <div className="w-24 p-1">{nicheNo}</div>
+
+      <div className="border border-black flex mb-4">
+        <div className="w-36 p-1 pl-2 border-r border-black">Name of Chapel</div>
+        <div className="flex-1 p-1 pl-2 border-r border-black">{chapelName}</div>
+        <div className="w-20 p-1 pl-2 border-r border-black">Niche No</div>
+        <div className="w-32 p-1 pl-2 font-bold">{nicheNo}</div>
       </div>
+
+      {/* Applicant Details - Address formatted like invoice/receipt (multi-line structured) */}
       <div className="border border-black mb-4">
-        <div className="flex border-b border-black"><div className="w-32 p-1 border-r border-black">Applicant</div><div className="flex-1 p-1">{applicantName}</div></div>
-        <div className="flex border-b border-black"><div className="w-32 p-1 border-r border-black h-12">Address</div><div className="flex-1 p-1 whitespace-pre-line">{address}</div></div>
+        <div className="flex border-b border-black">
+          <div className="w-36 p-1 pl-2 border-r border-black">Name of Applicant</div>
+          <div className="flex-1 p-1 pl-2">{applicantName}</div>
+        </div>
+        <div className="flex border-b border-black">
+          <div className="w-36 p-1 pl-2 border-r border-black h-[78px]">Address</div>
+          <div className="flex-1 flex flex-col">
+            <div className="flex-1 p-1 pl-2 border-b border-black">{safeAddressLines[0] || ''} &nbsp; {safeAddressLines[1] || ''}</div>
+            <div className="flex-1 p-1 pl-2">{safeAddressLines[2] || ''}</div>
+          </div>
+        </div>
         <div className="flex">
-          <div className="w-32 p-1 border-r border-black">Tel(Off)</div><div className="flex-1 p-1 border-r border-black">{telOff}</div>
-          <div className="w-24 p-1 border-r border-black">Tel(Res)</div><div className="flex-1 p-1 border-r border-black">{telRes}</div>
-          <div className="w-24 p-1 border-r border-black">Tel(HP)</div><div className="w-32 p-1">{telHP}</div>
+          <div className="w-36 p-1 pl-2 border-r border-black">Tel(Off)</div>
+          <div className="w-40 p-1 pl-2 border-r border-black">{telOff}</div>
+          <div className="w-20 p-1 pl-2 border-r border-black">Tel(Res)</div>
+          <div className="w-40 p-1 pl-2 border-r border-black">{telRes}</div>
+          <div className="w-20 p-1 pl-2 border-r border-black">Tel(HP)</div>
+          <div className="flex-1 p-1 pl-2">{telHP}</div>
         </div>
       </div>
+
+      {/* Deceased No. 1 */}
       <div className="border border-black mb-4">
-        <div className="bg-gray-100 border-b border-black flex font-bold"><div className="flex-1 p-1 border-r border-black">Deceased No.1</div><div className="w-64 p-1 pl-2">Cross: {crossType}</div></div>
-        <div className="flex border-b border-black"><div className="w-40 p-1 border-r border-black">Name</div><div className="flex-1 p-1 border-r border-black">{deceased1.name}</div><div className="w-24 p-1 border-r border-black">Cert No:</div><div className="w-32 p-1">{deceased1.deathCertNo}</div></div>
-        <div className="flex"><div className="w-40 p-1 border-r border-black">Date Born</div><div className="flex-1 p-1 border-r border-black">{deceased1.dateBorn}</div><div className="w-24 p-1 border-r border-black">Date Died</div><div className="w-32 p-1">{deceased1.dateDied}</div></div>
+        <div className="bg-[#f0f0f0] border-b border-black flex font-bold h-7 items-center px-2">
+          <div className="flex-1">Details of Deceased No.1</div>
+          <div className="w-64 font-normal">Cross Type : &nbsp;&nbsp; {crossType}</div>
+        </div>
+        <div className="flex border-b border-black">
+          <div className="w-52 p-1 pl-2 border-r border-black">Name Of Deceased No.1</div>
+          <div className="flex-1 p-1 pl-2 border-r border-black">{deceased1.name}</div>
+          <div className="w-36 p-1 pl-2 border-r border-black">Death Cert No:</div>
+          <div className="w-48 p-1 pl-2">{deceased1.deathCertNo}</div>
+        </div>
+        <div className="flex">
+          <div className="w-52 p-1 pl-2 border-r border-black">Date Born</div>
+          <div className="flex-1 p-1 pl-2 border-r border-black">{deceased1.dateBorn}</div>
+          <div className="w-36 p-1 pl-2 border-r border-black">Date Died</div>
+          <div className="w-48 p-1 pl-2">{deceased1.dateDied}</div>
+        </div>
       </div>
+
+      {/* Deceased No. 2 */}
       <div className="border border-black mb-4">
-        <div className="bg-gray-100 border-b border-black p-1 font-bold">Deceased No.2</div>
-        <div className="flex border-b border-black"><div className="w-40 p-1 border-r border-black">Name</div><div className="flex-1 p-1 border-r border-black">{deceased2.name}</div><div className="w-24 p-1 border-r border-black">Cert No:</div><div className="w-32 p-1">{deceased2.deathCertNo}</div></div>
-        <div className="flex"><div className="w-40 p-1 border-r border-black">Date Born</div><div className="flex-1 p-1 border-r border-black">{deceased2.dateBorn}</div><div className="w-24 p-1 border-r border-black">Date Died</div><div className="w-32 p-1">{deceased2.dateDied}</div></div>
+        <div className="bg-[#f0f0f0] border-b border-black p-1 pl-2 font-bold h-7 flex items-center">
+          Details of Deceased No.2
+        </div>
+        <div className="flex border-b border-black">
+          <div className="w-52 p-1 pl-2 border-r border-black">Name Of Deceased No.2</div>
+          <div className="flex-1 p-1 pl-2 border-r border-black">{deceased2.name}</div>
+          <div className="w-36 p-1 pl-2 border-r border-black">Death Cert No:</div>
+          <div className="w-48 p-1 pl-2">{deceased2.deathCertNo}</div>
+        </div>
+        <div className="flex">
+          <div className="w-52 p-1 pl-2 border-r border-black">Date Born</div>
+          <div className="flex-1 p-1 pl-2 border-r border-black">{deceased2.dateBorn}</div>
+          <div className="w-36 p-1 pl-2 border-r border-black">Date Died</div>
+          <div className="w-48 p-1 pl-2">{deceased2.dateDied}</div>
+        </div>
       </div>
-      <div className="mb-6">
-        <div className="flex items-start mb-2"><div className="flex-1 flex items-center mb-2"><span className="mr-2">Bible No:</span><div className="border border-black w-24 h-8 text-center pt-1">{bibleInscriptionNumber}</div></div><div className="w-64 flex flex-col gap-1 items-end"><div>Interment: {dateOfInterment}</div><div>Time: {timeOfInterment}</div></div></div>
-        <p className="mb-1 text-xs italic">Bible Inscription or phrases (max 80 chars)</p>
-        <div className="border-b border-black italic pb-1 mb-6 min-h-[1.5rem]">{bibleInscriptionText}</div>
+
+      {/* Bible Inscription Section */}
+      <div className="flex justify-between items-start mb-4">
+        <div className="border border-black p-4 flex items-center w-[200px] h-[60px]">
+          <span className="mr-4">Bible inscription of choice number</span>
+          <div className="border border-black w-10 h-10 flex items-center justify-center font-bold text-lg">
+            {bibleInscriptionNumber}
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 pt-2">
+          <div className="flex items-center">
+            <span className="w-32">Date of interment :</span>
+            <div className="w-32 border-b border-black text-center">{dateOfInterment}</div>
+          </div>
+          <div className="flex items-center">
+            <span className="w-32">Time:</span>
+            <div className="w-32 border-b border-black text-center">{timeOfInterment}</div>
+          </div>
+        </div>
       </div>
-      <div className="border border-black">
-        <div className="p-1 border-b border-black font-bold text-[10px] bg-gray-50">Payment Details: Cheque to "The Order of Friars Minor (S) Ltd-Columbarium"</div>
-        <table className="w-full text-xs">
-          <thead><tr className="border-b border-black bg-gray-50"><th className="border-r border-black p-1 text-left">Date</th><th className="border-r border-black p-1 text-left">Inv/Receipt</th><th className="border-r border-black p-1 text-left">Description</th><th className="border-r border-black p-1 text-left">Amount</th><th className="border-r border-black p-1 text-left">GST</th><th className="p-1 text-right">Total</th></tr></thead>
+
+      <p className="mb-1">Bible Inscription or phrases of your choice(max 80 chars)  </p>
+      <div className="border-b border-black italic pb-1 mb-2 min-h-[1.5rem] whitespace-pre-line">{bibleInscriptionText}</div>
+
+      <p className="mt-4 mb-1">This is subject to the approval of our Franciscan Friars Custos</p>
+ 
+
+      {/* Payment Details */}
+      <div className="border border-black mb-4">
+        <div className="p-1 pl-2 border-b border-black font-bold text-[11px]">
+          Payment Details: Cheque made payable to" The Order of Friars Minor (S) Ltd-Columbarium" <br />
+          (1st name = $400, 2nd name = $300, 2 names together = $550 <br />
+          Prices subject to change without notice)
+          Internet Banking Transfer: OFMS- Columbarium DBS 072-1185447-4
+          PayNow: uen 201016236m2CO
+        </div>
+        <table className="w-full text-[11px] border-collapse">
+          <thead>
+            <tr className="border-b border-black bg-white">
+              <th className="border-r border-black p-1 text-left w-24">Date</th>
+              <th className="border-r border-black p-1 text-left w-24">Inv/ Receipt</th>
+              <th className="border-r border-black p-1 text-left">Description</th>
+              <th className="border-r border-black p-1 text-left w-24">Amount</th>
+              <th className="border-r border-black p-1 text-left w-20">GST</th>
+              <th className="p-1 text-right w-24">Amount</th>
+            </tr>
+          </thead>
           <tbody>
             {safePayments.length > 0 ? safePayments.map((p: any, i: number) => {
               const amount = Number(p?.amount || 0)
               const totalAmount = Number(p?.totalAmount || 0)
               return (
-                <tr key={i} className="border-b border-black last:border-0">
-                  <td className="border-r border-black p-1">{p?.date || ''}</td>
-                  <td className="border-r border-black p-1">{p?.invReceipt || ''}</td>
-                  <td className="border-r border-black p-1">{p?.description || ''}</td>
-                  <td className="border-r border-black p-1">{Number.isFinite(amount) ? `$${amount.toFixed(2)}` : ''}</td>
-                  <td className="border-r border-black p-1">{p?.gst || ''}</td>
-                  <td className="p-1 text-right">{Number.isFinite(totalAmount) ? `$${totalAmount.toFixed(2)}` : ''}</td>
+                <tr key={i} className="border-b border-black last:border-0 h-8">
+                  <td className="border-r border-black p-1 pl-2">{p?.date || ''}</td>
+                  <td className="border-r border-black p-1 pl-2">{p?.invReceipt || ''}</td>
+                  <td className="border-r border-black p-1 pl-2">{p?.description || ''}</td>
+                  <td className="border-r border-black p-1 pl-2">{Number.isFinite(amount) && amount !== 0 ? `$ ${amount.toFixed(2)}` : ''}</td>
+                  <td className="border-r border-black p-1 pl-2">{p?.gst || ''}</td>
+                  <td className="p-1 pr-2 text-right">{Number.isFinite(totalAmount) ? `$ ${totalAmount.toFixed(2)}` : ''}</td>
                 </tr>
               )
             }) : (
-              <tr className="border-b border-black last:border-0">
+              <tr className="h-8">
                 <td className="border-r border-black p-1">&nbsp;</td>
                 <td className="border-r border-black p-1">&nbsp;</td>
                 <td className="border-r border-black p-1">&nbsp;</td>
@@ -582,9 +671,26 @@ function InscriptionAgreementView({
           </tbody>
         </table>
       </div>
-      <div className="mt-8">
-        <p className="mb-8 text-[11px] leading-relaxed">By submitting this form, I consent to my personal data being collected, used or disclosed by the Order of Friars Minor (S) Ltd in accordance with its Personal Data Protection Policy Statement.</p>
-        <div className="grid grid-cols-2 gap-8"><div><div className="border-b border-black w-full mb-1"></div><p className="text-xs italic">Signature of Applicant</p></div><div><p className="text-sm font-bold">{signatureName}</p><p className="text-xs">Date: {signatureDate}</p></div></div>
+
+      {/* Footer / Consent */}
+      <div className="mt-2 text-justify">
+        <p className="mb-4 text-[10px] leading-tight">
+          By submitting this form, I consent to my personal data being collected, used or disclosed by the Order of Friars Minor (S) Ltd in accordance with its Personal Data Protection Policy Statement which may be found at www.franciscans.sg. We have checked and confirmed that the information given above is correct.
+        </p>
+
+        <div className="mt-8 flex flex-col items-start">
+          <div className="border-b border-black w-64 mb-1"></div>
+          <div className="flex flex-col gap-1 w-full text-[11px]">
+            <div className="flex">
+              <span className="w-16">Name :</span>
+              <span className="font-bold">{signatureName}</span>
+            </div>
+            <div className="flex">
+              <span className="w-16">Date :</span>
+              <span>{signatureDate}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

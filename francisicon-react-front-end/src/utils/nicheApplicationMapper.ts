@@ -95,7 +95,7 @@ export function mapNichiBookingToApplicationRequest(formData: {
 
   // Calculate invoice amounts
   const subtotal = formData.nichiQuantity * formData.nichiUnitPrice;
-  const taxAmount = Math.round(subtotal * (formData.lineTaxPercent / 100));
+  const taxAmount = Math.round(subtotal * (formData.lineTaxPercent / 100) * 100) / 100;
   const totalAmount = subtotal + taxAmount;
 
   // Map deceased details
@@ -319,19 +319,28 @@ export function mapNichiApplicationToFormData(
     formData.paymentMode = paymentModeToLabel(applicationData.invoice.paymentMode);
     formData.refDocNumber = applicationData.invoice.refDocNumber || applicationData.applicationCode || '';
 
-    // Calculate quantity and unit price from invoice amounts
-    if (applicationData.invoice.totalAmount && applicationData.niche) {
-      formData.nichiUnitPrice = applicationData.niche.totalAmount || 0;
-      formData.nichiQuantity = 1; // Default to 1 for Nichi
-
-      // Calculate tax percent if possible
-      if (applicationData.invoice.taxAmount && applicationData.invoice.totalAmount) {
-        const subtotal = applicationData.invoice.totalAmount - applicationData.invoice.taxAmount;
-        if (subtotal > 0) {
-          formData.lineTaxPercent = Math.round((applicationData.invoice.taxAmount / subtotal) * 100);
-        }
-      }
+    // Resolve itemId from invoice details or niche level
+    if (applicationData.invoice?.invoiceDetails?.[0]?.itemId) {
+      formData.itemId = applicationData.invoice.invoiceDetails[0].itemId;
+    } else if (applicationData.niche?.location?.row?.level) {
+      formData.itemId = applicationData.niche.location.row.level;
     }
+  }
+
+  // Extract unit price from multiple sources with priority
+  const unitPriceFromDetails = applicationData.invoice?.invoiceDetails?.[0]?.unitPrice
+    || applicationData.invoice?.invoiceDetails?.[0]?.unitAmount;
+  const unitPriceFromNiche = applicationData.niche?.totalAmount
+    || applicationData.niche?.defaultAmount
+    || applicationData.niche?.location?.row?.rowPrice;
+
+  formData.nichiUnitPrice = unitPriceFromDetails || unitPriceFromNiche || 0;
+  formData.nichiQuantity = 1;
+
+  // Calculate tax percent from invoice data if available
+  if (applicationData.invoice?.taxAmount && formData.nichiUnitPrice > 0) {
+    const subtotal = formData.nichiUnitPrice;
+    formData.lineTaxPercent = Math.round((applicationData.invoice.taxAmount / subtotal) * 100);
   }
 
   // Map niche details - CRITICAL: Reset all niche fields
@@ -938,6 +947,7 @@ function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<st
   // Handle nested beneficiaries array first
   if (Array.isArray(formData.beneficiaries) && formData.beneficiaries.length > 0) {
     formData.beneficiaries.forEach((beneficiary: any, index: number) => {
+      const resolvedStatus = beneficiary.status || 'Not Occupied';
       beneficiaries.push({
         id: beneficiary.id || Date.now() + index + 2,
         name: beneficiary.name || beneficiary.fullName || '',
@@ -948,7 +958,8 @@ function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<st
         relationship: beneficiary.relationship || beneficiary.relationshipToApplicant || '',
         dateOfBirth: beneficiary.dateOfBirth ?? null,
         birthYear: beneficiary.birthYear ?? null,
-        status: beneficiary.status || 'Not Occupied',
+        status: resolvedStatus,
+        lifeStatus: beneficiary.lifeStatus || resolvedStatus,
         relationshipToNominee1: beneficiary.relationshipToNominee1 || '',
         relationshipToNominee2: beneficiary.relationshipToNominee2 || '',
         religion: beneficiary.religion || ''
@@ -994,6 +1005,11 @@ function buildCleanBeneficiaries(formData: Record<string, any>): Array<Record<st
           formData[fieldPrefix]?.birthYear ??
           null,
         status: formData[`${fieldPrefix}Status`] ||
+          formData[fieldPrefix]?.status ||
+          'Not Occupied',
+        lifeStatus: formData[`${fieldPrefix}LifeStatus`] ||
+          formData[fieldPrefix]?.lifeStatus ||
+          formData[`${fieldPrefix}Status`] ||
           formData[fieldPrefix]?.status ||
           'Not Occupied',
         relationshipToNominee1: formData[`${fieldPrefix}RelationshipToNominee1`] ||

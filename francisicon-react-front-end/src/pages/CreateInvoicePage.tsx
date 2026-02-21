@@ -259,15 +259,15 @@ export function CreateInvoicePage() {
             if (invoiceDetails.length > 0) {
                 const mappedItems: InvoiceItem[] = invoiceDetails.map((detail: any) => ({
                     id: Math.random().toString(36).substr(2, 9),
-                    selectItem: detail.itemName || detail.ItemName || 'Other',
+                    selectItem: detail.itemName || detail.ItemName || detail.description || 'Other',
                     reference: detail.refDocNumber || detail.RefDocNumber || '',
-                    defaultAmount: detail.unitAmount || detail.UnitAmount || 0,
-                    amountPaying: detail.payingAmount || detail.PayingAmount || detail.unitAmount || 0,
+                    defaultAmount: detail.unitAmount || detail.UnitAmount || detail.unitPrice || detail.UnitPrice || 0,
+                    amountPaying: detail.payingAmount || detail.PayingAmount || detail.unitAmount || detail.unitPrice || 0,
                     quantity: detail.quantity || detail.Quantity || 1,
-                    totalNoTax: detail.lineTotalAmount || detail.LineTotalAmount || 0,
+                    totalNoTax: detail.lineTotalAmount || detail.LineTotalAmount || detail.lineNet || detail.LineNet || 0,
                     taxPercent: detail.lineTaxPercent || detail.LineTaxPercent || 9,
-                    taxAmount: detail.lineTaxAmount || detail.LineTaxAmount || 0,
-                    totalAmount: (detail.lineTotalAmount || detail.LineTotalAmount || 0) + (detail.lineTaxAmount || detail.LineTaxAmount || 0),
+                    taxAmount: detail.lineTaxAmount || detail.LineTaxAmount || detail.taxAmount || detail.TaxAmount || 0,
+                    totalAmount: (detail.lineTotalAmount || detail.LineTotalAmount || detail.lineNet || 0) + (detail.lineTaxAmount || detail.LineTaxAmount || detail.taxAmount || 0),
                 }));
                 setItems(mappedItems);
             }

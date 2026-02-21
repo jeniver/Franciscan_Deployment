@@ -412,7 +412,7 @@ export const nicheAgreementService = {
         } else if (status === 403) {
           throw new NicheAgreementError('Access denied. You do not have permission to view this application.', status, true);
         } else if (status === 404) {
-          throw new NicheAgreementError(`Application ${applicationNumber} does not have a 2nd nominee agreement or does not exist.`, status);
+          throw new NicheAgreementError(`Application ${applicationNumber} not found. Please check the application number.`, status);
         } else if (status === 429) {
           throw new NicheAgreementError('Too many requests. Please try again later.', status);
         } else if (status >= 500) {
