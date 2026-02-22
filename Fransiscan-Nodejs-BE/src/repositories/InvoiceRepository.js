@@ -380,50 +380,33 @@ class InvoiceRepository extends BaseRepository {
         }
       }
 
-      // Step 3: Get matching Item based on niche level or DocType
+      // Step 3: Get matching Item by DocType='NAPP', preferring one whose name matches the niche level
       let item = null;
-      if (nicheDetails && nicheDetails.NicheLevel && application.ChurchId) {
-        // Try to get item by niche level (e.g., Level 6 -> ItemId 6)
-        const levelItemQuery = `
-          SELECT TOP 1
-      i.ItemId,
-        i.Name AS ItemName,
-          i.Code AS ItemCode,
-            i.Price AS ItemPrice,
-              i.IsRefType,
-              i.DocType,
-              i.ChurchId
-          FROM Item i WITH(NOLOCK)
-          WHERE i.ChurchId = @churchId
-            AND i.ItemId = @itemId
-        `;
-        const levelItemResult = await executeQuery(levelItemQuery, {
-          churchId: application.ChurchId,
-          itemId: nicheDetails.NicheLevel
-        }, { timeout: 5000 });
+      if (application.ChurchId) {
+        const levelPattern = nicheDetails?.NicheLevel
+          ? `%Level ${nicheDetails.NicheLevel}%`
+          : '';
 
-        if (levelItemResult.recordset && levelItemResult.recordset.length > 0) {
-          item = levelItemResult.recordset[0];
-        }
-      }
-
-      // Fallback: Get item with DocType = 'NAPP' (Niche Application)
-      if (!item && application.ChurchId) {
         const itemQuery = `
           SELECT TOP 1
-      i.ItemId,
-        i.Name AS ItemName,
-          i.Code AS ItemCode,
+            i.ItemId,
+            i.Name  AS ItemName,
+            i.Code  AS ItemCode,
             i.Price AS ItemPrice,
-              i.IsRefType,
-              i.DocType,
-              i.ChurchId
+            i.IsRefType,
+            i.DocType,
+            i.ChurchId
           FROM Item i WITH(NOLOCK)
           WHERE i.ChurchId = @churchId
-      AND(i.DocType = 'NAPP' OR i.IsRefType = 1)
-          ORDER BY i.ItemId
+            AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
+          ORDER BY
+            CASE WHEN @levelPattern <> '' AND i.Name LIKE @levelPattern THEN 0 ELSE 1 END,
+            i.ItemId
         `;
-        const itemResult = await executeQuery(itemQuery, { churchId: application.ChurchId }, { timeout: 5000 });
+        const itemResult = await executeQuery(itemQuery, {
+          churchId: application.ChurchId,
+          levelPattern
+        }, { timeout: 5000 });
 
         if (itemResult.recordset && itemResult.recordset.length > 0) {
           item = itemResult.recordset[0];
@@ -434,13 +417,13 @@ class InvoiceRepository extends BaseRepository {
       if (!item && application.ChurchId) {
         const fallbackItemQuery = `
           SELECT TOP 1
-      i.ItemId,
-        i.Name AS ItemName,
-          i.Code AS ItemCode,
+            i.ItemId,
+            i.Name  AS ItemName,
+            i.Code  AS ItemCode,
             i.Price AS ItemPrice,
-              i.IsRefType,
-              i.DocType,
-              i.ChurchId
+            i.IsRefType,
+            i.DocType,
+            i.ChurchId
           FROM Item i WITH(NOLOCK)
           WHERE i.ChurchId = @churchId
           ORDER BY i.ItemId

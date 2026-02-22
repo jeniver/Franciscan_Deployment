@@ -73,7 +73,7 @@ export function MiscReceiptCreatePage() {
     useEffect(() => {
         const timer = setTimeout(() => {
             if (searchTerm.trim().length >= 2) {
-                performSearch(searchTerm, ['person', 'application']);
+                performSearch(searchTerm, ['person', 'application', 'gates-of-life', 'inscription', 'wake-room']);
                 setShowSuggestions(true);
             } else {
                 clearResults();
@@ -190,7 +190,7 @@ export function MiscReceiptCreatePage() {
         setShowSuggestions(false);
 
         // Map application code if it's an application result
-        if (result.entityType === 'application' && result.code) {
+        if (result.code) {
             setSelectedApplicationCode(result.code);
         } else {
             setSelectedApplicationCode('MISC');
@@ -199,9 +199,11 @@ export function MiscReceiptCreatePage() {
         // populate address fields if they exist in search result
         // Note: Global search result structure might vary, trying common mappings
         if (result.addressNo || result.addressLine1 || result.address) {
-            setAddressBlock(result.addressNo === 'Blk' ? 'Block' : (result.addressNo || 'No'));
-            setAddressNumber(result.addressLine1 || result.addressNo || '');
-            setAddressStreet(result.addressLine2 || result.address || '');
+            // Handle different field names from backend
+            const block = result.addressNo || 'No';
+            setAddressBlock(block === 'Blk' ? 'Block' : block);
+            setAddressNumber(result.addressLine1 || result.address || '');
+            setAddressStreet(result.addressLine2 || '');
             setAddressUnit(result.addressCity || '');
             setAddressPostalCode(result.addressState || result.districtCode || '');
             setAddressCountry(result.addressCountry || result.country || 'Singapore');

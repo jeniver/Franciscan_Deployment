@@ -212,7 +212,7 @@ class ApplicationService {
             const amount = row.Amount || preferredItem?.Price || 0;
 
             items = [{
-              itemId: preferredItem?.ItemId || row.NicheId || 0,
+              itemId: preferredItem?.ItemId || 0,
               itemName: preferredItem?.Name || 'Inscription Request',
               itemCode: preferredItem?.Code || 'INCR',
               unitAmount: amount,
@@ -229,13 +229,36 @@ class ApplicationService {
           }
         }
       } else if (type === 'NAPP') {
-        // Determine price
         const amount = row.Amount || nicheDetails?.NichePrice || nicheDetails?.RowPrice || 0;
 
+        // Resolve a real Item record instead of using NicheId as itemId
+        let nappItem = null;
+        if (nicheDetails?.NicheLevel) {
+          const levelPattern = `%Level ${nicheDetails.NicheLevel}%`;
+          const nappItemQuery = `
+            SELECT TOP 1 ItemId, Name, Code, Price
+            FROM Item WITH(NOLOCK)
+            WHERE ChurchId = @churchId
+              AND (DocType = 'NAPP' OR IsRefType = 1)
+            ORDER BY
+              CASE WHEN Name LIKE @levelPattern THEN 0 ELSE 1 END,
+              ItemId
+          `;
+          try {
+            const nappResult = await executeQuery(nappItemQuery, { churchId, levelPattern }, { timeout: 5000 });
+            nappItem = nappResult.recordset?.[0] || null;
+          } catch (e) {
+            logger.warn('NAPP item lookup failed, using preferred fallback:', e.message);
+          }
+        }
+        if (!nappItem) {
+          nappItem = await this.getPreferredItemForType(churchId, 'NAPP');
+        }
+
         items = [{
-          itemId: row.NicheId || 0,
-          itemName: nicheDetails ? `Niche: ${nicheDetails.NicheCode} (${nicheDetails.ChapelName})` : 'Niche Application',
-          itemCode: nicheDetails?.NicheCode || 'NAPP',
+          itemId: nappItem?.ItemId || 0,
+          itemName: nappItem?.Name || (nicheDetails ? `Niche: ${nicheDetails.NicheCode} (${nicheDetails.ChapelName})` : 'Niche Application'),
+          itemCode: nappItem?.Code || nicheDetails?.NicheCode || 'NAPP',
           unitAmount: amount,
           payingAmount: amount,
           quantity: 1,

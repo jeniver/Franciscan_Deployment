@@ -230,12 +230,12 @@ class InvoiceController extends BaseController {
         const nicheQuery = `
           SELECT TOP 1
             n.NicheId,
-            n.NicheCode,
-            n.NicheRowId,
+            n.Code AS NicheCode,
+            n.NicheRowlId,
             nr.NicheLevel,
             nr.DefaultAmount
           FROM Niche n WITH(NOLOCK)
-          LEFT JOIN NicheRow nr ON n.NicheRowId = nr.NicheRowId
+          LEFT JOIN NicheRow nr ON n.NicheRowlId = nr.NicheRowlId
           WHERE n.NicheId = @nicheId
         `;
         const nicheResult = await executeQuery(nicheQuery, { nicheId: application.NicheId });
@@ -244,29 +244,32 @@ class InvoiceController extends BaseController {
         }
       }
 
-      // Determine invoice item
-      // Determine invoice items
-      // Priority 1: Use items resolved by ApplicationService (especially for Inscription/Niche)
+      // Priority 1: Use items resolved by ApplicationService
       let items = application.items || [];
 
       // Priority 2: If no items from service, try manual resolution (Legacy Fallback)
       if (!items || items.length === 0) {
         logger.info(`No items returned from ApplicationService for ${code}, attempting manual resolution`);
 
+        const { executeQuery } = require('../config/database');
         let item = null;
 
-        // Manual Niche Item Resolution
+        // Manual Niche Item Resolution – match by DocType, prefer name containing the niche level
         if (nicheInfo && nicheInfo.NicheLevel) {
-          const { executeQuery } = require('../config/database');
+          const levelPattern = `%Level ${nicheInfo.NicheLevel}%`;
           const levelItemQuery = `
             SELECT TOP 1
-              i.ItemId, i.Name AS ItemName, i.Code AS ItemCode, i.Price AS ItemPrice, i.Code
+              i.ItemId, i.Name AS ItemName, i.Code AS ItemCode, i.Price AS ItemPrice
             FROM Item i WITH(NOLOCK)
-            WHERE i.ChurchId = @churchId AND i.ItemId = @itemId
+            WHERE i.ChurchId = @churchId
+              AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
+            ORDER BY
+              CASE WHEN i.Name LIKE @levelPattern THEN 0 ELSE 1 END,
+              i.ItemId
           `;
           const levelItemResult = await executeQuery(levelItemQuery, {
             churchId,
-            itemId: nicheInfo.NicheLevel
+            levelPattern
           });
           if (levelItemResult.recordset && levelItemResult.recordset.length > 0) {
             item = levelItemResult.recordset[0];
@@ -275,9 +278,8 @@ class InvoiceController extends BaseController {
 
         // Generic Fallback Item Resolution
         if (!item) {
-          const { executeQuery } = require('../config/database');
           let itemQuery = `
-            SELECT TOP 1 i.ItemId, i.Name AS ItemName, i.Code AS ItemCode, i.Price AS ItemPrice, i.Code
+            SELECT TOP 1 i.ItemId, i.Name AS ItemName, i.Code AS ItemCode, i.Price AS ItemPrice
             FROM Item i WITH(NOLOCK)
             WHERE i.ChurchId = @churchId
           `;
@@ -303,7 +305,7 @@ class InvoiceController extends BaseController {
           items = [{
             itemId: item.ItemId,
             itemName: item.ItemName,
-            itemCode: item.ItemCode || item.Code,
+            itemCode: item.ItemCode,
             unitAmount: item.ItemPrice,
             quantity: 1,
             lineTotalAmount: item.ItemPrice,
@@ -1420,7 +1422,7 @@ class InvoiceController extends BaseController {
           c.Name AS ChapelName
         FROM NicheApplication na WITH(NOLOCK)
         LEFT JOIN Niche n WITH(NOLOCK) ON na.NicheId = n.NicheId
-        LEFT JOIN NicheRow nr WITH(NOLOCK) ON n.NicheRowId = nr.NicheRowId
+        LEFT JOIN NicheRow nr WITH(NOLOCK) ON n.NicheRowlId = nr.NicheRowlId
         LEFT JOIN NicheWall w WITH(NOLOCK) ON nr.NicheWallId = w.NicheWallId
         LEFT JOIN Chapel c WITH(NOLOCK) ON w.ChapelId = c.ChapelId
         WHERE na.Code = @code AND na.ChurchId = @churchId AND na.Status > 0
@@ -2097,53 +2099,29 @@ class InvoiceController extends BaseController {
 
       const niche = nicheResult.recordset[0];
 
-      // Get matching item
+      // Get matching item by DocType='NAPP', preferring one whose name matches the niche level
       let item = null;
+      const levelPattern = niche.NicheLevel ? `%Level ${niche.NicheLevel}%` : '';
 
-      // Try to get item by niche level
-      if (niche.NicheLevel) {
-        const levelItemQuery = `
-          SELECT TOP 1
-            i.ItemId,
-            i.Name,
-            i.Code,
-            i.Price,
-            i.DocType
-          FROM Item i WITH(NOLOCK)
-          WHERE i.ChurchId = @churchId
-            AND i.ItemId = @itemId
-        `;
+      const itemQuery = `
+        SELECT TOP 1
+          i.ItemId,
+          i.Name,
+          i.Code,
+          i.Price,
+          i.DocType
+        FROM Item i WITH(NOLOCK)
+        WHERE i.ChurchId = @churchId
+          AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
+        ORDER BY
+          CASE WHEN @levelPattern <> '' AND i.Name LIKE @levelPattern THEN 0 ELSE 1 END,
+          i.ItemId
+      `;
 
-        const levelItemResult = await executeQuery(levelItemQuery, {
-          churchId,
-          itemId: niche.NicheLevel
-        });
+      const itemResult = await executeQuery(itemQuery, { churchId, levelPattern });
 
-        if (levelItemResult.recordset && levelItemResult.recordset.length > 0) {
-          item = levelItemResult.recordset[0];
-        }
-      }
-
-      // Fallback to NAPP items
-      if (!item) {
-        const itemQuery = `
-          SELECT TOP 1
-            i.ItemId,
-            i.Name,
-            i.Code,
-            i.Price,
-            i.DocType
-          FROM Item i WITH(NOLOCK)
-          WHERE i.ChurchId = @churchId
-            AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
-          ORDER BY i.ItemId
-        `;
-
-        const itemResult = await executeQuery(itemQuery, { churchId });
-
-        if (itemResult.recordset && itemResult.recordset.length > 0) {
-          item = itemResult.recordset[0];
-        }
+      if (itemResult.recordset && itemResult.recordset.length > 0) {
+        item = itemResult.recordset[0];
       }
 
       if (!item) {

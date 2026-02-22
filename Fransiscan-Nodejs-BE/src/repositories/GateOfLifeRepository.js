@@ -477,9 +477,9 @@ class GateOfLifeRepository {
           inv.TotalAmount AS InvoiceTotalAmount,
           inv.PayingAmount AS InvoicePayingAmount,
           inv.Status AS InvoiceStatus,
-          invd.TotalPayingAmount AS LineTotalAmount,
+          invd.LineTotalAmount AS LineTotalAmount,
           invd.LineTaxAmount,
-          invd.LineTotalAmount,
+          invd.TotalPayingAmount AS LineTotalWithTax,
           invd.RefDocNumber
         FROM InvoiceDetail invd WITH (NOLOCK)
         INNER JOIN Invoice inv WITH (NOLOCK) ON invd.InvoiceId = inv.InvoiceId

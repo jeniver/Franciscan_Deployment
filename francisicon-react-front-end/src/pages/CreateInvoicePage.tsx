@@ -265,6 +265,7 @@ export function CreateInvoicePage() {
             if (invoiceDetails.length > 0 && items.length === 0) {
                 const mappedItems: InvoiceItem[] = invoiceDetails.map((detail: any) => ({
                     id: Math.random().toString(36).substr(2, 9),
+                    itemId: detail.itemId || detail.ItemId || undefined,
                     selectItem: detail.itemName || detail.ItemName || detail.description || 'Other',
                     reference: detail.refDocNumber || detail.RefDocNumber || '',
                     defaultAmount: detail.unitAmount || detail.UnitAmount || detail.unitPrice || detail.UnitPrice || 0,
@@ -298,8 +299,9 @@ export function CreateInvoicePage() {
         const inscriptionItems = getItemsByType('inscription');
         const sourceItems = inscriptionItems.length > 0 ? inscriptionItems : applicationItems.items;
 
-        const mappedItems: InvoiceItem[] = sourceItems.map((item) => ({
+        const mappedItems: InvoiceItem[] = sourceItems.map((item: any) => ({
             id: Math.random().toString(36).substr(2, 9),
+            itemId: item.itemId || undefined,
             selectItem: item.description || 'Item',
             reference: item.reference || applicationItems.applicationCode || '',
             defaultAmount: item.unitPrice || 0,
@@ -346,7 +348,7 @@ export function CreateInvoicePage() {
         const mappedInvoiceDetails = items.map(item => {
             const receiptItem = receiptItems.find(ri => ri.itemName === item.selectItem || ri.description === item.selectItem);
             return {
-                itemId: receiptItem?.itemId || 1,
+                itemId: item.itemId || receiptItem?.itemId || 1,
                 quantity: item.quantity,
                 unitAmount: item.amountPaying,
                 payingAmount: item.amountPaying,

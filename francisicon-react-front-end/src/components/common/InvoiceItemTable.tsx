@@ -3,6 +3,7 @@ import { PlusIcon, Trash2Icon } from 'lucide-react';
 
 export interface InvoiceItem {
     id: string;
+    itemId?: number;
     selectItem: string;
     reference: string;
     defaultAmount: number;

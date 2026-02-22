@@ -41,31 +41,31 @@ class GlobalSearchController {
    */
   async executeIntelligentSearch({ query, types, churchId, page, pageSize, includeAvailability }) {
     const startTime = Date.now();
-    
+
     // Classify the query type
     const queryType = this.classifyQuery(query);
-    
+
     logger.info('[GlobalSearch] Query classified as:', queryType);
 
     // Check Meilisearch availability before attempting to use it
     let meilisearchResults = null;
     let meilisearchError = null;
-    
+
     // Only try Meilisearch if it's marked as available
-    if (this.meilisearchAvailable && 
-        (!this.lastMeilisearchFailure || (Date.now() - this.lastMeilisearchFailure) >= this.meilisearchRetryDelay)) {
-      
+    if (this.meilisearchAvailable &&
+      (!this.lastMeilisearchFailure || (Date.now() - this.lastMeilisearchFailure) >= this.meilisearchRetryDelay)) {
+
       try {
         const meilisearchStart = Date.now();
-        meilisearchResults = await this.searchWithMeilisearch({ 
-          query, 
-          types, 
-          churchId, 
-          page, 
-          pageSize 
+        meilisearchResults = await this.searchWithMeilisearch({
+          query,
+          types,
+          churchId,
+          page,
+          pageSize
         });
         const meilisearchTime = Date.now() - meilisearchStart;
-        logger.info('[GlobalSearch] Meilisearch returned results:', { 
+        logger.info('[GlobalSearch] Meilisearch returned results:', {
           count: meilisearchResults.results.length,
           timeMs: meilisearchTime
         });
@@ -83,7 +83,7 @@ class GlobalSearchController {
     // If Meilisearch worked and returned results, use those
     if (meilisearchResults && meilisearchResults.results.length > 0) {
       const executionTime = Date.now() - startTime;
-      logger.info('[GlobalSearch] Used Meilisearch result', { 
+      logger.info('[GlobalSearch] Used Meilisearch result', {
         resultsCount: meilisearchResults.results.length,
         executionTime: executionTime,
         queryType: queryType
@@ -96,16 +96,16 @@ class GlobalSearchController {
         searchMethod: 'meilisearch'
       };
     }
-    
+
     // Otherwise, fall back to MSSQL search
-    logger.info('[GlobalSearch] Falling back to MSSQL search', { 
+    logger.info('[GlobalSearch] Falling back to MSSQL search', {
       queryType: queryType,
       fallbackReason: meilisearchError ? 'meilisearch_error' : 'not_attempted'
     });
-    
+
     let results = [];
     let totalCount = 0;
-    
+
     // Track MSSQL search performance
     const mssqlPerformance = {};
 
@@ -203,9 +203,9 @@ class GlobalSearchController {
     const sortStart = Date.now();
     const sortedResults = this.sortAndPaginateResults(results, page, pageSize);
     mssqlPerformance.sorting = Date.now() - sortStart;
-    
+
     const executionTime = Date.now() - startTime;
-    
+
     logger.info('[GlobalSearch] MSSQL fallback completed', {
       resultsCount: sortedResults.data.length,
       executionTime: executionTime,
@@ -240,18 +240,18 @@ class GlobalSearchController {
   async searchWithMeilisearch({ query, types, churchId, page, pageSize }) {
     try {
       const index = meilisearchClient.index(GLOBAL_SEARCH_INDEX);
-      
+
       // Map entity types to Meilisearch filter format
       const meilisearchFilters = [];
-      
+
       // Add churchId filter
       meilisearchFilters.push(`churchId = ${churchId}`);
-      
+
       // Add entity type filters if specific types are requested
       if (types && types.length > 0) {
         const entityTypeFilters = types.map(type => {
           // Map UI types to internal types
-          switch(type) {
+          switch (type) {
             case 'application':
               return `'niche-application'`;
             case 'gates-of-life':
@@ -265,18 +265,18 @@ class GlobalSearchController {
               return `'${type}'`;
           }
         });
-        
+
         if (entityTypeFilters.length > 0) {
           meilisearchFilters.push(`entityType IN [${entityTypeFilters.join(', ')}]`);
         }
       }
-      
+
       // Build filter string
       const filterString = meilisearchFilters.join(' AND ');
-      
+
       // Calculate offset for pagination
       const offset = (page - 1) * pageSize;
-      
+
       // Perform search with Meilisearch
       const searchResponse = await index.search(query, {
         filter: filterString,
@@ -284,7 +284,7 @@ class GlobalSearchController {
         offset: offset,
         sort: ['updatedAt:desc'], // Sort by most recently updated
         attributesToRetrieve: [
-          'id', 'entityType', 'churchId', 'code', 'primaryName', 'names', 
+          'id', 'entityType', 'churchId', 'code', 'primaryName', 'names',
           'deceasedNames', 'dates', 'purpose', 'remarks', 'additionalPhrase',
           'contactInfo', 'createdAt', 'updatedAt', 'searchableContent'
         ]
@@ -292,7 +292,7 @@ class GlobalSearchController {
 
       // Convert Meilisearch results to the expected format
       const results = searchResponse.hits.map(hit => this.convertMeilisearchHitToResult(hit));
-      
+
       return {
         results: results,
         totalCount: searchResponse.estimatedTotalHits || results.length,
@@ -332,7 +332,7 @@ class GlobalSearchController {
     };
 
     // Map fields based on entity type
-    switch(hit.entityType) {
+    switch (hit.entityType) {
       case 'niche-application':
         result.applicantName = hit.primaryName || '';
         result.nomineeName = (hit.names && hit.names.length > 1) ? hit.names[1] : '';
@@ -343,7 +343,7 @@ class GlobalSearchController {
         result.nicheCode = hit.nicheCode || '';
         result.chapelName = hit.chapelName || '';
         break;
-        
+
       case 'gates-of-life':
       case 'engrave-wall-application':
         result.applicantName = hit.primaryName || '';
@@ -351,7 +351,7 @@ class GlobalSearchController {
         result.email = hit.contactInfo && hit.contactInfo.length > 0 ? hit.contactInfo[0] : '';
         result.mobile = hit.contactInfo && hit.contactInfo.length > 1 ? hit.contactInfo[1] : '';
         break;
-        
+
       case 'inscription':
         result.applicantName = hit.primaryName || '';
         result.transactionDate = hit.dates && hit.dates.length > 0 ? hit.dates[0] : null;
@@ -361,7 +361,7 @@ class GlobalSearchController {
         result.email = hit.contactInfo && hit.contactInfo.length > 0 ? hit.contactInfo[0] : '';
         result.mobile = hit.contactInfo && hit.contactInfo.length > 1 ? hit.contactInfo[1] : '';
         break;
-        
+
       case 'wake-room-booking':
         result.applicantName = hit.primaryName || '';
         result.nameOfDeceased = (hit.names && hit.names.length > 1) ? hit.names[1] : '';
@@ -373,13 +373,13 @@ class GlobalSearchController {
         result.roomName = hit.roomName || '';
         result.chapelName = hit.chapelName || '';
         break;
-        
+
       case 'person':
         result.name = hit.primaryName || '';
         result.email = hit.contactInfo && hit.contactInfo.length > 0 ? hit.contactInfo[0] : '';
         result.mobile = hit.contactInfo && hit.contactInfo.length > 1 ? hit.contactInfo[1] : '';
         break;
-        
+
       case 'church':
         result.name = hit.primaryName || '';
         result.email = hit.contactInfo && hit.contactInfo.length > 0 ? hit.contactInfo[0] : '';
@@ -390,7 +390,7 @@ class GlobalSearchController {
         result.zipCode = hit.zipCode || '';
         result.country = hit.country || '';
         break;
-        
+
       case 'niche':
         result.code = hit.code || '';
         result.status = hit.status || 0;
@@ -399,7 +399,7 @@ class GlobalSearchController {
         result.wallName = hit.wallName || '';
         result.isAvailable = hit.isAvailable !== undefined ? hit.isAvailable : false;
         break;
-        
+
       case 'invoice':
         result.code = hit.code || '';
         result.customerName = hit.primaryName || '';
@@ -407,7 +407,7 @@ class GlobalSearchController {
         result.totalAmount = hit.totalAmount || 0;
         result.status = hit.status || 0;
         break;
-        
+
       default:
         // Generic mapping for unknown types
         result.applicantName = hit.primaryName || '';
@@ -519,15 +519,15 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
-      
+
       const results = await resultsRequest
         .input('exactMatch', exactMatch)
         .input('startsWith', startsWith)
@@ -539,7 +539,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Application search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -637,12 +637,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -657,7 +657,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Invoice search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -740,12 +740,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -760,7 +760,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Inscription deceased search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -862,12 +862,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -882,7 +882,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Wake room booking search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -985,12 +985,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -1005,7 +1005,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Gates of Life search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -1107,12 +1107,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -1127,7 +1127,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Inscription search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -1177,6 +1177,12 @@ class GlobalSearchController {
         p.Name,
         p.EmailID,
         p.MobileNo,
+        p.AddressNo,
+        p.AddressLine1,
+        p.AddressLine2,
+        p.AddressCity,
+        p.AddressState,
+        p.AddressCountry,
         p.ChurchId,
         ch.ChurchName,
         'person' AS entityType,
@@ -1197,6 +1203,9 @@ class GlobalSearchController {
           p.EmailID LIKE @searchPattern
         )
     `;
+
+    // Note: Replaced by fixed mappingQuery above in next replacement chunk if applicable,
+    // but ensured SQL includes address fields.
 
     const countQuery = `
       SELECT COUNT(*) as total
@@ -1221,12 +1230,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -1241,7 +1250,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Person search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -1255,6 +1264,12 @@ class GlobalSearchController {
           name: record.Name,
           email: record.EmailID,
           mobile: record.MobileNo,
+          addressNo: record.AddressNo,
+          addressLine1: record.AddressLine1,
+          addressLine2: record.AddressLine2,
+          addressCity: record.AddressCity,
+          addressState: record.AddressState,
+          addressCountry: record.AddressCountry,
           churchName: record.ChurchName,
           entityType: record.entityType,
           relevance: this.calculateRelevance(record.relevanceRank, 'person')
@@ -1331,12 +1346,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -1351,7 +1366,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Church search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -1442,12 +1457,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       const results = await pool.request()
         .input('exactMatch', exactMatch)
         .input('startsWith', startsWith)
@@ -1458,7 +1473,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Niche search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -1541,12 +1556,12 @@ class GlobalSearchController {
         .input('exactMatch', exactMatch)
         .input('startsWith', startsWith)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       const results = await pool.request()
         .input('exactMatch', exactMatch)
         .input('startsWith', startsWith)
@@ -1556,7 +1571,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Date search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -1636,12 +1651,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -1656,7 +1671,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Inscription deceased search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -1758,12 +1773,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -1778,7 +1793,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Wake room booking search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -1828,6 +1843,12 @@ class GlobalSearchController {
         ewa.ApplicantName,
         ewa.ApplicantEmailID,
         ewa.ApplicantMobileNo,
+        ewa.ApplicantAddressNo,
+        ewa.ApplicantAddressLine1,
+        ewa.ApplicantAddressLine2,
+        ewa.ApplicantAddressCity,
+        ewa.ApplicantAddressState,
+        ewa.ApplicantAddressCountry,
         ewa.BookingDate,
         ewa.ChurchId,
         ch.ChurchName,
@@ -1873,12 +1894,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -1901,6 +1922,12 @@ class GlobalSearchController {
           churchName: record.ChurchName,
           email: record.ApplicantEmailID,
           mobile: record.ApplicantMobileNo,
+          addressNo: record.ApplicantAddressNo,
+          addressLine1: record.ApplicantAddressLine1,
+          addressLine2: record.ApplicantAddressLine2,
+          addressCity: record.ApplicantAddressCity,
+          addressState: record.ApplicantAddressState,
+          addressCountry: record.ApplicantAddressCountry,
           entityType: record.entityType,
           relevance: this.calculateRelevance(record.relevanceRank, 'gates-of-life')
         })),
@@ -1927,6 +1954,12 @@ class GlobalSearchController {
         nir.ApplicantName,
         nir.ApplicantEmailID,
         nir.ApplicantMobileNo,
+        nir.ApplicantAddressNo,
+        nir.ApplicantAddressLine1,
+        nir.ApplicantAddressLine2,
+        nir.ApplicantAddressCity,
+        nir.ApplicantAddressState,
+        nir.ApplicantAddressCountry,
         nir.TranscationDate,
         nir.AdditionalInscriptionPhrase,
         nir.ChurchId,
@@ -1975,12 +2008,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       // Execute query with timeout
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
@@ -2000,6 +2033,14 @@ class GlobalSearchController {
           code: record.Code,
           applicantName: record.ApplicantName,
           transactionDate: record.TranscationDate,
+          addressNo: record.ApplicantAddressNo,
+          addressLine1: record.ApplicantAddressLine1,
+          addressLine2: record.ApplicantAddressLine2,
+          addressCity: record.ApplicantAddressCity,
+          addressState: record.ApplicantAddressState,
+          addressCountry: record.ApplicantAddressCountry,
+          email: record.ApplicantEmailID,
+          mobile: record.ApplicantMobileNo,
           additionalPhrase: record.AdditionalInscriptionPhrase,
           churchName: record.ChurchName,
           email: record.ApplicantEmailID,
@@ -2081,12 +2122,12 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       const results = await pool.request()
         .input('contains', contains)
         .input('searchPattern', searchPattern)
@@ -2144,7 +2185,7 @@ class GlobalSearchController {
         'Medium-Low': 4,
         'Low': 5
       };
-      
+
       return (relevanceOrder[a.relevance] || 6) - (relevanceOrder[b.relevance] || 6);
     });
 
@@ -2207,7 +2248,7 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('status', status === 'vacant' ? 1 : status === 'reserved' ? 2 : status === 'booked' ? 3 : status === 'occupied' ? 4 : 1)
         .input('searchPattern', `%${query || ''}%`);
-      
+
       if (chapelId) {
         request.input('chapelId', chapelId);
       }
@@ -2239,77 +2280,63 @@ class GlobalSearchController {
    */
   classifyQuery(query) {
     const trimmedQuery = query.trim().toUpperCase();
-    
-    // Inscription code patterns (INCR-XXXX) - Check this first to avoid conflicts
-    if (/^INCR-?\d+$/i.test(trimmedQuery)) {
+
+    // Inscription code patterns (INCR-XXXX, I-XXXX-X)
+    if (/^INCR-?\d+$/i.test(trimmedQuery) || /^I-\d+-\d+$/.test(trimmedQuery)) {
       return 'inscription_code';
     }
-    
-    // Gates of life code patterns (GOL-XXXX) - Check this early too
-    if (trimmedQuery.startsWith('GOL-')) {
+
+    // Gates of life code patterns (GOL-XXXX, GAPP-XXXX)
+    if (trimmedQuery.startsWith('GOL-') || trimmedQuery.startsWith('GAPP-')) {
       return 'gates_of_life_code';
     }
-    
+
     // Wake room code patterns (WRB-XXXX, WR-XXXX, etc.)
     if (trimmedQuery.startsWith('WRB-') || trimmedQuery.startsWith('WR-')) {
       return 'wake_room_code';
     }
-    
-    // Additional pattern for WR codes like WR001-758 (starts with WR but not WRB or WR-)
-    if (trimmedQuery.startsWith('WR') && !trimmedQuery.startsWith('WRB-') && !trimmedQuery.startsWith('WR-')) {
-      // Check if it has a hyphen after WR#### format
-      const afterWR = trimmedQuery.substring(2);
-      if (afterWR.includes('-')) {
-        return 'wake_room_code';
-      }
+
+    // Additional pattern for WR codes like WR001-758
+    if (trimmedQuery.startsWith('WR') && trimmedQuery.includes('-')) {
+      return 'wake_room_code';
     }
-    
-    // Specific pattern for wake room codes like 001-758 (three digits followed by hyphen and numbers)
+
+    // Specific pattern for wake room codes like 001-758
     if (/^\d{3}-\d+$/.test(trimmedQuery)) {
       return 'wake_room_code';
     }
-    
-    // Application code patterns (NAPP-XXXX, etc.) - exclude patterns that might be wake room codes
-    if (/^(NAPP)-?\d+$/i.test(trimmedQuery)) {
+
+    // Application code patterns (NAPP-XXXX, etc.)
+    if (/^(NAPP)-?.*$/i.test(trimmedQuery)) {
       return 'application_code';
     }
-    
-    // More general numeric pattern for applications (exclude 3-digit patterns that look like wake room codes)
-    if (/^\d{1,2}-\d+$/i.test(trimmedQuery)) { // Allow 1-2 digits before hyphen for application codes
+
+    // General application pattern (digits-digits) - match common 1409-0 format
+    if (/^\d+-\d+$/i.test(trimmedQuery)) {
       return 'application_code';
     }
-    
-    // Inscription code patterns (I-XXXX-X format like I-1601-5) - Check this before invoice codes
-    if (/^I-\d+-\d+$/.test(trimmedQuery.toUpperCase())) {
-      return 'inscription_code';
-    }
-    
-    // Invoice code patterns (INV-XXXX, etc.) - Be more specific
-    if (trimmedQuery.startsWith('INV-') || trimmedQuery.startsWith('INVOICE-')) {
+
+    // Invoice code patterns (INV-XXXX, etc.)
+    if (trimmedQuery.startsWith('INV-') || trimmedQuery.startsWith('INVOICE-') || (trimmedQuery.startsWith('I-') && !trimmedQuery.includes('-', 2))) {
       return 'invoice_code';
     }
-    
-    // Invoice code patterns starting with I- but not matching inscription pattern
-    if (trimmedQuery.startsWith('I-')) {
-      return 'invoice_code';
-    }
-    
+
     // Date patterns (DD/MM/YYYY, DD-MM-YYYY, etc.)
-    if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(trimmedQuery) || 
-        /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(trimmedQuery)) {
+    if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(trimmedQuery) ||
+      /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(trimmedQuery)) {
       return 'date';
     }
-    
+
     // Numeric only (could be ID, postal code, etc.)
     if (/^\d+$/.test(trimmedQuery)) {
       return 'numeric';
     }
-    
+
     // Long text (likely name or description)
     if (trimmedQuery.length > 10) {
       return 'text_long';
     }
-    
+
     // Default to general text
     return 'text';
   }
@@ -2400,15 +2427,15 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results
       const fullQuery = `${searchQuery} ORDER BY relevanceRank OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-      
+
       const resultsRequest = pool.request();
       resultsRequest.timeout = 15000; // 15 seconds timeout
-      
+
       const results = await resultsRequest
         .input('exactMatch', exactMatch)
         .input('startsWith', startsWith)
@@ -2420,7 +2447,7 @@ class GlobalSearchController {
         .query(fullQuery);
 
       const executionTime = Date.now() - startTime;
-      
+
       logger.debug('Application search performance', {
         queryLength: query.length,
         resultsCount: results.recordset.length,
@@ -2440,6 +2467,15 @@ class GlobalSearchController {
           chapelName: record.ChapelName,
           churchName: record.ChurchName,
           entityType: record.entityType,
+          // Address fields
+          addressNo: record.ApplicantAddressNo,
+          addressLine1: record.ApplicantAddressLine1,
+          addressLine2: record.ApplicantAddressLine2,
+          addressCity: record.ApplicantAddressCity,
+          addressState: record.ApplicantAddressState,
+          addressCountry: record.ApplicantAddressCountry,
+          email: record.ApplicantEmailID,
+          mobile: record.ApplicantMobileNo,
           relevance: this.calculateRelevance(record.relevanceRank, 'application')
         })),
         totalCount: totalCount,
@@ -2511,7 +2547,7 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results - Fix the FETCH syntax by removing ORDER BY since we're using ROW_NUMBER()
@@ -2522,7 +2558,7 @@ class GlobalSearchController {
         WHERE relevanceRank > @offset AND relevanceRank <= @offset + @pageSize
         ORDER BY relevanceRank
       `;
-      
+
       const results = await pool.request()
         .input('exactMatch', exactMatch)
         .input('startsWith', startsWith)
@@ -2655,7 +2691,7 @@ class GlobalSearchController {
         .input('churchId', churchId)
         .input('searchPattern', searchPattern)
         .query(countQuery);
-      
+
       const totalCount = countResult.recordset[0].total;
 
       // Get paginated results - Fix the FETCH syntax by using subquery approach
@@ -2666,7 +2702,7 @@ class GlobalSearchController {
         WHERE relevanceRank > @offset AND relevanceRank <= @offset + @pageSize
         ORDER BY relevanceRank
       `;
-      
+
       const results = await pool.request()
         .input('exactMatch', exactMatch)
         .input('startsWith', startsWith)
@@ -2730,7 +2766,7 @@ class GlobalSearchController {
           searchDate = new Date(query); // YYYY-MM-DD or DD-MM-YYYY
         }
       }
-      
+
       if (searchDate && isNaN(searchDate.getTime())) {
         searchDate = null;
       }
@@ -2760,7 +2796,6 @@ class GlobalSearchController {
           CAST(na.AppliedDate AS DATE) = @searchDate OR
           CAST(na.AgreementDate AS DATE) = @searchDate
         )
-      
       UNION ALL
       
       SELECT 
@@ -2963,7 +2998,7 @@ class GlobalSearchController {
   async globalSearch(req, res) {
     try {
       const { q: query, types, page = 1, pageSize = 20, includeAvailability = true } = req.query;
-      
+
       if (!query) {
         return res.status(400).json({
           success: false,
@@ -2974,13 +3009,13 @@ class GlobalSearchController {
 
       // Parse types parameter
       const searchTypes = types ? types.split(',').map(t => t.trim()) : [
-        'application', 'person', 'church', 'niche', 'date', 'invoice', 
+        'application', 'person', 'church', 'niche', 'date', 'invoice',
         'wake-room', 'gates-of-life', 'inscription', 'inscription-deceased'
       ];
 
       // Get user church ID from authenticated request
       const userChurchId = req.user ? req.user.churchId : 1; // Default to 1 if not available
-      
+
       // Execute intelligent search
       const result = await this.executeIntelligentSearch({
         query: query.trim(),
@@ -3021,16 +3056,16 @@ class GlobalSearchController {
   async forceMeilisearchSync(req, res) {
     try {
       const { fullSync = false } = req.query;
-      
-      logger.info('Manual Meilisearch sync triggered', { fullSync });      
+
+      logger.info('Manual Meilisearch sync triggered', { fullSync });
 
       // Import the sync service dynamically to avoid circular dependencies
       const meilisearchSyncServiceModule = require('../services/MeilisearchSyncService');
       // Ensure we get the service instance, not just the module
-      const meilisearchSyncService = typeof meilisearchSyncServiceModule === 'function' 
-        ? new meilisearchSyncServiceModule() 
+      const meilisearchSyncService = typeof meilisearchSyncServiceModule === 'function'
+        ? new meilisearchSyncServiceModule()
         : meilisearchSyncServiceModule;
-      
+
       if (fullSync === 'true') {
         // Perform full sync (rebuild entire index)
         await meilisearchSyncService.fullSync();
@@ -3099,11 +3134,11 @@ class GlobalSearchController {
       // Import the sync service dynamically to avoid circular dependencies
       const meilisearchSyncServiceModule = require('../services/MeilisearchSyncService');
       // Ensure we get the service instance, not just the module
-      const meilisearchSyncService = typeof meilisearchSyncServiceModule === 'function' 
-        ? new meilisearchSyncServiceModule() 
+      const meilisearchSyncService = typeof meilisearchSyncServiceModule === 'function'
+        ? new meilisearchSyncServiceModule()
         : meilisearchSyncServiceModule;
       await meilisearchSyncService.initializeIndex();
-      
+
       res.status(200).json({
         success: true,
         message: 'Meilisearch index initialized successfully',
@@ -3127,7 +3162,7 @@ class GlobalSearchController {
   async autocomplete(req, res) {
     try {
       const { q: query, limit = 10 } = req.query;
-      
+
       if (!query || query.length < 2) {
         return res.status(400).json({
           success: false,

@@ -27,6 +27,7 @@ import { createIndividualReceipt } from '../store/receiptSlice';
 
 interface InvoiceItem {
   id: string;
+  itemId?: number;
   selectItem: string;
   reference: string;
   defaultAmount: number;
@@ -432,6 +433,7 @@ export function InvoiceAndReceiptPage() {
 
         return {
           id: `invline-${idx}-${Date.now()}`,
+          itemId: d.itemId || d['ItemId'] || matchedReceiptItem?.itemId || undefined,
           selectItem: optionMatch,
           reference: d.refDocNumber || d['RefDocNumber'] || d.reference || '',
           defaultAmount: unitAmount,
@@ -548,11 +550,10 @@ export function InvoiceAndReceiptPage() {
     try {
       // Map the current UI items to invoice details
       const mappedInvoiceDetails = items.map(item => {
-        // Find the corresponding receipt item to get the itemId
         const receiptItem = receiptItems.find(ri => ri.itemName === item.selectItem || ri.description === item.selectItem);
 
         return {
-          itemId: receiptItem?.itemId || 1, // Use 1 as fallback if not found
+          itemId: item.itemId || receiptItem?.itemId || 1,
           quantity: item.quantity,
           unitAmount: item.amountPaying,
           payingAmount: item.amountPaying,
@@ -606,11 +607,10 @@ export function InvoiceAndReceiptPage() {
     try {
       // Map the current UI items to receipt details (similar to invoice details)
       const receiptDetails = items.map(item => {
-        // Find the corresponding receipt item to get the itemId
         const receiptItem = receiptItems.find(ri => ri.itemName === item.selectItem || ri.description === item.selectItem);
 
         return {
-          itemId: receiptItem?.itemId || 1, // Use 1 as fallback if not found
+          itemId: item.itemId || receiptItem?.itemId || 1,
           quantity: item.quantity,
           unitAmount: item.amountPaying,
           payingAmount: item.amountPaying,
@@ -889,11 +889,10 @@ export function InvoiceAndReceiptPage() {
 
     // Map the current UI items to invoice details with improved field mapping
     const mappedInvoiceDetails = items.map(item => {
-      // Find the corresponding receipt item to get the itemId
       const receiptItem = receiptItems.find(ri => ri.itemName === item.selectItem || ri.description === item.selectItem);
 
       return {
-        itemId: receiptItem?.itemId || 0, // Use 0 as fallback if not found
+        itemId: item.itemId || receiptItem?.itemId || 0,
         quantity: item.quantity,
         unitAmount: item.amountPaying,
         payingAmount: item.amountPaying,
