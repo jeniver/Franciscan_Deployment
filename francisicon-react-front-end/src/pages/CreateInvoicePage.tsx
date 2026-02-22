@@ -182,26 +182,32 @@ export function CreateInvoicePage() {
             const resolvedName = currentData.customerName || currentDataAny.payeeName || currentDataAny.applicant?.name || '';
             setPayeeName(resolvedName);
 
-            // Map Address with standardized mapping
-            const addressNo = currentData.addressNo || (currentData as any).AddressNo;
-            if (addressNo) {
-                setAddressBlock(addressNo === 'Blk' ? 'Block' : (addressNo === 'No' ? 'No' : addressNo));
+            // Map Address - DB stores: addressNo=block number, address=street, address2=unit,
+            // addressCity=unused, districtCode=postal, country=country
+            const rawAddressNo = (currentData.addressNo || (currentData as any).AddressNo || '').toString().trim();
+            const rawAddress = (currentData.address || (currentData as any).Address || '').toString().trim();
+            const rawAddress2 = (currentData.address2 || (currentData as any).Address2 || '').toString().trim();
+            const rawAddressCity = (currentData.addressCity || (currentData as any).AddressCity || '').toString().trim();
+            const rawPostal = (currentData.districtCode || (currentData as any).DistrictCode || (currentData as any).addressState || '').toString().trim();
+            const rawCountry = (currentData.country || (currentData as any).Country || 'Singapore').toString().trim();
+
+            // addressNo is either a keyword (Blk/No/Block) or the block number itself
+            const upperNo = rawAddressNo.toUpperCase();
+            const isKeyword = ['BLOCK', 'BLK', 'NO', 'NO.'].includes(upperNo);
+            if (isKeyword) {
+                setAddressBlock(upperNo === 'BLK' || upperNo === 'BLOCK' ? 'Block' : 'No');
+                setAddressNumber(rawAddress);   // line1 is the block number when addressNo is keyword
+                setAddressStreet(rawAddress2);   // line2 is street
+                setAddressUnit(rawAddressCity);  // city is unit
+            } else {
+                // addressNo IS the block number (e.g. "450D")
+                setAddressBlock('Block');
+                setAddressNumber(rawAddressNo);  // block number
+                setAddressStreet(rawAddress);    // street
+                setAddressUnit(rawAddress2 || rawAddressCity); // unit from line2 or city
             }
-            if (currentData.address || (currentData as any).Address) {
-                setAddressNumber(currentData.address || (currentData as any).Address);
-            }
-            if (currentData.address2 || (currentData as any).Address2) {
-                setAddressStreet(currentData.address2 || (currentData as any).Address2 || '');
-            }
-            if (currentData.addressCity || (currentData as any).AddressCity) {
-                setAddressUnit(currentData.addressCity || (currentData as any).AddressCity || '');
-            }
-            if (currentData.districtCode || (currentData as any).DistrictCode || (currentData as any).addressState) {
-                setAddressPostalCode(currentData.districtCode || (currentData as any).DistrictCode || (currentData as any).addressState || '');
-            }
-            if (currentData.country || (currentData as any).Country) {
-                setAddressCountry(currentData.country || (currentData as any).Country || 'Singapore');
-            }
+            setAddressPostalCode(rawPostal);
+            setAddressCountry(rawCountry);
 
             // Map Items
             let invoiceDetails = currentData.details || currentDataAny.Details || [];

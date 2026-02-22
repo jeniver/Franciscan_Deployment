@@ -12,7 +12,7 @@ declare module 'axios' {
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: (import.meta as any).env?.VITE_API_BASE || 'http://localhost:3000',
+  baseURL: (import.meta as any).env?.VITE_API_BASE || 'http://192.168.1.24:3000',
   // Some invoice/inscription resolution paths can legitimately take >10s.
   // Keep a higher client timeout to prevent premature "Network error" aborts.
   timeout: 60000,

@@ -94,7 +94,7 @@ echo Next steps:
 echo 1. Update .env file with your database configuration
 echo 2. Ensure SQL Server is running and accessible
 echo 3. Run 'npm run dev' to start the development server
-echo 4. Visit http://localhost:3000/health to check if the API is running
+echo 4. Visit http://192.168.1.24:3000/health to check if the API is running
 echo.
 echo For Docker deployment:
 echo 1. Run 'npm run docker:compose' to start with Docker Compose

@@ -35,31 +35,47 @@ export const addressUtils = {
             country: (entity.addressCountry || '').trim(),
         };
 
-        // Only recognised values qualify as a prefix
-        let prefix = '';
+        // Detect if addressNo is a keyword prefix or a block number.
+        // Convention A (Niche App DB): addressNo=blockNo, line1=street, line2=unit, city=empty
+        // Convention B (Invoice DB):   addressNo=keyword, line1=blockNo, line2=street, city=unit
         const upperNo = raw.no.toUpperCase();
-        if (upperNo === 'BLOCK' || upperNo === 'BLK') prefix = 'Blk';
-        else if (upperNo === 'NO' || upperNo === 'NO.') prefix = 'No';
+        const isKeyword = ['BLOCK', 'BLK', 'NO', 'NO.'].includes(upperNo);
+
+        let prefix: string;
+        let blockNum: string;
+        let street: string;
+        let unit: string;
+
+        if (isKeyword) {
+            prefix = (upperNo === 'BLOCK' || upperNo === 'BLK') ? 'Blk' : 'No';
+            blockNum = raw.line1;
+            street = raw.line2;
+            unit = raw.city;
+        } else if (raw.no) {
+            // addressNo is the block number itself (Convention A)
+            prefix = 'Blk';
+            blockNum = raw.no;
+            street = raw.line1;
+            unit = raw.line2 || raw.city;
+        } else {
+            prefix = '';
+            blockNum = raw.line1;
+            street = raw.line2;
+            unit = raw.city;
+        }
 
         // Line 1: [Prefix] [Block Number]
-        let blockPart = prefix;
-        if (raw.line1) {
-            const dedupLine1 = raw.line1 === raw.no ? '' : raw.line1;
-            if (dedupLine1) {
-                blockPart = blockPart ? `${blockPart} ${dedupLine1}` : dedupLine1;
-            }
-        }
+        const blockPart = prefix && blockNum ? `${prefix} ${blockNum}`
+            : prefix || blockNum;
         lines.push(blockPart);
 
         // Line 2: Street Name
-        lines.push(raw.line2);
+        lines.push(street);
 
         // Line 3: [Unit] [Country] [Postal]
         const line3Parts: string[] = [];
 
-        // addressCity is the unit number, but sometimes a postal code is
-        // stored here by mistake.  Detect 6-digit postal and relocate it.
-        let unitValue = raw.city;
+        let unitValue = unit;
         let postalValue = raw.state;
         if (unitValue) {
             const digitsOnly = unitValue.replace(/[^0-9]/g, '');

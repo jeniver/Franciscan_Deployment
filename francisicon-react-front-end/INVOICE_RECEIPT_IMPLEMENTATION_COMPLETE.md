@@ -180,7 +180,7 @@ currentData.canCreateInvoice &&
    ```
 
 3. **Navigate to Invoice & Receipt Page**:
-   - Open browser: `http://localhost:3000`
+   - Open browser: `http://192.168.1.24:3000`
    - Go to: **Invoice and Receipt** page
 
 4. **Test the Features**:

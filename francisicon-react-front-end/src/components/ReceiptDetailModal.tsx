@@ -347,16 +347,17 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
   };
 
   const displayAddress = (() => {
-    if (!receipt) return 'N/A';
-    const rAny = receipt as any;
+    const src = fullReceiptData || receipt;
+    if (!src) return 'N/A';
+    const rAny = src as any;
     const iAny = rAny.invoice || {};
     const entity: AddressEntity = {
-      addressNo: receipt.addressNo || rAny.AddressNo || iAny.addressNo || iAny.AddressNo || '',
-      addressLine1: receipt.address || rAny.Address || rAny.addressLine1 || iAny.address || iAny.Address || iAny.addressLine1 || '',
-      addressLine2: receipt.address2 || rAny.Address2 || rAny.addressLine2 || iAny.address2 || iAny.Address2 || iAny.addressLine2 || '',
-      addressCity: receipt.addressCity || rAny.AddressCity || iAny.addressCity || iAny.AddressCity || '',
+      addressNo: src.addressNo || rAny.AddressNo || iAny.addressNo || iAny.AddressNo || '',
+      addressLine1: src.address || rAny.Address || rAny.addressLine1 || iAny.address || iAny.Address || iAny.addressLine1 || '',
+      addressLine2: src.address2 || rAny.Address2 || rAny.addressLine2 || iAny.address2 || iAny.Address2 || iAny.addressLine2 || '',
+      addressCity: src.addressCity || rAny.AddressCity || iAny.addressCity || iAny.AddressCity || '',
       addressState: rAny.districtCode || rAny.DistrictCode || rAny.addressState || iAny.districtCode || iAny.DistrictCode || '',
-      addressCountry: receipt.country || rAny.Country || iAny.country || iAny.Country || 'Singapore',
+      addressCountry: src.country || rAny.Country || iAny.country || iAny.Country || 'Singapore',
     };
     return addressUtils.buildAddressLines(entity).filter(l => l.trim()).join('\n') || 'N/A';
   })();
@@ -425,7 +426,26 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
                       address={displayAddress}
                       invoiceNo={currentReceipt.invoice?.code || (currentReceipt as any).invoice?.Code || currentReceipt.invoiceCode || (currentReceipt as any).invoiceNo || 'N/A'}
                       refDocNo={(currentReceipt as any).refDocNumber || (currentReceipt as any).RefDocNumber || currentReceipt.invoice?.refDocNumber || (currentReceipt as any).invoice?.RefDocNumber || ''}
-                      description={(currentReceipt.description || (currentReceipt.invoiceDetails && currentReceipt.invoiceDetails.length > 0 ? currentReceipt.invoiceDetails[0].description : (currentReceipt as any).details && (currentReceipt as any).details.length > 0 ? (currentReceipt as any).details[0].description : '')) || 'Payment received'}
+                      description={(() => {
+                        const details = currentReceipt.invoiceDetails || (currentReceipt as any).details || [];
+                        const inv = (currentReceipt as any).invoice || {};
+                        const appCode = currentReceipt.applicationCode
+                          || inv.RefDocName || inv.refDocName || '';
+                        const appNum = (currentReceipt as any).refDocNumber || (currentReceipt as any).RefDocNumber
+                          || inv.RefDocNumber || inv.refDocNumber || '';
+                        const chapelName = (currentReceipt as any).chapelName
+                          || inv.chapelName || inv.wallName
+                          || (currentReceipt as any).wallName || '';
+                        const fullAppCode = appCode && appNum ? `${appCode}-${appNum}` : appCode || appNum;
+                        const itemCount = details.length;
+
+                        const parts: string[] = [];
+                        if (chapelName) parts.push(chapelName);
+                        if (fullAppCode) parts.push(`(${fullAppCode})`);
+                        if (itemCount > 0) parts.push(`x ${itemCount} Item${itemCount > 1 ? 's' : ''}`);
+
+                        return parts.join(' ') || currentReceipt.description || 'Payment received';
+                      })()}
                       totalAmount={totalAmt}
                       dollarsInWords={convertToDollarsInWords(totalAmt)}
                       paymentMethod={paymentModeToLabel(currentReceipt.paymentMode ?? (currentReceipt as any).paymentMethod ?? (currentReceipt as any).PaymentMode)}

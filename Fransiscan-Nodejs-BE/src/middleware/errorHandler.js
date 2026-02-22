@@ -198,7 +198,7 @@ const validateInput = (schema) => {
 const rateLimit = (options = {}) => {
   const limits = new Map();
   const windowMs = options.windowMs || 15 * 60 * 1000; // 15 minutes
-  const max = options.max || 100; // limit each IP to 100 requests per windowMs
+  const max = options.max || 2000; // limit each IP to 2000 requests per windowMs
   const enabled = options.enabled !== false;
   const shouldSkip = typeof options.skip === 'function' ? options.skip : () => false;
 

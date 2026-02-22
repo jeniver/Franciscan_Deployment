@@ -40,7 +40,7 @@ LOG_LEVEL=info
 LOG_FILE_PATH=./logs/app.log
 
 # Frontend Configuration
-REACT_APP_API_URL=http://localhost:3000
+REACT_APP_API_URL=http://192.168.1.24:3000
 
 # Mail Configuration (Optional)
 MAIL_HOST=smtp.example.com

@@ -125,15 +125,29 @@ export function CreateReceiptPage() {
         if (selectedInvoice) {
             setPayeeName(selectedInvoice.customerName || '');
 
-            const addressNo = selectedInvoice.addressNo || (selectedInvoice as any).AddressNo;
-            if (addressNo) {
-                setAddressBlock(addressNo === 'Blk' ? 'Block' : (addressNo === 'No' ? 'No' : addressNo));
+            // addressNo is either a keyword (Blk/No/Block) or the block number itself
+            const rawNo = (selectedInvoice.addressNo || (selectedInvoice as any).AddressNo || '').toString().trim();
+            const rawAddr = (selectedInvoice.address || (selectedInvoice as any).Address || '').toString().trim();
+            const rawAddr2 = (selectedInvoice.address2 || (selectedInvoice as any).Address2 || '').toString().trim();
+            const rawCity = (selectedInvoice.addressCity || (selectedInvoice as any).AddressCity || '').toString().trim();
+            const rawPostal = (selectedInvoice.districtCode || (selectedInvoice as any).DistrictCode || (selectedInvoice as any).addressState || '').toString().trim();
+            const rawCountry = (selectedInvoice.country || (selectedInvoice as any).Country || 'Singapore').toString().trim();
+
+            const upperNo = rawNo.toUpperCase();
+            const isKw = ['BLOCK', 'BLK', 'NO', 'NO.'].includes(upperNo);
+            if (isKw) {
+                setAddressBlock(upperNo === 'BLK' || upperNo === 'BLOCK' ? 'Block' : 'No');
+                setAddressNumber(rawAddr);
+                setAddressStreet(rawAddr2);
+                setAddressUnit(rawCity);
+            } else {
+                setAddressBlock('Block');
+                setAddressNumber(rawNo);
+                setAddressStreet(rawAddr);
+                setAddressUnit(rawAddr2 || rawCity);
             }
-            setAddressNumber(selectedInvoice.address || (selectedInvoice as any).Address || '');
-            setAddressStreet(selectedInvoice.address2 || (selectedInvoice as any).Address2 || '');
-            setAddressUnit(selectedInvoice.addressCity || (selectedInvoice as any).AddressCity || '');
-            setAddressPostalCode(selectedInvoice.districtCode || (selectedInvoice as any).DistrictCode || (selectedInvoice as any).addressState || '');
-            setAddressCountry(selectedInvoice.country || (selectedInvoice as any).Country || 'Singapore');
+            setAddressPostalCode(rawPostal);
+            setAddressCountry(rawCountry);
 
             setPaymentMode(selectedInvoice.paymentMode || (selectedInvoice as any).PaymentMode || 'Cash');
             setRefDocumentNo((selectedInvoice as any).paymentModeDocNo || (selectedInvoice as any).PaymentModeDocNo || '');
@@ -160,11 +174,29 @@ export function CreateReceiptPage() {
     useEffect(() => {
         if (applicationData && !selectedInvoice) {
             setPayeeName(applicationData.customerName || '');
-            setAddressNumber(applicationData.addressNo || '');
-            setAddressStreet(applicationData.address || '');
-            setAddressUnit(applicationData.address2 || '');
-            setAddressPostalCode(applicationData.districtCode || applicationData.addressCity || '');
-            setAddressCountry(applicationData.country || 'Singapore');
+            // Same smart address mapping as selectedInvoice path
+            const rawNo = (applicationData.addressNo || '').toString().trim();
+            const rawAddr = (applicationData.address || '').toString().trim();
+            const rawAddr2 = (applicationData.address2 || '').toString().trim();
+            const rawCity = (applicationData.addressCity || '').toString().trim();
+            const rawPostal = (applicationData.districtCode || '').toString().trim();
+            const rawCountry = (applicationData.country || 'Singapore').toString().trim();
+
+            const upperNo = rawNo.toUpperCase();
+            const isKw = ['BLOCK', 'BLK', 'NO', 'NO.'].includes(upperNo);
+            if (isKw) {
+                setAddressBlock(upperNo === 'BLK' || upperNo === 'BLOCK' ? 'Block' : 'No');
+                setAddressNumber(rawAddr);
+                setAddressStreet(rawAddr2);
+                setAddressUnit(rawCity);
+            } else {
+                setAddressBlock('Block');
+                setAddressNumber(rawNo);
+                setAddressStreet(rawAddr);
+                setAddressUnit(rawAddr2 || rawCity);
+            }
+            setAddressPostalCode(rawPostal);
+            setAddressCountry(rawCountry);
 
             if (applicationData.details && applicationData.details.length > 0 && items.length === 0) {
                 const mappedItems: InvoiceItem[] = applicationData.details.map((detail: any) => ({

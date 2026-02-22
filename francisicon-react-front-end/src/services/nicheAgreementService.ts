@@ -3,7 +3,7 @@ import { pdfTemplateService } from './pdfTemplateService';
 import { invoicePdfService } from './invoicePdfService';
 
 // Vite exposes env vars via import.meta.env.VITE_*
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:3000';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://192.168.1.24:3000';
 
 // Types for the new API response structure
 export interface Applicant {

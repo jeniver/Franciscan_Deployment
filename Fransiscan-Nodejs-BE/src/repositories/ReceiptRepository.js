@@ -773,6 +773,10 @@ class ReceiptRepository extends BaseRepository {
               if (invoiceDetails && invoiceDetails.details) {
                 invoice.details = invoiceDetails.details;
               }
+              if (invoiceDetails && invoiceDetails.chapelName) {
+                invoice.chapelName = invoiceDetails.chapelName;
+                invoice.wallName = invoiceDetails.wallName;
+              }
             }
           } catch (err) {
             logger.warn(`Could not fetch invoice details for invoiceId=${row.Invoice_InvoiceId}`, err);
@@ -782,7 +786,10 @@ class ReceiptRepository extends BaseRepository {
         // Ensure we have some items - fallback to invoice details if receipt details are empty
         const finalDetails = (details && details.length > 0) ? details : (invoice?.details || []);
 
-        return { ...receipt, invoice, details: finalDetails, invoiceDetails: invoice?.details || [] };
+        const result = { ...receipt, invoice, details: finalDetails, invoiceDetails: invoice?.details || [] };
+        if (invoice?.chapelName) result.chapelName = invoice.chapelName;
+        if (invoice?.wallName) result.wallName = invoice.wallName;
+        return result;
       };
 
       const selectColumns = `
@@ -1607,7 +1614,7 @@ class ReceiptRepository extends BaseRepository {
 
       const invoice = invoiceResult.recordset[0];
 
-      // Then get invoice details
+      // Then get invoice details with Item names
       const detailsQuery = `
         SELECT 
           id.InvoiceDetailId,
@@ -1620,8 +1627,11 @@ class ReceiptRepository extends BaseRepository {
           id.RefDocName,
           id.LineTotalAmount,
           id.LineTaxPercent,
-          id.LineTaxAmount
+          id.LineTaxAmount,
+          itm.Name AS ItemName,
+          itm.Code AS ItemCode
         FROM InvoiceDetail id WITH (NOLOCK)
+        LEFT JOIN Item itm WITH (NOLOCK) ON id.ItemId = itm.ItemId
         WHERE id.InvoiceId = @invoiceId
         ORDER BY id.InvoiceDetailId
       `;
@@ -1641,9 +1651,36 @@ class ReceiptRepository extends BaseRepository {
         lineTotalAmount: row.LineTotalAmount,
         lineTaxPercent: row.LineTaxPercent,
         lineTaxAmount: row.LineTaxAmount,
-        // Create a meaningful description combining available info
-        description: this.buildItemDescriptionFromDetail(row)
+        itemName: row.ItemName || null,
+        itemCode: row.ItemCode || null,
+        description: row.ItemName || this.buildItemDescriptionFromDetail(row)
       }));
+
+      // Fetch chapel/wall info for niche applications
+      const refDocName = invoice.RefDocName || '';
+      if (refDocName.toUpperCase() === 'NAPP' && invoice.RefDocNumber) {
+        try {
+          const nicheQuery = `
+            SELECT TOP 1
+              c.Name AS ChapelName,
+              w.Name AS WallName
+            FROM NicheApplication na WITH (NOLOCK)
+            INNER JOIN NicheBooking nb WITH (NOLOCK) ON na.NicheApplicationId = nb.NicheApplicationId
+            INNER JOIN Niche n WITH (NOLOCK) ON nb.NicheId = n.NicheId
+            INNER JOIN NicheRow r WITH (NOLOCK) ON n.NicheRowId = r.NicheRowId
+            INNER JOIN NicheWall w WITH (NOLOCK) ON r.NicheWallId = w.NicheWallId
+            INNER JOIN Chapel c WITH (NOLOCK) ON w.ChapelId = c.ChapelId
+            WHERE na.Code = @refDocNumber OR na.Code LIKE @refDocNumber + '%'
+          `;
+          const nicheResult = await executeQuery(nicheQuery, { refDocNumber: invoice.RefDocNumber });
+          if (nicheResult.recordset && nicheResult.recordset.length > 0) {
+            invoice.chapelName = nicheResult.recordset[0].ChapelName || '';
+            invoice.wallName = nicheResult.recordset[0].WallName || '';
+          }
+        } catch (err) {
+          logger.warn(`Could not fetch niche details for RefDocNumber=${invoice.RefDocNumber}`, err);
+        }
+      }
 
       return invoice;
     } catch (error) {

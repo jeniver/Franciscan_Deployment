@@ -95,7 +95,7 @@ WHERE NicheApplicationId = (
 Use the same payload you tested before:
 
 ```bash
-PUT http://localhost:3000/api/niche-applications/1403-5
+PUT http://192.168.1.24:3000/api/niche-applications/1403-5
 Authorization: Bearer YOUR_TOKEN
 Content-Type: application/json
 
@@ -188,7 +188,7 @@ jgjhghhjg   | 1996-04-24  | 1996      | dsffds
 Retrieve the data to verify it's returned correctly:
 
 ```bash
-GET http://localhost:3000/api/niche-agreements/1403-5
+GET http://192.168.1.24:3000/api/niche-agreements/1403-5
 Authorization: Bearer YOUR_TOKEN
 ```
 

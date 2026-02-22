@@ -327,33 +327,36 @@ export function InvoiceAndReceiptPage() {
     }
 
     // Address mapping - handle both individual fields and combined address
-    // Priority: individual address fields > combined address field
+    // DB convention: addressNo=block number, address=street, address2=unit,
+    // addressCity=unused, districtCode=postal, country=country.
+    // addressNo may also be a keyword (Blk/Block/No).
     if (currentData.addressNo || currentData.address || currentData.address2 ||
       currentData.addressCity || currentData.country) {
-      // Map individual address fields from backend
-      if (currentData.addressNo) {
-        setAddressNumber(currentData.addressNo);
+      const rawNo = (currentData.addressNo || '').toString().trim();
+      const rawAddr = (currentData.address || '').toString().trim();
+      const rawAddr2 = (currentData.address2 || '').toString().trim();
+      const rawCity = (currentData.addressCity || '').toString().trim();
+      const rawPostal = (currentData.districtCode || '').toString().trim();
+      const rawCountry = (currentData.country || 'Singapore').toString().trim();
+
+      const upperNo = rawNo.toUpperCase();
+      const isKw = ['BLOCK', 'BLK', 'NO', 'NO.'].includes(upperNo);
+      if (isKw) {
+        setAddressBlock(upperNo === 'BLK' || upperNo === 'BLOCK' ? 'Block' : 'No');
+        setAddressNumber(rawAddr);
+        setAddressStreet(rawAddr2);
+        setAddressUnit(rawCity);
+      } else {
+        setAddressBlock('Block');
+        setAddressNumber(rawNo);
+        setAddressStreet(rawAddr);
+        setAddressUnit(rawAddr2 || rawCity);
       }
-      if (currentData.address) {
-        setAddressStreet(currentData.address);
-      }
-      if (currentData.address2) {
-        setAddressUnit(currentData.address2);
-      }
-      if (currentData.addressCity) {
-        setAddressPostalCode(currentData.addressCity);
-      }
-      if (currentData.districtCode) {
-        // District code is usually mapped to the state/area field if needed
-      }
-      if (currentData.country) {
-        setAddressCountry(currentData.country);
-      }
+      setAddressPostalCode(rawPostal);
+      setAddressCountry(rawCountry);
     } else if (currentData.address) {
-      // Fallback: parse combined address string
       applyParsedAddress(currentData.address);
     } else if (currentDataAny.applicant?.address) {
-      // Wake Room Fallback: parse combined address string from applicant
       applyParsedAddress(currentDataAny.applicant.address);
     }
 
@@ -571,14 +574,12 @@ export function InvoiceAndReceiptPage() {
         payingAmount: totals.totalPayable || 0,
         paymentMode: normalizePaymentModeForBackend(paymentMode),
         paymentModeDocNo: refDocumentNo || '',
-        // Include address fields
-        addressNo: addressNumber || '',
-        address: addressStreet || '',
-        address2: addressUnit || '',
-        addressCity: addressPostalCode || '',
-        districtCode: '',
+        addressNo: addressBlock === 'Block' ? 'Blk' : addressBlock,
+        address: addressNumber || '',
+        address2: addressStreet || '',
+        addressCity: addressUnit || '',
+        districtCode: addressPostalCode || '',
         country: addressCountry || 'Singapore',
-        // Include item details
         invoiceDetails: mappedInvoiceDetails,
       };
 
@@ -630,14 +631,12 @@ export function InvoiceAndReceiptPage() {
         payingAmount: totals.totalPayable || 0,
         paymentMode: normalizePaymentModeForBackend(paymentMode),
         paymentModeDocNo: refDocumentNo || '',
-        // Include address fields
-        addressNo: addressNumber || '',
-        address: addressStreet || '',
-        address2: addressUnit || '',
-        addressCity: addressPostalCode || '',
-        districtCode: '',
+        addressNo: addressBlock === 'Block' ? 'Blk' : addressBlock,
+        address: addressNumber || '',
+        address2: addressStreet || '',
+        addressCity: addressUnit || '',
+        districtCode: addressPostalCode || '',
         country: addressCountry || 'Singapore',
-        // Include item details
         receiptDetails: receiptDetails,
       };
 
@@ -907,15 +906,14 @@ export function InvoiceAndReceiptPage() {
       };
     });
 
-    // Handle address fields properly
     const currentDataAny: any = currentData || {};
     const addressData = {
-      addressNo: addressNumber || currentData?.addressNo || currentDataAny.addressNo,
-      address: addressStreet || currentData?.address || currentDataAny.address,
-      address2: addressUnit || currentData?.address2 || currentDataAny.address2,
-      addressCity: addressPostalCode || currentData?.addressCity || currentDataAny.addressCity,
-      districtCode: currentData?.districtCode || currentDataAny.districtCode,
-      country: addressCountry || currentData?.country || currentDataAny.country,
+      addressNo: addressBlock === 'Block' ? 'Blk' : addressBlock,
+      address: addressNumber || currentData?.addressNo || currentDataAny.addressNo,
+      address2: addressStreet || currentData?.address || currentDataAny.address,
+      addressCity: addressUnit || currentData?.address2 || currentDataAny.address2,
+      districtCode: addressPostalCode || currentData?.districtCode || currentDataAny.districtCode,
+      country: addressCountry || currentData?.country || currentDataAny.country || 'Singapore',
     };
 
     const invoicePayload = {
@@ -1135,11 +1133,10 @@ export function InvoiceAndReceiptPage() {
           paymentMode: paymentMode || 'Cash',
           receiptDate: parseTransactionDateToIso(transactionDate),
           invoiceDetails,
-          // Address fields
-          addressNo: addressNumber || currentData?.addressNo || undefined,
-          address: addressStreet || currentData?.address || undefined,
-          address2: addressUnit || currentData?.address2 || undefined,
-          addressCity: addressPostalCode || currentData?.addressCity || undefined,
+          addressNo: addressBlock === 'Block' ? 'Blk' : addressBlock,
+          address: addressNumber || currentData?.addressNo || undefined,
+          address2: addressStreet || currentData?.address || undefined,
+          addressCity: addressUnit || currentData?.address2 || undefined,
           districtCode: addressPostalCode || currentData?.districtCode || undefined,
           country: addressCountry || currentData?.country || 'Singapore',
         };

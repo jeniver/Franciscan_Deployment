@@ -9,8 +9,8 @@
 The `/api/items` endpoint requires a valid JWT token for access. This is intentional security behavior.
 
 ### Test Results:
-1. **Health Check**: ✅ Working (`http://localhost:3000/health`)
-2. **Root Endpoint**: ✅ Working (`http://localhost:3000/`)
+1. **Health Check**: ✅ Working (`http://192.168.1.24:3000/health`)
+2. **Root Endpoint**: ✅ Working (`http://192.168.1.24:3000/`)
 3. **Unauthenticated Access**: ✅ Properly rejected (401 error)
 4. **Route Registration**: ✅ Item routes are properly registered
 
@@ -21,12 +21,12 @@ First, you need to log in to get a valid JWT token:
 
 ```bash
 # Using curl (if available)
-curl -X POST http://localhost:3000/api/login/login \
+curl -X POST http://192.168.1.24:3000/api/login/login \
   -H "Content-Type: application/json" \
   -d '{"username":"your_username","password":"your_password"}'
 
 # Using PowerShell
-Invoke-WebRequest -Uri "http://localhost:3000/api/login/login" -Method POST -Body '{"username":"admin","password":"admin123"}' -ContentType "application/json"
+Invoke-WebRequest -Uri "http://192.168.1.24:3000/api/login/login" -Method POST -Body '{"username":"admin","password":"admin123"}' -ContentType "application/json"
 ```
 
 ### Step 2: Use Token in Requests
@@ -34,7 +34,7 @@ Once you have a token, include it in the Authorization header:
 
 ```bash
 # Using curl
-curl -X GET "http://localhost:3000/api/items" \
+curl -X GET "http://192.168.1.24:3000/api/items" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json"
 
@@ -43,7 +43,7 @@ $headers = @{
     "Authorization" = "Bearer YOUR_TOKEN_HERE"
     "Content-Type" = "application/json"
 }
-Invoke-WebRequest -Uri "http://localhost:3000/api/items" -Method GET -Headers $headers
+Invoke-WebRequest -Uri "http://192.168.1.24:3000/api/items" -Method GET -Headers $headers
 ```
 
 ## Available Endpoints
@@ -89,19 +89,19 @@ To verify the API is working correctly:
 
 1. **Test Health Endpoint**:
    ```
-   GET http://localhost:3000/health
+   GET http://192.168.1.24:3000/health
    Expected: 200 OK with status information
    ```
 
 2. **Test Unauthenticated Access**:
    ```
-   GET http://localhost:3000/api/items
+   GET http://192.168.1.24:3000/api/items
    Expected: 401 Unauthorized with "Access token required"
    ```
 
 3. **Test with Valid Token**:
    ```
-   GET http://localhost:3000/api/items
+   GET http://192.168.1.24:3000/api/items
    Headers: Authorization: Bearer VALID_TOKEN
    Expected: 200 OK with items data
    ```

@@ -25,7 +25,7 @@ const options = {
     }
 };
 
-console.log(`Sending request to http://localhost:3000/api/invoices/individual with token`);
+console.log(`Sending request to http://192.168.1.24:3000/api/invoices/individual with token`);
 
 const req = http.request(options, (res) => {
     console.log(`STATUS: ${res.statusCode}`);

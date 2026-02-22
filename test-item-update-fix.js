@@ -11,7 +11,7 @@
 const axios = require('axios');
 
 // Configuration
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = 'http://192.168.1.24:3000';
 const TEST_ITEM_ID = 35; // The item ID mentioned in the issue
 const AUTH_TOKEN = 'your-auth-token-here'; // Replace with valid token
 

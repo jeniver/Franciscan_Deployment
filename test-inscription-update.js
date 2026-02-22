@@ -2,7 +2,7 @@
 const axios = require('axios');
 
 async function testInscriptionUpdate() {
-  const baseURL = 'http://localhost:3000'; // Adjust to your backend URL
+  const baseURL = 'http://192.168.1.24:3000'; // Adjust to your backend URL
   const inscriptionCode = 'I-5674-0'; // Replace with actual test inscription code
   
   console.log('🧪 Testing Inscription Deceased Data Update Fix');

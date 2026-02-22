@@ -1,7 +1,7 @@
 import api from './api';
 
 // Vite exposes env vars via import.meta.env.VITE_*
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:3000';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://192.168.1.24:3000';
 
 // Custom error class for chapel operations
 export class ChapelError extends Error {

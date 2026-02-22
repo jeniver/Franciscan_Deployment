@@ -4,7 +4,7 @@
 This guide documents the comprehensive performance optimizations applied to the `/api/niche-agreements/:applicationNumber` endpoint to address slow response times.
 
 ## Problem
-The API endpoint `http://localhost:3000/api/niche-agreements/7980-0` was experiencing slow performance, taking 60+ seconds or timing out.
+The API endpoint `http://192.168.1.24:3000/api/niche-agreements/7980-0` was experiencing slow performance, taking 60+ seconds or timing out.
 
 ## Solution Summary
 
@@ -89,7 +89,7 @@ USE_INDEX_HINTS=true
 Check the API response time:
 ```bash
 # Test the endpoint
-curl -X GET "http://localhost:3000/api/niche-agreements/7980-0" \
+curl -X GET "http://192.168.1.24:3000/api/niche-agreements/7980-0" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 

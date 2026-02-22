@@ -165,7 +165,7 @@ beneficiary1: {
 1. **Test Date Storage**:
    ```bash
    # PUT request with dateOfBirth in DD-MM-YYYY format
-   curl -X PUT http://localhost:3000/api/niche-applications/1402-11 \
+   curl -X PUT http://192.168.1.24:3000/api/niche-applications/1402-11 \
      -H "Content-Type: application/json" \
      -d '{
        "beneficiaries": [{
@@ -188,7 +188,7 @@ beneficiary1: {
 3. **Test Data Retrieval**:
    ```bash
    # GET request to verify both fields are returned
-   curl http://localhost:3000/api/niche-agreements/1402-11
+   curl http://192.168.1.24:3000/api/niche-agreements/1402-11
    ```
 
 4. **Expected Results**:

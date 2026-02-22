@@ -22,15 +22,15 @@ interface ReceiptTemplateProps {
 }
 
 export function ReceiptTemplate({
-  receiptNo = '003762',
-  date = '03-Oct-25',
-  receivedFrom = 'Jacqueline Lim Poh Choo',
-  address = 'Blk:,,,Singapore,undefined',
-  invoiceNo = '53204',
-  refDocNo = '', // This will be used in the description if needed, but the footer line will be removed
-  description = 'St Bernadine 5585',
-  totalAmount = 8305.8,
-  dollarsInWords = 'Eight Thousand Three Hundred Five, And Eighty Cents Only',
+  receiptNo = '',
+  date = '',
+  receivedFrom = '',
+  address = '',
+  invoiceNo = '',
+  refDocNo = '',
+  description = '',
+  totalAmount = 0,
+  dollarsInWords = '',
   paymentMethod = 'Cash',
   paymentModeDocNo = '',
   churchInfo,

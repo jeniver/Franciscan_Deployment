@@ -5,7 +5,7 @@
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_BASE = process.env.API_BASE || 'http://192.168.1.24:3000';
 
 async function getAuthToken() {
   const email = process.env.LOGIN_EMAIL || process.argv[2];

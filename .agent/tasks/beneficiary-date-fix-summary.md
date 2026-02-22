@@ -128,7 +128,7 @@ Frontend Receives:
 
 **Request**:
 ```bash
-curl -X PUT http://localhost:3000/api/niche-applications/1402-11 \
+curl -X PUT http://192.168.1.24:3000/api/niche-applications/1402-11 \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -148,7 +148,7 @@ curl -X PUT http://localhost:3000/api/niche-applications/1402-11 \
 
 **Request**:
 ```bash
-curl http://localhost:3000/api/niche-agreements/1402-11 \
+curl http://192.168.1.24:3000/api/niche-agreements/1402-11 \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 

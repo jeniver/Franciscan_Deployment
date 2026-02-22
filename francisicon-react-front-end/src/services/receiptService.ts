@@ -1174,12 +1174,12 @@ export const receiptService = {
 
       // Enhanced mapping to handle all API response fields properly
       const invoice: Invoice = {
-        invoiceId: invoiceData.InvoiceId || invoiceData.invoiceId || invoiceData.invoiceId || 0,
+        invoiceId: invoiceData.InvoiceId || invoiceData.invoiceId || 0,
         invoiceCode: invoiceData.Code || invoiceData.code || invoiceData.invoiceCode || trimmedCode,
         customerName: invoiceData.CustomerName || invoiceData.customerName || invoiceData.payeeName || '',
-        totalAmount: invoiceData.TotalAmount || invoiceData.totalAmount || invoiceData.totalAmount || 0,
-        payingAmount: invoiceData.PayingAmount || invoiceData.payingAmount || invoiceData.payingAmount || 0,
-        paymentMode: invoiceData.PaymentMode || invoiceData.paymentMode || 'Cash',
+        totalAmount: invoiceData.TotalAmount || invoiceData.totalAmount || 0,
+        payingAmount: invoiceData.PayingAmount || invoiceData.payingAmount || 0,
+        paymentMode: paymentModeToLabel(invoiceData.PaymentMode ?? invoiceData.paymentMode),
         invoiceDate: invoiceData.TransactionDate || invoiceData.transactionDate || invoiceData.invoiceDate || new Date().toISOString(),
         invoiceDetails: (invoiceData.details || invoiceData.invoiceDetails || []).map((detail: any) => ({
           invoiceDetailId: detail.InvoiceDetailId || detail.invoiceDetailId || detail.invoiceDetailId,
@@ -1204,15 +1204,17 @@ export const receiptService = {
         }))
       };
 
-      // Add additional fields that might be useful
-      (invoice as any).addressNo = invoiceData.addressNo || invoiceData.addressNo;
-      (invoice as any).address = invoiceData.address || invoiceData.address;
-      (invoice as any).address2 = invoiceData.address2 || invoiceData.address2;
-      (invoice as any).addressCity = invoiceData.addressCity || invoiceData.addressCity;
-      (invoice as any).country = invoiceData.country || invoiceData.country;
-      (invoice as any).taxAmount = invoiceData.taxAmount || invoiceData.taxAmount;
-      (invoice as any).taxCode = invoiceData.taxCode || invoiceData.taxCode;
-      (invoice as any).taxPercentage = invoiceData.taxPercentage || invoiceData.taxPercentage;
+      invoice.addressNo = invoiceData.AddressNo || invoiceData.addressNo || '';
+      invoice.address = invoiceData.Address || invoiceData.address || '';
+      invoice.address2 = invoiceData.Address2 || invoiceData.address2 || '';
+      invoice.addressCity = invoiceData.AddressCity || invoiceData.addressCity || '';
+      invoice.districtCode = invoiceData.DistrictCode || invoiceData.districtCode || '';
+      invoice.country = invoiceData.Country || invoiceData.country || 'Singapore';
+      invoice.paymentModeDocNo = invoiceData.PaymentModeDocNo || invoiceData.paymentModeDocNo || '';
+      (invoice as any).taxAmount = invoiceData.TaxAmount || invoiceData.taxAmount || 0;
+      (invoice as any).taxCode = invoiceData.TaxCode || invoiceData.taxCode || '';
+      (invoice as any).taxPercentage = invoiceData.TaxPercentage || invoiceData.taxPercentage || 0;
+      (invoice as any).refDocNumber = invoiceData.RefDocNumber || invoiceData.refDocNumber || '';
 
       console.log('[ReceiptService] Final mapped invoice:', invoice);
 

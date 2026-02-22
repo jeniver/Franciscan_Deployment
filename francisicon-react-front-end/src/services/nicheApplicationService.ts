@@ -1,7 +1,7 @@
 import api from './api';
 
 // Vite exposes env vars via import.meta.env.VITE_*
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:3000';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://192.168.1.24:3000';
 
 // Custom error class for niche application operations
 export class NicheApplicationError extends Error {
@@ -583,7 +583,7 @@ export const nicheApplicationService = {
         throw new NicheApplicationError('Application code is required for PDF generation', 'validation', 400);
       }
 
-      const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:3000';
+      const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://192.168.1.24:3000';
       
       // Helper function to check if error is a network error
       const isNetworkError = (error: any): boolean => {

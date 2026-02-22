@@ -70,7 +70,7 @@ Start-Sleep -Seconds 15
 
 # Test the application
 try {
-    $appResponse = Invoke-WebRequest -Uri "http://localhost:3000/api/search/health" -Method GET -ErrorAction SilentlyContinue
+    $appResponse = Invoke-WebRequest -Uri "http://192.168.1.24:3000/api/search/health" -Method GET -ErrorAction SilentlyContinue
     if ($appResponse.StatusCode -eq 200) {
         Write-Host "Application is running successfully!" -ForegroundColor Green
     }
@@ -80,13 +80,13 @@ try {
 
 Write-Host "`n=== Setup Complete ===" -ForegroundColor Green
 Write-Host "Meilisearch is running on http://127.0.0.1:7700" -ForegroundColor Cyan
-Write-Host "Application is running on http://localhost:3000" -ForegroundColor Cyan
+Write-Host "Application is running on http://192.168.1.24:3000" -ForegroundColor Cyan
 Write-Host "`nTo sync all data to Meilisearch, use the following endpoints:" -ForegroundColor Yellow
-Write-Host "1. Initialize index: POST http://localhost:3000/api/search/initialize-index" -ForegroundColor White
-Write-Host "2. Force full sync: POST http://localhost:3000/api/search/force-sync?fullSync=true" -ForegroundColor White
-Write-Host "3. Check health: GET http://localhost:3000/api/search/health" -ForegroundColor White
+Write-Host "1. Initialize index: POST http://192.168.1.24:3000/api/search/initialize-index" -ForegroundColor White
+Write-Host "2. Force full sync: POST http://192.168.1.24:3000/api/search/force-sync?fullSync=true" -ForegroundColor White
+Write-Host "3. Check health: GET http://192.168.1.24:3000/api/search/health" -ForegroundColor White
 
 Write-Host "`nExample curl commands:" -ForegroundColor Yellow
-Write-Host "curl -X POST http://localhost:3000/api/search/initialize-index" -ForegroundColor White
-Write-Host "curl -X POST http://localhost:3000/api/search/force-sync?fullSync=true" -ForegroundColor White
-Write-Host "curl -X GET http://localhost:3000/api/search/health" -ForegroundColor White
+Write-Host "curl -X POST http://192.168.1.24:3000/api/search/initialize-index" -ForegroundColor White
+Write-Host "curl -X POST http://192.168.1.24:3000/api/search/force-sync?fullSync=true" -ForegroundColor White
+Write-Host "curl -X GET http://192.168.1.24:3000/api/search/health" -ForegroundColor White
