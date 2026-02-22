@@ -1,5 +1,6 @@
 const { executeQuery } = require('../config/database');
 const logger = require('../utils/logger');
+const AddressUtils = require('../utils/AddressUtils');
 
 /**
  * Repository for Inscription Agreement operations
@@ -101,23 +102,18 @@ class InscriptionAgreementRepository {
             nir.StorageTo
             
           FROM NicheInscriptionRequest nir WITH(NOLOCK)
-          INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
-          INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
-          INNER JOIN Niche n WITH(NOLOCK) ON na.NicheId = n.NicheId
-          INNER JOIN NicheRow r WITH(NOLOCK) ON n.NicheRowlId = r.NicheRowlId
-          INNER JOIN NicheWall w WITH(NOLOCK) ON r.NicheWallId = w.NicheWallId
-          INNER JOIN Chapel c WITH(NOLOCK) ON w.ChapelId = c.ChapelId
+          LEFT JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+          LEFT JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+          LEFT JOIN Niche n WITH(NOLOCK) ON na.NicheId = n.NicheId
+          LEFT JOIN NicheRow r WITH(NOLOCK) ON n.NicheRowlId = r.NicheRowlId
+          LEFT JOIN NicheWall w WITH(NOLOCK) ON r.NicheWallId = w.NicheWallId
+          LEFT JOIN Chapel c WITH(NOLOCK) ON w.ChapelId = c.ChapelId
           LEFT JOIN Person cp WITH(NOLOCK) ON nb.ContactPersonId = cp.PersonId
           LEFT JOIN Person nom1 WITH(NOLOCK) ON nb.NomineeId = nom1.PersonId
           LEFT JOIN Person nom2 WITH(NOLOCK) ON nb.NomineeId2 = nom2.PersonId
           LEFT JOIN NicheInscriptionRequestDecesed nid WITH(NOLOCK) ON nir.NicheInscriptionRequestId = nid.NicheInscriptionRequestId
           LEFT JOIN BibleInscriptionChoice bic WITH(NOLOCK) ON nir.BibleInscriptionChoiceId = bic.BibleInscriptionChoiceId
           WHERE nir.NicheInscriptionRequestId = @inscriptionId
-            AND (
-              nir.RefDocType = 'INCR' 
-              OR (nir.Code LIKE 'I-%' AND nir.RefDocType IS NULL)
-              OR nir.Code LIKE 'INCR-%'
-            )
         `;
 
         params = { inscriptionId: inscriptionId };
@@ -188,23 +184,18 @@ class InscriptionAgreementRepository {
             nir.StorageTo
             
           FROM NicheInscriptionRequest nir WITH(NOLOCK)
-          INNER JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
-          INNER JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
-          INNER JOIN Niche n WITH(NOLOCK) ON na.NicheId = n.NicheId
-          INNER JOIN NicheRow r WITH(NOLOCK) ON n.NicheRowlId = r.NicheRowlId
-          INNER JOIN NicheWall w WITH(NOLOCK) ON r.NicheWallId = w.NicheWallId
-          INNER JOIN Chapel c WITH(NOLOCK) ON w.ChapelId = c.ChapelId
+          LEFT JOIN NicheBooking nb WITH(NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+          LEFT JOIN NicheApplication na WITH(NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+          LEFT JOIN Niche n WITH(NOLOCK) ON na.NicheId = n.NicheId
+          LEFT JOIN NicheRow r WITH(NOLOCK) ON n.NicheRowlId = r.NicheRowlId
+          LEFT JOIN NicheWall w WITH(NOLOCK) ON r.NicheWallId = w.NicheWallId
+          LEFT JOIN Chapel c WITH(NOLOCK) ON w.ChapelId = c.ChapelId
           LEFT JOIN Person cp WITH(NOLOCK) ON nb.ContactPersonId = cp.PersonId
           LEFT JOIN Person nom1 WITH(NOLOCK) ON nb.NomineeId = nom1.PersonId
           LEFT JOIN Person nom2 WITH(NOLOCK) ON nb.NomineeId2 = nom2.PersonId
           LEFT JOIN NicheInscriptionRequestDecesed nid WITH(NOLOCK) ON nir.NicheInscriptionRequestId = nid.NicheInscriptionRequestId
           LEFT JOIN BibleInscriptionChoice bic WITH(NOLOCK) ON nir.BibleInscriptionChoiceId = bic.BibleInscriptionChoiceId
           WHERE nir.Code = @inscriptionCode
-            AND (
-              nir.RefDocType = 'INCR' 
-              OR (nir.Code LIKE 'I-%' AND nir.RefDocType IS NULL)
-              OR nir.Code LIKE 'INCR-%'
-            )
         `;
 
         params = { inscriptionCode: searchCode };
@@ -341,14 +332,14 @@ class InscriptionAgreementRepository {
         ApplicantEmail: agreementDetails.ApplicantEmailID,
         ApplicantMobile: agreementDetails.ApplicantMobileNo,
         ApplicantPhone: agreementDetails.ApplicantHomeTelNo,
-        ApplicantAddress: this.formatFullAddress(
-          agreementDetails.ApplicantAddressNo,
-          agreementDetails.ApplicantAddressLine1,
-          agreementDetails.ApplicantAddressLine2,
-          agreementDetails.ApplicantAddressCity,
-          agreementDetails.ApplicantAddressState,
-          agreementDetails.ApplicantAddressCountry
-        ),
+        ApplicantAddress: AddressUtils.formatAddress({
+          AddressNo: agreementDetails.ApplicantAddressNo,
+          Address: agreementDetails.ApplicantAddressLine1,
+          Address2: agreementDetails.ApplicantAddressLine2,
+          AddressCity: agreementDetails.ApplicantAddressCity,
+          DistrictCode: agreementDetails.ApplicantAddressState,
+          Country: agreementDetails.ApplicantAddressCountry
+        }),
 
         // Niche information
         NicheCode: agreementDetails.NicheCode,
@@ -424,14 +415,14 @@ class InscriptionAgreementRepository {
           email: agreementDetails.ApplicantEmailID,
           mobile: agreementDetails.ApplicantMobileNo,
           phone: agreementDetails.ApplicantHomeTelNo,
-          address: this.formatFullAddress(
-            agreementDetails.ApplicantAddressNo,
-            agreementDetails.ApplicantAddressLine1,
-            agreementDetails.ApplicantAddressLine2,
-            agreementDetails.ApplicantAddressCity,
-            agreementDetails.ApplicantAddressState,
-            agreementDetails.ApplicantAddressCountry
-          ),
+          address: AddressUtils.formatAddress({
+            AddressNo: agreementDetails.ApplicantAddressNo,
+            Address: agreementDetails.ApplicantAddressLine1,
+            Address2: agreementDetails.ApplicantAddressLine2,
+            AddressCity: agreementDetails.ApplicantAddressCity,
+            DistrictCode: agreementDetails.ApplicantAddressState,
+            Country: agreementDetails.ApplicantAddressCountry
+          }),
           addressNo: agreementDetails.ApplicantAddressNo,
           addressLine1: agreementDetails.ApplicantAddressLine1,
           addressLine2: agreementDetails.ApplicantAddressLine2,
@@ -476,7 +467,11 @@ class InscriptionAgreementRepository {
           bibleText: agreementDetails.BibleInscriptionText,
           additionalPhrase: agreementDetails.AdditionalInscriptionPhrase,
           remarks: agreementDetails.InscriptionRemarks,
-          crossType: agreementDetails.CrossType || 'Crucifix'
+          crossType: agreementDetails.CrossType || 'Crucifix',
+          fullInscription: [
+            agreementDetails.BibleInscriptionChoiceNoValue,
+            agreementDetails.AdditionalInscriptionPhrase
+          ].filter(Boolean).join('\n') || ''
         },
 
         // Deceased details
@@ -503,21 +498,6 @@ class InscriptionAgreementRepository {
       logger.error('Failed to get PDF data:', error);
       throw error;
     }
-  }
-
-  /**
-   * Helper method to format full address
-   * @private
-   */
-  formatFullAddress(no, line1, line2, city, state, country) {
-    const parts = [];
-    if (no) parts.push(no);
-    if (line1) parts.push(line1);
-    if (line2) parts.push(line2);
-    if (city) parts.push(city);
-    if (state) parts.push(state);
-    if (country) parts.push(country);
-    return parts.join(', ') || '';
   }
 
   /**

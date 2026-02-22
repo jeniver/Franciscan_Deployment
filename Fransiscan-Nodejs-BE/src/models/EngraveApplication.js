@@ -1,3 +1,5 @@
+const AddressUtils = require('../utils/AddressUtils');
+
 /**
  * EngraveApplication entity model (NicheInscriptionRequest in ASP.NET)
  * For engraving/inscription applications
@@ -61,16 +63,14 @@ class EngraveApplication {
    * @returns {string} Complete address
    */
   getApplicantAddress() {
-    const parts = [
-      this.applicantAddressNo,
-      this.applicantAddressLine1,
-      this.applicantAddressLine2,
-      this.applicantAddressCity,
-      this.applicantAddressState,
-      this.applicantAddressCountry
-    ].filter(part => part && part.trim() !== '');
-
-    return parts.join(', ');
+    return AddressUtils.formatAddress({
+      AddressNo: this.applicantAddressNo,
+      Address: this.applicantAddressLine1,
+      Address2: this.applicantAddressLine2,
+      AddressCity: this.applicantAddressCity,
+      DistrictCode: this.applicantAddressState,
+      Country: this.applicantAddressCountry
+    });
   }
 
   /**

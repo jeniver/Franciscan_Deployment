@@ -6,86 +6,86 @@
 class NicheApplication {
   constructor(data = {}) {
     // Primary key
-    this.nicheApplicationId = data.nicheApplicationId || data.NicheApplicationId || null;
+    this.nicheApplicationId = data.nicheApplicationId ?? data.NicheApplicationId ?? null;
 
     // Dates
-    this.appliedDate = data.appliedDate || data.AppliedDate || new Date();
-    this.agreementDate = data.agreementDate || data.AgreementDate || new Date();
+    this.appliedDate = data.appliedDate ?? data.AppliedDate ?? new Date();
+    this.agreementDate = data.agreementDate ?? data.AgreementDate ?? new Date();
 
     // Status and Code
-    this.status = data.status || data.Status || 1; // 1=Draft, 2=Pending, 3=Booked
-    this.code = data.code || data.Code || null;
+    this.status = data.status ?? data.Status ?? 1; // 1=Draft, 2=Pending, 3=Booked
+    this.code = data.code ?? data.Code ?? null;
 
     // Niche selection
-    this.nicheId = data.nicheId || data.NicheId || null;
-    this.amount = data.amount || data.Amount || 0;
-    this.defaultAmount = data.defaultAmount || data.DefaultAmount || 0;
+    this.nicheId = data.nicheId ?? data.NicheId ?? null;
+    this.amount = data.amount ?? data.Amount ?? 0;
+    this.defaultAmount = data.defaultAmount ?? data.DefaultAmount ?? 0;
 
     // Applicant information
-    this.applicantName = data.applicantName || data.ApplicantName || null;
-    this.applicantIDNo = data.applicantIDNo || data.ApplicantIDNo || null;
-    this.applicantEmailID = data.applicantEmailID || data.ApplicantEmailID || null;
-    this.applicantMobileNo = data.applicantMobileNo || data.ApplicantMobileNo || null;
-    this.applicantHomeTelNo = data.applicantHomeTelNo || data.ApplicantHomeTelNo || null;
-    this.applicantOfficeTelNo = data.applicantOfficeTelNo || data.ApplicantOfficeTelNo || null;
-    this.applicantIsCatholic = data.applicantIsCatholic !== undefined ? data.applicantIsCatholic : (data.ApplicantIsCatholic || false);
+    this.applicantName = data.applicantName ?? data.ApplicantName ?? null;
+    this.applicantIDNo = data.applicantIDNo ?? data.ApplicantIDNo ?? null;
+    this.applicantEmailID = data.applicantEmailID ?? data.ApplicantEmailID ?? null;
+    this.applicantMobileNo = data.applicantMobileNo ?? data.ApplicantMobileNo ?? null;
+    this.applicantHomeTelNo = data.applicantHomeTelNo ?? data.ApplicantHomeTelNo ?? null;
+    this.applicantOfficeTelNo = data.applicantOfficeTelNo ?? data.ApplicantOfficeTelNo ?? null;
+    this.applicantIsCatholic = data.applicantIsCatholic !== undefined ? data.applicantIsCatholic : (data.ApplicantIsCatholic ?? false);
 
     // Applicant address
-    this.applicantAddressNo = data.applicantAddressNo || data.ApplicantAddressNo || null;
-    this.applicantAddressLine1 = data.applicantAddressLine1 || data.ApplicantAddressLine1 || null;
-    this.applicantAddressLine2 = data.applicantAddressLine2 || data.ApplicantAddressLine2 || null;
-    this.applicantAddressCity = data.applicantAddressCity || data.ApplicantAddressCity || null;
-    this.applicantAddressState = data.applicantAddressState || data.ApplicantAddressState || null;
-    this.applicantAddressCountry = data.applicantAddressCountry || data.ApplicantAddressCountry || null;
+    this.applicantAddressNo = data.applicantAddressNo ?? data.ApplicantAddressNo ?? null;
+    this.applicantAddressLine1 = data.applicantAddressLine1 ?? data.ApplicantAddressLine1 ?? null;
+    this.applicantAddressLine2 = data.applicantAddressLine2 ?? data.ApplicantAddressLine2 ?? null;
+    this.applicantAddressCity = data.applicantAddressCity ?? data.ApplicantAddressCity ?? null;
+    this.applicantAddressState = data.applicantAddressState ?? data.ApplicantAddressState ?? null;
+    this.applicantAddressCountry = data.applicantAddressCountry ?? data.ApplicantAddressCountry ?? null;
 
     // Primary Nominee
-    this.nomineeName = data.nomineeName || data.NomineeName || null;
-    this.nomineeIDNo = data.nomineeIDNo || data.NomineeIDNo || null;
-    this.nomineeEmailID = data.nomineeEmailID || data.NomineeEmailID || null;
-    this.nomineeMobileNo = data.nomineeMobileNo || data.NomineeMobileNo || null;
-    this.nomineeHomeTelNo = data.nomineeHomeTelNo || data.NomineeHomeTelNo || null;
-    this.nomineeOfficeTelNo = data.nomineeOfficeTelNo || data.NomineeOfficeTelNo || null;
-    this.nomineeRelationship = data.nomineeRelationship || data.NomineeRelationship || null;
-    this.nomineeIsCatholic = data.nomineeIsCatholic !== undefined ? data.nomineeIsCatholic : (data.NomineeIsCatholic || null);
+    this.nomineeName = data.nomineeName ?? data.NomineeName ?? null;
+    this.nomineeIDNo = data.nomineeIDNo ?? data.NomineeIDNo ?? null;
+    this.nomineeEmailID = data.nomineeEmailID ?? data.NomineeEmailID ?? null;
+    this.nomineeMobileNo = data.nomineeMobileNo ?? data.NomineeMobileNo ?? null;
+    this.nomineeHomeTelNo = data.nomineeHomeTelNo ?? data.NomineeHomeTelNo ?? null;
+    this.nomineeOfficeTelNo = data.nomineeOfficeTelNo ?? data.NomineeOfficeTelNo ?? null;
+    this.nomineeRelationship = data.nomineeRelationship ?? data.NomineeRelationship ?? null;
+    this.nomineeIsCatholic = data.nomineeIsCatholic !== undefined ? data.nomineeIsCatholic : (data.NomineeIsCatholic ?? null);
 
     // Nominee address
-    this.nomineeAddressNo = data.nomineeAddressNo || data.NomineeAddressNo || null;
-    this.nomineeAddressLine1 = data.nomineeAddressLine1 || data.NomineeAddressLine1 || null;
-    this.nomineeAddressLine2 = data.nomineeAddressLine2 || data.NomineeAddressLine2 || null;
-    this.nomineeAddressCity = data.nomineeAddressCity || data.NomineeAddressCity || null;
-    this.nomineeAddressState = data.nomineeAddressState || data.NomineeAddressState || null;
-    this.nomineeAddressCountry = data.nomineeAddressCountry || data.NomineeAddressCountry || null;
+    this.nomineeAddressNo = data.nomineeAddressNo ?? data.NomineeAddressNo ?? null;
+    this.nomineeAddressLine1 = data.nomineeAddressLine1 ?? data.NomineeAddressLine1 ?? null;
+    this.nomineeAddressLine2 = data.nomineeAddressLine2 ?? data.NomineeAddressLine2 ?? null;
+    this.nomineeAddressCity = data.nomineeAddressCity ?? data.NomineeAddressCity ?? null;
+    this.nomineeAddressState = data.nomineeAddressState ?? data.NomineeAddressState ?? null;
+    this.nomineeAddressCountry = data.nomineeAddressCountry ?? data.NomineeAddressCountry ?? null;
 
     // Secondary Nominee (Optional)
-    this.nomineeName2 = data.nomineeName2 || data.NomineeName2 || null;
-    this.nomineeIDNo2 = data.nomineeIDNo2 || data.NomineeIDNo2 || null;
-    this.nomineeEmailID2 = data.nomineeEmailID2 || data.NomineeEmailID2 || null;
-    this.nomineeMobileNo2 = data.nomineeMobileNo2 || data.NomineeMobileNo2 || null;
-    this.nomineeHomeTelNo2 = data.nomineeHomeTelNo2 || data.NomineeHomeTelNo2 || null;
-    this.nomineeOfficeTelNo2 = data.nomineeOfficeTelNo2 || data.NomineeOfficeTelNo2 || null;
-    this.nomineeRelationship2 = data.nomineeRelationship2 || data.NomineeRelationship2 || null;
-    this.nomineeIsCatholic2 = data.nomineeIsCatholic2 !== undefined ? data.nomineeIsCatholic2 : (data.NomineeIsCatholic2 || null);
+    this.nomineeName2 = data.nomineeName2 ?? data.NomineeName2 ?? null;
+    this.nomineeIDNo2 = data.nomineeIDNo2 ?? data.NomineeIDNo2 ?? null;
+    this.nomineeEmailID2 = data.nomineeEmailID2 ?? data.NomineeEmailID2 ?? null;
+    this.nomineeMobileNo2 = data.nomineeMobileNo2 ?? data.NomineeMobileNo2 ?? null;
+    this.nomineeHomeTelNo2 = data.nomineeHomeTelNo2 ?? data.NomineeHomeTelNo2 ?? null;
+    this.nomineeOfficeTelNo2 = data.nomineeOfficeTelNo2 ?? data.NomineeOfficeTelNo2 ?? null;
+    this.nomineeRelationship2 = data.nomineeRelationship2 ?? data.NomineeRelationship2 ?? null;
+    this.nomineeIsCatholic2 = data.nomineeIsCatholic2 !== undefined ? data.nomineeIsCatholic2 : (data.NomineeIsCatholic2 ?? null);
 
     // Nominee 2 address
-    this.nomineeAddressNo2 = data.nomineeAddressNo2 || data.NomineeAddressNo2 || null;
-    this.nomineeAddressLine12 = data.nomineeAddressLine12 || data.NomineeAddressLine12 || null;
-    this.nomineeAddressLine22 = data.nomineeAddressLine22 || data.NomineeAddressLine22 || null;
-    this.nomineeAddressCity2 = data.nomineeAddressCity2 || data.NomineeAddressCity2 || null;
-    this.nomineeAddressState2 = data.nomineeAddressState2 || data.NomineeAddressState2 || null;
-    this.nomineeAddressCountry2 = data.nomineeAddressCountry2 || data.NomineeAddressCountry2 || null;
+    this.nomineeAddressNo2 = data.nomineeAddressNo2 ?? data.NomineeAddressNo2 ?? null;
+    this.nomineeAddressLine12 = data.nomineeAddressLine12 ?? data.NomineeAddressLine12 ?? null;
+    this.nomineeAddressLine22 = data.nomineeAddressLine22 ?? data.NomineeAddressLine22 ?? null;
+    this.nomineeAddressCity2 = data.nomineeAddressCity2 ?? data.NomineeAddressCity2 ?? null;
+    this.nomineeAddressState2 = data.nomineeAddressState2 ?? data.NomineeAddressState2 ?? null;
+    this.nomineeAddressCountry2 = data.nomineeAddressCountry2 ?? data.NomineeAddressCountry2 ?? null;
 
     // Beneficiaries (up to 3, stored separately in NicheApplicationBeneficiary table)
     this.beneficiaries = data.beneficiaries || data.NicheApplicationBeneficiaries || [];
 
     // Administrative
-    this.churchId = data.churchId || data.ChurchId || null;
-    this.userId = data.userId || data.UserId || null;
-    this.remarks = data.remarks || data.Remarks || null;
-    this.refDocType = data.refDocType || data.RefDocType || 'NAPP';
+    this.churchId = data.churchId ?? data.ChurchId ?? null;
+    this.userId = data.userId ?? data.UserId ?? null;
+    this.remarks = data.remarks ?? data.Remarks ?? null;
+    this.refDocType = data.refDocType ?? data.RefDocType ?? 'NAPP';
 
     // Related entities
-    this.niche = data.niche || data.Niche || null;
-    this.contact = data.contact || data.Contact || null;
+    this.niche = data.niche ?? data.Niche ?? null;
+    this.contact = data.contact ?? data.Contact ?? null;
   }
 
   toJSON() {
@@ -237,10 +237,20 @@ class NicheApplicationBeneficiary {
     this.idNo = data.idNo || data.IDNo || null;
     this.isCatholic = data.isCatholic !== undefined ? data.isCatholic : (data.IsCatholic || null);
     this.isMale = data.isMale !== undefined ? data.isMale : (data.IsMale || null);
-    // Note: These fields now exist in both the model and database table
-    // They will be persisted to the database
     this.relationshipToNominee1 = data.relationshipToNominee1 || data.RelationshipToNominee1 || null;
     this.relationshipToNominee2 = data.relationshipToNominee2 || data.RelationshipToNominee2 || null;
+
+    // Status from NicheBookingBeneficiary (populated via join, not a column on NicheApplicationBeneficiary)
+    this.status = data.status ?? data.Status ?? data.BeneficiaryStatus ?? null;
+    this.lifeStatus = data.lifeStatus ?? data.LifeStatus ?? null;
+  }
+
+  /** Translate integer BeneficiaryStatus to display label */
+  getStatusText() {
+    if (this.status === 1) return 'Occupied';
+    if (this.status === 0) return 'Not Occupied';
+    if (this.status === 2) return 'Deceased';
+    return this.status !== null && this.status !== undefined ? String(this.status) : 'Not Occupied';
   }
 
   toJSON() {
@@ -254,9 +264,10 @@ class NicheApplicationBeneficiary {
       idNo: this.idNo,
       isCatholic: this.isCatholic,
       isMale: this.isMale,
-      // Include these in JSON output for frontend compatibility
       relationshipToNominee1: this.relationshipToNominee1,
-      relationshipToNominee2: this.relationshipToNominee2
+      relationshipToNominee2: this.relationshipToNominee2,
+      status: this.getStatusText(),
+      lifeStatus: this.lifeStatus
     };
   }
 

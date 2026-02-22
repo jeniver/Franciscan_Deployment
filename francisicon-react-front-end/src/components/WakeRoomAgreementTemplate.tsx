@@ -1,6 +1,7 @@
 import React, { forwardRef } from 'react';
 import { WakeRoomBooking } from '../services/wakeRoomService';
 import { PDF_ASSETS } from './common/FranciscanLogo';
+import { addressUtils, AddressEntity } from '../utils/addressUtils';
 
 interface WakeRoomAgreementTemplateProps {
     booking: WakeRoomBooking | any;
@@ -68,16 +69,16 @@ export const WakeRoomAgreementTemplate = forwardRef<HTMLDivElement, WakeRoomAgre
         return numeric.toFixed(2);
     };
 
-    // Address formatting
-    const address = applicant.addressDetails || {};
-    const fullAddress = [
-        address.no ? `No ${address.no}` : '',
-        address.line1,
-        address.line2,
-        address.city,
-        address.state,
-        address.country
-    ].filter(Boolean).join(' ');
+    const addrRaw = applicant.addressDetails || {};
+    const addrEntity: AddressEntity = {
+        addressNo: addrRaw.no || '',
+        addressLine1: addrRaw.line1 || '',
+        addressLine2: addrRaw.line2 || '',
+        addressCity: addrRaw.city || '',
+        addressState: addrRaw.postalCode || addrRaw.state || '',
+        addressCountry: addrRaw.country || 'Singapore',
+    };
+    const addressLines = addressUtils.buildAddressLines(addrEntity);
 
     return (
         <div ref={ref} className="w-full max-w-[210mm] mx-auto bg-white text-black font-serif text-sm leading-tight print:p-0">
@@ -137,21 +138,16 @@ export const WakeRoomAgreementTemplate = forwardRef<HTMLDivElement, WakeRoomAgre
                         </div>
                         <div className="flex-1 p-2">{applicant.name}</div>
                     </div>
-                    {/* Row 2 */}
+                    {/* Row 2 - Address */}
                     <div className="flex border-b border-black">
                         <div className="w-32 p-2 border-r border-black flex items-center justify-center font-bold">
                             ADDRESS
                         </div>
-                        <div className="flex-1 p-2">
-                            {fullAddress}
+                        <div className="flex-1 flex flex-col">
+                            <div className="flex-1 p-2 border-b border-black">{addressLines[0] || ''}</div>
+                            <div className="flex-1 p-2 border-b border-black">{addressLines[1] || ''}</div>
+                            <div className="flex-1 p-2">{addressLines[2] || ''}</div>
                         </div>
-                    </div>
-                    {/* Row 3 */}
-                    <div className="flex border-b border-black">
-                        <div className="w-32 p-2 border-r border-black flex items-center justify-center font-bold">
-                            POSTAL
-                        </div>
-                        <div className="flex-1 p-2">{address.postalCode || ''}</div>
                     </div>
                     {/* Row 4 */}
                     <div className="flex">

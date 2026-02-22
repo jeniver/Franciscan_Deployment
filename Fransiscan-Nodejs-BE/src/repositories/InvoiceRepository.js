@@ -3,6 +3,7 @@ const { executeQuery, getPool } = require('../config/database');
 const logger = require('../utils/logger');
 const Invoice = require('../models/Invoice');
 const InvoiceDetail = require('../models/InvoiceDetail');
+const AddressUtils = require('../utils/AddressUtils');
 const sql = require('mssql');
 
 /**
@@ -1564,14 +1565,14 @@ VALUES(
           'Cheque': 2, 'cheque': 2, 'CHEQUE': 2,
           'TT': 3, 'tt': 3, 'TRANSFER': 3, 'transfer': 3,
           'Credit Card': 4, 'credit card': 4, 'CREDIT CARD': 4, 'CreditCard': 4, 'creditcard': 4,
-          'Others': 5, 'others': 5, 'OTHERS': 5
+          'Others': 4, 'others': 4, 'OTHERS': 4, 'Other': 4, 'other': 4
         };
 
         // If it's a known string, convert to number; otherwise default to 1 (Cash)
         paymentModeValue = modeMap[paymentModeValue] || 1;
       } else if (typeof paymentModeValue === 'number') {
-        // If it's already a number, ensure it's valid (between 1-5), otherwise default to 1
-        paymentModeValue = (paymentModeValue >= 1 && paymentModeValue <= 5) ? paymentModeValue : 1;
+        // If it's already a number, ensure it's valid (between 1-4), otherwise default to 1
+        paymentModeValue = (paymentModeValue >= 1 && paymentModeValue <= 4) ? paymentModeValue : 1;
       } else if (paymentModeValue === null || paymentModeValue === undefined || paymentModeValue === '') {
         // If it's null, undefined, or empty string, default to 1 (Cash)
         paymentModeValue = 1;

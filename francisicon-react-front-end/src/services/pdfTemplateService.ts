@@ -1,6 +1,7 @@
 import { NicheAgreementError } from './nicheAgreementService';
 import jsPDF from 'jspdf';
 import { PDF_ASSETS } from '../constants/pdfConstants';
+import { addressUtils, AddressEntity } from '../utils/addressUtils';
 
 // PDF Template Service for generating attractive agreement and invoice templates
 export const pdfTemplateService = {
@@ -42,125 +43,17 @@ export const pdfTemplateService = {
       }
     };
 
-    // Helper function to format address into lines from a single string
-    const formatAddressLinesFromString = (address: string | null | undefined): string[] => {
-      if (!address) return ['', '', ''];
-
-      // Try to parse Singapore address format: "Blk XXX Street Name #XX-XX Singapore XXXXXX"
-      const addressStr = address.trim();
-
-      // Pattern 1: "Blk 343 Choa Chu Kang Loop #06-43, Singapore 680343" (handle "Blk" or "Bik" typos)
-      const pattern1 = addressStr.match(/B[il]k\s+(\d+[A-Z]?)\s+(.+?)(?:,\s*Singapore\s+(\d+))?/i);
-      if (pattern1) {
-        // Normalize "Bik" to "Blk" for display
-        const blockPart = `Blk ${pattern1[1]}`;
-        const rest = pattern1[2].trim();
-        const postalCode = pattern1[3] || '';
-
-        // Check for unit number pattern #XX-XX
-        const unitMatch = rest.match(/#(\d+-\d+)/);
-        if (unitMatch) {
-          const unitPart = `#${unitMatch[1]}`;
-          const streetPart = rest.replace(/#\d+-\d+/, '').trim();
-          return [
-            `${blockPart} ${streetPart}`,
-            unitPart,
-            postalCode ? `Singapore ${postalCode}` : ''
-          ];
-        } else {
-          // No unit number
-          return [
-            `${blockPart} ${rest}`,
-            '',
-            postalCode ? `Singapore ${postalCode}` : ''
-          ];
-        }
-      }
-
-      // Pattern 2: "1010 EAST COAST PARKWAY, Singapore 449892" (Address, Country PostalCode)
-      const pattern2 = addressStr.match(/^(.+?),\s*Singapore\s+(\d+)$/i);
-      if (pattern2) {
-        const mainAddress = pattern2[1].trim();
-        const postalCode = pattern2[2];
-        return [
-          mainAddress,
-          '',
-          `Singapore ${postalCode}`
-        ];
-      }
-
-      // Pattern 3: Split by commas (general case)
-      const parts = addressStr.split(',').map(p => p.trim()).filter(Boolean);
-      if (parts.length >= 3) {
-        return [parts[0] || '', parts[1] || '', parts.slice(2).join(', ') || ''];
-      } else if (parts.length === 2) {
-        // Check if second part starts with "Singapore" - likely country + postal
-        if (parts[1].toLowerCase().startsWith('singapore')) {
-          return [parts[0] || '', '', parts[1] || ''];
-        }
-        return [parts[0] || '', parts[1] || '', ''];
-      } else {
-        // Single line - try to extract street, unit, and Singapore postal if present
-        const singaporeMatch = addressStr.match(/^(.+?)\s+(Singapore\s+\d+)$/i);
-        if (singaporeMatch) {
-          return [singaporeMatch[1].trim(), '', singaporeMatch[2].trim()];
-        }
-        const line1 = addressStr;
-        return [line1, '', ''];
-      }
-    };
-
-    // Prefer structured address parts when available (addressNo / addressLine1 / addressLine2 / addressCity / addressState / addressCountry)
-    // Mapping: addressNo → No (if "No", then empty, otherwise "Block"), addressLine1 → Block No, addressLine2 → Street Name, 
-    // addressCity → Unit No, addressState → Postal Code, addressCountry → Country
     const buildAddressLinesFromEntity = (entity: any): string[] => {
-      // Check for structured address fields (can be at entity level or nested in entity.address)
-      const addressNo = entity.addressNo || entity.address?.no || '';
-      const addressLine1 = entity.addressLine1 || entity.address?.line1 || '';
-      const addressLine2 = entity.addressLine2 || entity.address?.line2 || '';
-      const addressCity = entity.addressCity || entity.address?.city || '';
-      const addressState = entity.addressState || entity.address?.state || '';
-      const addressCountry = entity.addressCountry || entity.address?.country || '';
-
-      if (addressNo || addressLine1 || addressLine2 || addressCity || addressState || addressCountry) {
-        // Line 1: No/Block + Block No + Street Name
-        const line1Parts: string[] = [];
-        if (addressNo) {
-          const lowerNo = addressNo.trim().toUpperCase();
-          if (lowerNo === 'BLK' || lowerNo === 'BLOCK') {
-            line1Parts.push('Blk');
-          } else if (lowerNo === 'NO') {
-            line1Parts.push('No');
-          } else {
-            line1Parts.push(addressNo.trim());
-          }
-        }
-        if (addressLine1) {
-          line1Parts.push(addressLine1.trim());
-        }
-        if (addressLine2) {
-          line1Parts.push(addressLine2.trim());
-        }
-        const line1 = line1Parts.join(' ').trim();
-
-        // Line 2: Unit No (from addressCity)
-        const line2 = addressCity.trim();
-
-        // Line 3: Country + Postal Code (from addressState)
-        const line3Parts: string[] = [];
-        if (addressCountry) {
-          line3Parts.push(addressCountry.trim());
-        }
-        if (addressState) {
-          line3Parts.push(addressState.trim());
-        }
-        const line3 = line3Parts.join(' ').trim();
-
-        return [line1, line2, line3];
-      }
-
-      // Fallback to parsing the combined address string
-      return formatAddressLinesFromString(entity?.address);
+      if (!entity) return ['', '', ''];
+      const mapped: AddressEntity = {
+        addressNo: entity.addressNo || entity.address?.no || '',
+        addressLine1: entity.addressLine1 || entity.address?.line1 || '',
+        addressLine2: entity.addressLine2 || entity.address?.line2 || '',
+        addressCity: entity.addressCity || entity.address?.city || '',
+        addressState: entity.addressState || entity.address?.state || '',
+        addressCountry: entity.addressCountry || entity.address?.country || 'Singapore',
+      };
+      return addressUtils.buildAddressLines(mapped);
     };
 
     // Format address for display (applicant and nominees)

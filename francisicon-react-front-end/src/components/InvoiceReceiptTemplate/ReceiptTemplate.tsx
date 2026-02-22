@@ -92,7 +92,7 @@ export function ReceiptTemplate({
         </div>
         <div className="flex gap-2 items-start">
           <span className="w-[110px] shrink-0 font-bold">Address :</span>
-          <div className="font-medium flex-1 text-[13px] leading-snug whitespace-pre-wrap uppercase">
+          <div className="flex-1 text-[14px] leading-normal whitespace-pre-wrap">
             {address}
           </div>
         </div>

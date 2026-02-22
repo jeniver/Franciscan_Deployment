@@ -3,6 +3,7 @@ const { executeQuery } = require('../config/database');
 const logger = require('../utils/logger');
 const WakeRoom = require('../models/WakeRoom');
 const WakeRoomBooking = require('../models/WakeRoomBooking');
+const AddressUtils = require('../utils/AddressUtils');
 
 /**
  * Convert date value to Date object
@@ -246,6 +247,16 @@ class WakeRoomRepository extends BaseRepository {
           rentingAmount: row.WakeRoomRentingAmount
         });
       }
+
+      // Use centralized utility for full address
+      booking.applicantFullAddress = AddressUtils.formatAddress({
+        AddressNo: row.ApplicantAddressNo,
+        Address: row.ApplicantAddressLine1,
+        Address2: row.ApplicantAddressLine2,
+        AddressCity: row.ApplicantAddressCity,
+        DistrictCode: row.ApplicantAddressState,
+        Country: row.ApplicantAddressCountry
+      });
 
       logger.info(`Found wake room booking: ${booking.code}`);
       return booking;

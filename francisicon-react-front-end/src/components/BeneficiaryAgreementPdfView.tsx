@@ -28,6 +28,7 @@ interface BeneficiaryAgreementData {
         name?: string
         idNo?: string
         dateOfBirth?: string
+        birthYear?: number | string
         sex?: string
         relationshipToApplicant?: string
         isCatholic?: boolean
@@ -124,16 +125,16 @@ export function BeneficiaryAgreement({
                         </div>
                     </div>
                     <div className="w-24 h-20 flex-shrink-0">
-            <img
-              src={PDF_ASSETS.headerImageUrl}
-              alt="Franciscan Columbarium Logo"
-              className="w-full h-full object-contain"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement
-                target.src = PDF_ASSETS.headerImageBase64
-              }}
-            />
-          </div>
+                        <img
+                            src={PDF_ASSETS.headerImageUrl}
+                            alt="Franciscan Columbarium Logo"
+                            className="w-full h-full object-contain"
+                            onError={(e) => {
+                                const target = e.target as HTMLImageElement
+                                target.src = PDF_ASSETS.headerImageBase64
+                            }}
+                        />
+                    </div>
                 </header>
 
                 {/* Title */}
@@ -229,7 +230,11 @@ export function BeneficiaryAgreement({
                     <TableRow>
                         <LabelCell width="w-12" className="border-r border-black"></LabelCell>
                         <LabelCell width="w-32">Date of Birth</LabelCell>
-                        <ValueCell>{formatDate(beneficiary?.dateOfBirth)}</ValueCell>
+                        <ValueCell>
+                            {beneficiary?.dateOfBirth
+                                ? formatDate(beneficiary.dateOfBirth)
+                                : (beneficiary?.birthYear || '')}
+                        </ValueCell>
                         <LabelCell width="w-40" className="border-l border-black">Sex</LabelCell>
                         <ValueCell width="w-40" className="border-l border-black">{beneficiary?.sex || ''}</ValueCell>
                     </TableRow>

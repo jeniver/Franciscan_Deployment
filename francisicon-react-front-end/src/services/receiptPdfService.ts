@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { addressUtils, AddressEntity } from '../utils/addressUtils';
 
 interface ReceiptApiDetail {
   description?: string | null;
@@ -103,13 +104,13 @@ interface ReceiptPdfOptions {
 const PAYMENT_MODE_MAP: Record<string, string> = {
   '1': 'Cash',
   '2': 'Cheque',
-  '3': 'Bank Transfer',
-  '4': 'Credit Card',
-  '5': 'Online Payment',
-  TT: 'Telegraphic Transfer',
+  '3': 'TT',
+  '4': 'Others',
   CASH: 'Cash',
   CHEQUE: 'Cheque',
-  BANK: 'Bank Transfer',
+  TT: 'TT',
+  OTHERS: 'Others',
+  OTHER: 'Others',
 };
 
 const formatCurrency = (value?: number | null): string => {
@@ -159,6 +160,24 @@ const normalizeRefField = (value?: string | string[] | null): string => {
     return value.filter(Boolean).join(' / ');
   }
   return value;
+};
+
+const buildReceiptAddress = (primary: any, fallback?: any): string => {
+  const p = primary || {};
+  const f = fallback || {};
+  const entity: AddressEntity = {
+    addressNo: p.addressNo || p.AddressNo || f.addressNo || f.AddressNo || '',
+    addressLine1: p.address || p.Address || p.addressLine1 || p.AddressLine1 || f.address || f.Address || f.addressLine1 || f.AddressLine1 || '',
+    addressLine2: p.address2 || p.Address2 || p.addressLine2 || p.AddressLine2 || f.address2 || f.Address2 || f.addressLine2 || f.AddressLine2 || '',
+    addressCity: p.addressCity || p.AddressCity || f.addressCity || f.AddressCity || '',
+    addressState: p.districtCode || p.DistrictCode || p.addressState || p.AddressState || f.districtCode || f.DistrictCode || f.addressState || f.AddressState || '',
+    addressCountry: p.country || p.Country || f.country || f.Country || 'Singapore',
+  };
+  const hasStructured = entity.addressNo || entity.addressLine1 || entity.addressLine2 || entity.addressCity || entity.addressState;
+  if (hasStructured) {
+    return addressUtils.buildAddressLines(entity).filter(l => l.trim()).join('\n') || 'N/A';
+  }
+  return p.customerAddress || f.customerAddress || 'N/A';
 };
 
 const collectLineItems = (payload: ReceiptApiPayload): Array<{
@@ -230,7 +249,7 @@ const generateReceiptHtmlTemplate = (payload: ReceiptApiPayload, options: Receip
   const safeReceiptNo = escapeHtml(receiptInfo.code || options.requestedCode || 'N/A');
   const safeReceiptDate = formatDate(receiptInfo.transactionDate || invoiceInfo.transactionDate);
   const safeCustomerName = escapeHtml(receiptInfo.customerName || invoiceInfo.customerName || 'N/A').toUpperCase();
-  const safeAddress = escapeHtml(receiptInfo.customerAddress || invoiceInfo.customerAddress || 'N/A').toUpperCase();
+  const safeAddress = escapeHtml(buildReceiptAddress(receiptInfo, invoiceInfo));
   const safeInvoiceNo = escapeHtml(invoiceInfo.invoiceNo || invoiceInfo.code || '');
 
   // Resolve summary description
@@ -326,7 +345,7 @@ const generateReceiptHtmlTemplate = (payload: ReceiptApiPayload, options: Receip
             </div>
             <div class="client-row">
                 <span class="client-label">Address :</span>
-                <span class="client-value" style="font-weight: normal; line-height: 1.4;">${safeAddress}</span>
+                <span class="client-value" style="font-weight: normal; line-height: 1.4; white-space: pre-wrap;">${safeAddress}</span>
             </div>
         </div>
 
@@ -575,12 +594,10 @@ export const receiptPdfService = {
       payload.invoice?.customerName ||
       'N/A';
 
-    const customerAddress =
-      payload.CustomerAddress ||
-      payload.Address ||
-      payload.receipt?.customerAddress ||
-      payload.invoice?.customerAddress ||
-      'N/A';
+    const customerAddress = buildReceiptAddress(
+      { ...(payload.receipt || {}), ...(payload as any) },
+      payload.invoice
+    );
 
     const totalAmount =
       payload.TotalAmount ||

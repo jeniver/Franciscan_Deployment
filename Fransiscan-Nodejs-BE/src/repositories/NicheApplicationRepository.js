@@ -683,6 +683,18 @@ class NicheApplicationRepository {
             NomineeAddressCountry: application.nomineeAddressCountry,
             NomineeName2: application.nomineeName2,
             NomineeIDNo2: application.nomineeIDNo2,
+            NomineeEmailID2: application.nomineeEmailID2,
+            NomineeMobileNo2: application.nomineeMobileNo2,
+            NomineeHomeTelNo2: application.nomineeHomeTelNo2,
+            NomineeOfficeTelNo2: application.nomineeOfficeTelNo2,
+            NomineeRelationship2: application.nomineeRelationship2,
+            NomineeIsCatholic2: application.nomineeIsCatholic2,
+            NomineeAddressNo2: application.nomineeAddressNo2,
+            NomineeAddressLine12: application.nomineeAddressLine12,
+            NomineeAddressLine22: application.nomineeAddressLine22,
+            NomineeAddressCity2: application.nomineeAddressCity2,
+            NomineeAddressState2: application.nomineeAddressState2,
+            NomineeAddressCountry2: application.nomineeAddressCountry2,
             Amount: application.amount,
             ChurchId: application.churchId,
             UserId: application.userId,
@@ -1030,10 +1042,8 @@ class NicheApplicationRepository {
           // Map beneficiaries with proper date formatting
           application.beneficiaries = (beneficiaryResult.recordset || [])
             .map(row => {
-              // ✅ FIX: Format DateOfBirth (handles NVARCHAR string from database)
               const formattedDateOfBirth = parseDateValue(row.DateOfBirth)?.toISOString() || (typeof row.DateOfBirth === 'string' ? row.DateOfBirth.trim() || null : null);
 
-              // ✅ FIX: Format BirthYear (handles NVARCHAR string from database)
               let formattedBirthYear = null;
               if (row.BirthYear !== null && row.BirthYear !== undefined) {
                 if (typeof row.BirthYear === 'number') {
@@ -1069,6 +1079,43 @@ class NicheApplicationRepository {
                 relationshipToNominee2: row.RelationshipToNominee2
               });
             });
+
+          // Merge beneficiary status from NicheBookingBeneficiary (the only table with BeneficiaryStatus)
+          try {
+            const statusQuery = `
+              SELECT nbb.Name, nbb.IDNo, nbb.BeneficiaryStatus
+              FROM NicheBookingBeneficiary nbb WITH (NOLOCK)
+              INNER JOIN NicheBooking nb WITH (NOLOCK)
+                ON nbb.NicheBookingId = nb.NicheBookingId
+              WHERE nb.NicheApplicationId = @applicationId
+                AND nbb.BeneficiaryStatus >= 0
+              ORDER BY nbb.NicheBookingBeneficiaryId
+            `;
+            const statusResult = await executeQuery(
+              statusQuery,
+              { applicationId: application.nicheApplicationId },
+              { timeout: 5000 }
+            );
+            const statusRecords = statusResult.recordset || [];
+
+            for (const beneficiary of application.beneficiaries) {
+              let match = statusRecords.find(r =>
+                r.Name && beneficiary.name &&
+                r.Name.trim().toLowerCase() === beneficiary.name.trim().toLowerCase()
+              );
+              if (!match && beneficiary.idNo) {
+                match = statusRecords.find(r =>
+                  r.IDNo && beneficiary.idNo &&
+                  r.IDNo.trim().toLowerCase() === beneficiary.idNo.trim().toLowerCase()
+                );
+              }
+              if (match) {
+                beneficiary.status = match.BeneficiaryStatus;
+              }
+            }
+          } catch (statusError) {
+            logger.warn(`Failed to fetch beneficiary status for application ${code}:`, statusError.message);
+          }
         } catch (beneficiaryError) {
           // Don't fail entire query if beneficiaries fail - just log and continue
           logger.warn(`Failed to fetch beneficiaries for application ${code}:`, beneficiaryError.message);

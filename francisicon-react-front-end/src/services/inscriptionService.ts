@@ -459,11 +459,11 @@ const inscriptionService = {
         applicantHomeTelNo: data.applicant.homeTel,
         applicantOfficeTelNo: '',
         applicantAddressNo: data.applicant.address.block || '',
-        applicantAddressLine1: data.applicant.address.street || '',
-        applicantAddressLine2: data.applicant.address.unitNo || '',
-        applicantAddressCity: `${data.applicant.address.postalCode || ''}`.trim() || '',
-        applicantAddressState: '',
-        applicantAddressCountry: ''
+        applicantAddressLine1: data.applicant.address.blockNo || '',
+        applicantAddressLine2: data.applicant.address.streetName || data.applicant.address.street || '',
+        applicantAddressCity: data.applicant.address.unitNo || '',
+        applicantAddressState: data.applicant.address.postalCode || '',
+        applicantAddressCountry: data.applicant.address.country || 'Singapore'
       };
 
       const requestBody = {
@@ -598,11 +598,11 @@ const inscriptionService = {
         applicantHomeTelNo: data.applicant.homeTel,
         applicantOfficeTelNo: '',
         applicantAddressNo: data.applicant.address.block || '',
-        applicantAddressLine1: data.applicant.address.street || '',
-        applicantAddressLine2: data.applicant.address.unitNo || '',
-        applicantAddressCity: `${data.applicant.address.postalCode || ''}`.trim() || '',
-        applicantAddressState: '',
-        applicantAddressCountry: ''
+        applicantAddressLine1: data.applicant.address.blockNo || '',
+        applicantAddressLine2: data.applicant.address.streetName || data.applicant.address.street || '',
+        applicantAddressCity: data.applicant.address.unitNo || '',
+        applicantAddressState: data.applicant.address.postalCode || '',
+        applicantAddressCountry: data.applicant.address.country || 'Singapore'
       };
 
       const requestBody = {

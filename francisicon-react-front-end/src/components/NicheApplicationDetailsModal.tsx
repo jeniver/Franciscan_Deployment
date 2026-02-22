@@ -149,11 +149,12 @@ export function NicheApplicationDetailsModal({
   const getAgreement = () => application.agreement || {}
   const getPrintReady = () => application.printReady || {}
   const formatAddress = (obj: any) => {
+    if (!obj) return null;
     return (
+      obj.formattedAddress ||
       obj.address?.formatted ||
       obj.address ||
-      `${obj.addressNo || ''} ${obj.addressLine1 || ''} ${obj.addressLine2 || ''} ${obj.addressCity || ''} ${obj.addressState || ''} ${obj.addressCountry || ''}`.trim() ||
-      null
+      addressUtils.formatSingleLine(obj)
     )
   }
   // --- UI COMPONENTS ---

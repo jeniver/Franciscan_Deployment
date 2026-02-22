@@ -138,7 +138,7 @@ export function CreateReceiptPage() {
             setPaymentMode(selectedInvoice.paymentMode || (selectedInvoice as any).PaymentMode || 'Cash');
             setRefDocumentNo((selectedInvoice as any).paymentModeDocNo || (selectedInvoice as any).PaymentModeDocNo || '');
 
-            if (selectedInvoice.invoiceDetails && selectedInvoice.invoiceDetails.length > 0) {
+            if (selectedInvoice.invoiceDetails && selectedInvoice.invoiceDetails.length > 0 && items.length === 0) {
                 const mappedItems: InvoiceItem[] = selectedInvoice.invoiceDetails.map((detail: any) => ({
                     id: Math.random().toString(36).substr(2, 9),
                     selectItem: detail.itemName || detail.description || 'Other',
@@ -154,7 +154,7 @@ export function CreateReceiptPage() {
                 setItems(mappedItems);
             }
         }
-    }, [selectedInvoice]);
+    }, [selectedInvoice, items.length]);
 
     // Update form when applicationData changes
     useEffect(() => {
@@ -166,7 +166,7 @@ export function CreateReceiptPage() {
             setAddressPostalCode(applicationData.districtCode || applicationData.addressCity || '');
             setAddressCountry(applicationData.country || 'Singapore');
 
-            if (applicationData.details && applicationData.details.length > 0) {
+            if (applicationData.details && applicationData.details.length > 0 && items.length === 0) {
                 const mappedItems: InvoiceItem[] = applicationData.details.map((detail: any) => ({
                     id: Math.random().toString(36).substr(2, 9),
                     selectItem: detail.itemName || detail.ItemName || 'Other',
@@ -191,7 +191,7 @@ export function CreateReceiptPage() {
                 }
             }
         }
-    }, [applicationData, selectedInvoice, dispatch]);
+    }, [applicationData, selectedInvoice, dispatch, items.length]);
 
     const availableItems = useMemo(() =>
         receiptItems.length > 0

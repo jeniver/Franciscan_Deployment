@@ -18,7 +18,7 @@ import {
 import { resetReceiptState } from '../store/receiptSlice';
 import { InvoiceItemTable, InvoiceItem } from '../components/common/InvoiceItemTable';
 import { AddressInput } from '../components/AddressInput';
-import { formatAddress } from '../utils/addressMapper';
+import { addressUtils } from '../utils/addressUtils';
 
 
 export function CreateInvoicePage() {
@@ -256,7 +256,7 @@ export function CreateInvoicePage() {
                 }];
             }
 
-            if (invoiceDetails.length > 0) {
+            if (invoiceDetails.length > 0 && items.length === 0) {
                 const mappedItems: InvoiceItem[] = invoiceDetails.map((detail: any) => ({
                     id: Math.random().toString(36).substr(2, 9),
                     selectItem: detail.itemName || detail.ItemName || detail.description || 'Other',
@@ -275,13 +275,13 @@ export function CreateInvoicePage() {
             // Set Agreement Data if available
             setAgreementData(currentData);
         }
-    }, [currentData, typeParam, routeCode, applicationNumber, refDocType]);
+    }, [currentData, typeParam, routeCode, applicationNumber, refDocType, items.length]);
 
     // Fallback: if backend returned application items but currentData.details is empty,
     // use applicationItems (from useApplicationItems) to pre-populate invoice lines.
     // This is especially important for inscription / Gate of Life / Wake Room flows.
     useEffect(() => {
-        // Do not override items if we already mapped details from currentData
+        // Do not override items if we already have some (from currentData or manual addition)
         if (items.length > 0) return;
 
         if (!applicationItems || !applicationItems.items || applicationItems.items.length === 0) {
@@ -412,14 +412,14 @@ export function CreateInvoicePage() {
             invoiceCode: codeToUse,
             invoiceDate: new Date().toLocaleDateString('en-SG', { year: 'numeric', month: 'long', day: 'numeric' }),
             customerName: payeeName,
-            customerAddress: formatAddress({
-                block: addressBlock,
-                blockNo: addressNumber,
-                streetName: addressStreet,
-                unitNo: addressUnit,
-                postalCode: addressPostalCode,
-                country: addressCountry
-            }),
+            customerAddress: addressUtils.buildAddressLines({
+                addressNo: addressBlock === 'Block' ? 'Blk' : addressBlock,
+                addressLine1: addressNumber,
+                addressLine2: addressStreet,
+                addressCity: addressUnit,
+                addressState: addressPostalCode,
+                addressCountry: addressCountry,
+            }).filter(l => l.trim()).join('\n') || 'N/A',
             paymentMode: paymentMode,
             totalAmount: totals.total,
             taxAmount: totals.tax,

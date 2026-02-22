@@ -439,7 +439,7 @@ class NicheApplicationController {
     if (!data) return data;
 
     return {
-      applicationCode: data.code || data.applicationNumber,
+      applicationCode: data.applicationCode || data.code || data.applicationNumber,
       appliedDate: data.appliedDate,
       agreementDate: data.agreementDate,
       applicant: data.applicant,

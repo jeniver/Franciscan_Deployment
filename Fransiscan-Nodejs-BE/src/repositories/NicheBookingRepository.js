@@ -364,20 +364,77 @@ class NicheBookingRepository {
    * @returns {Promise<boolean>} Success status
    */
   async updateBeneficiaryStatus(beneficiaryId, status) {
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+
     try {
-      const query = `
+      await transaction.begin();
+
+      // 1. Update the beneficiary status
+      const updateBeneficiaryQuery = `
         UPDATE NicheBookingBeneficiary
         SET BeneficiaryStatus = @status
         WHERE NicheBookingBeneficiaryId = @beneficiaryId
       `;
 
-      await executeQuery(query, {
-        beneficiaryId,
-        status
-      });
+      const beneficiaryRequest = new sql.Request(transaction);
+      beneficiaryRequest.input('beneficiaryId', sql.Int, beneficiaryId);
+      beneficiaryRequest.input('status', sql.Int, status);
+      await beneficiaryRequest.query(updateBeneficiaryQuery);
 
+      // 2. Synchronize physical Niche status
+      if (status === 1) {
+        // If status is 1 (Active/Occupied), update Niche status to 4 (Occupied)
+        const updateNicheQuery = `
+          UPDATE n
+          SET n.Status = 4
+          FROM Niche n
+          JOIN NicheBooking nb ON n.NicheId = nb.NicheId
+          JOIN NicheBookingBeneficiary nbb ON nb.NicheBookingId = nbb.NicheBookingId
+          WHERE nbb.NicheBookingBeneficiaryId = @beneficiaryId
+        `;
+        const nicheRequest = new sql.Request(transaction);
+        nicheRequest.input('beneficiaryId', sql.Int, beneficiaryId);
+        await nicheRequest.query(updateNicheQuery);
+      } else if (status === 0 || status === -1) {
+        // If status is Not Occupied/Inactive, check if any OTHER beneficiaries are still active for this niche
+        // If none are active, set niche status back to 3 (Booked)
+        const checkActiveQuery = `
+          SELECT COUNT(*) AS ActiveCount
+          FROM NicheBookingBeneficiary nbb2
+          JOIN NicheBooking nb ON nbb2.NicheBookingId = nb.NicheBookingId
+          WHERE nb.NicheBookingId = (
+            SELECT NicheBookingId FROM NicheBookingBeneficiary WHERE NicheBookingBeneficiaryId = @beneficiaryId
+          )
+          AND nbb2.BeneficiaryStatus = 1
+          AND nbb2.NicheBookingBeneficiaryId <> @beneficiaryId
+        `;
+        const checkRequest = new sql.Request(transaction);
+        checkRequest.input('beneficiaryId', sql.Int, beneficiaryId);
+        const checkResult = await checkRequest.query(checkActiveQuery);
+        const activeCount = checkResult.recordset[0].ActiveCount;
+
+        if (activeCount === 0) {
+          const revertNicheQuery = `
+            UPDATE n
+            SET n.Status = 3
+            FROM Niche n
+            JOIN NicheBooking nb ON n.NicheId = nb.NicheId
+            JOIN NicheBookingBeneficiary nbb ON nb.NicheBookingId = nbb.NicheBookingId
+            WHERE nbb.NicheBookingBeneficiaryId = @beneficiaryId
+          `;
+          const revertRequest = new sql.Request(transaction);
+          revertRequest.input('beneficiaryId', sql.Int, beneficiaryId);
+          await revertRequest.query(revertNicheQuery);
+        }
+      }
+
+      await transaction.commit();
       return true;
     } catch (error) {
+      if (transaction._aborted === false) {
+        await transaction.rollback().catch(err => logger.error('Rollback failed:', err));
+      }
       logger.error('Failed to update beneficiary status:', error);
       throw error;
     }
@@ -389,8 +446,13 @@ class NicheBookingRepository {
    * @returns {Promise<number>} New beneficiary ID
    */
   async addBeneficiary(beneficiary) {
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+
     try {
-      const query = `
+      await transaction.begin();
+
+      const insertQuery = `
         INSERT INTO NicheBookingBeneficiary (
           NicheBookingId,
           PersonId,
@@ -424,24 +486,46 @@ class NicheBookingRepository {
         );
       `;
 
-      const result = await executeQuery(query, {
-        nicheBookingId: beneficiary.nicheBookingId,
-        personId: beneficiary.personId || null,
-        name: beneficiary.name,
-        idNo: beneficiary.idNo || null,
-        isCatholic: beneficiary.isCatholic,
-        isMale: beneficiary.isMale,
-        relationshipToApplicant: beneficiary.relationshipToApplicant || null,
-        relationshipToNominee1: beneficiary.relationshipToNominee1 || null,
-        relationshipToNominee2: beneficiary.relationshipToNominee2 || null,
-        dateOfBirth: beneficiary.dateOfBirth || null,
-        birthYear: beneficiary.birthYear || null,
-        beneficiaryStatus: beneficiary.beneficiaryStatus ?? 1,
-        churchId: beneficiary.churchId
-      });
+      const insertRequest = new sql.Request(transaction);
+      const status = beneficiary.beneficiaryStatus ?? 1;
 
-      return result.recordset[0].BeneficiaryId;
+      insertRequest.input('nicheBookingId', sql.Int, beneficiary.nicheBookingId);
+      insertRequest.input('personId', sql.Int, beneficiary.personId || null);
+      insertRequest.input('name', sql.NVarChar, beneficiary.name);
+      insertRequest.input('idNo', sql.NVarChar, beneficiary.idNo || null);
+      insertRequest.input('isCatholic', sql.Bit, beneficiary.isCatholic);
+      insertRequest.input('isMale', sql.Bit, beneficiary.isMale);
+      insertRequest.input('relationshipToApplicant', sql.NVarChar, beneficiary.relationshipToApplicant || null);
+      insertRequest.input('relationshipToNominee1', sql.NVarChar, beneficiary.relationshipToNominee1 || null);
+      insertRequest.input('relationshipToNominee2', sql.NVarChar, beneficiary.relationshipToNominee2 || null);
+      insertRequest.input('dateOfBirth', sql.DateTime, beneficiary.dateOfBirth || null);
+      insertRequest.input('birthYear', sql.Int, beneficiary.birthYear || null);
+      insertRequest.input('beneficiaryStatus', sql.Int, status);
+      insertRequest.input('churchId', sql.Int, beneficiary.churchId);
+
+      const result = await insertRequest.query(insertQuery);
+      const beneficiaryId = result.recordset[0].BeneficiaryId;
+
+      // If the added beneficiary is status 1 (Occupied), update the niche status to 4
+      if (status === 1) {
+        const updateNicheQuery = `
+          UPDATE n
+          SET n.Status = 4
+          FROM Niche n
+          JOIN NicheBooking nb ON n.NicheId = nb.NicheId
+          WHERE nb.NicheBookingId = @nicheBookingId
+        `;
+        const nicheRequest = new sql.Request(transaction);
+        nicheRequest.input('nicheBookingId', sql.Int, beneficiary.nicheBookingId);
+        await nicheRequest.query(updateNicheQuery);
+      }
+
+      await transaction.commit();
+      return beneficiaryId;
     } catch (error) {
+      if (transaction._aborted === false) {
+        await transaction.rollback().catch(err => logger.error('Rollback failed:', err));
+      }
       logger.error('Failed to add beneficiary:', error);
       throw error;
     }

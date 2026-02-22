@@ -14,9 +14,14 @@ import {
     ShoppingBagIcon,
     LoaderIcon,
     CheckCircle2Icon,
-    InfoIcon
+    InfoIcon,
+    SearchIcon,
+    XIcon,
+    HashIcon,
+    MapPinIcon
 } from 'lucide-react';
 import type { AppDispatch } from '../store';
+import { useGlobalSearch } from '../hooks/useGlobalSearch';
 import {
     createIndividualReceipt,
     fetchLastMiscReceiptNumber,
@@ -53,6 +58,30 @@ export function MiscReceiptCreatePage() {
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [createdReceipt, setCreatedReceipt] = useState<any>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [selectedApplicationCode, setSelectedApplicationCode] = useState('MISC');
+
+    const {
+        searchResults,
+        isSearching,
+        performSearch,
+        clearResults
+    } = useGlobalSearch();
+
+    // Auto-search when searchTerm changes
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (searchTerm.trim().length >= 2) {
+                performSearch(searchTerm, ['person', 'application']);
+                setShowSuggestions(true);
+            } else {
+                clearResults();
+                setShowSuggestions(false);
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm, performSearch, clearResults]);
 
     // Load items and last receipt number on mount
     useEffect(() => {
@@ -113,7 +142,7 @@ export function MiscReceiptCreatePage() {
         });
 
         const createData = {
-            applicationCode: 'MISC', // Constant for standalone misc receipts
+            applicationCode: selectedApplicationCode, // Use selected application code or default MISC
             customerName: payeeName,
             payingAmount: total,
             paymentMode: paymentMode,
@@ -152,6 +181,31 @@ export function MiscReceiptCreatePage() {
         setAddressUnit(addressData.unitNo || '');
         setAddressPostalCode(addressData.postalCode || '');
         setAddressCountry(addressData.country || 'Singapore');
+    };
+
+    const handleSelectResult = (result: any) => {
+        const name = result.customerName || result.name || result.applicantName || '';
+        setPayeeName(name);
+        setSearchTerm(name);
+        setShowSuggestions(false);
+
+        // Map application code if it's an application result
+        if (result.entityType === 'application' && result.code) {
+            setSelectedApplicationCode(result.code);
+        } else {
+            setSelectedApplicationCode('MISC');
+        }
+
+        // populate address fields if they exist in search result
+        // Note: Global search result structure might vary, trying common mappings
+        if (result.addressNo || result.addressLine1 || result.address) {
+            setAddressBlock(result.addressNo === 'Blk' ? 'Block' : (result.addressNo || 'No'));
+            setAddressNumber(result.addressLine1 || result.addressNo || '');
+            setAddressStreet(result.addressLine2 || result.address || '');
+            setAddressUnit(result.addressCity || '');
+            setAddressPostalCode(result.addressState || result.districtCode || '');
+            setAddressCountry(result.addressCountry || result.country || 'Singapore');
+        }
     };
 
     const totals = calculateTotals();
@@ -235,15 +289,100 @@ export function MiscReceiptCreatePage() {
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-4">
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Full Name / Entity</label>
-                                        <input
-                                            type="text"
-                                            value={payeeName}
-                                            onChange={(e) => setPayeeName(e.target.value)}
-                                            placeholder="e.g. John Doe"
-                                            className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all text-gray-700 font-semibold text-sm"
-                                        />
+                                    <div className="space-y-1 relative">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Search Payee (Name or App Code)</label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={searchTerm}
+                                                onChange={(e) => {
+                                                    setSearchTerm(e.target.value);
+                                                    setPayeeName(e.target.value);
+                                                    if (e.target.value === '') setSelectedApplicationCode('MISC');
+                                                }}
+                                                placeholder="Search by name or code (e.g. John or NAPP-123)"
+                                                className="w-full pl-10 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all text-gray-700 font-semibold text-sm shadow-sm"
+                                            />
+                                            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                                                {isSearching ? <LoaderIcon className="w-4 h-4 animate-spin text-teal-500" /> : <SearchIcon className="w-4 h-4" />}
+                                            </div>
+                                            {searchTerm && (
+                                                <button
+                                                    onClick={() => {
+                                                        setSearchTerm('');
+                                                        setPayeeName('');
+                                                        setSelectedApplicationCode('MISC');
+                                                        clearResults();
+                                                    }}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-full text-gray-400 transition-colors"
+                                                >
+                                                    <XIcon className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Suggestions Dropdown */}
+                                        {showSuggestions && (searchResults.length > 0 || isSearching) && (
+                                            <div className="absolute z-50 w-full mt-1 bg-white border border-gray-100 rounded-xl shadow-xl max-h-72 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                                                {isSearching && searchResults.length === 0 ? (
+                                                    <div className="p-8 text-center">
+                                                        <LoaderIcon className="w-6 h-6 animate-spin text-teal-500 mx-auto mb-2" />
+                                                        <p className="text-xs text-gray-400 font-medium">Searching database...</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="py-2">
+                                                        <div className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50/50 flex justify-between items-center">
+                                                            <span>Select a recipient</span>
+                                                            {selectedApplicationCode !== 'MISC' && (
+                                                                <span className="text-teal-600 lowercase bg-teal-50 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                                                    <HashIcon className="w-2.5 h-2.5" />
+                                                                    Linked: {selectedApplicationCode}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {searchResults.map((result, idx) => (
+                                                            <button
+                                                                key={`${result.id}-${idx}`}
+                                                                onClick={() => handleSelectResult(result)}
+                                                                className="w-full px-4 py-3 text-left hover:bg-teal-50/50 transition-colors border-b border-gray-50 last:border-0 group"
+                                                            >
+                                                                <div className="flex items-start gap-3">
+                                                                    <div className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${result.entityType === 'application' ? 'bg-indigo-50 text-indigo-600' : 'bg-teal-50 text-teal-600'
+                                                                        }`}>
+                                                                        {result.entityType === 'application' ? <HashIcon className="w-4 h-4" /> : <UserIcon className="w-4 h-4" />}
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="flex items-center justify-between mb-0.5">
+                                                                            <p className="text-sm font-bold text-gray-900 truncate">
+                                                                                {result.customerName || result.name || result.applicantName}
+                                                                            </p>
+                                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${result.entityType === 'application' ? 'bg-indigo-100 text-indigo-700' : 'bg-teal-100 text-teal-700'
+                                                                                }`}>
+                                                                                {result.entityType}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 text-[11px] text-gray-500 font-medium">
+                                                                            {result.code && (
+                                                                                <span className="text-gray-900 font-bold">{result.code}</span>
+                                                                            )}
+                                                                            {result.address && (
+                                                                                <>
+                                                                                    <span className="text-gray-300">•</span>
+                                                                                    <span className="truncate flex items-center gap-1">
+                                                                                        <MapPinIcon className="w-2.5 h-2.5 text-gray-400" />
+                                                                                        {result.address}
+                                                                                    </span>
+                                                                                </>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 

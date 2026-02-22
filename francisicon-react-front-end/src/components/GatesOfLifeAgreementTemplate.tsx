@@ -1,6 +1,7 @@
 import React from 'react'
 import { formatDate } from '../utils/dateUtils'
 import { PDF_ASSETS } from './common/FranciscanLogo';
+import { addressUtils, AddressEntity } from '../utils/addressUtils';
 
 interface GatesOfLifeAgreementTemplateProps {
     data: any;
@@ -18,6 +19,17 @@ export function GatesOfLifeAgreementTemplate({ data }: GatesOfLifeAgreementTempl
     const metadata = data.metadata ?? {};
     const hasInvoice = Boolean((metadata.hasInvoice ?? true) && invoice?.invoiceNo);
     const hasReceipt = Boolean((metadata.hasReceipt ?? true) && receipt?.receiptNo);
+
+    const addrRaw = applicant.addressDetails || {};
+    const addrEntity: AddressEntity = {
+        addressNo: addrRaw.no || '',
+        addressLine1: addrRaw.line1 || '',
+        addressLine2: addrRaw.line2 || '',
+        addressCity: addrRaw.city || '',
+        addressState: addrRaw.postalCode || addrRaw.state || '',
+        addressCountry: addrRaw.country || 'Singapore',
+    };
+    const addressLines = addressUtils.buildAddressLines(addrEntity);
 
     // Format date helper
     const fDate = (d: any) => d ? formatDate(d) : '';
@@ -140,24 +152,22 @@ export function GatesOfLifeAgreementTemplate({ data }: GatesOfLifeAgreementTempl
 
                         <div className="flex items-baseline">
                             <span className="w-40 font-bold text-base">Address :</span>
-                            <div className="flex-1 border-b border-black px-2 flex justify-between text-base">
-                                <span className="font-bold mr-2">Block:</span>
-                                <span className="flex-1">{applicant.addressDetails?.no || '-'}</span>
-                                <span className="mx-2 font-bold">No:</span>
-                                <span className="flex-1">{applicant.addressDetails?.line1 || '-'}</span>
-                                <span className="mx-2 font-bold">Street:</span>
-                                <span className="flex-[3]">{applicant.addressDetails?.line2 || '-'}</span>
-                                <span className="mx-2 font-bold">Unit:</span>
-                                <span className="flex-1">{applicant.addressDetails?.city || '-'}</span>
+                            <div className="flex-1 border-b border-black px-2 text-base">
+                                {addressLines[0] || ''}
                             </div>
                         </div>
 
                         <div className="flex items-baseline">
                             <span className="w-40"></span>
-                            <div className="flex-1 border-b border-black px-2 flex text-base">
-                                <span className="flex-1 font-semibold">{applicant.addressDetails?.country || 'Singapore'}</span>
-                                <span className="mr-2 font-bold">Postal :</span>
-                                <span className="w-32 font-bold border-l border-black pl-2 tracking-widest">{applicant.addressDetails?.state || '-'}</span>
+                            <div className="flex-1 border-b border-black px-2 text-base">
+                                {addressLines[1] || ''}
+                            </div>
+                        </div>
+
+                        <div className="flex items-baseline">
+                            <span className="w-40"></span>
+                            <div className="flex-1 border-b border-black px-2 text-base">
+                                {addressLines[2] || ''}
                             </div>
                         </div>
 

@@ -512,10 +512,19 @@ export function App() {
           message?: string;
           data?: any;
         } | undefined;
-        const applicationCode = applicationPayload?.code || applicationNumber || createdApplication?.code;
+        const applicationCode = applicationPayload?.code || applicationPayload?.data?.applicationCode || applicationNumber || createdApplication?.code;
         if (!applicationCode) {
           showErrorMessage('Missing niche application code. Please try saving again.');
           return;
+        }
+
+        // Auto-confirm booking: change status from Draft(1) to Booked(3)
+        try {
+          const { confirmBookingService } = await import('./services/confirmBookingService');
+          await confirmBookingService.confirmBooking(applicationCode);
+          console.log(`[handleCreateNicheApplication] Booking confirmed for: ${applicationCode}`);
+        } catch (confirmErr: any) {
+          console.error('[handleCreateNicheApplication] Auto-confirm failed:', confirmErr?.message || confirmErr);
         }
 
         // Calculate invoice data for email
@@ -1334,7 +1343,7 @@ The application list will be refreshed to show your new application.`);
 
                             // Save changes with the full form data to ensure all fields are included
                             const saveResult = await saveChanges(formData);
-                            if (!saveResult.success && saveResult.error && saveResult.error !== 'No application code provided') {
+                            if (!saveResult.success && saveResult.error) {
                               showErrorMessage(saveResult.error || 'Failed to save changes');
                               return;
                             }

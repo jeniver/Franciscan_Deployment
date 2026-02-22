@@ -26,8 +26,13 @@ interface BackendAddressFields {
 
 /**
  * Maps component-friendly address fields to backend database fields
- * @param componentFields - Component field values
- * @returns Backend-compatible field values
+ * Following the Universal Standard:
+ * 1. addressNo: Prefix (Blk/No)
+ * 2. addressLine1: Block Number
+ * 3. addressLine2: Street Name
+ * 4. addressCity: Unit Number
+ * 5. addressState: Postal Code (DistrictCode)
+ * 6. addressCountry: Country
  */
 export function mapComponentToBackendFields(componentFields: ComponentAddressFields): BackendAddressFields {
   const {
@@ -41,15 +46,18 @@ export function mapComponentToBackendFields(componentFields: ComponentAddressFie
 
   console.log('addressMapper: mapComponentToBackendFields input:', componentFields);
 
-  // Determine addressNo based on block type, with fallback handling
   const normalizedBlock = block?.toString().toLowerCase().trim() || '';
   const isBlock = normalizedBlock === 'block' || normalizedBlock === 'blk';
   const addressNo = isBlock ? 'Blk' : 'No';
 
-  // Normalize unit number to include '#' prefix if it's not empty
-  const normalizedUnitNo = unitNo && unitNo.trim() !== ''
-    ? (unitNo.trim().startsWith('#') ? unitNo.trim() : `#${unitNo.trim()}`)
-    : '';
+  let normalizedUnitNo = unitNo?.trim() || '';
+  if (normalizedUnitNo && !normalizedUnitNo.startsWith('#')) {
+    const isPostal = /^\d{6}$/.test(normalizedUnitNo.replace(/[^0-9]/g, ''));
+    const isRange = normalizedUnitNo.includes('-') && /^\d+/.test(normalizedUnitNo);
+    if (!isPostal && (isRange || /^\d+$/.test(normalizedUnitNo))) {
+      normalizedUnitNo = '#' + normalizedUnitNo;
+    }
+  }
 
   const result = {
     addressNo,
@@ -66,8 +74,6 @@ export function mapComponentToBackendFields(componentFields: ComponentAddressFie
 
 /**
  * Maps backend database fields to component-friendly fields
- * @param backendFields - Backend field values
- * @returns Component-compatible field values
  */
 export function mapBackendToComponentFields(backendFields: BackendAddressFields): ComponentAddressFields {
   const {
@@ -81,23 +87,22 @@ export function mapBackendToComponentFields(backendFields: BackendAddressFields)
 
   console.log('addressMapper: mapBackendToComponentFields input:', backendFields);
 
-  // Determine if it's a block or number based on addressNo, with fallback handling
   const normalizedAddressNo = addressNo?.toString().toLowerCase().trim() || '';
   const isBlock = normalizedAddressNo === 'blk' || normalizedAddressNo === 'block';
-  const block = isBlock ? 'Block' : '';
+  const block = isBlock ? 'Block' : 'No';
 
-  // Extract unit number without '#' prefix for component display
+  // Unit number is in addressCity
   let unitNo = addressCity && addressCity.toString()
-    ? addressCity.toString().replace(/^#/, '').trim() // Remove leading '#' and trim
+    ? addressCity.toString().replace(/^#/, '').trim()
     : '';
 
   let postalCode = addressState?.toString().trim() || '';
 
-  // Heuristic: If postalCode is empty but unitNo looks like a 6-digit postal code, move it.
-  // This happens when historical data mangled fields.
-  if (postalCode === '' && /^\d{6}$/.test(unitNo)) {
-    postalCode = unitNo;
-    unitNo = '';
+  // Data cleansing: if unitNo is "SINGAPORE" or empty and postalCode is empty but unitNo looks like postal
+  if ((unitNo.toUpperCase() === 'SINGAPORE' || unitNo === '') && postalCode === '') {
+    // Check if addressLine2 or addressLine1 contained postal? 
+    // For now, just clean SINGAPORE from unit
+    if (unitNo.toUpperCase() === 'SINGAPORE') unitNo = '';
   }
 
   const result = {
@@ -115,8 +120,7 @@ export function mapBackendToComponentFields(backendFields: BackendAddressFields)
 
 /**
  * Formats a component-friendly address object into a single string.
- * @param fields - Component field values
- * @returns Formatted address string
+ * Standard Format: [Blk/No] [BlockNo] [StreetName] [UnitNo] [Country] [PostalCode]
  */
 export function formatAddress(fields: ComponentAddressFields): string {
   if (!fields) return 'N/A';
@@ -130,21 +134,31 @@ export function formatAddress(fields: ComponentAddressFields): string {
     country = 'Singapore'
   } = fields;
 
-  // Standard Singapore format: Blk 123 instead of Blk, 123
-  const blockPrefix = block ? (block === 'Block' ? 'Blk' : (block === 'No' ? 'No' : '')) : '';
+  const blockPrefix = block ? (block === 'Block' || block === 'Blk' ? 'Blk' : 'No') : '';
   const blockPart = blockPrefix && blockNo ? `${blockPrefix} ${blockNo}` : (blockNo || blockPrefix);
 
-  const countryPostal = [country, postalCode].filter(p => p && p.trim()).join(' ');
+  let unitPart = unitNo || '';
+  if (unitPart && !unitPart.startsWith('#')) {
+    const isPostal = /^\d{6}$/.test(unitPart.replace(/[^0-9]/g, ''));
+    const isRange = unitPart.includes('-') && /^\d+/.test(unitPart);
+    if (!isPostal && (isRange || /^\d+$/.test(unitPart))) {
+      unitPart = '#' + unitPart;
+    }
+  }
 
   const parts = [
     blockPart,
     streetName,
-    unitNo && !unitNo.startsWith('#') ? `#${unitNo}` : unitNo,
-    countryPostal
+    unitPart,
+    country,
+    postalCode
   ].map(p => String(p || '').trim())
-    .filter(p => p !== '' && p.toLowerCase() !== 'null' && p.toLowerCase() !== 'undefined');
+    .filter(p => {
+      const lower = p.toLowerCase();
+      return p !== '' && lower !== 'null' && lower !== 'undefined' && lower !== 'singapore' || (p === country && lower === 'singapore');
+    });
 
-  // Deduplicate
+  // Strict deduplication
   const uniqueParts: string[] = [];
   const seen = new Set<string>();
 
@@ -152,13 +166,6 @@ export function formatAddress(fields: ComponentAddressFields): string {
     const normalized = part.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!normalized) continue;
 
-    // Check if this part is contained in any already added part (e.g. "Singapore" in "Singapore 123456")
-    // Or if any already added part is contained in this part
-    // Actually, we just need basic deduplication. The previous logic was a bit aggressive.
-    // Let's just check exact matches for now, generally address parts are distinct.
-    // Exception: Country might be repeated if it was in street name? Unlikely.
-
-    // Using a simpler approach:
     if (!seen.has(normalized)) {
       uniqueParts.push(part);
       seen.add(normalized);

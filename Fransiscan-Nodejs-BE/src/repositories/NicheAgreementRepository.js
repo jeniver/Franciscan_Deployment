@@ -3,6 +3,7 @@ const { executeQuery } = require('../config/database');
 const logger = require('../utils/logger');
 const NicheAgreement = require('../models/NicheAgreement');
 const NicheConcentForm = require('../models/NicheConcentForm');
+const AddressUtils = require('../utils/AddressUtils');
 
 // Schema check cache - COL_LENGTH results don't change at runtime, avoid 2 extra queries per request
 let _schemaCache = { hasBookingStorageFrom: null, hasInscriptionStorageFrom: null };
@@ -136,7 +137,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Applicant (all data is in NicheApplication table)
         applicantName: mergedData.ApplicantName,
         applicantAddressNo: mergedData.ApplicantAddressNo,
-        applicantAddressLine1: this.extractStreetAddress(mergedData.ApplicantAddressLine1),
+        applicantAddressLine1: mergedData.ApplicantAddressLine1,
         applicantAddressLine2: mergedData.ApplicantAddressLine2,
         applicantAddressCity: mergedData.ApplicantAddressCity,
         applicantAddressCountry: mergedData.ApplicantAddressCountry,
@@ -151,7 +152,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Nominee (all data is in NicheApplication table)
         nomineeName: mergedData.NomineeName,
         nomineeAddressNo: mergedData.NomineeAddressNo,
-        nomineeAddressLine1: this.extractStreetAddress(mergedData.NomineeAddressLine1),
+        nomineeAddressLine1: mergedData.NomineeAddressLine1,
         nomineeAddressLine2: mergedData.NomineeAddressLine2,
         nomineeAddressCity: mergedData.NomineeAddressCity,
         nomineeAddressCountry: mergedData.NomineeAddressCountry,
@@ -166,7 +167,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Second Nominee (all data is in NicheApplication table)
         nominee2Name: mergedData.NomineeName2,
         nominee2AddressNo: mergedData.NomineeAddressNo2,
-        nominee2AddressLine1: this.extractStreetAddress(mergedData.NomineeAddressLine12),
+        nominee2AddressLine1: mergedData.NomineeAddressLine12,
         nominee2AddressLine2: mergedData.NomineeAddressLine22,
         nominee2AddressCity: mergedData.NomineeAddressCity2,
         nominee2AddressCountry: mergedData.NomineeAddressCountry2,
@@ -606,60 +607,88 @@ class NicheAgreementRepository extends BaseRepository {
       if (result.recordset.length > 0) {
         const row = result.recordset[0];
 
-        // Update applicant info from Person table (if available)
+        // Person table is a FALLBACK only — NicheApplication is the authoritative source.
+        // Only fill fields that are null/empty in NicheApplication data to avoid
+        // overwriting freshly-updated NicheApplication values with stale Person records.
+        const fallback = (current, personValue) =>
+          (current !== null && current !== undefined && current !== '') ? current : personValue;
+
         if (row.ApplicantName) {
-          nicheAgreement.applicantName = row.ApplicantName;
-          nicheAgreement.applicantAddressNo = row.ApplicantAddressNo;
-          nicheAgreement.applicantAddressLine1 = this.extractStreetAddress(row.ApplicantAddressLine1);
-          nicheAgreement.applicantAddressLine2 = row.ApplicantAddressLine2;
-          nicheAgreement.applicantAddressCity = row.ApplicantAddressCity;
-          nicheAgreement.applicantAddressState = row.ApplicantAddressState;
-          nicheAgreement.applicantAddressCountry = row.ApplicantAddressCountry;
-          nicheAgreement.applicantEmailID = row.ApplicantEmailID;
-          nicheAgreement.applicantIDNo = row.ApplicantIDNo;
-          nicheAgreement.applicantMobileNo = row.ApplicantMobileNo;
-          nicheAgreement.applicantHomeTelNo = row.ApplicantHomeTelNo;
-          nicheAgreement.applicantOfficeTelNo = row.ApplicantOfficeTelNo;
-          nicheAgreement.applicantIsCatholic = row.ApplicantIsCatholic;
+          nicheAgreement.applicantName = fallback(nicheAgreement.applicantName, row.ApplicantName);
+          nicheAgreement.applicantAddressNo = fallback(nicheAgreement.applicantAddressNo, row.ApplicantAddressNo);
+          nicheAgreement.applicantAddressLine1 = fallback(nicheAgreement.applicantAddressLine1, row.ApplicantAddressLine1);
+          nicheAgreement.applicantAddressLine2 = fallback(nicheAgreement.applicantAddressLine2, row.ApplicantAddressLine2);
+          nicheAgreement.applicantAddressCity = fallback(nicheAgreement.applicantAddressCity, row.ApplicantAddressCity);
+          nicheAgreement.applicantAddressState = fallback(nicheAgreement.applicantAddressState, row.ApplicantAddressState);
+          nicheAgreement.applicantAddressCountry = fallback(nicheAgreement.applicantAddressCountry, row.ApplicantAddressCountry);
+          nicheAgreement.applicantEmailID = fallback(nicheAgreement.applicantEmailID, row.ApplicantEmailID);
+          nicheAgreement.applicantIDNo = fallback(nicheAgreement.applicantIDNo, row.ApplicantIDNo);
+          nicheAgreement.applicantMobileNo = fallback(nicheAgreement.applicantMobileNo, row.ApplicantMobileNo);
+          nicheAgreement.applicantHomeTelNo = fallback(nicheAgreement.applicantHomeTelNo, row.ApplicantHomeTelNo);
+          nicheAgreement.applicantOfficeTelNo = fallback(nicheAgreement.applicantOfficeTelNo, row.ApplicantOfficeTelNo);
+          nicheAgreement.applicantIsCatholic = nicheAgreement.applicantIsCatholic !== null && nicheAgreement.applicantIsCatholic !== undefined
+            ? nicheAgreement.applicantIsCatholic : row.ApplicantIsCatholic;
+
+          // Build full address from the winning field values
+          nicheAgreement.applicantFullAddress = AddressUtils.formatAddress({
+            AddressNo: nicheAgreement.applicantAddressNo,
+            Address: nicheAgreement.applicantAddressLine1,
+            Address2: nicheAgreement.applicantAddressLine2,
+            AddressCity: nicheAgreement.applicantAddressCity,
+            DistrictCode: nicheAgreement.applicantAddressState,
+            Country: nicheAgreement.applicantAddressCountry
+          });
         }
 
-        // Update nominee 1 info from Person table (if available)
         if (row.NomineeName) {
-          nicheAgreement.nomineeName = row.NomineeName;
-          nicheAgreement.nomineeAddressNo = row.NomineeAddressNo;
-          nicheAgreement.nomineeAddressLine1 = this.extractStreetAddress(row.NomineeAddressLine1);
-          // CRITICAL FIX: Ensure that if Person table has nominee address data, it overrides the NicheApplication data
-          nicheAgreement.nomineeAddressLine2 = row.NomineeAddressLine2 !== null ? row.NomineeAddressLine2 : nicheAgreement.nomineeAddressLine2;
-          nicheAgreement.nomineeAddressCity = row.NomineeAddressCity !== null ? row.NomineeAddressCity : nicheAgreement.nomineeAddressCity;
-          nicheAgreement.nomineeAddressState = row.NomineeAddressState !== null ? row.NomineeAddressState : nicheAgreement.nomineeAddressState;
-          nicheAgreement.nomineeAddressCountry = row.NomineeAddressCountry;
-          nicheAgreement.nomineeEmailID = row.NomineeEmailID;
-          nicheAgreement.nomineeIDNo = row.NomineeIDNo;
-          nicheAgreement.nomineeMobileNo = row.NomineeMobileNo;
-          nicheAgreement.nomineeHomeTelNo = row.NomineeHomeTelNo;
-          nicheAgreement.nomineeOfficeTelNo = row.NomineeOfficeTelNo;
-          nicheAgreement.nomineeRelationship = row.NomineeRelationship;
+          nicheAgreement.nomineeName = fallback(nicheAgreement.nomineeName, row.NomineeName);
+          nicheAgreement.nomineeAddressNo = fallback(nicheAgreement.nomineeAddressNo, row.NomineeAddressNo);
+          nicheAgreement.nomineeAddressLine1 = fallback(nicheAgreement.nomineeAddressLine1, row.NomineeAddressLine1);
+          nicheAgreement.nomineeAddressLine2 = fallback(nicheAgreement.nomineeAddressLine2, row.NomineeAddressLine2);
+          nicheAgreement.nomineeAddressCity = fallback(nicheAgreement.nomineeAddressCity, row.NomineeAddressCity);
+          nicheAgreement.nomineeAddressState = fallback(nicheAgreement.nomineeAddressState, row.NomineeAddressState);
+          nicheAgreement.nomineeAddressCountry = fallback(nicheAgreement.nomineeAddressCountry, row.NomineeAddressCountry);
+          nicheAgreement.nomineeEmailID = fallback(nicheAgreement.nomineeEmailID, row.NomineeEmailID);
+          nicheAgreement.nomineeIDNo = fallback(nicheAgreement.nomineeIDNo, row.NomineeIDNo);
+          nicheAgreement.nomineeMobileNo = fallback(nicheAgreement.nomineeMobileNo, row.NomineeMobileNo);
+          nicheAgreement.nomineeHomeTelNo = fallback(nicheAgreement.nomineeHomeTelNo, row.NomineeHomeTelNo);
+          nicheAgreement.nomineeOfficeTelNo = fallback(nicheAgreement.nomineeOfficeTelNo, row.NomineeOfficeTelNo);
+          nicheAgreement.nomineeRelationship = fallback(nicheAgreement.nomineeRelationship, row.NomineeRelationship);
+
+          nicheAgreement.nomineeFullAddress = AddressUtils.formatAddress({
+            AddressNo: nicheAgreement.nomineeAddressNo,
+            Address: nicheAgreement.nomineeAddressLine1,
+            Address2: nicheAgreement.nomineeAddressLine2,
+            AddressCity: nicheAgreement.nomineeAddressCity,
+            DistrictCode: nicheAgreement.nomineeAddressState,
+            Country: nicheAgreement.nomineeAddressCountry
+          });
         }
 
-        // Update nominee 2 info from Person table (if available)
         if (row.Nominee2Name) {
-          nicheAgreement.nominee2Name = row.Nominee2Name;
-          nicheAgreement.nominee2AddressNo = row.Nominee2AddressNo;
-          nicheAgreement.nominee2AddressLine1 = this.extractStreetAddress(row.Nominee2AddressLine1);
-          // CRITICAL FIX: Ensure that if Person table has nominee2 address data, it overrides the NicheApplication data
-          nicheAgreement.nominee2AddressLine2 = row.Nominee2AddressLine2 !== null ? row.Nominee2AddressLine2 : nicheAgreement.nominee2AddressLine2;
-          nicheAgreement.nominee2AddressCity = row.Nominee2AddressCity !== null ? row.Nominee2AddressCity : nicheAgreement.nominee2AddressCity;
-          nicheAgreement.nominee2AddressState = row.Nominee2AddressState !== null ? row.Nominee2AddressState : nicheAgreement.nominee2AddressState;
-          nicheAgreement.nominee2AddressCountry = row.Nominee2AddressCountry;
-          nicheAgreement.nominee2EmailID = row.Nominee2EmailID;
-          nicheAgreement.nominee2IDNo = row.Nominee2IDNo;
-          nicheAgreement.nominee2MobileNo = row.Nominee2MobileNo;
-          nicheAgreement.nominee2HomeTelNo = row.Nominee2HomeTelNo;
-          nicheAgreement.nominee2OfficeTelNo = row.Nominee2OfficeTelNo;
-          nicheAgreement.nominee2Relationship = row.Nominee2Relationship;
+          nicheAgreement.nominee2Name = fallback(nicheAgreement.nominee2Name, row.Nominee2Name);
+          nicheAgreement.nominee2AddressNo = fallback(nicheAgreement.nominee2AddressNo, row.Nominee2AddressNo);
+          nicheAgreement.nominee2AddressLine1 = fallback(nicheAgreement.nominee2AddressLine1, row.Nominee2AddressLine1);
+          nicheAgreement.nominee2AddressLine2 = fallback(nicheAgreement.nominee2AddressLine2, row.Nominee2AddressLine2);
+          nicheAgreement.nominee2AddressCity = fallback(nicheAgreement.nominee2AddressCity, row.Nominee2AddressCity);
+          nicheAgreement.nominee2AddressState = fallback(nicheAgreement.nominee2AddressState, row.Nominee2AddressState);
+          nicheAgreement.nominee2AddressCountry = fallback(nicheAgreement.nominee2AddressCountry, row.Nominee2AddressCountry);
+          nicheAgreement.nominee2EmailID = fallback(nicheAgreement.nominee2EmailID, row.Nominee2EmailID);
+          nicheAgreement.nominee2IDNo = fallback(nicheAgreement.nominee2IDNo, row.Nominee2IDNo);
+          nicheAgreement.nominee2MobileNo = fallback(nicheAgreement.nominee2MobileNo, row.Nominee2MobileNo);
+          nicheAgreement.nominee2HomeTelNo = fallback(nicheAgreement.nominee2HomeTelNo, row.Nominee2HomeTelNo);
+          nicheAgreement.nominee2OfficeTelNo = fallback(nicheAgreement.nominee2OfficeTelNo, row.Nominee2OfficeTelNo);
+          nicheAgreement.nominee2Relationship = fallback(nicheAgreement.nominee2Relationship, row.Nominee2Relationship);
+
+          nicheAgreement.nominee2FullAddress = AddressUtils.formatAddress({
+            AddressNo: nicheAgreement.nominee2AddressNo,
+            Address: nicheAgreement.nominee2AddressLine1,
+            Address2: nicheAgreement.nominee2AddressLine2,
+            AddressCity: nicheAgreement.nominee2AddressCity,
+            DistrictCode: nicheAgreement.nominee2AddressState,
+            Country: nicheAgreement.nominee2AddressCountry
+          });
         }
-      } else {
-        // If no NicheBooking record exists, log this as it might explain why address fields are null
       }
     } catch (error) {
       logger.warn('Could not fetch nominee info from Person table:', error.message);

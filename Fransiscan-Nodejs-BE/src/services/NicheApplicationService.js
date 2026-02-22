@@ -1664,6 +1664,18 @@ class NicheApplicationService {
 
       logger.info(`Niche application created: ${code}`);
 
+      // AUTO-CONFIRM BOOKING: Move status from Draft (1) to Booked (3) automatically
+      try {
+        const confirmResult = await this.confirmBooking(code, churchId);
+        if (confirmResult.success) {
+          logger.info(`[createApplication] Auto-confirmed booking for application: ${code}`);
+        } else {
+          logger.warn(`[createApplication] Auto-confirmation failed for application: ${code}`, confirmResult.error);
+        }
+      } catch (confirmError) {
+        logger.error(`[createApplication] Error during auto-confirmation for application: ${code}`, confirmError);
+      }
+
       // Fetch the created application to get complete data
       const createdApplication = await NicheApplicationRepository.getByCode(code);
 
@@ -2408,9 +2420,18 @@ class NicheApplicationService {
 
       logger.info(`Niche application updated: ${code}`);
 
+      // Re-fetch the updated application so the frontend store can refresh
+      let updatedApplication = null;
+      try {
+        updatedApplication = await NicheApplicationRepository.getByCode(code);
+      } catch (fetchErr) {
+        logger.warn('[updateApplication] Non-fatal: failed to re-fetch updated application', fetchErr.message);
+      }
+
       const responsePayload = {
         success: true,
         code,
+        data: updatedApplication ? updatedApplication.toJSON() : null,
         message: 'Niche application updated successfully'
       };
 
@@ -2841,9 +2862,9 @@ class NicheApplicationService {
         // Use raw status from frontend payload, aligned by name match rather than index
         const rawMatch = Array.isArray(rawPayload.beneficiaries)
           ? rawPayload.beneficiaries.find(b =>
-              b.name && entity.name &&
-              b.name.trim().toLowerCase() === entity.name.trim().toLowerCase()
-            )
+            b.name && entity.name &&
+            b.name.trim().toLowerCase() === entity.name.trim().toLowerCase()
+          )
           : undefined;
         const statusValue = rawMatch?.status ?? (rawStatuses[i] !== undefined ? rawStatuses[i] : 'Not Occupied');
         const dbStatus = parseStatus(statusValue);

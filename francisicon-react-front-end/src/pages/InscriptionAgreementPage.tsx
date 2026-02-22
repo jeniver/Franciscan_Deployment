@@ -50,9 +50,8 @@ export function InscriptionAgreementPage() {
       <InscriptionAgreementViewerModal
         isOpen={true}
         onClose={handleCloseModal}
-        agreementData={agreementData}
+        initialData={agreementData}
         inscriptionCode={inscriptionCode}
-        loading={loading}
       />
       
       {error && (

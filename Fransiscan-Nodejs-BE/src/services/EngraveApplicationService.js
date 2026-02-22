@@ -3,6 +3,7 @@ const NicheApplicationRepository = require('../repositories/NicheApplicationRepo
 const { EngraveApplication, EngraveApplicationDetail } = require('../models/EngraveApplication');
 const { NicheApplication } = require('../models/NicheApplication');
 const logger = require('../utils/logger');
+const { cache, deleteByPrefix } = require('../utils/cache');
 
 class EngraveApplicationService {
   normalizeNicheApplicationCode(code) {
@@ -120,6 +121,16 @@ class EngraveApplicationService {
           // Log but don't fail the inscription creation if niche sync fails
           logger.warn(`Failed to synchronize niche application for inscription ${code}:`, syncError.message);
         }
+      }
+
+      // Flush caches so agreement views reflect the new inscription data immediately.
+      try {
+        deleteByPrefix('nicheAgreement:');
+        deleteByPrefix('nicheApplications:');
+        cache.flushAll();
+        logger.info(`[createApplication] Cache invalidated after inscription creation for ${code}`);
+      } catch (cacheErr) {
+        logger.warn('[createApplication] Non-fatal: cache invalidation failed', cacheErr.message);
       }
 
       return {
@@ -285,6 +296,18 @@ class EngraveApplicationService {
       }
 
       logger.info(`Engrave application updated: ${code}`);
+
+      // Flush caches so agreement views reflect updated data immediately.
+      // nicheAgreement: entries contain inscription deceased details that are now stale.
+      // nicheApplications: entries may be stale after the niche-app sync above.
+      try {
+        deleteByPrefix('nicheAgreement:');
+        deleteByPrefix('nicheApplications:');
+        cache.flushAll();
+        logger.info(`[updateApplication] Cache invalidated after inscription update for ${code}`);
+      } catch (cacheErr) {
+        logger.warn('[updateApplication] Non-fatal: cache invalidation failed', cacheErr.message);
+      }
 
       return {
         success: true,

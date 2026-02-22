@@ -5,7 +5,8 @@ import { TaxInvoice } from '../components/InvoiceReceiptTemplate/InvoiceTemplate
 import { ReceiptTemplate } from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { formatAddress } from '../utils/addressMapper';
+import { addressUtils, AddressEntity } from '../utils/addressUtils';
+import { paymentModeToLabel } from '../utils/paymentMode';
 
 interface InvoiceViewerModalProps {
   isOpen: boolean;
@@ -81,21 +82,27 @@ export function InvoiceViewerModal({
     return result;
   };
 
+  const buildMultilineAddress = (src: any, fallbackSrc?: any): string => {
+    if (!src) return 'N/A';
+    const s = fallbackSrc || {};
+    const entity: AddressEntity = {
+      addressNo: src.addressNo || src.AddressNo || s.addressNo || s.AddressNo || '',
+      addressLine1: src.address || src.Address || src.addressLine1 || src.AddressLine1 || s.address || s.Address || s.addressLine1 || s.AddressLine1 || '',
+      addressLine2: src.address2 || src.Address2 || src.addressLine2 || src.AddressLine2 || s.address2 || s.Address2 || s.addressLine2 || s.AddressLine2 || '',
+      addressCity: src.addressCity || src.AddressCity || s.addressCity || s.AddressCity || '',
+      addressState: src.districtCode || src.DistrictCode || src.addressState || src.AddressState || s.districtCode || s.DistrictCode || s.addressState || s.AddressState || '',
+      addressCountry: src.country || src.Country || s.country || s.Country || 'Singapore',
+    };
+    const lines = addressUtils.buildAddressLines(entity);
+    const result = lines.filter(l => l.trim()).join('\n');
+    return result || 'N/A';
+  };
+
   // Function to map API response to InvoiceTemplateData interface
   const mapToInvoiceTemplateData = (apiData: any): InvoiceTemplateData => {
-    // Calculate address string from available address fields
-    const rawAddressNo = apiData.addressNo || apiData.AddressNo;
-    const isBlock = rawAddressNo === 'Blk' || rawAddressNo === 'Block';
-    const blockValue = isBlock ? 'Block' : (rawAddressNo === 'No' ? 'No' : '');
-
-    const customerAddress = formatAddress({
-      block: blockValue,
-      blockNo: apiData.address || apiData.Address || apiData.addressLine1 || apiData.AddressLine1,
-      streetName: apiData.address2 || apiData.Address2 || apiData.addressLine2 || apiData.AddressLine2,
-      unitNo: apiData.addressCity || apiData.AddressCity,
-      postalCode: apiData.districtCode || apiData.DistrictCode || apiData.addressState || apiData.AddressState || apiData.state,
-      country: apiData.country || apiData.Country || 'Singapore'
-    });
+    const customerAddress = apiData.customerAddress && typeof apiData.customerAddress === 'string' && apiData.customerAddress !== 'N/A'
+      ? apiData.customerAddress
+      : buildMultilineAddress(apiData);
 
     // Map details to InvoiceTemplateItem format
     const items = (apiData.details || []).map((detail: any) => ({
@@ -110,7 +117,7 @@ export function InvoiceViewerModal({
       invoiceDate: formatDate(apiData.transactionDate || apiData.TransactionDate || apiData.invoiceDate || apiData.InvoiceDate || new Date()),
       customerName: apiData.customerName || apiData.CustomerName || apiData.payeeName || 'N/A',
       customerAddress: apiData.customerAddress || customerAddress || 'N/A',
-      paymentMode: apiData.paymentMode || apiData.PaymentMode || apiData.receipt?.paymentMode || 'N/A',
+      paymentMode: paymentModeToLabel(apiData.paymentMode ?? apiData.PaymentMode ?? apiData.receipt?.paymentMode),
       paymentModeDocNo: apiData.paymentModeDocNo || apiData.PaymentModeDocNo || apiData.receipt?.paymentModeDocNo || '',
       totalAmount: apiData.totalAmount || apiData.TotalAmount || apiData.payingAmount || 0,
       taxAmount: apiData.taxAmount || apiData.TaxAmount || 0,
@@ -134,32 +141,9 @@ export function InvoiceViewerModal({
 
   // Function to map API data to ReceiptTemplate props
   const mapToReceiptTemplateData = (apiData: any) => {
-    // Check various common field names for address
-    const getAddress = () => {
-      if (!apiData) return 'N/A';
-
-      // Use pre-formatted address if available
-      if (apiData.customerAddress && typeof apiData.customerAddress === 'string' && apiData.customerAddress !== 'N/A') {
-        return apiData.customerAddress;
-      }
-
-      // Heuristic: if 'address' is a long string (likely full address) and not just a block number
-      if (apiData.address && typeof apiData.address === 'string' && apiData.address.length > 20) {
-        return apiData.address;
-      }
-
-      const addrNo = apiData.addressNo || apiData.receipt?.addressNo || apiData.receipt?.AddressNo || apiData.AddressNo;
-      return formatAddress({
-        block: (addrNo === 'Blk' || addrNo === 'Block') ? 'Block' : (addrNo === 'No' ? 'No' : addrNo),
-        blockNo: apiData.address || apiData.addressLine1 || apiData.receipt?.address || apiData.receipt?.Address || apiData.Address || apiData.AddressLine1,
-        streetName: apiData.address2 || apiData.addressLine2 || apiData.receipt?.address2 || apiData.receipt?.Address2 || apiData.Address2 || apiData.AddressLine2,
-        unitNo: apiData.addressCity || apiData.receipt?.addressCity || apiData.AddressCity || apiData.receipt?.AddressCity,
-        postalCode: apiData.districtCode || apiData.receipt?.districtCode || apiData.DistrictCode || (apiData as any).addressState || (apiData as any).AddressState,
-        country: apiData.country || apiData.Country || apiData.receipt?.country || apiData.receipt?.Country || 'Singapore'
-      });
-    };
-
-    const customerAddress = getAddress();
+    const customerAddress = apiData.customerAddress && typeof apiData.customerAddress === 'string' && apiData.customerAddress !== 'N/A'
+      ? apiData.customerAddress
+      : buildMultilineAddress(apiData, apiData.receipt);
 
     // Map items for receipt
     const items = (apiData.details || []).map((detail: any) => {
@@ -203,7 +187,7 @@ export function InvoiceViewerModal({
       description: description || 'Services Rendered',
       totalAmount: totalAmount,
       dollarsInWords: amountToWords(totalAmount),
-      paymentMethod: apiData.receipt?.paymentMode || apiData.receipt?.PaymentMode || apiData.paymentMode || apiData.PaymentMode || 'Cash',
+      paymentMethod: paymentModeToLabel(apiData.receipt?.paymentMode ?? apiData.receipt?.PaymentMode ?? apiData.paymentMode ?? apiData.PaymentMode),
       paymentModeDocNo: apiData.paymentModeDocNo || apiData.PaymentModeDocNo || apiData.receipt?.paymentModeDocNo || '',
       items: items
     };
@@ -211,29 +195,9 @@ export function InvoiceViewerModal({
 
   // Function to map API data to InvoiceTemplate interface for TaxInvoice component
   const mapToTaxInvoiceProps = (apiData: any) => {
-    // Check various common field names for address
-    const getAddress = () => {
-      if (!apiData) return 'N/A';
-
-      if (apiData.customerAddress && typeof apiData.customerAddress === 'string' && apiData.customerAddress !== 'N/A') {
-        return apiData.customerAddress;
-      }
-      if (apiData.address && typeof apiData.address === 'string' && apiData.address.length > 20) {
-        return apiData.address;
-      }
-
-      const addrNo = apiData.addressNo || apiData.receipt?.addressNo || apiData.receipt?.AddressNo || apiData.AddressNo;
-      return formatAddress({
-        block: (addrNo === 'Blk' || addrNo === 'Block') ? 'Block' : (addrNo === 'No' ? 'No' : addrNo),
-        blockNo: apiData.address || apiData.addressLine1 || apiData.receipt?.address || apiData.receipt?.Address || apiData.Address || apiData.AddressLine1,
-        streetName: apiData.address2 || apiData.addressLine2 || apiData.receipt?.address2 || apiData.receipt?.Address2 || apiData.Address2 || apiData.AddressLine2,
-        unitNo: apiData.addressCity || apiData.receipt?.addressCity || apiData.AddressCity || apiData.receipt?.AddressCity,
-        postalCode: apiData.districtCode || apiData.receipt?.districtCode || apiData.DistrictCode || (apiData as any).addressState || (apiData as any).AddressState,
-        country: apiData.country || apiData.Country || apiData.receipt?.country || apiData.receipt?.Country || 'Singapore'
-      });
-    };
-
-    const address = getAddress();
+    const address = apiData.customerAddress && typeof apiData.customerAddress === 'string' && apiData.customerAddress !== 'N/A'
+      ? apiData.customerAddress
+      : buildMultilineAddress(apiData, apiData.receipt);
     let items: any[] = [];
 
     if (Array.isArray(apiData.items) && apiData.items.length > 0) {
@@ -268,7 +232,7 @@ export function InvoiceViewerModal({
       gstTotal: apiData.taxAmount || apiData.TaxAmount || 0,
       total: apiData.totalAmount || apiData.TotalAmount || 0,
       dollarsInWords: amountToWords(apiData.totalAmount || apiData.TotalAmount || 0),
-      paymentMode: apiData.paymentMode || apiData.PaymentMode || apiData.receipt?.paymentMode || 'Cash',
+      paymentMode: paymentModeToLabel(apiData.paymentMode ?? apiData.PaymentMode ?? apiData.receipt?.paymentMode),
       paymentModeDocNo: apiData.paymentModeDocNo || apiData.PaymentModeDocNo || apiData.receipt?.paymentModeDocNo || '',
     };
   };

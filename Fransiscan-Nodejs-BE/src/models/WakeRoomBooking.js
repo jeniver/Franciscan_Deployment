@@ -1,3 +1,5 @@
+const AddressUtils = require('../utils/AddressUtils');
+
 /**
  * WakeRoomBooking entity model
  * Based on ASP.NET Entity.WakeRoomBooking structure
@@ -39,8 +41,8 @@ class WakeRoomBooking {
     this.remarks = data.remarks || data.Remarks || null;
 
     // Financial information
-    this.donationAmount = data.donationAmount || data.DonationAmount || 0;
-    this.defaultDonationAmount = data.defaultDonationAmount || data.DefaultDonationAmount || 0;
+    this.donationAmount = data.donationAmount ?? data.DonationAmount ?? 0;
+    this.defaultDonationAmount = data.defaultDonationAmount ?? data.DefaultDonationAmount ?? 0;
 
     // Service details
     this.serviceby = data.serviceby || data.Serviceby || null;
@@ -50,7 +52,7 @@ class WakeRoomBooking {
     this.timeOfCremationInTime = data.timeOfCremationInTime || data.TimeOfCremationInTime || null;
 
     // Status and administrative
-    this.status = data.status || data.Status || 0;
+    this.status = data.status ?? data.Status ?? 0;
     this.code = data.code || data.Code || null;
     this.refDocType = data.refDocType || data.RefDocType || null;
     this.churchId = data.churchId || data.ChurchId || null;
@@ -62,16 +64,14 @@ class WakeRoomBooking {
    * @returns {string} Complete address
    */
   getApplicantAddress() {
-    const parts = [
-      this.applicantAddressNo,
-      this.applicantAddressLine1,
-      this.applicantAddressLine2,
-      this.applicantAddressCity,
-      this.applicantAddressState,
-      this.applicantAddressCountry
-    ].filter(part => part && part.trim() !== '');
-
-    return parts.join(', ');
+    return AddressUtils.formatAddress({
+      AddressNo: this.applicantAddressNo,
+      Address: this.applicantAddressLine1,
+      Address2: this.applicantAddressLine2,
+      AddressCity: this.applicantAddressCity,
+      DistrictCode: this.applicantAddressState,
+      Country: this.applicantAddressCountry
+    });
   }
 
   /**

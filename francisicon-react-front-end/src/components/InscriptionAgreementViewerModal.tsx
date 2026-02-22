@@ -421,7 +421,9 @@ export function InscriptionAgreementViewerModal({
       timeOfInterment: data.deceased?.[0]?.internmentDate
         ? new Date(data.deceased[0].internmentDate!).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).replace(/ /g, '')
         : '',
-      bibleInscriptionText: data.inscription?.fullInscription || '',
+      bibleInscriptionText: data.inscription?.fullInscription
+        || [data.inscription?.bibleChoiceText, data.inscription?.additionalPhrase].filter(Boolean).join('\n')
+        || '',
       payments,
       signatureName: data.applicant?.name || '',
       signatureDate: data.formattedDate || formatDate(new Date().toISOString()),
@@ -545,7 +547,8 @@ function InscriptionAgreementView({
         <div className="flex border-b border-black">
           <div className="w-36 p-1 pl-2 border-r border-black h-[78px]">Address</div>
           <div className="flex-1 flex flex-col">
-            <div className="flex-1 p-1 pl-2 border-b border-black">{safeAddressLines[0] || ''} &nbsp; {safeAddressLines[1] || ''}</div>
+            <div className="flex-1 p-1 pl-2 border-b border-black">{safeAddressLines[0] || ''}</div>
+            <div className="flex-1 p-1 pl-2 border-b border-black">{safeAddressLines[1] || ''}</div>
             <div className="flex-1 p-1 pl-2">{safeAddressLines[2] || ''}</div>
           </div>
         </div>

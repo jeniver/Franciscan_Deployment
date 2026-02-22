@@ -184,8 +184,8 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
         no: addressData.addressNo || addressData.block || '',
         line1: addressData.addressLine1 || addressData.blockNo || '',
         line2: addressData.addressLine2 || addressData.streetName || '',
-        city: addressData.addressCity || addressData.unitNo || 'Singapore',
-        state: addressData.addressState || addressData.postalCode || 'Central',
+        city: addressData.addressCity || addressData.unitNo || '',
+        state: addressData.addressState || addressData.postalCode || '',
         country: addressData.addressCountry || addressData.country || 'Singapore'
       }
     }));
@@ -277,8 +277,8 @@ export function WakeRoomBookingForm({ onBookingCreated, onBookingUpdated: _onBoo
             no: safeString(addressDetails.no),
             line1: safeString(addressDetails.line1),
             line2: safeString(addressDetails.line2),
-            city: safeString(addressDetails.city) || 'Singapore',
-            state: safeString(addressDetails.state) || 'Central',
+            city: safeString(addressDetails.city),
+            state: safeString(addressDetails.state),
             country: safeString(addressDetails.country) || 'Singapore'
           }
         };

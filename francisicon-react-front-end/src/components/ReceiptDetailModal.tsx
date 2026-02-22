@@ -6,7 +6,8 @@ import { useToast } from '../contexts/ToastContext';
 import { ReceiptTemplate } from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { formatAddress } from '../utils/addressMapper';
+import { addressUtils, AddressEntity } from '../utils/addressUtils';
+import { paymentModeToLabel } from '../utils/paymentMode';
 
 
 interface ReceiptDetailModalProps {
@@ -58,27 +59,17 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
     if (!receipt) return;
 
     const currentReceipt = fullReceiptData || receipt;
-    // Calculate address with comprehensive fallback using unified utility
-    const getAddress = () => {
-      const receiptAny = currentReceipt as any;
-      const invoiceAny = receiptAny.invoice || {};
-
-      const rawAddressNo = currentReceipt.addressNo || receiptAny.AddressNo || invoiceAny.addressNo || invoiceAny.AddressNo;
-      const isBlock = rawAddressNo === 'Blk' || rawAddressNo === 'Block';
-      const blockValue = isBlock ? 'Block' : (rawAddressNo === 'No' ? 'No' : '');
-
-      return formatAddress({
-        block: blockValue,
-        blockNo: currentReceipt.address || receiptAny.Address || receiptAny.addressLine1 || invoiceAny.address || invoiceAny.Address || invoiceAny.addressLine1,
-        streetName: currentReceipt.address2 || receiptAny.Address2 || receiptAny.addressLine2 || invoiceAny.address2 || invoiceAny.Address2 || invoiceAny.addressLine2,
-        unitNo: currentReceipt.addressCity || receiptAny.AddressCity || invoiceAny.addressCity || invoiceAny.AddressCity,
-        postalCode: receiptAny.districtCode || receiptAny.DistrictCode || receiptAny.addressState || invoiceAny.districtCode || invoiceAny.DistrictCode,
-        country: currentReceipt.country || receiptAny.Country || invoiceAny.country || invoiceAny.Country
-      });
+    const receiptAny = currentReceipt as any;
+    const invoiceAny = receiptAny.invoice || {};
+    const addrEntity: AddressEntity = {
+      addressNo: currentReceipt.addressNo || receiptAny.AddressNo || invoiceAny.addressNo || invoiceAny.AddressNo || '',
+      addressLine1: currentReceipt.address || receiptAny.Address || receiptAny.addressLine1 || invoiceAny.address || invoiceAny.Address || invoiceAny.addressLine1 || '',
+      addressLine2: currentReceipt.address2 || receiptAny.Address2 || receiptAny.addressLine2 || invoiceAny.address2 || invoiceAny.Address2 || invoiceAny.addressLine2 || '',
+      addressCity: currentReceipt.addressCity || receiptAny.AddressCity || invoiceAny.addressCity || invoiceAny.AddressCity || '',
+      addressState: receiptAny.districtCode || receiptAny.DistrictCode || receiptAny.addressState || invoiceAny.districtCode || invoiceAny.DistrictCode || '',
+      addressCountry: currentReceipt.country || receiptAny.Country || invoiceAny.country || invoiceAny.Country || 'Singapore',
     };
-
-
-    const fullAddress = getAddress();
+    const fullAddress = addressUtils.buildAddressLines(addrEntity).filter(l => l.trim()).join('\n') || 'N/A';
 
     // Build a lightweight payload compatible with receiptPdfService
     const totalAmount = currentReceipt.totalAmount || (currentReceipt as any).ReceiptTotalAmount || currentReceipt.payingAmount || 0;
@@ -355,28 +346,20 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
     return result;
   };
 
-  // Pre-calculate address for the React component with comprehensive fallback using unified utility
-  const getDisplayAddress = () => {
+  const displayAddress = (() => {
     if (!receipt) return 'N/A';
-    const receiptAny = receipt as any;
-    const invoiceAny = receiptAny.invoice || {};
-
-    const rawAddressNo = receipt.addressNo || receiptAny.AddressNo || invoiceAny.addressNo || invoiceAny.AddressNo;
-    const isBlock = rawAddressNo === 'Blk' || rawAddressNo === 'Block';
-    const blockValue = isBlock ? 'Block' : (rawAddressNo === 'No' ? 'No' : '');
-
-    return formatAddress({
-      block: blockValue,
-      blockNo: receipt.address || receiptAny.Address || receiptAny.addressLine1 || invoiceAny.address || invoiceAny.Address || invoiceAny.addressLine1,
-      streetName: receipt.address2 || receiptAny.Address2 || receiptAny.addressLine2 || invoiceAny.address2 || invoiceAny.Address2 || invoiceAny.addressLine2,
-      unitNo: receipt.addressCity || receiptAny.AddressCity || invoiceAny.addressCity || invoiceAny.AddressCity,
-      postalCode: receiptAny.districtCode || receiptAny.DistrictCode || receiptAny.addressState || invoiceAny.districtCode || invoiceAny.DistrictCode,
-      country: receipt.country || receiptAny.Country || invoiceAny.country || invoiceAny.Country
-    });
-  };
-
-
-  const displayAddress = getDisplayAddress();
+    const rAny = receipt as any;
+    const iAny = rAny.invoice || {};
+    const entity: AddressEntity = {
+      addressNo: receipt.addressNo || rAny.AddressNo || iAny.addressNo || iAny.AddressNo || '',
+      addressLine1: receipt.address || rAny.Address || rAny.addressLine1 || iAny.address || iAny.Address || iAny.addressLine1 || '',
+      addressLine2: receipt.address2 || rAny.Address2 || rAny.addressLine2 || iAny.address2 || iAny.Address2 || iAny.addressLine2 || '',
+      addressCity: receipt.addressCity || rAny.AddressCity || iAny.addressCity || iAny.AddressCity || '',
+      addressState: rAny.districtCode || rAny.DistrictCode || rAny.addressState || iAny.districtCode || iAny.DistrictCode || '',
+      addressCountry: receipt.country || rAny.Country || iAny.country || iAny.Country || 'Singapore',
+    };
+    return addressUtils.buildAddressLines(entity).filter(l => l.trim()).join('\n') || 'N/A';
+  })();
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -441,10 +424,11 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
                       receivedFrom={currentReceipt.customerName || (currentReceipt as any).payeeName || 'N/A'}
                       address={displayAddress}
                       invoiceNo={currentReceipt.invoice?.code || (currentReceipt as any).invoice?.Code || currentReceipt.invoiceCode || (currentReceipt as any).invoiceNo || 'N/A'}
+                      refDocNo={(currentReceipt as any).refDocNumber || (currentReceipt as any).RefDocNumber || currentReceipt.invoice?.refDocNumber || (currentReceipt as any).invoice?.RefDocNumber || ''}
                       description={(currentReceipt.description || (currentReceipt.invoiceDetails && currentReceipt.invoiceDetails.length > 0 ? currentReceipt.invoiceDetails[0].description : (currentReceipt as any).details && (currentReceipt as any).details.length > 0 ? (currentReceipt as any).details[0].description : '')) || 'Payment received'}
                       totalAmount={totalAmt}
                       dollarsInWords={convertToDollarsInWords(totalAmt)}
-                      paymentMethod={currentReceipt.paymentMode || (currentReceipt as any).paymentMethod || (currentReceipt as any).PaymentMode || 'Cash'}
+                      paymentMethod={paymentModeToLabel(currentReceipt.paymentMode ?? (currentReceipt as any).paymentMethod ?? (currentReceipt as any).PaymentMode)}
                       paymentModeDocNo={currentReceipt.paymentModeDocNo || (currentReceipt as any).PaymentModeDocNo || ''}
                       churchInfo={currentReceipt.churchInfo}
                     />

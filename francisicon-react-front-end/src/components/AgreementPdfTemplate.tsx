@@ -366,7 +366,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             <div className="flex-1 flex flex-col">
               <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
-                  {applicantAddressLines[0] || ''}   {applicantAddressLines[1] || ''}
+                  {applicantAddressLines[0] || ''}
                 </ValueCell>
                 <LabelCell
                   width="w-28"
@@ -380,7 +380,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
               </div>
               <div className="flex border-b border-black h-[26px]">
                 <ValueCell className="flex-1">
-                  {applicantAddressLines[2] || ''}
+                  {applicantAddressLines[1] || ''}
                 </ValueCell>
                 <LabelCell
                   width="w-28"
@@ -393,7 +393,9 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 </ValueCell>
               </div>
               <div className="flex h-[26px]">
-
+                <ValueCell className="flex-1">
+                  {applicantAddressLines[2] || ''}
+                </ValueCell>
                 <LabelCell
                   width="w-28"
                   className="border-l border-black border-r-0"
@@ -471,7 +473,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </TableRow>
             <TableRow>
               <LabelCell width="w-36">Date of Birth</LabelCell>
-              <ValueCell>{beneficiary1?.dateOfBirth || beneficiary1?.birthYear || ''}</ValueCell>
+              <ValueCell>{beneficiary1?.dateOfBirth ? formatDate(beneficiary1.dateOfBirth) : (beneficiary1?.birthYear || '')}</ValueCell>
               <LabelCell width="w-28" className="border-l border-black">
                 Sex
               </LabelCell>
@@ -539,7 +541,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </TableRow>
             <TableRow>
               <LabelCell width="w-36">Date of Birth</LabelCell>
-              <ValueCell>{beneficiary2?.dateOfBirth || beneficiary2?.birthYear || ''}</ValueCell>
+              <ValueCell>{beneficiary2?.dateOfBirth ? formatDate(beneficiary2.dateOfBirth) : (beneficiary2?.birthYear || '')}</ValueCell>
               <LabelCell width="w-28" className="border-l border-black">
                 Sex
               </LabelCell>
@@ -672,46 +674,25 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
           <div className="flex border-b border-black">
             <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
             <div className="flex-1 flex flex-col">
-              <div className="flex border-b border-black h-[26px]">
-                <ValueCell className="flex-1">
-                  {addressUtils.buildAddressLines(nominee || {})[0] || ''}  {addressUtils.buildAddressLines(nominee || {})[1] || ''}
-                </ValueCell>
-                <LabelCell
-                  width="w-28"
-                  className="border-l border-black border-r-0"
-                >
-                  Mobile No.
-                </LabelCell>
-                <ValueCell width="w-32" className="border-l border-black">
-                  {nominee?.mobileNo || ''}
-                </ValueCell>
-              </div>
-              <div className="flex border-b border-black h-[26px]">
-                <ValueCell className="flex-1">
-                  {addressUtils.buildAddressLines(nominee || {})[2] || ''}
-                </ValueCell>
-                <LabelCell
-                  width="w-28"
-                  className="border-l border-black border-r-0"
-                >
-                  Home Tel.
-                </LabelCell>
-                <ValueCell width="w-32" className="border-l border-black">
-                  {nominee?.homeTelNo || ''}
-                </ValueCell>
-              </div>
-              <div className="flex h-[26px]">
-
-                <LabelCell
-                  width="w-28"
-                  className="border-l border-black border-r-0"
-                >
-                  Office Tel.
-                </LabelCell>
-                <ValueCell width="w-32" className="border-l border-black">
-                  {nominee?.officeTelNo || ''}
-                </ValueCell>
-              </div>
+              {(() => {
+                const nl = addressUtils.buildAddressLines(nominee || {}); return (<>
+                  <div className="flex border-b border-black h-[26px]">
+                    <ValueCell className="flex-1">{nl[0] || ''}</ValueCell>
+                    <LabelCell width="w-28" className="border-l border-black border-r-0">Mobile No.</LabelCell>
+                    <ValueCell width="w-32" className="border-l border-black">{nominee?.mobileNo || ''}</ValueCell>
+                  </div>
+                  <div className="flex border-b border-black h-[26px]">
+                    <ValueCell className="flex-1">{nl[1] || ''}</ValueCell>
+                    <LabelCell width="w-28" className="border-l border-black border-r-0">Home Tel.</LabelCell>
+                    <ValueCell width="w-32" className="border-l border-black">{nominee?.homeTelNo || ''}</ValueCell>
+                  </div>
+                  <div className="flex h-[26px]">
+                    <ValueCell className="flex-1">{nl[2] || ''}</ValueCell>
+                    <LabelCell width="w-28" className="border-l border-black border-r-0">Office Tel.</LabelCell>
+                    <ValueCell width="w-32" className="border-l border-black">{nominee?.officeTelNo || ''}</ValueCell>
+                  </div>
+                </>);
+              })()}
             </div>
           </div>
           <TableRow>
@@ -744,48 +725,25 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
           <div className="flex border-b border-black">
             <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
             <div className="flex-1 flex flex-col">
-              <div className="flex border-b border-black h-[26px]">
-                <ValueCell className="flex-1">
-                  {addressUtils.buildAddressLines(nominee2 || {})[0] || ''}
-                </ValueCell>
-                <LabelCell
-                  width="w-28"
-                  className="border-l border-black border-r-0"
-                >
-                  Mobile No.
-                </LabelCell>
-                <ValueCell width="w-32" className="border-l border-black">
-                  {nominee2?.mobileNo || ''}
-                </ValueCell>
-              </div>
-              <div className="flex border-b border-black h-[26px]">
-                <ValueCell className="flex-1">
-                  {addressUtils.buildAddressLines(nominee2 || {})[1] || ''}
-                </ValueCell>
-                <LabelCell
-                  width="w-28"
-                  className="border-l border-black border-r-0"
-                >
-                  Home Tel.
-                </LabelCell>
-                <ValueCell width="w-32" className="border-l border-black">
-                  {nominee2?.homeTelNo || ''}
-                </ValueCell>
-              </div>
-              <div className="flex h-[26px]">
-                <ValueCell className="flex-1">
-                  {addressUtils.buildAddressLines(nominee2 || {})[2] || ''}
-                </ValueCell>
-                <LabelCell
-                  width="w-28"
-                  className="border-l border-black border-r-0"
-                >
-                  Office Tel.
-                </LabelCell>
-                <ValueCell width="w-32" className="border-l border-black">
-                  {nominee2?.officeTelNo || ''}
-                </ValueCell>
-              </div>
+              {(() => {
+                const n2l = addressUtils.buildAddressLines(nominee2 || {}); return (<>
+                  <div className="flex border-b border-black h-[26px]">
+                    <ValueCell className="flex-1">{n2l[0] || ''}</ValueCell>
+                    <LabelCell width="w-28" className="border-l border-black border-r-0">Mobile No.</LabelCell>
+                    <ValueCell width="w-32" className="border-l border-black">{nominee2?.mobileNo || ''}</ValueCell>
+                  </div>
+                  <div className="flex border-b border-black h-[26px]">
+                    <ValueCell className="flex-1">{n2l[1] || ''}</ValueCell>
+                    <LabelCell width="w-28" className="border-l border-black border-r-0">Home Tel.</LabelCell>
+                    <ValueCell width="w-32" className="border-l border-black">{nominee2?.homeTelNo || ''}</ValueCell>
+                  </div>
+                  <div className="flex h-[26px]">
+                    <ValueCell className="flex-1">{n2l[2] || ''}</ValueCell>
+                    <LabelCell width="w-28" className="border-l border-black border-r-0">Office Tel.</LabelCell>
+                    <ValueCell width="w-32" className="border-l border-black">{nominee2?.officeTelNo || ''}</ValueCell>
+                  </div>
+                </>);
+              })()}
             </div>
           </div>
           <TableRow>

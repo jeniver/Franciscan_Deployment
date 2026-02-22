@@ -1,74 +1,91 @@
 /**
- * Utility functions for address formatting
+ * Utility functions for address formatting following the Universal Standard.
  */
 
 export interface AddressEntity {
-    addressNo?: string | null;
-    addressLine1?: string | null;
-    addressLine2?: string | null;
-    addressCity?: string | null;
-    addressState?: string | null;
-    addressCountry?: string | null;
+    addressNo?: string | null;      // Prefix (Blk/No)
+    addressLine1?: string | null;  // Block Number
+    addressLine2?: string | null;  // Street Name
+    addressCity?: string | null;   // Unit Number
+    addressState?: string | null;  // Postal Code (DistrictCode)
+    addressCountry?: string | null; // Country
 }
 
 /**
  * Formats a Singapore address into a single string or multiple lines.
- * Ensures ", Singapore" is appended if not present.
  */
 export const addressUtils = {
     /**
-     * Build an array of address lines
+     * Build an array of address lines following the Universal Standard.
+     * Standard:
+     * Line 1: [Prefix] [Block Number]
+     * Line 2: [Street Name]
+     * Line 3: [Unit Number] [Country] [Postal Code]
      */
     buildAddressLines: (entity: AddressEntity): string[] => {
-        if (!entity) return [];
-
-        // Check if there is any meaningful address data
-        const hasData = !!(entity.addressNo || entity.addressLine1 || entity.addressLine2 || entity.addressCity || entity.addressState);
-        if (!hasData) return [];
+        if (!entity) return ['', '', ''];
 
         const lines: string[] = [];
+        const raw = {
+            no: (entity.addressNo || '').trim(),
+            line1: (entity.addressLine1 || '').trim(),
+            line2: (entity.addressLine2 || '').trim(),
+            city: (entity.addressCity || '').trim(),
+            state: (entity.addressState || '').trim(),
+            country: (entity.addressCountry || '').trim(),
+        };
 
-        // Line 1: Block/House No
-        let blockPart = '';
-        if (entity.addressNo) {
-            const val = entity.addressNo.trim();
-            const upper = val.toUpperCase();
-            if (upper.startsWith('NO') || upper.startsWith('BLK') || upper.startsWith('BLOCK')) {
-                // Already has prefix, but normalize "Block" to "Blk" if needed? 
-                // Let's just keep as is or map if it's exactly "Block"
-                if (upper === 'BLOCK') blockPart = 'Blk';
-                else blockPart = val;
-            } else {
-                blockPart = 'No ' + val;
+        // Only recognised values qualify as a prefix
+        let prefix = '';
+        const upperNo = raw.no.toUpperCase();
+        if (upperNo === 'BLOCK' || upperNo === 'BLK') prefix = 'Blk';
+        else if (upperNo === 'NO' || upperNo === 'NO.') prefix = 'No';
+
+        // Line 1: [Prefix] [Block Number]
+        let blockPart = prefix;
+        if (raw.line1) {
+            const dedupLine1 = raw.line1 === raw.no ? '' : raw.line1;
+            if (dedupLine1) {
+                blockPart = blockPart ? `${blockPart} ${dedupLine1}` : dedupLine1;
             }
         }
         lines.push(blockPart);
 
         // Line 2: Street Name
-        lines.push(entity.addressLine1 ? entity.addressLine1.trim() : '');
+        lines.push(raw.line2);
 
-        // Line 3: Unit + Singapore + Postal
+        // Line 3: [Unit] [Country] [Postal]
         const line3Parts: string[] = [];
-        if (entity.addressLine2) {
-            let unit = entity.addressLine2.trim();
-            if (unit && !unit.startsWith('#') && (unit.includes('-') || /^\d+/.test(unit))) {
-                unit = '#' + unit;
+
+        // addressCity is the unit number, but sometimes a postal code is
+        // stored here by mistake.  Detect 6-digit postal and relocate it.
+        let unitValue = raw.city;
+        let postalValue = raw.state;
+        if (unitValue) {
+            const digitsOnly = unitValue.replace(/[^0-9]/g, '');
+            const looksPostal = /^\d{6}$/.test(digitsOnly) && /^\d+$/.test(unitValue);
+            if (looksPostal) {
+                if (!postalValue) postalValue = unitValue;
+                unitValue = '';
             }
-            line3Parts.push(unit);
         }
 
-        line3Parts.push('Singapore');
-
-        const postal = (entity.addressCity || entity.addressState || '').trim();
-        if (postal) {
-            line3Parts.push(postal);
+        if (unitValue) {
+            if (!unitValue.startsWith('#')) {
+                const isRange = unitValue.includes('-') && /^\d+/.test(unitValue);
+                if (isRange || /^\d+$/.test(unitValue)) {
+                    unitValue = '#' + unitValue;
+                }
+            }
+            line3Parts.push(unitValue);
         }
+
+        line3Parts.push(raw.country || 'Singapore');
+        if (postalValue) line3Parts.push(postalValue);
 
         lines.push(line3Parts.join(' '));
 
-        // Ensure we always have 3 elements for the template to access reliably
         while (lines.length < 3) lines.push('');
-
         return lines;
     },
 
@@ -76,7 +93,8 @@ export const addressUtils = {
      * Format address as a single line
      */
     formatSingleLine: (entity: AddressEntity): string => {
-        return addressUtils.buildAddressLines(entity).join(', ');
+        const lines = addressUtils.buildAddressLines(entity);
+        return lines.filter(l => l.trim()).join(', ');
     }
 };
 

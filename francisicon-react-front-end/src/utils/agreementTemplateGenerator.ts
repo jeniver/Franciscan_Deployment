@@ -1,89 +1,22 @@
+import { addressUtils, AddressEntity } from './addressUtils';
+
 // Helper function to format currency
 const formatCurrency = (amount: any) => {
   const num = parseFloat(amount || 0);
   return num.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-// Helper function to format address into lines from a single string
-const formatAddressLinesFromString = (address: string | null | undefined): string[] => {
-  if (!address) return ['', '', ''];
-
-  const addressStr = address.trim();
-  const pattern1 = addressStr.match(/B[il]k\s+(\d+[A-Z]?)\s+(.+?)(?:,\s*Singapore\s+(\d+))?/i);
-  if (pattern1) {
-    const blockPart = `Blk ${pattern1[1]}`;
-    const rest = pattern1[2].trim();
-    const postalCode = pattern1[3] || '';
-
-    const unitMatch = rest.match(/#(\d+-\d+)/);
-    if (unitMatch) {
-      const unitPart = `#${unitMatch[1]}`;
-      const streetPart = rest.replace(/#\d+-\d+/, '').trim();
-      return [
-        `${blockPart} ${streetPart}`,
-        unitPart,
-        postalCode ? `Singapore ${postalCode}` : ''
-      ];
-    } else {
-      return [
-        `${blockPart} ${rest}`,
-        '',
-        postalCode ? `Singapore ${postalCode}` : ''
-      ];
-    }
-  }
-
-  const parts = addressStr.split(',').map(p => p.trim()).filter(Boolean);
-  if (parts.length >= 3) {
-    return [parts[0] || '', parts[1] || '', parts.slice(2).join(', ') || ''];
-  } else if (parts.length === 2) {
-    return [parts[0] || '', parts[1] || '', ''];
-  } else {
-    return [addressStr, '', ''];
-  }
-};
-
-// Build address lines from entity
 const buildAddressLinesFromEntity = (entity: any): string[] => {
-  const addressNo = entity.addressNo || entity.address?.no || '';
-  const addressLine1 = entity.addressLine1 || entity.address?.line1 || '';
-  const addressLine2 = entity.addressLine2 || entity.address?.line2 || '';
-  const addressCity = entity.addressCity || entity.address?.city || '';
-  const addressState = entity.addressState || entity.address?.state || '';
-  const addressCountry = entity.addressCountry || entity.address?.country || '';
-
-  if (addressNo || addressLine1 || addressLine2 || addressCity || addressState || addressCountry) {
-    const line1Parts: string[] = [];
-    if (addressNo) {
-      const lowerNo = addressNo.trim().toUpperCase();
-      if (lowerNo === 'BLK' || lowerNo === 'BLOCK') {
-        line1Parts.push('Blk');
-      } else if (lowerNo === 'NO') {
-        line1Parts.push('No');
-      } else {
-        line1Parts.push(addressNo.trim());
-      }
-    }
-    if (addressLine1) {
-      line1Parts.push(addressLine1.trim());
-    }
-    if (addressLine2) {
-      line1Parts.push(addressLine2.trim());
-    }
-    const line1 = line1Parts.join(' ').trim();
-    const line2 = addressCity.trim();
-    const line3Parts: string[] = [];
-    if (addressCountry) {
-      line3Parts.push(addressCountry.trim());
-    }
-    if (addressState) {
-      line3Parts.push(addressState.trim());
-    }
-    const line3 = line3Parts.join(' ').trim();
-    return [line1, line2, line3];
-  }
-
-  return formatAddressLinesFromString(entity?.address);
+  if (!entity) return ['', '', ''];
+  const mapped: AddressEntity = {
+    addressNo: entity.addressNo || entity.address?.no || '',
+    addressLine1: entity.addressLine1 || entity.address?.line1 || '',
+    addressLine2: entity.addressLine2 || entity.address?.line2 || '',
+    addressCity: entity.addressCity || entity.address?.city || '',
+    addressState: entity.addressState || entity.address?.state || '',
+    addressCountry: entity.addressCountry || entity.address?.country || 'Singapore',
+  };
+  return addressUtils.buildAddressLines(mapped);
 };
 
 // Format date
