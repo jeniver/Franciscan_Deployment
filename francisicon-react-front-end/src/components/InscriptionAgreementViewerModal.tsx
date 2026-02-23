@@ -23,6 +23,8 @@ interface InscriptionAgreementViewerModalProps {
   onClose: () => void
   inscriptionCode: string
   initialData?: InscriptionAgreementData | null
+  /** When true and initialData is provided, skip fetching - use pre-fetched data (e.g. from InscriptionAgreementPage) */
+  skipFetchWhenDataProvided?: boolean
 }
 
 export function InscriptionAgreementViewerModal({
@@ -30,6 +32,7 @@ export function InscriptionAgreementViewerModal({
   onClose,
   inscriptionCode,
   initialData = null,
+  skipFetchWhenDataProvided = false,
 }: InscriptionAgreementViewerModalProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
@@ -45,13 +48,19 @@ export function InscriptionAgreementViewerModal({
     if (!isOpen) return
     setError(null)
     setAgreementData(initialData || null)
-  }, [isOpen, inscriptionCode, initialData])
+    if (initialData && skipFetchWhenDataProvided) setLoading(false)
+  }, [isOpen, inscriptionCode, initialData, skipFetchWhenDataProvided])
 
   // Fetch inscription agreement data when modal opens.
-  // Even if initial data exists, refresh from API so the modal shows latest values.
+  // When skipFetchWhenDataProvided is true, never fetch - use initialData from parent (e.g. InscriptionAgreementPage).
   useEffect(() => {
-    if (isOpen && inscriptionCode) {
-      const fetchAgreementData = async () => {
+    if (!isOpen || !inscriptionCode) return
+    if (skipFetchWhenDataProvided) {
+      setAgreementData(initialData || null)
+      setLoading(!initialData)
+      return
+    }
+    const fetchAgreementData = async () => {
         setLoading(true)
         setError(null)
         try {
@@ -132,10 +141,8 @@ export function InscriptionAgreementViewerModal({
           setLoading(false)
         }
       }
-
-      fetchAgreementData()
-    }
-  }, [isOpen, inscriptionCode])
+    fetchAgreementData()
+  }, [isOpen, inscriptionCode, skipFetchWhenDataProvided, initialData])
 
   // Helper function to get all computed styles as inline styles
   const getComputedStylesAsString = (element: Element): string => {
@@ -410,7 +417,7 @@ export function InscriptionAgreementViewerModal({
       nicheNo: data.niche?.code || '',
       applicantName: data.applicant?.name || '',
       addressLines: applicantAddressLines,
-      telOff: data.applicant?.phone || '',
+      telOff: data.applicant?.phone || (data.applicant as any)?.homeTel || '',
       telRes: data.contactPerson?.mobile || '',
       telHP: data.applicant?.mobile || '',
       crossType: data.inscription?.crossType || 'Crucifix',

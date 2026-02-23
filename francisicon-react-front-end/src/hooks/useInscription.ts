@@ -76,6 +76,7 @@ export function useInscription() {
   const creatingInscription = useSelector((state: RootState) => state.inscription.creatingInscription);
   const updatingInscription = useSelector((state: RootState) => state.inscription.updatingInscription);
   const inscriptionError = useSelector((state: RootState) => state.inscription.inscriptionError);
+  const lastRefreshedAt = useSelector((state: RootState) => state.inscription.lastRefreshedAt);
   const normalizeNicheCode = useCallback((code: string) => (code || '').trim().replace(/^I-/i, ''), []);
 
   // Form field setters
@@ -400,6 +401,7 @@ export function useInscription() {
     updatingInscription,
     inscriptionError,
     handleCreateInscription,
-    handleUpdateInscription
+    handleUpdateInscription,
+    lastRefreshedAt
   };
 }

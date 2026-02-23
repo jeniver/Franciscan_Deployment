@@ -472,6 +472,7 @@ class InscriptionInvoiceService {
     };
 
     let beneficiaries = [];
+    // Primary: resolve via nicheBookingId when available
     if (application.nicheBookingId) {
       try {
         const nicheBooking = await NicheBookingRepository.getById(application.nicheBookingId);
@@ -480,6 +481,49 @@ class InscriptionInvoiceService {
         }
       } catch (e) {
         // ignore beneficiary error
+      }
+    }
+
+    // Fallback: when beneficiaries empty, resolve via nicheApplicationCode or inscription code chain
+    // This fixes the Select Beneficiary dropdown not showing after inscription is created
+    if (beneficiaries.length === 0) {
+      let nicheApplicationId = null;
+      const nicheCode = this._normalizeNicheApplicationCode(application.nicheApplicationCode || application.code || '');
+
+      if (nicheCode) {
+        try {
+          const nicheApp = await NicheApplicationRepository.getByCode(nicheCode);
+          if (nicheApp && nicheApp.nicheApplicationId) {
+            nicheApplicationId = nicheApp.nicheApplicationId;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (!nicheApplicationId && application.code) {
+        try {
+          const chainQuery = `
+            SELECT TOP 1 nb.NicheApplicationId
+            FROM NicheInscriptionRequest nir WITH (NOLOCK)
+            INNER JOIN NicheBooking nb WITH (NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+            WHERE nir.Code = @code
+          `;
+          const chainResult = await executeQuery(chainQuery, { code: application.code });
+          if (chainResult.recordset && chainResult.recordset.length > 0) {
+            nicheApplicationId = chainResult.recordset[0].NicheApplicationId;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (nicheApplicationId) {
+        try {
+          beneficiaries = await this._getBeneficiariesForNicheApplication(nicheApplicationId);
+        } catch (e) {
+          // ignore
+        }
       }
     }
 

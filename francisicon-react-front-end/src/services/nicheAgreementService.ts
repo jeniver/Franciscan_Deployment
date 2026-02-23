@@ -63,6 +63,8 @@ export interface Niche {
   chapelName: string | null;
   totalAmount: number;
   lineAmount: number;
+  nichePrice?: number;
+  rowPrice?: number;
   location?: {
     chapel: {
       chapelId: number;
@@ -79,6 +81,7 @@ export interface Niche {
       rowId: number;
       rowCode: string;
       level: number;
+      rowPrice?: number;
     };
   };
 }

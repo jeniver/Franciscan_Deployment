@@ -5,8 +5,7 @@ const NicheAgreement = require('../models/NicheAgreement');
 const NicheConcentForm = require('../models/NicheConcentForm');
 const AddressUtils = require('../utils/AddressUtils');
 
-// Schema check cache - COL_LENGTH results don't change at runtime, avoid 2 extra queries per request
-let _schemaCache = { hasBookingStorageFrom: null, hasInscriptionStorageFrom: null };
+// NOTE: Storage period is derived from 1st Interment Date only (StorageFrom = IntermentDate, StorageTo = IntermentDate + 30y + 30d). Not from NicheInscriptionRequest/NicheBooking.
 
 /**
  * Niche Agreement repository - ULTRA SIMPLIFIED VERSION
@@ -81,6 +80,7 @@ class NicheAgreementRepository extends BaseRepository {
           const locationQuery = `
             SELECT TOP 1
               n.Code AS NicheCode,
+              n.DefaultAmount AS NichePrice,
               n.NicheRowlId,
               r.Code AS RowCode,
               r.NicheLevel,
@@ -122,10 +122,11 @@ class NicheAgreementRepository extends BaseRepository {
 
       logger.info(`Found application: ${mergedData.Code} in Chapel: ${mergedData.ChapelCode || 'N/A'}, Wall: ${mergedData.WallCode || 'N/A'}`);
 
-      // Prefer application-level storage/deceased values before inscription exists.
-      // This ensures agreement APIs return storageFrom for pre-inscription records.
-      const applicationStorageFrom = mergedData.StorageFrom || mergedData.InternmentDate1 || null;
-      const applicationStorageTo = mergedData.StorageTo || mergedData.InternmentDate1 || null;
+      // Storage period is derived from 1st Interment Date: StorageFrom = IntermentDate1, StorageTo = IntermentDate1 + 30 years + 30 days.
+      // Do NOT use NicheApplication.StorageFrom/StorageTo or inscription StorageFrom/StorageTo.
+      const intermentDate1 = mergedData.InternmentDate1 || null;
+      const applicationStorageFrom = intermentDate1;
+      const applicationStorageTo = null; // Will be calculated in addDeceasedAndStorageInfo / processNicheAgreementData (IntermentDate + 30y + 30d)
 
       // Build the niche agreement object using data from NicheApplication
       const nicheAgreement = new NicheAgreement({
@@ -187,6 +188,7 @@ class NicheAgreementRepository extends BaseRepository {
         chapelName: mergedData.ChapelName || null,
         nicheTotalAmount: mergedData.Amount || 0,
         nicheLineAmount: mergedData.DefaultAmount || 0,
+        nichePrice: mergedData.NichePrice || 0,
 
         // Niche location hierarchy (NEW)
         nicheLocation: {
@@ -697,146 +699,58 @@ class NicheAgreementRepository extends BaseRepository {
   }
 
   /**
-   * Add deceased information and storage period from NicheInscriptionRequest
-   * OPTIMIZED: Robust query strategy
+   * Add deceased information from NicheInscriptionRequest.
+   * Storage period: StorageFrom = 1st Interment Date, StorageTo = 1st Interment Date + 30 years + 30 days.
+   * Do NOT use NicheInscriptionRequest.StorageFrom/StorageTo or NicheBooking.StorageFrom.
    */
   async addDeceasedAndStorageInfo(nicheApplicationId, nicheAgreement) {
     try {
-      // Use cached schema checks - these never change at runtime (2 queries saved per request)
-      let hasBookingStorageFrom = _schemaCache.hasBookingStorageFrom;
-      if (hasBookingStorageFrom === null) {
-        const hasBookingStorageFromResult = await executeQuery(
-          `SELECT CASE WHEN COL_LENGTH('NicheBooking', 'StorageFrom') IS NOT NULL THEN 1 ELSE 0 END AS HasStorageFrom`,
-          {},
-          { timeout: 5000 }
-        );
-        hasBookingStorageFrom = Boolean(hasBookingStorageFromResult.recordset?.[0]?.HasStorageFrom);
-        _schemaCache.hasBookingStorageFrom = hasBookingStorageFrom;
-      }
-
-      // Step 1: Get booking info first (Foundational)
-      const bookingQuery = hasBookingStorageFrom ? `
-        SELECT TOP 1
-          NicheBookingId,
-          StorageFrom
-        FROM NicheBooking WITH (NOLOCK)
-        WHERE NicheApplicationId = @nicheApplicationId
-        ORDER BY NicheBookingId DESC
-      ` : `
-        SELECT TOP 1
-          NicheBookingId
-        FROM NicheBooking WITH (NOLOCK)
-        WHERE NicheApplicationId = @nicheApplicationId
-        ORDER BY NicheBookingId DESC
-      `;
       const bookingResult = await executeQuery(
-        bookingQuery,
+        `SELECT TOP 1 NicheBookingId FROM NicheBooking WITH (NOLOCK)
+         WHERE NicheApplicationId = @nicheApplicationId
+         ORDER BY NicheBookingId DESC`,
         { nicheApplicationId },
         { timeout: 10000 }
       );
 
       if (!bookingResult.recordset || bookingResult.recordset.length === 0) {
+        this._setStorageFromIntermentDate(nicheAgreement);
         return;
       }
 
-      const bookingRow = bookingResult.recordset[0];
-      const nicheBookingId = bookingRow.NicheBookingId;
+      const nicheBookingId = bookingResult.recordset[0].NicheBookingId;
 
-      if (hasBookingStorageFrom && bookingRow.StorageFrom) {
-        nicheAgreement.storageFrom = bookingRow.StorageFrom;
-      }
-
-      let hasInscriptionStorageFrom = _schemaCache.hasInscriptionStorageFrom;
-      if (hasInscriptionStorageFrom === null) {
-        const hasInscriptionStorageFromResult = await executeQuery(
-          `SELECT CASE WHEN COL_LENGTH('NicheInscriptionRequest', 'StorageFrom') IS NOT NULL THEN 1 ELSE 0 END AS HasStorageFrom`,
-          {},
-          { timeout: 5000 }
-        );
-        hasInscriptionStorageFrom = Boolean(hasInscriptionStorageFromResult.recordset?.[0]?.HasStorageFrom);
-        _schemaCache.hasInscriptionStorageFrom = hasInscriptionStorageFrom;
-      }
-
-      // Step 2: Get Inscription Request info
-      const inscriptionQuery = hasInscriptionStorageFrom ? `
-        SELECT TOP 1
-          NicheInscriptionRequestId,
-          StorageFrom,
-          TranscationDate
-        FROM NicheInscriptionRequest WITH (NOLOCK)
-        WHERE NicheBookingId = @nicheBookingId
-        ORDER BY NicheInscriptionRequestId DESC
-      ` : `
-        SELECT TOP 1
-          NicheInscriptionRequestId,
-          TranscationDate
-        FROM NicheInscriptionRequest WITH (NOLOCK)
-        WHERE NicheBookingId = @nicheBookingId
-        ORDER BY NicheInscriptionRequestId DESC
-      `;
       const inscriptionResult = await executeQuery(
-        inscriptionQuery,
+        `SELECT TOP 1 NicheInscriptionRequestId FROM NicheInscriptionRequest WITH (NOLOCK)
+         WHERE NicheBookingId = @nicheBookingId
+         ORDER BY NicheInscriptionRequestId DESC`,
         { nicheBookingId },
         { timeout: 10000 }
       );
-      let inscriptionRequestId = null;
 
-      if (inscriptionResult.recordset.length > 0) {
-        const insRow = inscriptionResult.recordset[0];
-        inscriptionRequestId = insRow.NicheInscriptionRequestId;
+      let inscriptionRequestId = inscriptionResult.recordset?.length > 0
+        ? inscriptionResult.recordset[0].NicheInscriptionRequestId
+        : null;
 
-        // Override/Set storage from Inscription if available (it's arguably more recent/specific)
-        if (hasInscriptionStorageFrom && insRow.StorageFrom) {
-          nicheAgreement.storageFrom = insRow.StorageFrom;
-        }
-
-        // If still no StorageFrom, use TranscationDate of inscription as a last-resort fallback for FROM
-        if (!nicheAgreement.storageFrom && insRow.TranscationDate) {
-          nicheAgreement.storageFrom = insRow.TranscationDate;
-        }
-      }
-
-      // Step 3: Get deceased details (only if inscription exists)
       if (inscriptionRequestId) {
         try {
-          const deceasedQuery = `
-            SELECT TOP 2
-              NameOfDeceased,
-              DateDied,
-              InternmentDate,
-              DeathCertificateNo
-            FROM NicheInscriptionRequestDecesed WITH (NOLOCK)
-            WHERE NicheInscriptionRequestId = @inscriptionRequestId
-            ORDER BY NicheInscriptionRequestDecesedId
-          `;
-
           const deceasedResult = await executeQuery(
-            deceasedQuery,
+            `SELECT TOP 2 NameOfDeceased, DateDied, InternmentDate, DeathCertificateNo
+             FROM NicheInscriptionRequestDecesed WITH (NOLOCK)
+             WHERE NicheInscriptionRequestId = @inscriptionRequestId
+             ORDER BY NicheInscriptionRequestDecesedId`,
             { inscriptionRequestId },
             { timeout: 10000 }
           );
 
-          if (deceasedResult.recordset.length > 0) {
+          if (deceasedResult.recordset?.length > 0) {
             const deceased1 = deceasedResult.recordset[0];
             nicheAgreement.nameOfDeceased1 = deceased1.NameOfDeceased;
             nicheAgreement.dateDied1 = deceased1.DateDied;
             nicheAgreement.internmentDate1 = deceased1.InternmentDate;
             nicheAgreement.deathCertificateNo1 = deceased1.DeathCertificateNo;
-
-            // Set storage from internment date if missing
-            if (!nicheAgreement.storageFrom && deceased1.InternmentDate) {
-              nicheAgreement.storageFrom = deceased1.InternmentDate;
-              logger.info(`[addDeceasedAndStorageInfo] Fallback: Set storageFrom to internmentDate for ${nicheApplicationId}`);
-            }
-            if (!nicheAgreement.storageTo && deceased1.InternmentDate) {
-              // Usually storageTo is 30 years later, but for agreements we often just show the date
-              // User specifically asked to use internmentDate
-              nicheAgreement.storageTo = deceased1.InternmentDate;
-              logger.info(`[addDeceasedAndStorageInfo] Fallback: Set storageTo to internmentDate for ${nicheApplicationId}`);
-            }
           }
-
-          if (deceasedResult.recordset.length > 1) {
+          if (deceasedResult.recordset?.length > 1) {
             const deceased2 = deceasedResult.recordset[1];
             nicheAgreement.nameOfDeceased2 = deceased2.NameOfDeceased;
             nicheAgreement.dateDied2 = deceased2.DateDied;
@@ -847,8 +761,31 @@ class NicheAgreementRepository extends BaseRepository {
           logger.warn(`Could not fetch deceased details for inscription ${inscriptionRequestId}:`, deceasedError.message);
         }
       }
+
+      this._setStorageFromIntermentDate(nicheAgreement);
     } catch (error) {
       logger.warn('Could not fetch deceased and storage info:', error.message);
+      this._setStorageFromIntermentDate(nicheAgreement);
+    }
+  }
+
+  /**
+   * Set storageFrom = 1st Interment Date, storageTo = 1st Interment Date + 30 years + 30 days.
+   */
+  _setStorageFromIntermentDate(nicheAgreement) {
+    const d = nicheAgreement.internmentDate1;
+    if (!d) return;
+    nicheAgreement.storageFrom = d;
+    try {
+      const fromDate = d instanceof Date ? d : new Date(d);
+      if (!isNaN(fromDate.getTime())) {
+        const toDate = new Date(fromDate);
+        toDate.setFullYear(toDate.getFullYear() + 30);
+        toDate.setDate(toDate.getDate() + 30);
+        nicheAgreement.storageTo = toDate.toISOString ? toDate.toISOString() : toDate;
+      }
+    } catch (e) {
+      logger.warn('[addDeceasedAndStorageInfo] Could not calculate storageTo:', e?.message);
     }
   }
 

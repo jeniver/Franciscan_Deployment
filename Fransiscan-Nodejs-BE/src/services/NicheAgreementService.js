@@ -296,21 +296,21 @@ class NicheAgreementService {
         agreementData.storage = { storageFrom: null, storageTo: null };
       }
 
-      // If storageFrom is missing, use internment date from deceased1
+      // Storage period: StorageFrom = 1st Interment Date, StorageTo = 1st Interment Date + 30 years + 30 days.
+      // Do NOT use inscription StorageFrom/StorageTo.
       if (!agreementData.storage.storageFrom && agreementData.deceased?.deceased1?.internmentDate) {
         agreementData.storage.storageFrom = agreementData.deceased.deceased1.internmentDate;
         logger.info(`[processNicheAgreementData] Set storageFrom to internmentDate: ${agreementData.storage.storageFrom}`);
       }
 
-      // If storageFrom exists, calculate storageTo (30 years minus 1 day)
       if (agreementData.storage.storageFrom && !agreementData.storage.storageTo) {
         const fromDate = dateService.parseDate(agreementData.storage.storageFrom);
         if (fromDate) {
           const toDate = new Date(fromDate);
           toDate.setFullYear(toDate.getFullYear() + 30);
-          toDate.setDate(toDate.getDate() - 1);
+          toDate.setDate(toDate.getDate() + 30); // 30 years + 30 days from interment date
           agreementData.storage.storageTo = toDate.toISOString();
-          logger.info(`[processNicheAgreementData] Calculated storageTo: ${agreementData.storage.storageTo}`);
+          logger.info(`[processNicheAgreementData] Calculated storageTo (intermentDate + 30y + 30d): ${agreementData.storage.storageTo}`);
         }
       }
 

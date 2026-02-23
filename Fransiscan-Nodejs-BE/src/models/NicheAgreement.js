@@ -87,6 +87,7 @@ class NicheAgreement {
     this.chapelName = data.chapelName || null;
     this.nicheTotalAmount = data.nicheTotalAmount || 0;
     this.nicheLineAmount = data.nicheLineAmount || 0;
+    this.nichePrice = data.nichePrice || 0;
 
     // Niche location hierarchy (Chapel → Wall → Row → Niche)
     this.nicheLocation = data.nicheLocation || null;
@@ -423,6 +424,7 @@ class NicheAgreement {
         chapelName: this.chapelName,
         totalAmount: this.nicheTotalAmount,
         lineAmount: this.nicheLineAmount,
+        nichePrice: this.nichePrice || 0,
         rowPrice: this.nicheLocation?.row?.rowPrice || 0,
 
         // Complete location hierarchy

@@ -79,6 +79,9 @@ export interface InscriptionState {
   loading: boolean;
   error: string | null;
   lastErrorType: 'auth' | 'network' | 'validation' | 'server' | null;
+
+  /** Timestamp when inscription items were last fetched - used to force AddressInput remount on refresh */
+  lastRefreshedAt: number;
 }
 
 const initialState: InscriptionState = {
@@ -113,6 +116,7 @@ const initialState: InscriptionState = {
   loading: false,
   error: null,
   lastErrorType: null,
+  lastRefreshedAt: 0,
   creatingInscription: false,
   updatingInscription: false,
   inscriptionError: null
@@ -464,6 +468,7 @@ const inscriptionSlice = createSlice({
       })
       .addCase(fetchInscriptionItems.fulfilled, (state, action) => {
         state.itemsLoading = false;
+        state.lastRefreshedAt = Date.now();
         const data = action.payload;
         const normalizeNicheCode = (code: string) => (code || '').trim().replace(/^I-/i, '');
 

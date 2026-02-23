@@ -56,7 +56,8 @@ class InscriptionAgreementRepository {
             nir.ApplicantAddressState,
             nir.ApplicantAddressCountry,
             
-            -- Niche information
+            -- Niche information (include ApplicationCode from NicheApplication)
+            na.Code AS ApplicationCode,
             n.Code AS NicheCode,
             n.AppearanceDescription,
             r.Code AS RowCode,
@@ -138,7 +139,8 @@ class InscriptionAgreementRepository {
             nir.ApplicantAddressState,
             nir.ApplicantAddressCountry,
             
-            -- Niche information
+            -- Niche information (include ApplicationCode from NicheApplication)
+            na.Code AS ApplicationCode,
             n.Code AS NicheCode,
             n.AppearanceDescription,
             r.Code AS RowCode,
@@ -277,14 +279,22 @@ class InscriptionAgreementRepository {
       const agreementDetails = Object.values(groupedResults)[0];
 
       // Try to fetch CrossType separately (column may not exist in all schemas)
+      agreementDetails.CrossType = null;
       try {
-        const ctResult = await executeQuery(
-          `SELECT CrossType FROM NicheInscriptionRequest WITH(NOLOCK) WHERE NicheInscriptionRequestId = @id`,
-          { id: agreementDetails.NicheInscriptionRequestId },
-          { timeout: 3000 }
+        const hasColResult = await executeQuery(
+          `SELECT CASE WHEN COL_LENGTH('NicheInscriptionRequest', 'CrossType') IS NOT NULL THEN 1 ELSE 0 END AS HasCol`,
+          {},
+          { timeout: 2000 }
         );
-        if (ctResult.recordset && ctResult.recordset.length > 0) {
-          agreementDetails.CrossType = ctResult.recordset[0].CrossType || null;
+        if (hasColResult.recordset?.[0]?.HasCol === 1) {
+          const ctResult = await executeQuery(
+            `SELECT CrossType FROM NicheInscriptionRequest WITH(NOLOCK) WHERE NicheInscriptionRequestId = @id`,
+            { id: agreementDetails.NicheInscriptionRequestId },
+            { timeout: 3000 }
+          );
+          if (ctResult.recordset && ctResult.recordset.length > 0) {
+            agreementDetails.CrossType = ctResult.recordset[0].CrossType || null;
+          }
         }
       } catch {
         agreementDetails.CrossType = null;
@@ -400,6 +410,12 @@ class InscriptionAgreementRepository {
         return null;
       }
 
+      const fmtDate = (raw) => {
+        if (!raw) return '';
+        const d = new Date(raw);
+        return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' });
+      };
+
       // Format data for PDF generation
       const pdfData = {
         // Document metadata
@@ -474,8 +490,19 @@ class InscriptionAgreementRepository {
           ].filter(Boolean).join('\n') || ''
         },
 
-        // Deceased details
-        deceased: agreementDetails.deceasedDetails,
+        // Deceased details (with formattedDates for frontend consistency)
+        deceased: (agreementDetails.deceasedDetails || []).map((d) => ({
+          name: d.name || '',
+          dateOfBirth: d.dateOfBirth || null,
+          dateOfDeath: d.dateOfDeath || null,
+          internmentDate: d.internmentDate || null,
+          deathCertificateNo: d.deathCertificateNo || '',
+          formattedDates: {
+            birth: fmtDate(d.dateOfBirth),
+            death: fmtDate(d.dateOfDeath),
+            internment: fmtDate(d.internmentDate)
+          }
+        })),
 
         // Storage period (using internmentDate as fallback)
         storage: {

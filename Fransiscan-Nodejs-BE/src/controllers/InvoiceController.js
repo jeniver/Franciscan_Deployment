@@ -254,7 +254,7 @@ class InvoiceController extends BaseController {
         const { executeQuery } = require('../config/database');
         let item = null;
 
-        // Manual Niche Item Resolution – match by DocType, prefer name containing the niche level
+        // Manual Niche Item Resolution – strict match by DocType and level name
         if (nicheInfo && nicheInfo.NicheLevel) {
           const levelPattern = `%Level ${nicheInfo.NicheLevel}%`;
           const levelItemQuery = `
@@ -262,10 +262,9 @@ class InvoiceController extends BaseController {
               i.ItemId, i.Name AS ItemName, i.Code AS ItemCode, i.Price AS ItemPrice
             FROM Item i WITH(NOLOCK)
             WHERE i.ChurchId = @churchId
-              AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
-            ORDER BY
-              CASE WHEN i.Name LIKE @levelPattern THEN 0 ELSE 1 END,
-              i.ItemId
+              AND i.DocType = 'NAPP'
+              AND i.Name LIKE @levelPattern
+            ORDER BY i.ItemId
           `;
           const levelItemResult = await executeQuery(levelItemQuery, {
             churchId,
@@ -2099,29 +2098,37 @@ class InvoiceController extends BaseController {
 
       const niche = nicheResult.recordset[0];
 
-      // Get matching item by DocType='NAPP', preferring one whose name matches the niche level
+      // Get matching item by DocType='NAPP' with strict level match
       let item = null;
-      const levelPattern = niche.NicheLevel ? `%Level ${niche.NicheLevel}%` : '';
+      if (niche.NicheLevel) {
+        const levelPattern = `%Level ${niche.NicheLevel}%`;
+        const itemQuery = `
+          SELECT TOP 1
+            i.ItemId, i.Name, i.Code, i.Price, i.DocType
+          FROM Item i WITH(NOLOCK)
+          WHERE i.ChurchId = @churchId
+            AND i.DocType = 'NAPP'
+            AND i.Name LIKE @levelPattern
+          ORDER BY i.ItemId
+        `;
+        const itemResult = await executeQuery(itemQuery, { churchId, levelPattern });
+        if (itemResult.recordset && itemResult.recordset.length > 0) {
+          item = itemResult.recordset[0];
+        }
+      }
 
-      const itemQuery = `
-        SELECT TOP 1
-          i.ItemId,
-          i.Name,
-          i.Code,
-          i.Price,
-          i.DocType
-        FROM Item i WITH(NOLOCK)
-        WHERE i.ChurchId = @churchId
-          AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
-        ORDER BY
-          CASE WHEN @levelPattern <> '' AND i.Name LIKE @levelPattern THEN 0 ELSE 1 END,
-          i.ItemId
-      `;
-
-      const itemResult = await executeQuery(itemQuery, { churchId, levelPattern });
-
-      if (itemResult.recordset && itemResult.recordset.length > 0) {
-        item = itemResult.recordset[0];
+      // Fallback: any NAPP item
+      if (!item) {
+        const fallbackQuery = `
+          SELECT TOP 1 i.ItemId, i.Name, i.Code, i.Price, i.DocType
+          FROM Item i WITH(NOLOCK)
+          WHERE i.ChurchId = @churchId AND i.DocType = 'NAPP'
+          ORDER BY i.ItemId
+        `;
+        const fallbackResult = await executeQuery(fallbackQuery, { churchId });
+        if (fallbackResult.recordset && fallbackResult.recordset.length > 0) {
+          item = fallbackResult.recordset[0];
+        }
       }
 
       if (!item) {
