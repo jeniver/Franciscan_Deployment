@@ -229,9 +229,7 @@ class ApplicationService {
           }
         }
       } else if (type === 'NAPP') {
-        const amount = row.Amount || nicheDetails?.NichePrice || nicheDetails?.RowPrice || 0;
-
-        // Resolve a real Item record instead of using NicheId as itemId
+        // Resolve a real Item record by strict level match (do this first so Item.Price is available as fallback)
         let nappItem = null;
         if (nicheDetails?.NicheLevel) {
           const levelPattern = `%Level ${nicheDetails.NicheLevel}%`;
@@ -239,10 +237,9 @@ class ApplicationService {
             SELECT TOP 1 ItemId, Name, Code, Price
             FROM Item WITH(NOLOCK)
             WHERE ChurchId = @churchId
-              AND (DocType = 'NAPP' OR IsRefType = 1)
-            ORDER BY
-              CASE WHEN Name LIKE @levelPattern THEN 0 ELSE 1 END,
-              ItemId
+              AND DocType = 'NAPP'
+              AND Name LIKE @levelPattern
+            ORDER BY ItemId
           `;
           try {
             const nappResult = await executeQuery(nappItemQuery, { churchId, levelPattern }, { timeout: 5000 });
@@ -254,6 +251,9 @@ class ApplicationService {
         if (!nappItem) {
           nappItem = await this.getPreferredItemForType(churchId, 'NAPP');
         }
+
+        // Standardized price waterfall: Application > Niche > Row > Item catalog
+        const amount = row.Amount || nicheDetails?.NichePrice || nicheDetails?.RowPrice || nappItem?.Price || 0;
 
         items = [{
           itemId: nappItem?.ItemId || 0,

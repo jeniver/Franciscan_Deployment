@@ -380,36 +380,47 @@ class InvoiceRepository extends BaseRepository {
         }
       }
 
-      // Step 3: Get matching Item by DocType='NAPP', preferring one whose name matches the niche level
+      // Step 3: Get matching Item by strict level match
       let item = null;
       if (application.ChurchId) {
-        const levelPattern = nicheDetails?.NicheLevel
-          ? `%Level ${nicheDetails.NicheLevel}%`
-          : '';
+        if (nicheDetails?.NicheLevel) {
+          const levelPattern = `%Level ${nicheDetails.NicheLevel}%`;
+          const itemQuery = `
+            SELECT TOP 1
+              i.ItemId, i.Name AS ItemName, i.Code AS ItemCode,
+              i.Price AS ItemPrice, i.IsRefType, i.DocType, i.ChurchId
+            FROM Item i WITH(NOLOCK)
+            WHERE i.ChurchId = @churchId
+              AND i.DocType = 'NAPP'
+              AND i.Name LIKE @levelPattern
+            ORDER BY i.ItemId
+          `;
+          const itemResult = await executeQuery(itemQuery, {
+            churchId: application.ChurchId,
+            levelPattern
+          }, { timeout: 5000 });
 
-        const itemQuery = `
-          SELECT TOP 1
-            i.ItemId,
-            i.Name  AS ItemName,
-            i.Code  AS ItemCode,
-            i.Price AS ItemPrice,
-            i.IsRefType,
-            i.DocType,
-            i.ChurchId
-          FROM Item i WITH(NOLOCK)
-          WHERE i.ChurchId = @churchId
-            AND (i.DocType = 'NAPP' OR i.IsRefType = 1)
-          ORDER BY
-            CASE WHEN @levelPattern <> '' AND i.Name LIKE @levelPattern THEN 0 ELSE 1 END,
-            i.ItemId
-        `;
-        const itemResult = await executeQuery(itemQuery, {
-          churchId: application.ChurchId,
-          levelPattern
-        }, { timeout: 5000 });
+          if (itemResult.recordset && itemResult.recordset.length > 0) {
+            item = itemResult.recordset[0];
+          }
+        }
 
-        if (itemResult.recordset && itemResult.recordset.length > 0) {
-          item = itemResult.recordset[0];
+        // Fallback: any NAPP item for the church
+        if (!item) {
+          const fallbackQuery = `
+            SELECT TOP 1
+              i.ItemId, i.Name AS ItemName, i.Code AS ItemCode,
+              i.Price AS ItemPrice, i.IsRefType, i.DocType, i.ChurchId
+            FROM Item i WITH(NOLOCK)
+            WHERE i.ChurchId = @churchId AND i.DocType = 'NAPP'
+            ORDER BY i.ItemId
+          `;
+          const fallbackResult = await executeQuery(fallbackQuery, {
+            churchId: application.ChurchId
+          }, { timeout: 5000 });
+          if (fallbackResult.recordset && fallbackResult.recordset.length > 0) {
+            item = fallbackResult.recordset[0];
+          }
         }
       }
 
@@ -472,9 +483,9 @@ class InvoiceRepository extends BaseRepository {
         booking = bookingResult.recordset[0];
       }
 
-      // Step 5: Calculate pricing
-      const nichePrice = nicheDetails?.NichePrice || nicheDetails?.RowPrice || application.ApplicationDefaultAmount || application.ApplicationAmount || 0;
-      const itemPrice = item?.ItemPrice || nichePrice;
+      // Step 5: Calculate pricing (standardized waterfall: Application > Niche > Row > Item catalog)
+      const nichePrice = application.ApplicationAmount || application.ApplicationDefaultAmount || nicheDetails?.NichePrice || nicheDetails?.RowPrice || item?.ItemPrice || 0;
+      const itemPrice = nichePrice;
 
       // ✅ FIX: Step 5.5: Check for inscription items if inscription exists for this application
       let inscriptionItems = [];

@@ -197,7 +197,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   const nicheNo = niche?.code || niche?.number || ''
   const nicheLevel = niche?.location?.row?.level || ''
   const wallName = niche?.wallName || niche?.location?.wall?.wallName || ''
-  const wallPrice = niche?.location?.row?.rowPrice || niche?.rowPrice || niche?.wallPrice || niche?.totalAmount || 0
+  const wallPrice = niche?.totalAmount || niche?.lineAmount || niche?.location?.row?.rowPrice || niche?.rowPrice || 0
   const footerAgreementDate = formatDate(agreementDate || appliedDate)
   const statusText = data.statusText || ''
   const applicantName = applicant?.name || ''
@@ -223,13 +223,13 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   const storageFrom = formatDate(storageFromValue);
   let storageTo = formatDate(storage?.storageTo);
 
-  // Auto-calculate storageTo as 30 years minus 1 day after storageFrom if storageFrom exists and storageTo is not provided
+  // Auto-calculate storageTo as 30 years + 30 days from storageFrom (1st Interment Date) when storageTo is not provided
   if (storageFromValue && !storage?.storageTo) {
     const fromDate = new Date(storageFromValue);
     if (!isNaN(fromDate.getTime())) {
       const toDate = new Date(fromDate);
       toDate.setFullYear(fromDate.getFullYear() + 30);
-      toDate.setDate(toDate.getDate() - 1);
+      toDate.setDate(toDate.getDate() + 30);
       storageTo = formatDate(toDate.toISOString());
     }
   }

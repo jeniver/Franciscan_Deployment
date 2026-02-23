@@ -52,6 +52,7 @@ export function InscriptionAgreementPage() {
         onClose={handleCloseModal}
         initialData={agreementData}
         inscriptionCode={inscriptionCode}
+        skipFetchWhenDataProvided={true}
       />
       
       {error && (

@@ -72,7 +72,8 @@ export function InscriptionRequest() { // Removed props parameter since they wer
     handleCreateInscription,
     handleUpdateInscription,
     crossType,
-    updateCrossType
+    updateCrossType,
+    lastRefreshedAt
   } = useInscription();
 
   const { showError } = useToast();
@@ -390,7 +391,7 @@ export function InscriptionRequest() { // Removed props parameter since they wer
             </div>
 
             <AddressInput
-
+              key={`${inscriptionRequestNo || nicheApplicationCode || 'new'}-${lastRefreshedAt}`}
               onAddressChange={handleAddressChange}
               autoSync={false}
               initialValues={{
