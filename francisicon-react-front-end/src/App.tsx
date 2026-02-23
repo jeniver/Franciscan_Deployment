@@ -1062,6 +1062,19 @@ The application list will be refreshed to show your new application.`);
                   >
                     {loading ? 'Loading...' : 'View'}
                   </Button>
+                  {applicationNumber && (
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      if (applicationNumber?.trim()) {
+                        navigate(`/niche/edit/${applicationNumber.trim()}`);
+                      }
+                    }}
+                    disabled={!applicationNumber?.trim()}
+                  >
+                    Edit Application
+                  </Button>
+                    )}
                   <Button
                     variant="secondary"
                     icon={<PrinterIcon className="w-4 h-4" />}
@@ -1083,9 +1096,9 @@ The application list will be refreshed to show your new application.`);
                       variant="secondary"
                       icon={<PenToolIcon className="w-4 h-4" />}
                       onClick={() => navigate(`/inscription?applicationCode=${applicationNumber}`)}
-                      title="View Inscription"
+                      title="Go to Inscription"
                     >
-                      View Inscription
+                      Go to Inscription
                     </Button>
                   )}
                   {applicationNumber && (

@@ -1178,6 +1178,64 @@ export function mapApiApplicationToFormData(apiData: any): Record<string, any> {
   // Create a copy of the API data to avoid mutating the original
   const formData = { ...apiData };
 
+  // Flatten applicant to form fields (applicantName, applicantEmail, etc.)
+  // Form components expect these at root; API returns nested applicant: { name, address: { no, line1, ... } }
+  const applicant = apiData.applicant || {};
+  const addr = applicant.address || {};
+  const applicantAddressNo = addr.no ?? applicant.addressNo ?? '';
+  const applicantAddressLine1 = addr.line1 ?? applicant.addressLine1 ?? '';
+  const applicantAddressLine2 = addr.line2 ?? applicant.addressLine2 ?? '';
+  const applicantAddressCity = addr.city ?? applicant.addressCity ?? '';
+  const applicantAddressState = addr.state ?? applicant.addressState ?? '';
+  const applicantAddressCountry = addr.country ?? applicant.addressCountry ?? 'Singapore';
+
+  const applicantBlock =
+    applicantAddressNo && String(applicantAddressNo).trim().toLowerCase() !== 'no' ? 'Blk' : '';
+  const unitNoRaw = String(applicantAddressCity || '').trim();
+  const unitNoNormalized = unitNoRaw ? (unitNoRaw.startsWith('#') ? unitNoRaw : `#${unitNoRaw}`) : '';
+  const country = String(applicantAddressCountry || 'Singapore').trim() || 'Singapore';
+  const postalCode = String(applicantAddressState || '').trim();
+
+  const hasStructuredAddress = !!(applicantAddressNo || applicantAddressLine1 || applicantAddressLine2 || applicantAddressCity);
+  const legacyApplicantAddress =
+    (typeof applicant.address === 'string' && String(applicant.address).trim() !== '')
+      ? String(applicant.address)
+      : hasStructuredAddress && (applicantAddressLine1 || applicantAddressLine2)
+        ? `${applicantBlock ? applicantBlock + ' ' : ''}${String(applicantAddressLine1 || '').trim()} ${String(applicantAddressLine2 || '').trim()}${unitNoNormalized ? ` ${unitNoNormalized}` : ''}${postalCode ? ` ${country} ${postalCode}` : ''}`.trim()
+        : '';
+
+  Object.assign(formData, {
+    applicantName: applicant.name ?? apiData.applicantName ?? '',
+    applicantIDNo: applicant.idNo ?? apiData.applicantIDNo ?? '',
+    applicantEmail: applicant.email ?? apiData.applicantEmail ?? '',
+    applicantPhone: applicant.mobileNo ?? apiData.applicantPhone ?? '',
+    applicantHomeTel: applicant.homeTelNo ?? apiData.applicantHomeTel ?? '',
+    applicantOfficeTel: applicant.officeTelNo ?? apiData.applicantOfficeTel ?? '',
+    applicantIsCatholic: applicant.isCatholic ?? apiData.applicantIsCatholic,
+    applicantReligion: applicant.isCatholic === true ? 'Catholic' : applicant.isCatholic === false ? 'Non Catholic' : (apiData.applicantReligion ?? ''),
+    applicantAddress: legacyApplicantAddress || (apiData.applicantAddress ?? ''),
+    applicantAddressNo: applicantBlock ? 'Blk' : 'No',
+    applicantAddressLine1,
+    applicantAddressLine2,
+    applicantAddressCity: unitNoNormalized || applicantAddressCity,
+    applicantAddressState: postalCode,
+    applicantAddressCountry: country,
+    contactName: applicant.name ?? apiData.contactName ?? '',
+    contactNric: applicant.idNo ?? apiData.contactNric ?? '',
+    contactEmail: applicant.email ?? apiData.contactEmail ?? '',
+    contactPhone: applicant.mobileNo ?? apiData.contactPhone ?? '',
+    contactAddress: legacyApplicantAddress || (apiData.contactAddress ?? ''),
+    contactHomeTel: applicant.homeTelNo ?? apiData.contactHomeTel ?? '',
+    contactOfficeTel: applicant.officeTelNo ?? apiData.contactOfficeTel ?? '',
+    contactCountry: country,
+    applicantBlock,
+    applicantBlockNo: String(applicantAddressLine1 || '').trim(),
+    applicantStreetName: String(applicantAddressLine2 || '').trim(),
+    applicantUnitNo: unitNoRaw,
+    applicantPostalCode: postalCode,
+    applicantCountry: country
+  });
+
   // Ensure nominee objects are properly structured for the frontend
   if (apiData.nominee) {
     formData.nominee = {

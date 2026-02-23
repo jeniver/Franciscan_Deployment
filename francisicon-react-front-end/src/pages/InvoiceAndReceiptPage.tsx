@@ -14,7 +14,7 @@ import { ReceiptDetailModal } from '../components/ReceiptDetailModal';
 import { AgreementViewerModal } from '../components/AgreementViewerModal';
 import authService from '../services/authService';
 import { InvoiceTemplateData } from '../services/invoiceTemplateService';
-import { receiptService, type Receipt as ReceiptType, type InvoiceDetail } from '../services/receiptService';
+import { receiptService, type Receipt as ReceiptType } from '../services/receiptService';
 import type { AppDispatch, RootState } from '../store';
 import {
   fetchInvoiceOrApplication,
@@ -229,18 +229,17 @@ export function InvoiceAndReceiptPage() {
     (value: string) => {
       setApplicationNumber(value);
 
-      // Only clear other fields when NOT on new route
+      // Always clear Redux and application items when code changes to prevent stale/wrong data
+      dispatch(clearCurrentData());
+      clearApplicationItems();
+
       if (!isNewRoute) {
         clearFormFields();
-        dispatch(clearCurrentData());
       }
 
       // Fetch application items when application code is entered
       if (value.trim()) {
         fetchApplicationItems(value.trim());
-
-      } else {
-        clearApplicationItems();
       }
     },
     [clearFormFields, dispatch, fetchApplicationItems, clearApplicationItems, isNewRoute]
@@ -1091,61 +1090,19 @@ export function InvoiceAndReceiptPage() {
 
       setViewingReceiptCode(codeToUse);
 
-      // Prefer fetching the real receipt by code (so modal shows exact backend data)
-      let receipt: ReceiptType | null = null;
-      try {
-        receipt = await receiptService.getReceiptByCode(receiptCode);
-      } catch (err) {
-        // Fallback: build a local receipt from the current screen state
-        const parseTransactionDateToIso = (d: string): string | undefined => {
-          if (!d) return undefined;
-          // common UI format is DD-MM-YYYY
-          const m = d.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-          if (m) {
-            const [, dd, mm, yyyy] = m;
-            return `${yyyy}-${mm}-${dd}`;
-          }
-          // last resort: let Date parse it
-          const dateObj = new Date(d);
-          if (!isNaN(dateObj.getTime())) return dateObj.toISOString();
-          return d;
-        };
+      // Fetch receipt from backend - do not use form items as fallback to avoid wrong items from stale state
+      const receipt = await receiptService.getReceiptByCode(codeToUse);
 
-        const invoiceDetails: InvoiceDetail[] = items.map((item) => ({
-          description: item.selectItem || 'Item',
-          quantity: item.quantity || 1,
-          unitPrice: item.amountPaying || 0,
-          amount: item.totalAmount || 0,
-        }));
-
-
-        // Debug: Log receipt items
-        console.log('[handlePrintReceipt] Generated invoiceDetails:', invoiceDetails);
-
-        receipt = {
-          receiptCode: codeToUse,
-          invoiceCode: invoiceNumber || undefined,
-          applicationCode: (applicationNumber || applicationNumberFromRoute) || undefined,
-          customerName: payeeName || currentData?.customerName || 'N/A',
-          totalAmount: totals.totalPayable || 0,
-          payingAmount: totals.totalPayable || 0,
-          paymentMode: paymentMode || 'Cash',
-          receiptDate: parseTransactionDateToIso(transactionDate),
-          invoiceDetails,
-          addressNo: addressBlock === 'Block' ? 'Blk' : addressBlock,
-          address: addressNumber || currentData?.addressNo || undefined,
-          address2: addressStreet || currentData?.address || undefined,
-          addressCity: addressUnit || currentData?.address2 || undefined,
-          districtCode: addressPostalCode || currentData?.districtCode || undefined,
-          country: addressCountry || currentData?.country || 'Singapore',
-        };
+      if (!receipt) {
+        showError('Error', 'Receipt not found. Please try again.');
+        return;
       }
 
       setSelectedReceipt(receipt);
       setIsDetailModalOpen(true);
       showSuccess('Success', 'Receipt preview opened');
     } catch (error: any) {
-      const errorMessage = error?.message || error?.response?.data?.message || 'Failed to print receipt';
+      const errorMessage = error?.message || error?.response?.data?.message || 'Failed to load receipt. Please try again.';
       showError('Error', errorMessage);
     } finally {
       setViewingReceiptCode(null);

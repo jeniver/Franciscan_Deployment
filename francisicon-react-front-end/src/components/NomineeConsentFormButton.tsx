@@ -112,7 +112,7 @@ export const NomineeConsentFormButton: React.FC<NomineeConsentFormButtonProps> =
         icon={<PrinterIcon className="w-4 h-4" />}
         disabled={loading || !isApplicationNumberValid}
       >
-        {!isApplicationNumberValid ? 'No App. Number' : loading ? 'Loading...' : 'Print Consent Form'}
+        {!isApplicationNumberValid ? 'No App. Number' : loading ? 'Loading...' : 'Print Nominee Consent'}
       </Button>
 
       {showModal && consentFormData && (

@@ -234,7 +234,7 @@ class NicheAgreementRepository extends BaseRepository {
         this.addNomineeInfo(mergedData.NicheApplicationId, nicheAgreement),
         this.addDeceasedAndStorageInfo(mergedData.NicheApplicationId, nicheAgreement),
         this.addInvoiceInfo(applicationCode, nicheAgreement),
-        this.addInscriptionInfo(applicationCode, mergedData.NicheApplicationId, nicheAgreement),
+        this.addInscriptionInfo(applicationCode, mergedData.NicheApplicationId, nicheAgreement, mergedData.ChurchId),
         this.addConsentFormInfo(applicationCode, nicheAgreement),
         this.addReceiptInfo(applicationCode, nicheAgreement)
       ]);
@@ -1068,7 +1068,7 @@ class NicheAgreementRepository extends BaseRepository {
    * Add inscription information to the niche agreement
    * This fetches inscription data linked to the application
    */
-  async addInscriptionInfo(applicationCode, nicheApplicationId, nicheAgreement) {
+  async addInscriptionInfo(applicationCode, nicheApplicationId, nicheAgreement, churchId) {
     try {
       // Query for inscription linked to this application via NicheBooking
       const inscriptionQuery = `
@@ -1103,7 +1103,7 @@ class NicheAgreementRepository extends BaseRepository {
         // Now fetch inscription items using InscriptionInvoiceService
         try {
           const InscriptionInvoiceService = require('../services/InscriptionInvoiceService');
-          const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscription.InscriptionCode, null);
+          const inscriptionData = await InscriptionInvoiceService.getInscriptionItems(inscription.InscriptionCode, churchId);
 
           if (inscriptionData && inscriptionData.items && Array.isArray(inscriptionData.items) && inscriptionData.items.length > 0) {
             const inscriptionItems = inscriptionData.items.map(inscriptionItem => {

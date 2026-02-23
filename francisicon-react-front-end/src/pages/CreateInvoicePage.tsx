@@ -295,9 +295,17 @@ export function CreateInvoicePage() {
             return;
         }
 
-        // Prefer inscription items when available, otherwise use all items
+        // Filter items by selected document type to prevent NAPP/INCR mixing
         const inscriptionItems = getItemsByType('inscription');
-        const sourceItems = inscriptionItems.length > 0 ? inscriptionItems : applicationItems.items;
+        const nicheItems = getItemsByType('niche');
+        let sourceItems = applicationItems.items;
+        if (refDocType === 'INCR' && inscriptionItems.length > 0) {
+            sourceItems = inscriptionItems;
+        } else if (refDocType === 'NAPP' && nicheItems.length > 0) {
+            sourceItems = nicheItems;
+        } else if (inscriptionItems.length > 0 && refDocType !== 'NAPP') {
+            sourceItems = inscriptionItems;
+        }
 
         const mappedItems: InvoiceItem[] = sourceItems.map((item: any) => ({
             id: Math.random().toString(36).substr(2, 9),
@@ -318,7 +326,7 @@ export function CreateInvoicePage() {
         if (mappedItems.length > 0) {
             setItems(mappedItems);
         }
-    }, [applicationItems, getItemsByType, items.length]);
+    }, [applicationItems, getItemsByType, items.length, refDocType]);
 
     const availableItems = useMemo(() =>
         receiptItems.length > 0
@@ -468,7 +476,21 @@ export function CreateInvoicePage() {
                                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Document Type</label>
                                 <select
                                     value={refDocType}
-                                    onChange={(e) => setRefDocType(e.target.value)}
+                                    onChange={(e) => {
+                                        const newType = e.target.value;
+                                        setRefDocType(newType);
+                                        // Clear loaded data when document type changes to prevent NAPP/INCR data mixing
+                                        dispatch(clearCurrentData());
+                                        setPayeeName('');
+                                        setAddressBlock('Block');
+                                        setAddressNumber('');
+                                        setAddressStreet('');
+                                        setAddressUnit('');
+                                        setAddressPostalCode('');
+                                        setAddressCountry('Singapore');
+                                        setItems([]);
+                                        // Keep applicationNumber so user can click Look Up with new type
+                                    }}
                                     className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/10 focus:border-teal-500 outline-none font-semibold text-gray-700 transition-all text-sm"
                                 >
                                     <option value="NAPP">Niche Application</option>

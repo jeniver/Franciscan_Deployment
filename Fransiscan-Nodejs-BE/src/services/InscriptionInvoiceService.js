@@ -112,10 +112,11 @@ class InscriptionInvoiceService {
   /**
    * Resolve an inscription application (NicheInscriptionRequest) by code.
    *
-   * @param {string} code
+   * @param {string} code - Inscription code (I-1404-4) or niche application code (1404-4)
+   * @param {number} [churchId] - Optional church ID for church-scoped resolution
    * @returns {Promise<Object|null>} EngraveApplication or null
    */
-  async _resolveApplicationByCode(code) {
+  async _resolveApplicationByCode(code, churchId) {
     if (!code) return null;
 
     // 1) Try direct INCR code via repository
@@ -124,18 +125,38 @@ class InscriptionInvoiceService {
       return application;
     }
 
-    // 2) Try follow the chain: NicheApplication -> NicheBooking -> NicheInscriptionRequest
-    const chainQuery = `
-      SELECT TOP 1 nir.Code 
-      FROM NicheInscriptionRequest nir WITH (NOLOCK)
-      INNER JOIN NicheBooking nb WITH (NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
-      INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
-      WHERE na.Code = @code
-      ORDER BY nir.NicheInscriptionRequestId DESC
-    `;
+    // 2) If code looks like niche application (e.g. 1404-4), try I-{code} pattern first
+    const isNicheCode = /^\d+-\d+$/.test(code) || /^\d+$/.test(code);
+    if (isNicheCode) {
+      const inscriptionCode = `I-${code}`;
+      application = await this.engraveRepo.getByCode(inscriptionCode);
+      if (application) {
+        return application;
+      }
+    }
+
+    // 3) Try follow the chain: NicheApplication -> NicheBooking -> NicheInscriptionRequest
+    const chainQuery = churchId
+      ? `
+        SELECT TOP 1 nir.Code
+        FROM NicheInscriptionRequest nir WITH (NOLOCK)
+        INNER JOIN NicheBooking nb WITH (NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+        INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+        WHERE na.Code = @code AND nir.ChurchId = @churchId
+        ORDER BY nir.NicheInscriptionRequestId DESC
+      `
+      : `
+        SELECT TOP 1 nir.Code
+        FROM NicheInscriptionRequest nir WITH (NOLOCK)
+        INNER JOIN NicheBooking nb WITH (NOLOCK) ON nir.NicheBookingId = nb.NicheBookingId
+        INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
+        WHERE na.Code = @code
+        ORDER BY nir.NicheInscriptionRequestId DESC
+      `;
 
     try {
-      const result = await executeQuery(chainQuery, { code });
+      const params = churchId ? { code, churchId } : { code };
+      const result = await executeQuery(chainQuery, params);
       if (result.recordset && result.recordset.length > 0) {
         return await this.engraveRepo.getByCode(result.recordset[0].Code);
       }
@@ -147,7 +168,30 @@ class InscriptionInvoiceService {
   }
 
   /**
-   * Parse address components from address fields
+   * Map DB address fields to frontend format (block, blockNo, street, streetName, unitNo, postalCode, country).
+   * DB Convention: addressNo=Blk/No, line1=blockNo, line2=street, city=unit, state=postal, country=country
+   */
+  _mapAddressToFrontendFormat(addressNo, addressLine1, addressLine2, addressCity, addressState, addressCountry) {
+    const block = addressNo || '';
+    const blockNo = addressLine1 || this._extractBlockNumber(addressNo) || '';
+    const street = addressLine2 || '';
+    const streetName = street;
+    const unitNo = addressCity || '';
+    const postalCode = addressState || this._extractPostalCode(addressCity) || '';
+    const country = addressCountry || 'Singapore';
+    return {
+      block,
+      blockNo,
+      street,
+      streetName,
+      unitNo,
+      postalCode,
+      country
+    };
+  }
+
+  /**
+   * Parse address components from address fields (legacy - used by niche fallback)
    */
   _parseAddress(addressNo, addressLine1, addressLine2, addressCity) {
     const parsed = {
@@ -266,7 +310,11 @@ class InscriptionInvoiceService {
       throw new Error('Application code and churchId are required');
     }
 
-    let application = await this._resolveApplicationByCode(applicationCode);
+    let application = await this._resolveApplicationByCode(applicationCode, churchId);
+
+    if (application) {
+      logger.debug(`[getInscriptionItems] Resolved inscription for ${applicationCode}, using inscription applicant data`);
+    }
 
     // If not found and it's a niche application code, try auto-resolving
     if (!application) {
@@ -330,23 +378,17 @@ class InscriptionInvoiceService {
             }
           }
 
-          // Fallback: return applicant details from niche application
+          // Fallback: return applicant details from niche application (no inscription exists yet)
           if (!application) {
-            const addressComponents = this._parseAddress(
+            logger.info(`[getInscriptionItems] No inscription found for ${applicationCode}, using niche application fallback`);
+            const processedAddressComponents = this._mapAddressToFrontendFormat(
               nicheApp.applicantAddressNo,
               nicheApp.applicantAddressLine1,
               nicheApp.applicantAddressLine2,
-              nicheApp.applicantAddressCity
+              nicheApp.applicantAddressCity,
+              nicheApp.applicantAddressState,
+              nicheApp.applicantAddressCountry
             );
-
-            const processedAddressComponents = {
-              block: addressComponents.block || nicheApp.applicantAddressNo || '',
-              blockNo: addressComponents.blockNo || this._extractBlockNumber(nicheApp.applicantAddressNo),
-              street: addressComponents.street || nicheApp.applicantAddressLine1 || '',
-              streetName: addressComponents.streetName || nicheApp.applicantAddressLine1 || '',
-              unitNo: addressComponents.unitNo || nicheApp.applicantAddressLine2 || '',
-              postalCode: addressComponents.postalCode || this._extractPostalCode(nicheApp.applicantAddressCity) || nicheApp.applicantAddressState || ''
-            };
 
             let items = await this.taskItemMappingRepo.getItemsForTask(
               this.INSCRIPTION_TASK_ID,
@@ -455,21 +497,16 @@ class InscriptionInvoiceService {
       filteredItems = await this._getFallbackInscriptionItems(churchId);
     }
 
-    const addressComponents = this._parseAddress(
+    // Map DB address fields to frontend format (block, blockNo, street, unitNo, postalCode)
+    // DB Convention: addressNo=Blk/No, line1=blockNo, line2=street, city=unit, state=postal
+    const processedAddressComponents = this._mapAddressToFrontendFormat(
       application.applicantAddressNo,
       application.applicantAddressLine1,
       application.applicantAddressLine2,
-      application.applicantAddressCity
+      application.applicantAddressCity,
+      application.applicantAddressState,
+      application.applicantAddressCountry
     );
-
-    const processedAddressComponents = {
-      block: addressComponents.block || application.applicantAddressNo || '',
-      blockNo: addressComponents.blockNo || this._extractBlockNumber(application.applicantAddressNo),
-      street: addressComponents.street || application.applicantAddressLine1 || '',
-      streetName: addressComponents.streetName || application.applicantAddressLine1 || '',
-      unitNo: addressComponents.unitNo || application.applicantAddressLine2 || '',
-      postalCode: addressComponents.postalCode || this._extractPostalCode(application.applicantAddressCity) || application.applicantAddressState || ''
-    };
 
     let beneficiaries = [];
     if (application.nicheBookingId) {
@@ -556,7 +593,7 @@ class InscriptionInvoiceService {
         throw new Error('applicationCode, userId and churchId are required');
       }
 
-      const application = await this._resolveApplicationByCode(applicationCode);
+      const application = await this._resolveApplicationByCode(applicationCode, churchId);
 
       if (!application) {
         return {

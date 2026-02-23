@@ -74,31 +74,26 @@ class InvoiceService extends BaseService {
 
   /**
    * Get invoice by code with caching
+   * Cache key includes type when provided to prevent NAPP/INCR cross-contamination for ambiguous codes.
    * @param {string} code - Invoice code
    * @param {number} churchId - Church ID
-   * @param {string} applicationCode - Optional application code
+   * @param {string} applicationCode - Optional application type (NAPP, INCR, WAPP, GOLA) for type-specific lookup
    * @returns {Promise<Object|null>} Invoice data or null
    */
   async getInvoiceByCode(code, churchId, applicationCode = null) {
     try {
-      // Build cache key
-      // If applicationCode/type is provided, we might want to include it or just rely on code
-      // logic: code is usually unique enough, but for safety let's stick to code
-      const cacheKey = cacheManager.buildInvoiceKey(churchId, code);
+      const cacheKey = cacheManager.buildInvoiceKey(churchId, code, applicationCode);
 
-      // Try cache first
       const cached = await cacheManager.get(cacheKey);
       if (cached) {
-        logger.debug(`Invoice cache HIT: ${code}`);
+        logger.debug(`Invoice cache HIT: ${code}${applicationCode ? `:${applicationCode}` : ''}`);
         return cached;
       }
 
-      // Cache miss - fetch from repository
-      logger.debug(`Invoice cache MISS: ${code}`);
+      logger.debug(`Invoice cache MISS: ${code}${applicationCode ? `:${applicationCode}` : ''}`);
       const invoice = await this.repository.getInvoiceByCode(code, churchId, applicationCode);
 
       if (invoice) {
-        // Cache for 10 minutes
         await cacheManager.set(cacheKey, invoice, 600);
         logger.debug(`Invoice cached: ${code} (TTL: 600s)`);
       }
@@ -233,18 +228,15 @@ class InvoiceService extends BaseService {
         };
       });
 
-      // Invalidate cache for this specific invoice and its reference document
+      // Invalidate cache for this invoice and all code/type variants
       try {
-        const cacheKey = cacheManager.buildInvoiceKey(churchId, code);
-        await cacheManager.del(cacheKey);
-
-        // Also invalidate by refDoc if applicable
-        if (result.linkedEntity?.code) {
-          const refCacheKey = cacheManager.buildInvoiceKey(churchId, result.linkedEntity.code);
-          await cacheManager.del(refCacheKey);
+        const keysToInvalidate = cacheManager.getInvoiceVariantKeysForInvalidation(
+          churchId, code, result.linkedEntity?.code
+        );
+        for (const k of keysToInvalidate) {
+          await cacheManager.del(k);
         }
-
-        logger.debug(`Cache invalidated for invoice ${code} and linked entities`);
+        logger.debug(`Cache invalidated for invoice ${code} and linked entities (${keysToInvalidate.length} keys)`);
       } catch (cacheError) {
         logger.warn('Non-critical cache invalidation failure:', cacheError.message);
       }
@@ -520,13 +512,15 @@ class InvoiceService extends BaseService {
         logger.warn('Non-critical status sync after invoice creation failed:', statusSyncError.message);
       }
 
-      // Invalidate cache for this specific invoice and its reference document
+      // Invalidate cache for this invoice and all code/type variants
       try {
-        await cacheManager.del(cacheManager.buildInvoiceKey(churchId, invoiceCode));
-        if (invoice.refDocNumber) {
-          await cacheManager.del(cacheManager.buildInvoiceKey(churchId, invoice.refDocNumber));
+        const keysToInvalidate = cacheManager.getInvoiceVariantKeysForInvalidation(
+          churchId, invoiceCode, invoice.refDocNumber
+        );
+        for (const k of keysToInvalidate) {
+          await cacheManager.del(k);
         }
-        logger.debug(`Cache invalidated for invoice ${invoiceCode} and refDoc ${invoice.refDocNumber}`);
+        logger.debug(`Cache invalidated for invoice ${invoiceCode} (${keysToInvalidate.length} keys)`);
 
         // ✅ NEW: Link any existing receipts for this application to the new invoice
         const ReceiptRepository = require('../repositories/ReceiptRepository');
@@ -602,10 +596,14 @@ class InvoiceService extends BaseService {
 
       logger.info(`Invoice cancelled (soft delete): Code=${effectiveCode}, ChurchId=${churchId}`);
 
-      // Invalidate cache for this invoice and church
-      await cacheManager.del(cacheManager.buildInvoiceKey(churchId, effectiveCode));
-      await cacheManager.invalidate(cacheManager.buildInvalidationPattern('invoice', churchId));
-      logger.debug(`Cache invalidated for invoice ${effectiveCode}`);
+      const refDoc = existing.refDocNumber || existing.RefDocNumber;
+      const keysToInvalidate = cacheManager.getInvoiceVariantKeysForInvalidation(
+        churchId, effectiveCode, refDoc
+      );
+      for (const k of keysToInvalidate) {
+        await cacheManager.del(k);
+      }
+      logger.debug(`Cache invalidated for invoice ${effectiveCode} (${keysToInvalidate.length} keys)`);
 
       return {
         success: true,
@@ -744,13 +742,15 @@ class InvoiceService extends BaseService {
         status: invoice.status
       });
 
-      // Invalidate cache for this specific invoice
+      // Invalidate cache for this invoice and all code/type variants
       try {
-        await cacheManager.del(cacheManager.buildInvoiceKey(churchId, invoiceCode));
-        if (invoice.refDocNumber) {
-          await cacheManager.del(cacheManager.buildInvoiceKey(churchId, invoice.refDocNumber));
+        const keysToInvalidate = cacheManager.getInvoiceVariantKeysForInvalidation(
+          churchId, invoiceCode, invoice.refDocNumber
+        );
+        for (const k of keysToInvalidate) {
+          await cacheManager.del(k);
         }
-        logger.debug(`Cache invalidated for standalone invoice ${invoiceCode}`);
+        logger.debug(`Cache invalidated for standalone invoice ${invoiceCode} (${keysToInvalidate.length} keys)`);
       } catch (cacheError) {
         logger.warn('Non-critical cache invalidation failure:', cacheError.message);
       }

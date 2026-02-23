@@ -4,6 +4,7 @@ const { EngraveApplication, EngraveApplicationDetail } = require('../models/Engr
 const { NicheApplication } = require('../models/NicheApplication');
 const logger = require('../utils/logger');
 const { cache, deleteByPrefix } = require('../utils/cache');
+const cacheManager = require('../utils/cacheManager');
 
 class EngraveApplicationService {
   normalizeNicheApplicationCode(code) {
@@ -128,6 +129,11 @@ class EngraveApplicationService {
         deleteByPrefix('nicheAgreement:');
         deleteByPrefix('nicheApplications:');
         cache.flushAll();
+        // Invalidate invoice cache for inscription and niche code variants to prevent address/item mixing
+        const keysToInvalidate = cacheManager.getInvoiceVariantKeysForInvalidation(churchId, code, nicheAppCode || null);
+        for (const k of keysToInvalidate) {
+          await cacheManager.del(k);
+        }
         logger.info(`[createApplication] Cache invalidated after inscription creation for ${code}`);
       } catch (cacheErr) {
         logger.warn('[createApplication] Non-fatal: cache invalidation failed', cacheErr.message);
@@ -304,6 +310,11 @@ class EngraveApplicationService {
         deleteByPrefix('nicheAgreement:');
         deleteByPrefix('nicheApplications:');
         cache.flushAll();
+        const refCode = nicheAppCode || application?.nicheApplicationCode || this.normalizeNicheApplicationCode(code);
+        const keysToInvalidate = cacheManager.getInvoiceVariantKeysForInvalidation(churchId, code, refCode || null);
+        for (const k of keysToInvalidate) {
+          await cacheManager.del(k);
+        }
         logger.info(`[updateApplication] Cache invalidated after inscription update for ${code}`);
       } catch (cacheErr) {
         logger.warn('[updateApplication] Non-fatal: cache invalidation failed', cacheErr.message);

@@ -1701,7 +1701,7 @@ class InvoiceController extends BaseController {
         return this.sendError(res, 'Invoice code is required', 400);
       }
 
-      const invoice = await this.invoiceRepository.getInvoiceByCode(code, churchId, applicationCode);
+      const invoice = await this.invoiceService.getInvoiceByCode(code, churchId, applicationCode);
 
       // If repo returned application details (no InvoiceId), normalize to same shape for frontend
       const isRepoApplicationDetails = invoice && (invoice.InvoiceId == null || invoice.InvoiceId === undefined) && Array.isArray(invoice.details) && invoice.applicationCode;

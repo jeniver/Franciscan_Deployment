@@ -1,7 +1,7 @@
 import api from './api';
 
 // Vite exposes env vars via import.meta.env.VITE_*
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://192.168.1.24:3000';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:3000';
 
 // Custom error class for niche operations
 export class NicheError extends Error {
@@ -47,7 +47,7 @@ export interface Row {
 }
 
 export interface Wall {
-  wallId: number[];
+  wallId: number;
   wallCode: string;
   wallName: string;
   rowCount: number;
@@ -152,7 +152,7 @@ export const nicheService = {
             });
 
             // Race between API call and timeout
-            const response = await Promise.race([
+            const response: any = await Promise.race([
               api.get(`/api/niches/chapel/${chapelId}/niches?churchId=${churchId}`),
               timeoutPromise
             ]);
@@ -218,7 +218,7 @@ export const nicheService = {
       });
 
       // Race between API call and timeout
-      const response = await Promise.race([
+      const response: any = await Promise.race([
         api.get(`/api/niches/${nicheId}`),
         timeoutPromise
       ]);

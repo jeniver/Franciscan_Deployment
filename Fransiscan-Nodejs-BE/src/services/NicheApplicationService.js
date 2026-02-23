@@ -365,11 +365,14 @@ const invalidateNicheApplicationCache = () => {
     // Delete all niche application cache entries
     const deletedCount = deleteByPrefix(NICHE_APPLICATION_CACHE_PREFIX);
 
+    // Invalidate niche agreement cache so updated application data is reflected
+    const nicheAgreementDeleted = deleteByPrefix('nicheAgreement:');
+
     // Also flush the entire cache to ensure complete invalidation
     // This is a more aggressive approach to prevent any stale data
     cache.flushAll();
 
-    logger.info(`[invalidateNicheApplicationCache] Cache invalidation completed. Deleted ${deletedCount} cache entries with prefix: ${NICHE_APPLICATION_CACHE_PREFIX}`);
+    logger.info(`[invalidateNicheApplicationCache] Cache invalidation completed. Deleted ${deletedCount} niche app entries, ${nicheAgreementDeleted} niche agreement entries`);
     logger.info('[invalidateNicheApplicationCache] Complete cache flush performed for maximum data freshness');
 
     // Additional debug logging to confirm cache has been cleared

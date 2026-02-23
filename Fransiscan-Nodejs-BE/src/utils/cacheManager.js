@@ -207,12 +207,64 @@ class CacheManager {
 
     /**
      * Build cache key for invoice
+     * Includes type when provided to avoid cache collision between NAPP/INCR/WAPP/GOLA
+     * for ambiguous codes (e.g. 7980-0 can resolve to niche or inscription).
      * @param {number} churchId - Church ID
-     * @param {string} code - Invoice code
+     * @param {string} code - Invoice/application code
+     * @param {string|null} type - Optional application type (NAPP, INCR, WAPP, GOLA)
      * @returns {string} Cache key
      */
-    buildInvoiceKey(churchId, code) {
-        return `invoice:${churchId}:${code}`;
+    buildInvoiceKey(churchId, code, type = null) {
+        const normalizedCode = (code || '').toString().trim();
+        const normalizedType = type ? String(type).trim().toUpperCase() : '';
+        const typeSuffix = normalizedType ? `:${normalizedType}` : '';
+        return `invoice:${churchId}:${normalizedCode}${typeSuffix}`;
+    }
+
+    /**
+     * Get all cache keys to invalidate when an invoice/application is created or updated.
+     * Covers code variants (e.g. 7980-0, I-7980-0) and type variants to prevent stale cache.
+     * @param {number} churchId - Church ID
+     * @param {string} code - Invoice/application code
+     * @param {string|null} refDocNumber - Optional ref doc number from invoice
+     * @returns {string[]} Array of cache keys to delete
+     */
+    getInvoiceVariantKeysForInvalidation(churchId, code, refDocNumber = null) {
+        const keys = new Set();
+        const c = churchId;
+        const add = (k) => keys.add(this.buildInvoiceKey(c, k));
+        const addWithType = (k, t) => keys.add(this.buildInvoiceKey(c, k, t));
+
+        const baseCode = (code || '').toString().trim();
+        const refCode = refDocNumber ? String(refDocNumber).trim() : null;
+
+        if (baseCode) {
+            add(baseCode);
+            addWithType(baseCode, 'NAPP');
+            addWithType(baseCode, 'INCR');
+            addWithType(baseCode, 'WAPP');
+            addWithType(baseCode, 'GOLA');
+            if (baseCode.startsWith('I-')) {
+                const withoutI = baseCode.replace(/^I-/i, '');
+                if (withoutI) add(withoutI), addWithType(withoutI, 'NAPP'), addWithType(withoutI, 'INCR');
+            } else if (/^\d+-\d+$/.test(baseCode)) {
+                add(`I-${baseCode}`);
+                addWithType(`I-${baseCode}`, 'INCR');
+            }
+        }
+        if (refCode && refCode !== baseCode) {
+            add(refCode);
+            addWithType(refCode, 'NAPP');
+            addWithType(refCode, 'INCR');
+            if (refCode.startsWith('I-')) {
+                const withoutI = refCode.replace(/^I-/i, '');
+                if (withoutI) add(withoutI), addWithType(withoutI, 'NAPP'), addWithType(withoutI, 'INCR');
+            } else if (/^\d+-\d+$/.test(refCode)) {
+                add(`I-${refCode}`);
+                addWithType(`I-${refCode}`, 'INCR');
+            }
+        }
+        return Array.from(keys);
     }
 
     /**
