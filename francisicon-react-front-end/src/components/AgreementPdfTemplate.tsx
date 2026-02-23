@@ -339,14 +339,15 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             }
             @page {
               size: A4;
-              margin: 10mm 8mm;
+              margin: 5mm;
             }
             [data-pdf-page] {
               margin: 0 !important;
               padding: 6mm 8mm !important;
               box-shadow: none !important;
-              min-height: 297mm !important;
+              min-height: auto !important;
               page-break-after: always;
+              page-break-inside: avoid;
             }
             [data-pdf-page]:last-child {
               page-break-after: auto;

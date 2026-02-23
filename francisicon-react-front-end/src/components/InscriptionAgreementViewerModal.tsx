@@ -17,6 +17,7 @@ import inscriptionAgreementService, {
 import { invoiceService } from '../services/invoiceService'
 import { paymentModeToLabel } from '../utils/paymentMode'
 import addressUtils from '../utils/addressUtils'
+import { printContentFromRef } from '../utils/printContent'
 
 interface InscriptionAgreementViewerModalProps {
   isOpen: boolean
@@ -146,8 +147,7 @@ export function InscriptionAgreementViewerModal({
 
     fetchAgreementData()
   }, [isOpen, inscriptionCode, initialData])
-
-  // Helper function to get all computed styles as inline styles
+  // Helper function to get all computed styles as inline styles (used by email PDF generation)
   const getComputedStylesAsString = (element: Element): string => {
     const computedStyle = window.getComputedStyle(element)
     let styleString = ''
@@ -158,10 +158,9 @@ export function InscriptionAgreementViewerModal({
     return styleString
   }
 
-  // Deep clone with computed styles
+  // Deep clone with computed styles (used by email PDF generation)
   const cloneWithStyles = (element: HTMLElement): HTMLElement => {
     const clone = element.cloneNode(true) as HTMLElement
-    // Apply computed styles to the clone and all its children
     const applyStyles = (original: Element, cloned: Element) => {
       if (original instanceof HTMLElement && cloned instanceof HTMLElement) {
         cloned.style.cssText = getComputedStylesAsString(original)
@@ -180,144 +179,12 @@ export function InscriptionAgreementViewerModal({
 
   const handlePrint = () => {
     if (!contentRef.current) return
-    // Clone with all computed styles
-    const styledClone = cloneWithStyles(contentRef.current)
-    // Create print window
-    const printWindow = window.open('', '_blank', 'width=900,height=700')
-    if (!printWindow) {
-      alert('Please allow popups to print the document')
-      return
-    }
-    // Write the document with the styled clone
-    const printStyles = `
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body {
-        font-family: Arial, sans-serif;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-        color-adjust: exact !important;
-      }
-      @media print {
-        body {
-          margin: 0;
-          padding: 0;
-        }
-        @page {
-          size: A4;
-          margin: 10mm 8mm;
-        }
-      }
-    `
-    printWindow.document.write(
-      '<!DOCTYPE html><html><head>' +
-      '<title>Inscription Agreement - ' +
-      inscriptionCode +
-      '</title>' +
-      '<style>' +
-      printStyles +
-      '</style>' +
-      '</head><body>' +
-      styledClone.outerHTML +
-      '</body></html>',
-    )
-    printWindow.document.close()
-
-    // Wait for images to load, then print
-    const images = Array.from(styledClone.querySelectorAll('img'))
-    const imagePromises = images.map(img => {
-      if (img.complete) return Promise.resolve()
-      return new Promise(resolve => {
-        img.onload = resolve
-        img.onerror = resolve
-      })
-    })
-
-    Promise.all(imagePromises).then(() => {
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.focus()
-          printWindow.print()
-        }, 500)
-      }
-    })
+    printContentFromRef(contentRef.current, `Inscription Agreement - ${inscriptionCode}`)
   }
 
-  const handleDownloadPdf = async () => {
+  const handleDownloadPdf = () => {
     if (!contentRef.current) return
-    setIsGeneratingPdf(true)
-    try {
-      // Check if html2pdf is already loaded
-      let html2pdf = (window as any).html2pdf
-      if (!html2pdf) {
-        // Dynamically load html2pdf from CDN
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script')
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
-          script.onload = () => resolve()
-          script.onerror = () => reject(new Error('Failed to load PDF library'))
-          document.head.appendChild(script)
-        })
-        html2pdf = (window as any).html2pdf
-      }
-      // Clone with all computed styles
-      const styledClone = cloneWithStyles(contentRef.current)
-      // Create a container with proper dimensions
-      const container = document.createElement('div')
-      container.style.position = 'absolute'
-      container.style.left = '-9999px'
-      container.style.top = '0'
-      container.style.width = '210mm'
-      container.style.backgroundColor = 'white'
-      container.appendChild(styledClone)
-      document.body.appendChild(container)
-
-      // Wait a bit for images and styles
-      const images = Array.from(container.querySelectorAll('img'))
-      await Promise.all(images.map(img => {
-        if (img.complete) return Promise.resolve()
-        return new Promise(resolve => {
-          img.onload = resolve
-          img.onerror = resolve
-        })
-      }))
-
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      // PDF options
-      const opt = {
-        margin: [5, 5, 5, 5],
-        filename: `Inscription-Agreement-${inscriptionCode}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          letterRendering: true,
-          allowTaint: true,
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-      }
-
-      // Generate and save PDF
-      await html2pdf().set(opt).from(container).save()
-
-      // Cleanup
-      setTimeout(() => {
-        if (document.body.contains(container)) {
-          document.body.removeChild(container)
-        }
-      }, 1000)
-    } catch (error: any) {
-      console.error('Error generating PDF:', error)
-      alert('PDF generation failed. Please try the Print option and save as PDF.')
-    } finally {
-      setIsGeneratingPdf(false)
-    }
+    handlePrint()
   }
 
   const handleEmailAgreement = async () => {

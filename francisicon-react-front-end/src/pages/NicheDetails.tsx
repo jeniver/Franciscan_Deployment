@@ -170,6 +170,8 @@ export function NicheDetails({
   )
   const isExistingApplication = Boolean(applicationNumber?.trim()) || isReadOnly
 
+  const [selectedWallId, setSelectedWallId] = useState<number | null>(null)
+
   const {
     chapels,
     selectedChapel,
@@ -278,10 +280,12 @@ export function NicheDetails({
     niches,
   ])
 
-  const currentNiches = useMemo(
-    () => getPaginatedNiches(),
-    [niches, currentPage, nichesPerPage],
-  )
+  const currentNiches = useMemo(() => {
+    if (selectedWallId !== null) {
+      return niches.filter((n: any) => n.wallId === selectedWallId)
+    }
+    return getPaginatedNiches()
+  }, [niches, currentPage, nichesPerPage, selectedWallId, getPaginatedNiches])
 
   const totalPages = useMemo(
     () => getTotalPages(),
@@ -341,6 +345,7 @@ export function NicheDetails({
       handleResetNicheState()
       handleSelectChapel(chapel)
       handleSetSelectedNiches([])
+      setSelectedWallId(null)
       handleLoadNichesByChapel(chapel.chapelId, chapel.churchId ?? 1)
 
       setFormData({
@@ -652,7 +657,7 @@ export function NicheDetails({
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-xl font-bold text-gray-900">Select Niche</h4>
             <span className="text-sm font-semibold text-gray-700">
-              Page {currentPage} of {totalPages} &bull; {selectedNiches.length}{' '}
+              {selectedWallId ? 'Showing Full Wall' : `Page ${currentPage} of ${totalPages}`} &bull; {selectedNiches.length}{' '}
               selected
             </span>
           </div>
@@ -763,47 +768,49 @@ export function NicheDetails({
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-center gap-2">
-            <button
-              onClick={prevPage}
-              disabled={currentPage === 1}
-              className="flex items-center gap-1 px-3 py-2 text-sm font-bold text-gray-900 bg-white border-2 border-gray-400 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ChevronLeftIcon className="w-4 h-4" />
-              Previous
-            </button>
+          {!selectedWallId && (
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={prevPage}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1 px-3 py-2 text-sm font-bold text-gray-900 bg-white border-2 border-gray-400 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeftIcon className="w-4 h-4" />
+                Previous
+              </button>
 
-            <div className="flex items-center gap-1">
-              {Array.from(
-                {
-                  length: Math.min(5, totalPages),
-                },
-                (_, i) => {
-                  const pageNum =
-                    Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i
-                  if (pageNum > totalPages) return null
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => goToPage(pageNum)}
-                      className={`px-3 py-2 text-sm font-bold rounded-lg transition-colors ${currentPage === pageNum ? 'bg-[#8b5a2b] text-white' : 'text-gray-900 bg-white border-2 border-gray-400 hover:bg-gray-50'}`}
-                    >
-                      {pageNum}
-                    </button>
-                  )
-                },
-              )}
+              <div className="flex items-center gap-1">
+                {Array.from(
+                  {
+                    length: Math.min(5, totalPages),
+                  },
+                  (_, i) => {
+                    const pageNum =
+                      Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i
+                    if (pageNum > totalPages) return null
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => goToPage(pageNum)}
+                        className={`px-3 py-2 text-sm font-bold rounded-lg transition-colors ${currentPage === pageNum ? 'bg-[#8b5a2b] text-white' : 'text-gray-900 bg-white border-2 border-gray-400 hover:bg-gray-50'}`}
+                      >
+                        {pageNum}
+                      </button>
+                    )
+                  },
+                )}
+              </div>
+
+              <button
+                onClick={nextPage}
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-1 px-3 py-2 text-sm font-bold text-gray-900 bg-white border-2 border-gray-400 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next
+                <ChevronRightIcon className="w-4 h-4" />
+              </button>
             </div>
-
-            <button
-              onClick={nextPage}
-              disabled={currentPage === totalPages}
-              className="flex items-center gap-1 px-3 py-2 text-sm font-bold text-gray-900 bg-white border-2 border-gray-400 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Next
-              <ChevronRightIcon className="w-4 h-4" />
-            </button>
-          </div>
+          )}
           {/* ── Wall Selection ── */}
           {
             walls.length > 0 && (
@@ -812,6 +819,8 @@ export function NicheDetails({
                 niches={niches}
                 nichesPerPage={nichesPerPage}
                 onNavigateToPage={handleSetCurrentPage}
+                selectedWallId={selectedWallId}
+                onSelectWall={setSelectedWallId}
               />
             )
           }
@@ -948,18 +957,22 @@ function WallSelection({
   niches,
   nichesPerPage,
   onNavigateToPage,
+  selectedWallId,
+  onSelectWall,
 }: {
   walls: any[]
   niches: any[]
   nichesPerPage: number
   onNavigateToPage: (page: number) => void
+  selectedWallId: number | null
+  onSelectWall: (wallId: number | null) => void
 }) {
-  const [selectedWallId, setSelectedWallId] = useState<number | null>(null)
-
   const handleSelectWall = (wallId: number) => {
     const next = selectedWallId === wallId ? null : wallId
-    setSelectedWallId(next)
+    onSelectWall(next)
 
+    // Note: Since we are showing all niches for the wall now, this pagination navigation
+    // is somewhat moot while a wall is selected, but good to have if they unselect.
     if (next !== null) {
       const firstIdx = niches.findIndex((n: any) => n.wallId === next)
       if (firstIdx >= 0) {

@@ -97,7 +97,7 @@ export function WakeRoomPage() {
                     onClick={() => setIsAgreementModalOpen(true)}
                     disabled={!bookingCode}
                   >
-                    View Wake Room Application
+                    Print Wake Room Application
                   </Button>
 
                   <Button

@@ -16,7 +16,14 @@ export const WakeRoomAgreementTemplate = forwardRef<HTMLDivElement, WakeRoomAgre
     const serviceDetails = booking.service || {};
     const wakeRoom = booking.wakeRoom || {};
     const hasInvoice = Boolean(billingData?.hasInvoice && billingData?.code);
-    const hasReceipt = Boolean(billingData?.hasReceipt && billingData?.receiptCode);
+    // Handle nested receipt structure which comes from invoiceService
+    const receiptObj = billingData?.receipt || {};
+    const hasReceipt = Boolean(
+        billingData?.hasReceipt ||
+        billingData?.receiptCode ||
+        receiptObj?.receiptCode ||
+        receiptObj?.code
+    );
 
     const invoiceDateValue = billingData?.transactionDate || billingData?.invoiceDate || '';
     const invoiceNoValue = hasInvoice ? (billingData?.code || '') : '';
@@ -30,13 +37,13 @@ export const WakeRoomAgreementTemplate = forwardRef<HTMLDivElement, WakeRoomAgre
     const invoiceTax = hasInvoice ? Number(billingData?.summary?.totalTax ?? billingData?.taxAmount ?? 0) : null;
     const invoiceTotal = hasInvoice ? Number(billingData?.summary?.grandTotal ?? billingData?.totalAmount ?? 0) : null;
 
-    const receiptDateValue = hasReceipt ? (billingData?.receiptDate || '') : '';
-    const receiptNoValue = hasReceipt ? (billingData?.receiptCode || '') : '';
+    const receiptDateValue = hasReceipt ? (billingData?.receiptDate || receiptObj?.receiptDate || receiptObj?.transactionDate || '') : '';
+    const receiptNoValue = hasReceipt ? (billingData?.receiptCode || receiptObj?.receiptCode || receiptObj?.code || '') : '';
     const receiptPaymentMode = hasReceipt
-        ? (billingData?.receiptPaymentMode || billingData?.paymentMode || '')
+        ? (billingData?.receiptPaymentMode || billingData?.paymentMode || receiptObj?.paymentMode || '')
         : '';
     const receiptTotal = hasReceipt
-        ? Number(billingData?.receiptPayingAmount ?? billingData?.receiptTotalAmount ?? 0)
+        ? Number(billingData?.receiptPayingAmount ?? billingData?.receiptTotalAmount ?? receiptObj?.payingAmount ?? receiptObj?.totalAmount ?? 0)
         : null;
 
     // Format dates
@@ -64,6 +71,7 @@ export const WakeRoomAgreementTemplate = forwardRef<HTMLDivElement, WakeRoomAgre
     };
 
     const formatMoney = (value: any) => {
+        if (value === null || value === undefined) return '';
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return '';
         return numeric.toFixed(2);

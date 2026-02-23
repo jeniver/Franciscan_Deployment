@@ -146,18 +146,19 @@ export function ReceiptTemplate({
       </div>
 
       {/* Footer / Signature lines */}
-      <div className="flex justify-between items-end text-[12px] mt-16">
+      <div className="flex justify-between items-end text-[12px] mt-24">
         <div className="w-[300px]">
           <div className="border-t border-black pt-2 font-bold uppercase tracking-wide">
             {paymentMethod}{paymentModeDocNo ? ` (${paymentModeDocNo})` : ''}
           </div>
-          <div className="text-[10px] text-gray-500 mt-1 uppercase">Payment Method</div>
         </div>
-        <div className="w-[350px] text-right">
-          <div className="font-bold uppercase mb-1">
-            {church.name}
+        <div className="w-[350px] text-center">
+          <div className="font-bold uppercase mb-12">
+            For {church.name}
           </div>
-          <div className="border-t border-black pt-2 text-[9px] text-gray-500 italic font-medium">Computer Generated Receipt - No Signature Required</div>
+          <div className="border-t border-black pt-2 font-bold tracking-wide">
+            Authorised Signature
+          </div>
         </div>
       </div>
     </div>

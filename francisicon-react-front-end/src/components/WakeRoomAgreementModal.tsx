@@ -6,8 +6,7 @@ import {
     Maximize2Icon,
     Minimize2Icon,
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import { printContentFromRef } from '../utils/printContent';
 import { WakeRoomAgreementTemplate } from './WakeRoomAgreementTemplate';
 import { WakeRoomBooking } from '../services/wakeRoomService';
 import { invoiceService } from '../services/invoiceService';
@@ -67,121 +66,12 @@ export function WakeRoomAgreementModal({
 
     const handlePrint = () => {
         if (!contentRef.current) return;
-
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-            alert('Please allow popups to print');
-            return;
-        }
-
-        const content = contentRef.current.innerHTML;
-
-        printWindow.document.write(`
-         <html>
-             <head>
-                 <title>Wake Room Agreement - ${booking?.code}</title>
-                 <style>
-                     @page { size: A4; margin: 10mm; }
-                     body { 
-                        font-family: serif; 
-                        margin: 0;
-                        padding: 0;
-                        -webkit-print-color-adjust: exact;
-                     }
-                      /* Tailwind utility replacements for print as we can't easily load full tailwind css */
-                     .text-center { text-align: center; }
-                     .font-bold { font-weight: bold; }
-                     .flex { display: flex; }
-                     .items-center { align-items: center; }
-                     .justify-between { justify-content: space-between; }
-                     .justify-center { justify-content: center; }
-                     .justify-end { justify-content: flex-end; }
-                     .flex-1 { flex: 1; }
-                     .w-full { width: 100%; }
-                     .border { border-width: 1px; border-style: solid; }
-                     .border-black { border-color: black; }
-                     .border-b { border-bottom-width: 1px; }
-                     .border-r { border-right-width: 1px; }
-                     .p-1 { padding: 0.25rem; }
-                     .p-2 { padding: 0.5rem; }
-                     .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
-                     .mb-1 { margin-bottom: 0.25rem; }
-                     .mb-2 { margin-bottom: 0.5rem; }
-                     .mb-4 { margin-bottom: 1rem; }
-                     .mb-8 { margin-bottom: 2rem; }
-                     .mt-8 { margin-top: 2rem; }
-                     .gap-2 { gap: 0.5rem; }
-                     .gap-6 { gap: 1.5rem; }
-                     .grid { display: grid; }
-                     .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-                     .text-sm { font-size: 0.875rem; }
-                     .text-xs { font-size: 0.75rem; }
-                     .uppercase { text-transform: uppercase; }
-                     .italic { font-style: italic; }
-                     .page-break { page-break-after: always; }
-                     
-                     table { border-collapse: collapse; width: 100%; }
-                     th, td { border: 1px solid black; padding: 4px; text-align: left; }
-                     
-                     /* Specific overrides for the template structure */
-                     .w-32 { width: 8rem; }
-                     .h-32 { height: 8rem; }
-                     .min-h-\[297mm\] { min-height: 297mm; }
-                 </style>
-                 <script src="https://cdn.tailwindcss.com"></script>
-             </head>
-             <body>
-                 ${content}
-                 <script>
-                    window.onload = () => {
-                        window.print();
-                        /* window.close(); */ 
-                    }
-                 </script>
-             </body>
-         </html>
-     `);
-        printWindow.document.close();
+        printContentFromRef(contentRef.current, `Wake Room Agreement - ${booking?.code || 'Draft'}`);
     };
 
-    const handleDownloadPdf = async () => {
-        if (!contentRef.current || isGeneratingPdf) return;
-        setIsGeneratingPdf(true);
-
-        try {
-            const pages = contentRef.current.querySelectorAll('.min-h-\\[297mm\\]');
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            for (let i = 0; i < pages.length; i++) {
-                const page = pages[i] as HTMLElement;
-                if (i > 0) pdf.addPage();
-
-                const canvas = await html2canvas(page, {
-                    scale: 2,
-                    useCORS: true,
-                    logging: false,
-                    backgroundColor: '#ffffff'
-                });
-
-                const imgData = canvas.toDataURL('image/png');
-                const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-            }
-
-            pdf.save(`WakeRoomAgreement-${booking?.code || 'draft'}.pdf`);
-
-        } catch (error) {
-            console.error('PDF Generation failed', error);
-            alert('Failed to generate PDF');
-        } finally {
-            setIsGeneratingPdf(false);
-        }
+    const handleDownloadPdf = () => {
+        if (!contentRef.current) return;
+        handlePrint();
     };
 
 

@@ -4,8 +4,7 @@ import { Receipt, receiptService } from '../services/receiptService';
 import { receiptPdfService } from '../services/receiptPdfService';
 import { useToast } from '../contexts/ToastContext';
 import { ReceiptTemplate } from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
+import { printContentFromRef } from '../utils/printContent';
 import { addressUtils, AddressEntity } from '../utils/addressUtils';
 import { paymentModeToLabel } from '../utils/paymentMode';
 
@@ -128,166 +127,14 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
     return styleString
   }
 
-  // Deep clone with computed styles
-  const cloneWithStyles = (element: HTMLElement): HTMLElement => {
-    const clone = element.cloneNode(true) as HTMLElement
-    // Apply computed styles to the clone and all its children
-    const applyStyles = (original: Element, cloned: Element) => {
-      if (original instanceof HTMLElement && cloned instanceof HTMLElement) {
-        cloned.style.cssText = getComputedStylesAsString(original)
-      }
-      const originalChildren = original.children
-      const clonedChildren = cloned.children
-      for (let i = 0; i < originalChildren.length; i++) {
-        if (clonedChildren[i]) {
-          applyStyles(originalChildren[i], clonedChildren[i])
-        }
-      }
-    }
-    applyStyles(element, clone)
-    return clone
-  }
-
-  const handlePrint = async () => {
-    if (!contentRef.current || isGenerating) return
-    setIsGenerating(true)
-    try {
-      // Find all page elements
-      const pages = contentRef.current.querySelectorAll('[data-pdf-page]')
-      const targetPages = pages.length > 0 ? (Array.from(pages) as HTMLElement[]) : [contentRef.current];
-
-      if (targetPages.length === 0) {
-        throw new Error('No pages found to print')
-      }
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a5',
-      })
-      // Process each page
-      for (let i = 0; i < targetPages.length; i++) {
-        const pageElement = targetPages[i] as HTMLElement
-        // Temporarily remove shadow for clean capture
-        const originalBoxShadow = pageElement.style.boxShadow
-        pageElement.style.boxShadow = 'none'
-        // Capture the page
-        const canvas = await html2canvas(pageElement, {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-          windowWidth: 794, // Approx px for 210mm at 96dpi (A5 landscape width)
-          windowHeight: pageElement.scrollHeight,
-        })
-        // Restore styles
-        pageElement.style.boxShadow = originalBoxShadow
-        // Add page to PDF (except for the first one which is created by default)
-        if (i > 0) {
-          pdf.addPage('a5', 'landscape')
-        }
-        const imgData = canvas.toDataURL('image/png', 1.0)
-        const pdfWidth = pdf.internal.pageSize.getWidth()
-        const pdfHeight = pdf.internal.pageSize.getHeight()
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
-      }
-      // Generate blob and open in new tab
-      const pdfBlob = pdf.output('blob')
-      const blobUrl = URL.createObjectURL(pdfBlob)
-      const newTab = window.open(blobUrl, '_blank')
-
-      const fileName = `Receipt-${receipt?.receiptCode || 'document'}.pdf`;
-
-      if (!newTab) {
-        // Fallback: download the file if popup blocked
-        const link = document.createElement('a')
-        link.href = blobUrl
-        link.download = fileName
-        link.click()
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
-      } else {
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
-      }
-    } catch (error) {
-      console.error('PDF generation failed:', error)
-      alert('Failed to generate PDF. Please try again.')
-    } finally {
-      setIsGenerating(false)
-    }
-  }
-
-  const handleDownloadPdf = async () => {
+  const handlePrint = () => {
     if (!contentRef.current) return
-    setIsGeneratingPdf(true)
-    try {
-      // Check if html2pdf is already loaded
-      let html2pdf = (window as any).html2pdf
-      if (!html2pdf) {
-        // Dynamically load html2pdf from CDN
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script')
-          script.src =
-            'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
-          script.onload = () => resolve()
-          script.onerror = () => reject(new Error('Failed to load PDF library'))
-          document.head.appendChild(script)
-        })
-        html2pdf = (window as any).html2pdf
-      }
-      // Clone with all computed styles
-      const styledClone = cloneWithStyles(contentRef.current)
-      // Create a container with proper dimensions
-      const container = document.createElement('div')
-      container.style.position = 'absolute'
-      container.style.left = '-9999px'
-      container.style.top = '0'
-      container.style.width = '210mm'
-      container.style.backgroundColor = 'white'
-      container.appendChild(styledClone)
-      document.body.appendChild(container)
-      // Wait a bit for styles to apply
-      await new Promise((resolve) => setTimeout(resolve, 100))
-      // PDF options
-      const opt = {
-        margin: [5, 5, 5, 5],
-        filename: `Receipt-${receipt?.receiptCode || 'document'}.pdf`,
-        image: {
-          type: 'jpeg',
-          quality: 0.98,
-        },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          letterRendering: true,
-          allowTaint: true,
-        },
-        jsPDF: {
-          unit: 'mm',
-          format: 'a5',
-          orientation: 'landscape',
-        },
-        pagebreak: {
-          mode: ['avoid-all', 'css', 'legacy'],
-        },
-      }
-      // Generate and save PDF
-      await html2pdf().set(opt).from(container).save()
-      // Cleanup
-      setTimeout(() => {
-        if (document.body.contains(container)) {
-          document.body.removeChild(container)
-        }
-      }, 1000)
-    } catch (error: any) {
-      console.error('Error generating PDF:', error)
-      alert(
-        'PDF generation failed. Please try the Print option and save as PDF.',
-      )
-    } finally {
-      setIsGeneratingPdf(false)
-    }
+    printContentFromRef(contentRef.current, `Receipt-${receipt?.receiptCode || 'document'}`)
+  }
+
+  const handleDownloadPdf = () => {
+    if (!contentRef.current) return
+    handlePrint()
   }
 
   // Helper function to convert number to words
@@ -433,6 +280,9 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
                           || inv.chapelName || inv.wallName
                           || (currentReceipt as any).wallName || '';
 
+                        const churchName = currentReceipt.churchInfo?.name || (currentReceipt as any).churchName || 'THE ORDER OF FRIARS MINOR (S) LTD';
+                        const prefixName = chapelName || churchName;
+
                         const appCode = currentReceipt.applicationCode
                           || inv.RefDocName || inv.refDocName || '';
                         const appNum = (currentReceipt as any).refDocNumber || (currentReceipt as any).RefDocNumber
@@ -444,14 +294,14 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
 
                         const parts: string[] = [];
 
-                        if (chapelName && fullAppCode) {
-                          parts.push(`${chapelName} - ${fullAppCode}`);
-                        } else if (chapelName) {
-                          parts.push(chapelName);
+                        if (prefixName && fullAppCode) {
+                          parts.push(`${prefixName} - ${fullAppCode}`);
+                        } else if (prefixName) {
+                          parts.push(prefixName);
                         } else if (fullAppCode) {
                           parts.push(fullAppCode);
                         } else {
-                          parts.push('Franciscan Columbarium');
+                          parts.push(churchName);
                         }
 
                         if (itemsString) parts.push(itemsString);

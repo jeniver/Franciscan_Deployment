@@ -973,7 +973,7 @@ export const reportService = {
         throw new ReportError('From date and to date are required', 'validation');
       }
 
-      const response = await api.get('/api/reports/gst', {
+      const response = await api.get('/api/reports/gst/report', {
         params: {
           fromDate: params.fromDate,
           toDate: params.toDate,
@@ -1015,7 +1015,7 @@ export const reportService = {
         throw new ReportError('From date and to date are required', 'validation');
       }
 
-      const response = await api.get('/api/reports/gst', {
+      const response = await api.get('/api/reports/gst/report', {
         params: {
           fromDate: params.fromDate,
           toDate: params.toDate,

@@ -3,8 +3,7 @@ import { XIcon, PrinterIcon, DownloadIcon, Maximize2Icon, Minimize2Icon } from '
 import { invoiceTemplateService, InvoiceTemplateData } from '../services/invoiceTemplateService';
 import { TaxInvoice } from '../components/InvoiceReceiptTemplate/InvoiceTemplate';
 import { ReceiptTemplate } from '../components/InvoiceReceiptTemplate/ReceiptTemplate';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
+import { printContentFromRef } from '../utils/printContent';
 import { addressUtils, AddressEntity } from '../utils/addressUtils';
 import { paymentModeToLabel } from '../utils/paymentMode';
 
@@ -164,19 +163,22 @@ export function InvoiceViewerModal({
 
     // Calculate description from details if items not used
     const chapelName = apiData.chapelName || apiData.invoice?.chapelName || apiData.wallName || apiData.invoice?.wallName || '';
+    const churchName = apiData.churchInfo?.name || apiData.invoice?.churchInfo?.name || 'THE ORDER OF FRIARS MINOR (S) LTD';
+    const prefixName = chapelName || churchName;
+
     const appCode = apiData.refDocNumber || apiData.RefDocNumber || apiData.invoice?.refDocNumber || apiData.invoice?.RefDocNumber || '';
     const itemCount = items.length;
     const itemsString = itemCount > 0 ? `(${itemCount} item${itemCount > 1 ? 's' : ''})` : '';
 
     const parts: string[] = [];
-    if (chapelName && appCode) {
-      parts.push(`${chapelName} - ${appCode}`);
-    } else if (chapelName) {
-      parts.push(chapelName);
+    if (prefixName && appCode) {
+      parts.push(`${prefixName} - ${appCode}`);
+    } else if (prefixName) {
+      parts.push(prefixName);
     } else if (appCode) {
       parts.push(appCode);
     } else {
-      parts.push('Franciscan Columbarium');
+      parts.push(churchName);
     }
 
     if (itemsString) parts.push(itemsString);
@@ -253,142 +255,21 @@ export function InvoiceViewerModal({
     };
   };
 
-  // Helper function to get all computed styles as inline styles
-  const getComputedStylesAsString = (element: Element): string => {
-    const computedStyle = window.getComputedStyle(element)
-    let styleString = ''
-    for (let i = 0; i < computedStyle.length; i++) {
-      const prop = computedStyle[i]
-      styleString += `${prop}:${computedStyle.getPropertyValue(prop)};`
-    }
-    return styleString
-  }
-
-  // Deep clone with computed styles
-  const cloneWithStyles = (element: HTMLElement): HTMLElement => {
-    const clone = element.cloneNode(true) as HTMLElement
-    // Apply computed styles to the clone and all its children
-    const applyStyles = (original: Element, cloned: Element) => {
-      if (original instanceof HTMLElement && cloned instanceof HTMLElement) {
-        cloned.style.cssText = getComputedStylesAsString(original)
-      }
-      const originalChildren = original.children
-      const clonedChildren = cloned.children
-      for (let i = 0; i < originalChildren.length; i++) {
-        if (clonedChildren[i]) {
-          applyStyles(originalChildren[i], clonedChildren[i])
-        }
-      }
-    }
-    applyStyles(element, clone)
-    return clone
-  }
-
-  const handleDownloadPdf = async () => {
+  const handleGeneratePDF = () => {
     if (!contentRef.current) return
-    setIsGeneratingPdf(true)
-    try {
-      let html2pdf = (window as any).html2pdf
-      if (!html2pdf) {
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script')
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
-          script.onload = () => resolve()
-          script.onerror = () => reject(new Error('Failed to load PDF library'))
-          document.head.appendChild(script)
-        })
-        html2pdf = (window as any).html2pdf
-      }
-      const styledClone = cloneWithStyles(contentRef.current)
-      const container = document.createElement('div')
-      container.style.position = 'absolute'
-      container.style.left = '-9999px'
-      container.style.top = '0'
-      const isReceipt = !!invoiceData?.receipt;
-      container.style.width = '210mm'
-      container.style.backgroundColor = 'white'
-      container.appendChild(styledClone)
-      document.body.appendChild(container)
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      const fileName = isReceipt
-        ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'Document'}.pdf`
-        : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'Document'}.pdf`;
-
-      const opt = {
-        margin: isReceipt ? [10, 10, 10, 10] : [5, 5, 5, 5],
-        filename: fileName,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false, letterRendering: true, allowTaint: true },
-        jsPDF: { unit: 'mm', format: isReceipt ? 'a5' : 'a4', orientation: isReceipt ? 'landscape' : 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-      }
-      await html2pdf().set(opt).from(container).save()
-      setTimeout(() => { if (document.body.contains(container)) document.body.removeChild(container) }, 1000)
-    } catch (error: any) {
-      console.error('Error generating PDF:', error)
-      alert('PDF generation failed. Please try the Print option and save as PDF.')
-    } finally {
-      setIsGeneratingPdf(false)
-    }
-  }
-
-  const handleGeneratePDF = async () => {
-    if (!contentRef.current || isGenerating) return
-    setIsGenerating(true)
-    try {
-      const pages = contentRef.current.querySelectorAll('[data-pdf-page]')
-      const targetPages = pages.length > 0 ? Array.from(pages) : [contentRef.current];
-      const isReceipt = !!invoiceData?.receipt;
-
-      const pdf = new jsPDF({
-        orientation: isReceipt ? 'landscape' : 'portrait',
-        unit: 'mm',
-        format: isReceipt ? 'a5' : 'a4',
-      })
-
-      for (let i = 0; i < targetPages.length; i++) {
-        const pageElement = targetPages[i] as HTMLElement
-        const originalBoxShadow = pageElement.style.boxShadow
-        pageElement.style.boxShadow = 'none'
-
-        const canvas = await html2canvas(pageElement, {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-          windowWidth: 794,
-        })
-        pageElement.style.boxShadow = originalBoxShadow
-        if (i > 0) pdf.addPage(isReceipt ? 'a5' : 'a4', isReceipt ? 'landscape' : 'portrait')
-        const imgData = canvas.toDataURL('image/png', 1.0)
-        pdf.addImage(imgData, 'PNG', 0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight())
-      }
-      const pdfBlob = pdf.output('blob')
-      const blobUrl = URL.createObjectURL(pdfBlob)
-      const newTab = window.open(blobUrl, '_blank')
-
-      if (!newTab) {
-        const link = document.createElement('a')
-        link.href = blobUrl
-        link.download = isReceipt
-          ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'Document'}.pdf`
-          : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'Document'}.pdf`;
-        link.click()
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
-      } else {
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
-      }
-    } catch (error) {
-      console.error('PDF generation failed:', error)
-      alert('Failed to generate PDF. Please try again.')
-    } finally {
-      setIsGenerating(false)
-    }
+    const isReceipt = !!invoiceData?.receipt;
+    const docName = isReceipt
+      ? `Receipt-${invoiceData.receipt?.receiptCode || invoiceData.code || 'Document'}`
+      : `Invoice-${invoiceData.code || invoiceData.invoiceCode || 'Document'}`;
+    printContentFromRef(contentRef.current, docName)
   }
 
   const handlePrint = () => handleGeneratePDF();
+
+  const handleDownloadPdf = () => {
+    if (!contentRef.current) return
+    handleGeneratePDF()
+  }
   const toggleFullscreen = () => setIsFullscreen(!isFullscreen);
 
   if (!isOpen) return null;
