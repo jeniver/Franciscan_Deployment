@@ -163,9 +163,25 @@ export function InvoiceViewerModal({
     });
 
     // Calculate description from details if items not used
-    const description = items
-      .map((item: any) => item.description + (item.referenceNo ? ` (${item.referenceNo})` : ''))
-      .join(', ');
+    const chapelName = apiData.chapelName || apiData.invoice?.chapelName || apiData.wallName || apiData.invoice?.wallName || '';
+    const appCode = apiData.refDocNumber || apiData.RefDocNumber || apiData.invoice?.refDocNumber || apiData.invoice?.RefDocNumber || '';
+    const itemCount = items.length;
+    const itemsString = itemCount > 0 ? `(${itemCount} item${itemCount > 1 ? 's' : ''})` : '';
+
+    const parts: string[] = [];
+    if (chapelName && appCode) {
+      parts.push(`${chapelName} - ${appCode}`);
+    } else if (chapelName) {
+      parts.push(chapelName);
+    } else if (appCode) {
+      parts.push(appCode);
+    } else {
+      parts.push('Franciscan Columbarium');
+    }
+
+    if (itemsString) parts.push(itemsString);
+
+    const description = parts.join(' ');
 
     // Handle receipt totals with broad compatibility
     const totalAmount = apiData.receipt?.totalAmount ||

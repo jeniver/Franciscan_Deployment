@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { UserCheckIcon, PlusIcon, InfoIcon, Trash2Icon, Loader2, SearchIcon, CheckCircle2, X } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -43,6 +43,10 @@ export function NomineeDetails({
   const [nominees, setNominees] = useState<Nominee[]>(formData.nominees || []);
   const { searchPerson, searchResults, isSearching, clearResults } = usePersonLookup();
   const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
+
+  // Reference to track if we've initialized for the current application
+  // This prevents continuous Redux sync from overwriting local address typing
+  const initializedForAppRef = useRef<string | null>(null);
   const [showSearchResults, setShowSearchResults] = useState(false);
 
   const nomineesAreEqual = (a: Nominee[], b: Nominee[]) => {
@@ -72,29 +76,39 @@ export function NomineeDetails({
 
   // Sync local state with Redux form data
   useEffect(() => {
-    if (formData.nominees && Array.isArray(formData.nominees)) {
-      const normalized = formData.nominees.map((nominee: any, index: number) => ({
-        id: nominee.id ?? index + 1,
-        fullName: nominee.fullName || nominee.name || '',
-        nric: nominee.nric || nominee.nomineeIDNo || '',
-        relationship: nominee.relationship || nominee.relationshipToApplicant || '',
-        dateOfBirth: nominee.dateOfBirth || '',
-        contactNumber: nominee.contactNumber || nominee.phone || '',
-        address: nominee.address || (index === 0 ? formData.nomineeAddress || '' : formData.nominee2Address || ''),
-        block: nominee.block || (index === 0 ? (formData.nomineeBlock || 'Block') : 'Block'),
-        blockNo: nominee.blockNo || (index === 0 ? formData.nomineeBlockNo || '' : formData.nomineeBlockNo2 || ''),
-        streetName: nominee.streetName || (index === 0 ? formData.nomineeStreetName || '' : formData.nomineeStreetName2 || ''),
-        unitNo: nominee.unitNo || (index === 0 ? formData.nomineeUnitNo || '' : formData.nomineeUnitNo2 || ''),
-        postalCode: nominee.postalCode || (index === 0 ? formData.nomineePostalCode || '' : formData.nomineePostalCode2 || ''),
-        country: nominee.country || (index === 0 ? formData.nomineeCountry || 'Singapore' : formData.nomineeCountry2 || 'Singapore'),
-        officeTelNo: nominee.officeTelNo || '',
-        homeTelNo: nominee.homeTelNo || '',
-        email: nominee.email || '',
-        status: nominee.status === 'Non-Active' || nominee.status === 'Inactive' ? 'Non-Active' : 'Active'
-      }));
-      setNominees(prev => (nomineesAreEqual(normalized, prev) ? prev : normalized));
+    const currentAppCode = formData.applicationNumber || formData.applicationCode || formData.code || formData.refDocNumber || 'new';
+
+    // Only sync if we haven't initialized for this application yet,
+    // to prevent Redux update echoes from overwriting active typing in address fields
+    if (initializedForAppRef.current !== currentAppCode) {
+      if (formData.nominees && Array.isArray(formData.nominees) && formData.nominees.length > 0) {
+        const normalized = formData.nominees.map((nominee: any, index: number) => ({
+          id: nominee.id ?? index + 1,
+          fullName: nominee.fullName || nominee.name || '',
+          nric: nominee.nric || nominee.nomineeIDNo || '',
+          relationship: nominee.relationship || nominee.relationshipToApplicant || '',
+          dateOfBirth: nominee.dateOfBirth || '',
+          contactNumber: nominee.contactNumber || nominee.phone || '',
+          address: nominee.address || (index === 0 ? formData.nomineeAddress || '' : formData.nominee2Address || ''),
+          block: nominee.block || (index === 0 ? (formData.nomineeBlock || 'Block') : 'Block'),
+          blockNo: nominee.blockNo || (index === 0 ? formData.nomineeBlockNo || '' : formData.nomineeBlockNo2 || ''),
+          streetName: nominee.streetName || (index === 0 ? formData.nomineeStreetName || '' : formData.nomineeStreetName2 || ''),
+          unitNo: nominee.unitNo || (index === 0 ? formData.nomineeUnitNo || '' : formData.nomineeUnitNo2 || ''),
+          postalCode: nominee.postalCode || (index === 0 ? formData.nomineePostalCode || '' : formData.nomineePostalCode2 || ''),
+          country: nominee.country || (index === 0 ? formData.nomineeCountry || 'Singapore' : formData.nomineeCountry2 || 'Singapore'),
+          officeTelNo: nominee.officeTelNo || '',
+          homeTelNo: nominee.homeTelNo || '',
+          email: nominee.email || '',
+          status: nominee.status === 'Non-Active' || nominee.status === 'Inactive' ? 'Non-Active' : 'Active'
+        }));
+        setNominees(prev => (nomineesAreEqual(normalized, prev) ? prev : normalized));
+        initializedForAppRef.current = currentAppCode;
+      } else if (!formData.nominees || (Array.isArray(formData.nominees) && formData.nominees.length === 0)) {
+        // Handle empty case too, so we don't keep tracking
+        initializedForAppRef.current = currentAppCode;
+      }
     }
-  }, [JSON.stringify(formData.nominees)]);
+  }, [JSON.stringify(formData.nominees), formData.applicationNumber, formData.applicationCode, formData.code, formData.refDocNumber]);
 
   // Helper to build a single-line legacy address from structured fields
   const buildLegacyAddress = (addressData: {

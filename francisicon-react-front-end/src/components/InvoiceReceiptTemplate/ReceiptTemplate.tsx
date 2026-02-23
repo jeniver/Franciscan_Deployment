@@ -66,12 +66,13 @@ export function ReceiptTemplate({
           </div>
         </div>
 
-        <div className="text-right text-[10px] leading-tight max-w-[400px]">
-          <h2 className="text-[15px] font-bold mb-0.5 tracking-tight uppercase">{church.name}</h2>
-          <p className="mb-0.5 font-medium">Co & GST Reg No. {church.registrationNo}</p>
-          <p className="mb-0.5 font-medium">{church.address}</p>
-          <p className="mb-0.5 font-medium">Tel: {church.phone}</p>
-          <p className="mb-0.5 font-medium">{church.email}</p>
+        <div className="text-right text-[12px] leading-tight max-w-[400px]">
+          <h2 className="text-[15px] font-bold mb-1 tracking-tight uppercase">THE ORDER OF FRIARS MINOR (S) LTD</h2>
+          <p className="mb-0.5">Co & GST Reg No. 201016236M</p>
+          <p className="mb-0.5 mt-2 font-semibold">Franciscan Columbarium</p>
+          <p className="mb-0.5">5 Bukit Batok East Avenue 2 Singapore 659918</p>
+          <p className="mb-0.5">Tel: 6560-6361, HP: 9774-7053,</p>
+          <p className="mb-0.5">email:Franciscan.columbarium@gmail.com</p>
 
           <div className="mt-4 flex flex-col items-end text-[12px]">
             <div className="grid grid-cols-[auto_110px] gap-y-0.5">

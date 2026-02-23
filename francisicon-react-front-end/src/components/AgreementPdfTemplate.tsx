@@ -1,7 +1,8 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { PDF_ASSETS } from '../components/common/FranciscanLogo'
 import addressUtils from '../utils/addressUtils'
 import { paymentModeToLabel } from '../utils/paymentMode'
+import itemService from '../services/itemService'
 interface AgreementPdfTemplateProps {
   data: {
     applicationCode?: string
@@ -190,7 +191,32 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
     niche?.chapelName || niche?.location?.chapel?.chapelName || ''
   const nicheNo = niche?.code || niche?.number || ''
   const nicheLevel = niche?.location?.row?.level || ''
-  const wallPrice = niche?.location?.row?.rowPrice || niche?.totalAmount || niche?.lineAmount || niche?.rowPrice || 0
+
+  const [fetchedNichePrice, setFetchedNichePrice] = useState<number | null>(null)
+
+  useEffect(() => {
+    const fetchPrice = async () => {
+      try {
+        if (!nicheLevel) return
+        const response = await itemService.listItems('', true)
+        const levelStr = String(nicheLevel)
+        const matchedItem = response.find((i: any) =>
+          (i.Name || '').toLowerCase() === `level ${levelStr} niche` ||
+          (i.Name || '').toLowerCase().includes(`level ${levelStr}`) ||
+          (i.Code || '').toLowerCase() === `l${levelStr}`
+        )
+        if (matchedItem && matchedItem.Price !== undefined) {
+          setFetchedNichePrice(matchedItem.Price)
+        }
+      } catch (err) {
+        console.error('Failed to fetch item prices for niche level mapping', err)
+      }
+    }
+    fetchPrice()
+  }, [nicheLevel])
+
+  const defaultWallPrice = niche?.location?.row?.rowPrice || niche?.totalAmount || niche?.lineAmount || niche?.rowPrice || 0
+  const wallPrice = fetchedNichePrice !== null ? fetchedNichePrice : defaultWallPrice
 
   // Robust address mapping matching InscriptionAgreementViewerModal
   const applicantAddressEntity = {
@@ -830,8 +856,12 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
 
             // Balance = invoice total - receipt amount
             const invoiceTotal = nicheGrossTotal || totalAmount;
-            const receiptPaid = (invoice as any)?.receiptPayingAmount || (invoice as any)?.receiptAmount || (invoice as any)?.payingAmount || ((invoice as any)?.receipt?.receiptPayingAmount || 0);
-            const outstandingBalance = Math.max(0, invoiceTotal - receiptPaid);
+            const receiptPaidRaw = (invoice as any)?.receiptPayingAmount || (invoice as any)?.receiptAmount || (invoice as any)?.payingAmount || ((invoice as any)?.receipt?.receiptPayingAmount || 0);
+
+            // The receipt might be paying for an invoice with multiple items, but we only show the niche item here. 
+            // So we display at most the niche gross total.
+            const receiptPaid = invoiceTotal > 0 ? Math.min(receiptPaidRaw, invoiceTotal) : receiptPaidRaw;
+            const outstandingBalance = Math.max(0, invoiceTotal - receiptPaidRaw);
 
             return (
               <>

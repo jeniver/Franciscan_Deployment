@@ -429,20 +429,32 @@ export function ReceiptDetailModal({ isOpen, onClose, receipt }: ReceiptDetailMo
                       description={(() => {
                         const details = currentReceipt.invoiceDetails || (currentReceipt as any).details || [];
                         const inv = (currentReceipt as any).invoice || {};
+                        const chapelName = (currentReceipt as any).chapelName
+                          || inv.chapelName || inv.wallName
+                          || (currentReceipt as any).wallName || '';
+
                         const appCode = currentReceipt.applicationCode
                           || inv.RefDocName || inv.refDocName || '';
                         const appNum = (currentReceipt as any).refDocNumber || (currentReceipt as any).RefDocNumber
                           || inv.RefDocNumber || inv.refDocNumber || '';
-                        const chapelName = (currentReceipt as any).chapelName
-                          || inv.chapelName || inv.wallName
-                          || (currentReceipt as any).wallName || '';
                         const fullAppCode = appCode && appNum ? `${appCode}-${appNum}` : appCode || appNum;
+
                         const itemCount = details.length;
+                        const itemsString = itemCount > 0 ? `(${itemCount} item${itemCount > 1 ? 's' : ''})` : '';
 
                         const parts: string[] = [];
-                        if (chapelName) parts.push(chapelName);
-                        if (fullAppCode) parts.push(`(${fullAppCode})`);
-                        if (itemCount > 0) parts.push(`x ${itemCount} Item${itemCount > 1 ? 's' : ''}`);
+
+                        if (chapelName && fullAppCode) {
+                          parts.push(`${chapelName} - ${fullAppCode}`);
+                        } else if (chapelName) {
+                          parts.push(chapelName);
+                        } else if (fullAppCode) {
+                          parts.push(fullAppCode);
+                        } else {
+                          parts.push('Franciscan Columbarium');
+                        }
+
+                        if (itemsString) parts.push(itemsString);
 
                         return parts.join(' ') || currentReceipt.description || 'Payment received';
                       })()}

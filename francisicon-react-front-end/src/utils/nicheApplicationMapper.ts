@@ -893,9 +893,15 @@ function buildCleanNominees(formData: Record<string, any>): Array<Record<string,
           officeTel: nominee.officeTelNo || nominee.officeTel || '',
           idNo: nominee.nric || nominee.idNo || '',
           relationship: nominee.relationship || '',
+          dateOfBirth: nominee.dateOfBirth || '',
           status: nominee.status || 'Active',
           address: nominee.address && typeof nominee.address === 'object' ? nominee.address : {
-            no: '', line1: '', line2: '', city: '', state: '', country: nominee.country || 'Singapore'
+            no: nominee.block === 'Block' || nominee.block?.toLowerCase() === 'block' || nominee.addressNo?.toLowerCase() === 'block' || nominee.addressNo?.toLowerCase() === 'blk' ? 'Blk' : 'No',
+            line1: nominee.blockNo || nominee.addressLine1 || '',
+            line2: nominee.streetName || nominee.addressLine2 || '',
+            city: nominee.unitNo && nominee.unitNo.trim() !== '' ? (nominee.unitNo.trim().startsWith('#') ? nominee.unitNo.trim() : `#${nominee.unitNo.trim()}`) : nominee.addressCity || '',
+            state: nominee.postalCode || nominee.addressState || '',
+            country: nominee.country || nominee.addressCountry || 'Singapore'
           }
         });
       }

@@ -64,15 +64,13 @@ export const addressUtils = {
             unit = raw.city;
         }
 
-        // Line 1: [Prefix] [Block Number]
+        // Line 1: [Prefix] [Block Number] [Street Name]
         const blockPart = prefix && blockNum ? `${prefix} ${blockNum}`
             : prefix || blockNum;
-        lines.push(blockPart);
+        const line1 = [blockPart, street].filter(Boolean).join(' ');
+        lines.push(line1);
 
-        // Line 2: Street Name
-        lines.push(street);
-
-        // Line 3: [Unit] [Country] [Postal]
+        // Line 3 parts: [Country] [Postal Code]
         const line3Parts: string[] = [];
 
         let unitValue = unit;
@@ -104,8 +102,9 @@ export const addressUtils = {
                     unitValue = '#' + unitValue;
                 }
             }
-            line3Parts.push(unitValue);
         }
+        // Line 2: [Unit/Building Name]
+        lines.push(unitValue || '');
 
         const countryToShow = raw.country || (otherFieldsPopulated ? 'Singapore' : '');
         if (countryToShow) {
@@ -114,6 +113,7 @@ export const addressUtils = {
 
         if (postalValue) line3Parts.push(postalValue);
 
+        // Line 3
         lines.push(line3Parts.join(' '));
 
         while (lines.length < 3) lines.push('');
