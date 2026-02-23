@@ -172,8 +172,19 @@ class InscriptionInvoiceService {
    * DB Convention: addressNo=Blk/No, line1=blockNo, line2=street, city=unit, state=postal, country=country
    */
   _mapAddressToFrontendFormat(addressNo, addressLine1, addressLine2, addressCity, addressState, addressCountry) {
-    const block = addressNo || '';
-    const blockNo = addressLine1 || this._extractBlockNumber(addressNo) || '';
+    let block = addressNo || '';
+    let blockNo = addressLine1 || this._extractBlockNumber(addressNo) || '';
+
+    // Fix for duplicated number issue:
+    // if block is same as blockNo and it's a number, block should be "No" 
+    if (block && block === blockNo && /^\d+$/.test(block)) {
+      block = 'No';
+    } else if (block && !blockNo && /^\d+$/.test(block)) {
+      // If only one is provided and it's a number, ensure we have a label
+      blockNo = block;
+      block = 'No';
+    }
+
     const street = addressLine2 || '';
     const streetName = street;
     const unitNo = addressCity || '';

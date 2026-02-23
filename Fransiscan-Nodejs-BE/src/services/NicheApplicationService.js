@@ -2830,7 +2830,7 @@ class NicheApplicationService {
       );
 
       if (!bookingResult.recordset || bookingResult.recordset.length === 0) {
-        logger.info('[_syncBeneficiaryStatusToBooking] No NicheBooking found for application, skipping status sync');
+        logger.warn('[_syncBeneficiaryStatusToBooking] No NicheBooking found for application (status may not be synced until application is booked)');
         return;
       }
 
@@ -2883,9 +2883,10 @@ class NicheApplicationService {
             r.IDNo.trim().toLowerCase() === entity.idNo.trim().toLowerCase()
           );
         }
-        // Fall back to positional matching if only one record
-        if (!match && nbbRecords.length === 1 && beneficiaryEntities.length === 1) {
-          match = nbbRecords[0];
+        // Fall back to positional matching when name/ID matching fails
+        if (!match && i < nbbRecords.length) {
+          match = nbbRecords[i];
+          logger.info(`[_syncBeneficiaryStatusToBooking] Using positional fallback for "${entity.name}" -> NicheBookingBeneficiaryId ${match.NicheBookingBeneficiaryId}`);
         }
 
         if (match && match.BeneficiaryStatus !== dbStatus) {

@@ -57,6 +57,12 @@ export function NomineeDetails({
         item.dateOfBirth === other.dateOfBirth &&
         item.contactNumber === other.contactNumber &&
         item.address === other.address &&
+        item.block === other.block &&
+        item.blockNo === other.blockNo &&
+        item.streetName === other.streetName &&
+        item.unitNo === other.unitNo &&
+        item.postalCode === other.postalCode &&
+        item.country === other.country &&
         item.officeTelNo === other.officeTelNo &&
         item.homeTelNo === other.homeTelNo &&
         item.email === other.email &&
@@ -590,13 +596,13 @@ export function NomineeDetails({
               <AddressInput
 
                 initialValues={{
-                  // For both nominees, try to use structured fields from nominee object first, then fall back to formData
-                  block: nominee.block || (index === 0 ? (formData.nomineeBlock || 'Block') : 'Block'),
-                  blockNo: nominee.blockNo || (index === 0 ? formData.nomineeBlockNo : formData.nomineeBlockNo2) || '',
-                  streetName: nominee.streetName || (index === 0 ? formData.nomineeStreetName : formData.nomineeStreetName2) || '',
-                  unitNo: nominee.unitNo || (index === 0 ? formData.nomineeUnitNo : formData.nomineeUnitNo2) || '',
-                  postalCode: nominee.postalCode || (index === 0 ? formData.nomineePostalCode : formData.nomineePostalCode2) || '',
-                  country: nominee.country || (index === 0 ? formData.nomineeCountry : formData.nomineeCountry2) || 'Singapore'
+                  // Use only the nominee object's own fields to prevent cross-contamination between nominees
+                  block: nominee.block || 'Block',
+                  blockNo: nominee.blockNo || '',
+                  streetName: nominee.streetName || '',
+                  unitNo: nominee.unitNo || '',
+                  postalCode: nominee.postalCode || '',
+                  country: nominee.country || 'Singapore'
                 }}
                 initialAddressString={nominee.address || ''}
                 onAddressChange={(addressData) => {
@@ -726,7 +732,7 @@ export function NomineeDetails({
 
           </div>
           {/* Second Nominee Agreement Button for second nominee */}
-         
+
         </div>
       ))}
 
@@ -753,7 +759,7 @@ export function NomineeDetails({
             formData={formData}
             isReadOnly={isReadOnly}
           />
-          
+
         </div>
       )}
 
@@ -772,10 +778,10 @@ export function NomineeDetails({
               <PlusIcon className="w-4 h-4 mr-2" />
               Add Nominee
             </button>
-            
+
 
             {/* Update Application Button for empty state */}
-            
+
             <UpdateApplicationButton
               formData={formData}
               isReadOnly={isReadOnly}
@@ -784,7 +790,7 @@ export function NomineeDetails({
           </div>
         </div>
       )}
-    
+
     </div>
   </div>;
 }

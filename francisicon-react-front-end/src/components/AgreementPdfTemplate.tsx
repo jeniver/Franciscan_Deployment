@@ -186,18 +186,22 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
     deceased,
     storage,
   } = data
-  const applicantAddressLines = addressUtils.buildAddressLines(applicant || {})
-  const considerationSum =
-    invoice?.totalAmount ||
-    invoice?.invoicePayingAmount ||
-    niche?.totalAmount ||
-    7000
   const chapelName =
     niche?.chapelName || niche?.location?.chapel?.chapelName || ''
   const nicheNo = niche?.code || niche?.number || ''
   const nicheLevel = niche?.location?.row?.level || ''
-  const wallName = niche?.wallName || niche?.location?.wall?.wallName || ''
-  const wallPrice = niche?.totalAmount || niche?.lineAmount || niche?.location?.row?.rowPrice || niche?.rowPrice || 0
+  const wallPrice = niche?.location?.row?.rowPrice || niche?.totalAmount || niche?.lineAmount || niche?.rowPrice || 0
+
+  // Robust address mapping matching InscriptionAgreementViewerModal
+  const applicantAddressEntity = {
+    addressNo: applicant?.addressNo || '',
+    addressLine1: applicant?.addressLine1 || '',
+    addressLine2: applicant?.addressLine2 || '',
+    addressCity: applicant?.addressCity || '',
+    addressState: applicant?.addressState || '',
+    addressCountry: applicant?.addressCountry || '',
+  }
+  const applicantAddressLines = addressUtils.buildAddressLines(applicantAddressEntity)
   const footerAgreementDate = formatDate(agreementDate || appliedDate)
   const statusText = data.statusText || ''
   const applicantName = applicant?.name || ''
@@ -219,30 +223,39 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   const secondDeceasedDeathCert = deceased2?.deathCertificateNo || ''
   const firstDeceasedDate = formatDate(deceased1?.dateDied)
   const secondDeceasedDate = formatDate(deceased2?.dateDied)
-  const storageFromValue = storage?.storageFrom || deceased1?.internmentDate;
-  const storageFrom = formatDate(storageFromValue);
+  // Storage Period calculation:
+  // StorageFrom = 1 Jan of the NEXT year after 1st Interment Date
+  // StorageTo = 31 Dec, 30 years after StorageFrom
+  // Example: Interment 24 June 2025 → StorageFrom = 01-Jan-2026, StorageTo = 31-Dec-2055
+  const rawIntermentDate = deceased1?.internmentDate;
+  let storageFrom = '';
   let storageTo = formatDate(storage?.storageTo);
 
-  // Auto-calculate storageTo as 30 years + 30 days from storageFrom (1st Interment Date) when storageTo is not provided
-  if (storageFromValue && !storage?.storageTo) {
-    const fromDate = new Date(storageFromValue);
+  if (storage?.storageFrom) {
+    storageFrom = formatDate(storage.storageFrom);
+  } else if (rawIntermentDate) {
+    const fromDate = new Date(rawIntermentDate);
     if (!isNaN(fromDate.getTime())) {
-      const toDate = new Date(fromDate);
-      toDate.setFullYear(fromDate.getFullYear() + 30);
-      toDate.setDate(toDate.getDate() + 30);
-      storageTo = formatDate(toDate.toISOString());
+      // Jan 1st of the next year
+      const storageFromDate = new Date(fromDate.getFullYear() + 1, 0, 1); // Month 0 = Jan, Day 1
+      storageFrom = formatDate(storageFromDate.toISOString());
+
+      if (!storage?.storageTo) {
+        // 31 Dec, 30 years from StorageFrom
+        const storageToDate = new Date(storageFromDate.getFullYear() + 30 - 1, 11, 31); // Month 11 = Dec, Day 31
+        storageTo = formatDate(storageToDate.toISOString());
+      }
     }
   }
-  const invoiceNo = invoice?.invoiceNo || ''
-  const invoiceDate = formatDate(invoice?.invoiceDate)
-  const receiptNo = invoice?.receiptNo || ''
-  const receiptDate = formatDate(invoice?.receiptDate)
-  const nicheAmount = invoice?.receiptAmount || invoice?.totalAmount || 0
+  const invoiceNo = invoice?.invoiceNo || (invoice as any)?.code || ''
+  const invoiceDate = formatDate(invoice?.invoiceDate || (invoice as any)?.transactionDate)
+  const receiptNo = invoice?.receiptNo || (invoice as any)?.receiptCode || ''
+  const receiptDate = formatDate(invoice?.receiptDate || (invoice as any)?.receipt?.receiptDate)
+  const nicheAmount = invoice?.receiptAmount || invoice?.totalAmount || (invoice as any)?.payingAmount || 0
   const taxAmount = invoice?.taxAmount || 0
-  const totalAmount = invoice?.totalAmount || invoice?.invoicePayingAmount || 0
-  const paymentMethod = paymentModeToLabel(invoice?.paymentMode)
-  const balance = invoice?.receiptPayingAmount || 0
-  const invoiceDetails = invoice?.invoiceDetails || []
+  const totalAmount = invoice?.totalAmount || invoice?.invoicePayingAmount || (invoice as any)?.payingAmount || 0
+  const paymentMethod = paymentModeToLabel(invoice?.paymentMode || (invoice as any)?.receipt?.receiptPaymentMode)
+  const invoiceDetails = invoice?.invoiceDetails || (invoice as any)?.details || []
   const TableRow = ({
     children,
     className = '',
@@ -291,6 +304,30 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
   )
   return (
     <div className="min-h-screen bg-gray-100 py-4 font-sans text-gray-900 print:bg-white print:py-0">
+      <style>
+        {`
+          @media print {
+            body {
+              margin: 0;
+              padding: 0;
+            }
+            @page {
+              size: A4;
+              margin: 10mm 8mm;
+            }
+            [data-pdf-page] {
+              margin: 0 !important;
+              padding: 6mm 8mm !important;
+              box-shadow: none !important;
+              min-height: 297mm !important;
+              page-break-after: always;
+            }
+            [data-pdf-page]:last-child {
+              page-break-after: auto;
+            }
+          }
+        `}
+      </style>
       {/* Page 1 */}
       <div data-pdf-page className="max-w-[210mm] mx-auto bg-white shadow-lg p-6 mb-4 min-h-[297mm] print:shadow-none print:mb-0 print:p-8">
         {/* Header */}
@@ -353,11 +390,11 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
         <div className="border border-black mb-0 text-xs">
           <TableRow>
             <LabelCell>Name</LabelCell>
-            <ValueCell>{applicantName}</ValueCell>
+            <ValueCell className="font-bold">{applicantName}</ValueCell>
             <LabelCell width="w-28" className="border-l border-black">
               NRIC/Passport No.
             </LabelCell>
-            <ValueCell width="w-36" className="border-l border-black">
+            <ValueCell width="w-36" className="font-bold border-l border-black">
               {applicantIdNo}
             </ValueCell>
           </TableRow>
@@ -365,7 +402,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
             <div className="flex-1 flex flex-col">
               <div className="flex border-b border-black h-[26px]">
-                <ValueCell className="flex-1">
+                <ValueCell className="font-bold flex-1">
                   {applicantAddressLines[0] || ''}
                 </ValueCell>
                 <LabelCell
@@ -374,12 +411,12 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 >
                   Mobile No.
                 </LabelCell>
-                <ValueCell width="w-36" className="border-l border-black">
+                <ValueCell width="w-36" className="font-bold border-l border-black">
                   {applicantMobileNo}
                 </ValueCell>
               </div>
               <div className="flex border-b border-black h-[26px]">
-                <ValueCell className="flex-1">
+                <ValueCell className="font-bold flex-1">
                   {applicantAddressLines[1] || ''}
                 </ValueCell>
                 <LabelCell
@@ -388,12 +425,12 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 >
                   Home Tel.
                 </LabelCell>
-                <ValueCell width="w-36" className="border-l border-black">
+                <ValueCell width="w-36" className="font-bold border-l border-black">
                   {applicantHomeTelNo}
                 </ValueCell>
               </div>
               <div className="flex h-[26px]">
-                <ValueCell className="flex-1">
+                <ValueCell className="font-bold flex-1">
                   {applicantAddressLines[2] || ''}
                 </ValueCell>
                 <LabelCell
@@ -402,7 +439,7 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
                 >
                   Office Tel.
                 </LabelCell>
-                <ValueCell width="w-36" className="border-l border-black">
+                <ValueCell width="w-36" className="font-bold border-l border-black">
                   {applicantOfficeTelNo}
                 </ValueCell>
               </div>
@@ -410,11 +447,11 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
           </div>
           <TableRow>
             <LabelCell>e-mail</LabelCell>
-            <ValueCell>{applicantEmail}</ValueCell>
+            <ValueCell className="font-bold">{applicantEmail}</ValueCell>
             <LabelCell width="w-28" className="border-l border-black">
               Catholic
             </LabelCell>
-            <ValueCell width="w-36" className="border-l border-black">
+            <ValueCell width="w-36" className="font-bold border-l border-black">
               {applicantIsCatholicText}
             </ValueCell>
           </TableRow>
@@ -456,142 +493,74 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
 
 
         {/* Beneficiary 1 */}
-        <div className="flex border border-black mb-1 text-xs">
-          <div className="w-6 border-r border-black flex items-center justify-center font-bold bg-gray-50">
-            1
-          </div>
-          <div className="flex-1">
-            <TableRow>
-              <LabelCell width="w-36">Name</LabelCell>
-              <ValueCell>{beneficiary1?.name || ''}</ValueCell>
-              <LabelCell width="w-28" className="border-l border-black">
-                NRIC/Passport No.
-              </LabelCell>
-              <ValueCell width="w-32" className="border-l border-black">
-                {beneficiary1?.idNo || ''}
-              </ValueCell>
-            </TableRow>
-            <TableRow>
-              <LabelCell width="w-36">Date of Birth</LabelCell>
-              <ValueCell>{beneficiary1?.dateOfBirth ? formatDate(beneficiary1.dateOfBirth) : (beneficiary1?.birthYear || '')}</ValueCell>
-              <LabelCell width="w-28" className="border-l border-black">
-                Sex
-              </LabelCell>
-              <ValueCell width="w-32" className="border-l border-black">
-                {beneficiary1?.sex || ''}
-              </ValueCell>
-            </TableRow>
-            <TableRow>
-              <LabelCell width="w-36">Relationship to Applicant</LabelCell>
-              <ValueCell>
-                {beneficiary1?.relationshipToApplicant || ''}
-              </ValueCell>
-
-            </TableRow>
-            <TableRow>
-              <LabelCell width="w-36">Catholic</LabelCell>
-              <ValueCell>
-                {beneficiary1 ? (beneficiary1.isCatholic ? 'Yes' : 'No') : ''}
-              </ValueCell>
-              <LabelCell width="w-28" className="border-l border-black">
-                {'\u00A0'}
-              </LabelCell>
-              <ValueCell width="w-32" className="border-l border-black">
-                {'\u00A0'}
-              </ValueCell>
-            </TableRow>
-            <div className="flex">
-              <LabelCell width="w-36" className="text-[9px] text-gray-500">
-                Relationship to Nominee1
-              </LabelCell>
-              <ValueCell className="bg-gray-100">
-                {beneficiary1?.relationshipToNominee1 || ''}
-              </ValueCell>
-              <LabelCell
-                width="w-28"
-                className="border-l border-black text-[9px] text-gray-500"
-              >
-                Relationship to Nominee2
-              </LabelCell>
-              <ValueCell
-                width="w-32"
-                className="border-l border-black bg-gray-100"
-              >
-                {beneficiary1?.relationshipToNominee2 || ''}
-              </ValueCell>
+        {beneficiary1 && (beneficiary1.name || beneficiary1.idNo) && (
+          <div className="flex border border-black mb-1 text-xs">
+            <div className="w-8 border-r border-black flex items-center justify-center font-bold bg-gray-50">
+              1
+            </div>
+            <div className="flex-1">
+              <TableRow>
+                <LabelCell width="w-44">Name</LabelCell>
+                <ValueCell className="font-bold border-r border-black">{beneficiary1?.name || ''}</ValueCell>
+                <LabelCell width="w-44">NRIC/Passport No.</LabelCell>
+                <ValueCell className="font-bold">{beneficiary1?.idNo || ''}</ValueCell>
+              </TableRow>
+              <TableRow>
+                <LabelCell width="w-44">Date of Birth</LabelCell>
+                <ValueCell className="font-bold border-r border-black">{beneficiary1?.dateOfBirth ? formatDate(beneficiary1.dateOfBirth) : (beneficiary1?.birthYear || '')}</ValueCell>
+                <LabelCell width="w-44">Sex</LabelCell>
+                <ValueCell className="font-bold">{beneficiary1?.sex || ''}</ValueCell>
+              </TableRow>
+              <TableRow>
+                <LabelCell width="w-44">Relationship to Applicant</LabelCell>
+                <ValueCell className="font-bold border-r border-black">{beneficiary1?.relationshipToApplicant || ''}</ValueCell>
+                <LabelCell width="w-44">Catholic</LabelCell>
+                <ValueCell className="font-bold">{beneficiary1.isCatholic ? 'Yes' : 'No'}</ValueCell>
+              </TableRow>
+              <TableRow className="border-b-0">
+                <LabelCell width="w-44" className="text-[9px] text-gray-600 leading-tight">Relationship to Nominee1</LabelCell>
+                <ValueCell className="font-bold border-r border-black">{beneficiary1?.relationshipToNominee1 || ''}</ValueCell>
+                <LabelCell width="w-44" className="text-[9px] text-gray-600 leading-tight">Relationship to Nominee2</LabelCell>
+                <ValueCell className="font-bold">{beneficiary1?.relationshipToNominee2 || ''}</ValueCell>
+              </TableRow>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Beneficiary 2 */}
-        <div className="flex border border-black mb-0 text-xs">
-          <div className="w-6 border-r border-black flex items-center justify-center font-bold bg-gray-50">
-            2
-          </div>
-          <div className="flex-1">
-            <TableRow>
-              <LabelCell width="w-36">Name</LabelCell>
-              <ValueCell>{beneficiary2?.name || ''}</ValueCell>
-              <LabelCell width="w-28" className="border-l border-black">
-                NRIC/Passport No.
-              </LabelCell>
-              <ValueCell width="w-32" className="border-l border-black">
-                {beneficiary2?.idNo || ''}
-              </ValueCell>
-            </TableRow>
-            <TableRow>
-              <LabelCell width="w-36">Date of Birth</LabelCell>
-              <ValueCell>{beneficiary2?.dateOfBirth ? formatDate(beneficiary2.dateOfBirth) : (beneficiary2?.birthYear || '')}</ValueCell>
-              <LabelCell width="w-28" className="border-l border-black">
-                Sex
-              </LabelCell>
-              <ValueCell width="w-32" className="border-l border-black">
-                {beneficiary2?.sex || ''}
-              </ValueCell>
-            </TableRow>
-            <TableRow>
-              <LabelCell width="w-36">Relationship to Applicant</LabelCell>
-              <ValueCell>
-                {beneficiary2?.relationshipToApplicant || ''}
-              </ValueCell>
-
-            </TableRow>
-            <TableRow>
-              <LabelCell width="w-36">Catholic</LabelCell>
-
-              <ValueCell>
-                {beneficiary2 ? (beneficiary2.isCatholic ? 'Yes' : 'No') : ''}
-              </ValueCell>
-
-              <LabelCell width="w-28" className="border-l border-black">
-                {'\u00A0'}
-              </LabelCell>
-              <ValueCell width="w-32" className="border-l border-black">
-                {'\u00A0'}
-              </ValueCell>
-            </TableRow>
-            <div className="flex">
-              <LabelCell width="w-36" className="text-[9px] text-gray-500">
-                Relationship to Nominee1
-              </LabelCell>
-              <ValueCell className="bg-gray-100">
-                {beneficiary2?.relationshipToNominee1 || ''}
-              </ValueCell>
-              <LabelCell
-                width="w-28"
-                className="border-l border-black text-[9px] text-gray-500"
-              >
-                Relationship to Nominee2
-              </LabelCell>
-              <ValueCell
-                width="w-32"
-                className="border-l border-black bg-gray-100"
-              >
-                {beneficiary2?.relationshipToNominee2 || ''}
-              </ValueCell>
+        {beneficiary2 && (beneficiary2.name || beneficiary2.idNo) && (
+          <div className="flex border border-black mb-1 text-xs">
+            <div className="w-8 border-r border-black flex items-center justify-center font-bold bg-gray-50">
+              2
+            </div>
+            <div className="flex-1">
+              <TableRow>
+                <LabelCell width="w-44">Name</LabelCell>
+                <ValueCell className="font-bold border-r border-black">{beneficiary2?.name || ''}</ValueCell>
+                <LabelCell width="w-44">NRIC/Passport No.</LabelCell>
+                <ValueCell className="font-bold">{beneficiary2?.idNo || ''}</ValueCell>
+              </TableRow>
+              <TableRow>
+                <LabelCell width="w-44">Date of Birth</LabelCell>
+                <ValueCell className="font-bold border-r border-black">{beneficiary2?.dateOfBirth ? formatDate(beneficiary2.dateOfBirth) : (beneficiary2?.birthYear || '')}</ValueCell>
+                <LabelCell width="w-44">Sex</LabelCell>
+                <ValueCell className="font-bold">{beneficiary2?.sex || ''}</ValueCell>
+              </TableRow>
+              <TableRow>
+                <LabelCell width="w-44">Relationship to Applicant</LabelCell>
+                <ValueCell className="font-bold border-r border-black">{beneficiary2?.relationshipToApplicant || ''}</ValueCell>
+                <LabelCell width="w-44">Catholic</LabelCell>
+                <ValueCell className="font-bold">{beneficiary2.isCatholic ? 'Yes' : 'No'}</ValueCell>
+              </TableRow>
+              <TableRow className="border-b-0">
+                <LabelCell width="w-44" className="text-[9px] text-gray-600 leading-tight">Relationship to Nominee1</LabelCell>
+                <ValueCell className="font-bold border-r border-black">{beneficiary2?.relationshipToNominee1 || ''}</ValueCell>
+                <LabelCell width="w-44" className="text-[9px] text-gray-600 leading-tight">Relationship to Nominee2</LabelCell>
+                <ValueCell className="font-bold">{beneficiary2?.relationshipToNominee2 || ''}</ValueCell>
+              </TableRow>
             </div>
           </div>
-        </div>
+        )}
         <SectionLabel>("The Beneficiary")</SectionLabel>
 
         {/* Consent Text */}
@@ -663,11 +632,11 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
         <div className="border border-black mb-4 text-xs">
           <TableRow>
             <LabelCell>Name</LabelCell>
-            <ValueCell>{nominee?.name || ''}</ValueCell>
+            <ValueCell className="font-bold">{nominee?.name || ''}</ValueCell>
             <LabelCell width="w-28" className="border-l border-black">
               NRIC/Passport No.
             </LabelCell>
-            <ValueCell width="w-32" className="border-l border-black">
+            <ValueCell width="w-32" className="font-bold border-l border-black">
               {nominee?.idNo || ''}
             </ValueCell>
           </TableRow>
@@ -675,21 +644,28 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
             <div className="flex-1 flex flex-col">
               {(() => {
-                const nl = addressUtils.buildAddressLines(nominee || {}); return (<>
+                const nl = addressUtils.buildAddressLines({
+                  addressNo: nominee?.addressNo || '',
+                  addressLine1: nominee?.addressLine1 || '',
+                  addressLine2: nominee?.addressLine2 || '',
+                  addressCity: nominee?.addressCity || '',
+                  addressState: nominee?.addressState || '',
+                  addressCountry: nominee?.addressCountry || '',
+                }); return (<>
                   <div className="flex border-b border-black h-[26px]">
-                    <ValueCell className="flex-1">{nl[0] || ''}</ValueCell>
+                    <ValueCell className="font-bold flex-1">{nl[0] || ''}</ValueCell>
                     <LabelCell width="w-28" className="border-l border-black border-r-0">Mobile No.</LabelCell>
-                    <ValueCell width="w-32" className="border-l border-black">{nominee?.mobileNo || ''}</ValueCell>
+                    <ValueCell width="w-32" className="font-bold border-l border-black">{nominee?.mobileNo || ''}</ValueCell>
                   </div>
                   <div className="flex border-b border-black h-[26px]">
-                    <ValueCell className="flex-1">{nl[1] || ''}</ValueCell>
+                    <ValueCell className="font-bold flex-1">{nl[1] || ''}</ValueCell>
                     <LabelCell width="w-28" className="border-l border-black border-r-0">Home Tel.</LabelCell>
-                    <ValueCell width="w-32" className="border-l border-black">{nominee?.homeTelNo || ''}</ValueCell>
+                    <ValueCell width="w-32" className="font-bold border-l border-black">{nominee?.homeTelNo || ''}</ValueCell>
                   </div>
                   <div className="flex h-[26px]">
-                    <ValueCell className="flex-1">{nl[2] || ''}</ValueCell>
+                    <ValueCell className="font-bold flex-1">{nl[2] || ''}</ValueCell>
                     <LabelCell width="w-28" className="border-l border-black border-r-0">Office Tel.</LabelCell>
-                    <ValueCell width="w-32" className="border-l border-black">{nominee?.officeTelNo || ''}</ValueCell>
+                    <ValueCell width="w-32" className="font-bold border-l border-black">{nominee?.officeTelNo || ''}</ValueCell>
                   </div>
                 </>);
               })()}
@@ -697,66 +673,73 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
           </div>
           <TableRow>
             <LabelCell>e-mail</LabelCell>
-            <ValueCell>{nominee?.email || ''}</ValueCell>
+            <ValueCell className="font-bold">{nominee?.email || ''}</ValueCell>
             <LabelCell width="w-36" className="border-l border-black">
               Relationship to Applicant
             </LabelCell>
-            <ValueCell width="w-24" className="border-l border-black">
+            <ValueCell width="w-24" className="font-bold border-l border-black">
               {nominee?.relationship || ''}
             </ValueCell>
           </TableRow>
         </div>
 
         {/* Nominee 2 */}
-        <p className="mb-1 text-xs font-medium">
-          The Applicant's 2nd nominee for contact purposes ("Nominee") is :
-        </p>
-        <div className="border border-black mb-4 text-xs">
-          <TableRow>
-            <LabelCell>Name</LabelCell>
-            <ValueCell>{nominee2?.name || ''}</ValueCell>
-            <LabelCell width="w-28" className="border-l border-black">
-              NRIC/Passport No.
-            </LabelCell>
-            <ValueCell width="w-32" className="border-l border-black">
-              {nominee2?.idNo || ''}
-            </ValueCell>
-          </TableRow>
-          <div className="flex border-b border-black">
-            <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
-            <div className="flex-1 flex flex-col">
-              {(() => {
-                const n2l = addressUtils.buildAddressLines(nominee2 || {}); return (<>
-                  <div className="flex border-b border-black h-[26px]">
-                    <ValueCell className="flex-1">{n2l[0] || ''}</ValueCell>
-                    <LabelCell width="w-28" className="border-l border-black border-r-0">Mobile No.</LabelCell>
-                    <ValueCell width="w-32" className="border-l border-black">{nominee2?.mobileNo || ''}</ValueCell>
-                  </div>
-                  <div className="flex border-b border-black h-[26px]">
-                    <ValueCell className="flex-1">{n2l[1] || ''}</ValueCell>
-                    <LabelCell width="w-28" className="border-l border-black border-r-0">Home Tel.</LabelCell>
-                    <ValueCell width="w-32" className="border-l border-black">{nominee2?.homeTelNo || ''}</ValueCell>
-                  </div>
-                  <div className="flex h-[26px]">
-                    <ValueCell className="flex-1">{n2l[2] || ''}</ValueCell>
-                    <LabelCell width="w-28" className="border-l border-black border-r-0">Office Tel.</LabelCell>
-                    <ValueCell width="w-32" className="border-l border-black">{nominee2?.officeTelNo || ''}</ValueCell>
-                  </div>
-                </>);
-              })()}
+        {nominee2 && nominee2.name && (
+          <>
+            <p className="mb-1 text-xs font-medium">
+              The Applicant's 2nd nominee for contact purposes ("Nominee") is :
+            </p>
+            <div className="border border-black mb-4 text-xs">
+              <TableRow>
+                <LabelCell>Name</LabelCell>
+                <ValueCell className="font-bold">{nominee2?.name || ''}</ValueCell>
+                <LabelCell width="w-28" className="border-l border-black">
+                  NRIC/Passport No.
+                </LabelCell>
+                <ValueCell width="w-32" className="font-bold border-l border-black">
+                  {nominee2?.idNo || ''}
+                </ValueCell>
+              </TableRow>
+              <div className="flex border-b border-black">
+                <LabelCell className="h-[78px] border-b-0">Address</LabelCell>
+                <div className="flex-1 flex flex-col">
+                  {(() => {
+                    const n2l = addressUtils.buildAddressLines(nominee2 || {});
+                    return (
+                      <>
+                        <div className="flex border-b border-black h-[26px]">
+                          <ValueCell className="font-bold flex-1">{n2l[0] || ''}</ValueCell>
+                          <LabelCell width="w-28" className="border-l border-black border-r-0">Mobile No.</LabelCell>
+                          <ValueCell width="w-32" className="font-bold border-l border-black">{nominee2?.mobileNo || ''}</ValueCell>
+                        </div>
+                        <div className="flex border-b border-black h-[26px]">
+                          <ValueCell className="font-bold flex-1">{n2l[1] || ''}</ValueCell>
+                          <LabelCell width="w-28" className="border-l border-black border-r-0">Home Tel.</LabelCell>
+                          <ValueCell width="w-32" className="font-bold border-l border-black">{nominee2?.homeTelNo || ''}</ValueCell>
+                        </div>
+                        <div className="flex h-[26px]">
+                          <ValueCell className="font-bold flex-1">{n2l[2] || ''}</ValueCell>
+                          <LabelCell width="w-28" className="border-l border-black border-r-0">Office Tel.</LabelCell>
+                          <ValueCell width="w-32" className="font-bold border-l border-black">{nominee2?.officeTelNo || ''}</ValueCell>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+              <TableRow>
+                <LabelCell>e-mail</LabelCell>
+                <ValueCell className="font-bold">{nominee2?.email || ''}</ValueCell>
+                <LabelCell width="w-36" className="border-l border-black">
+                  Relationship to Applicant
+                </LabelCell>
+                <ValueCell width="w-24" className="font-bold border-l border-black">
+                  {nominee2?.relationship || ''}
+                </ValueCell>
+              </TableRow>
             </div>
-          </div>
-          <TableRow>
-            <LabelCell>e-mail</LabelCell>
-            <ValueCell>{nominee2?.email || ''}</ValueCell>
-            <LabelCell width="w-36" className="border-l border-black">
-              Relationship to Applicant
-            </LabelCell>
-            <ValueCell width="w-24" className="border-l border-black">
-              {nominee2?.relationship || ''}
-            </ValueCell>
-          </TableRow>
-        </div>
+          </>
+        )}
 
         {/* Chapel Details Table */}
         <div className="border border-black mb-6 text-xs">
@@ -784,18 +767,20 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </div>
             <div className="w-32 p-1 pl-2">{secondIntermentDate}</div>
           </div>
-          <div className="flex">
-            <div className="w-32 p-1 pl-2 font-medium border-r border-black">
-              Storage Period From
+          {rawIntermentDate && (
+            <div className="flex">
+              <div className="w-32 p-1 pl-2 font-medium border-r border-black">
+                Storage Period From
+              </div>
+              <div className="flex-1 p-1 pl-2 border-r border-black">
+                {storageFrom}
+              </div>
+              <div className="w-32 p-1 pl-2 font-medium border-r border-black">
+                Storage Period To
+              </div>
+              <div className="w-32 p-1 pl-2">{storageTo}</div>
             </div>
-            <div className="flex-1 p-1 pl-2 border-r border-black">
-              {storageFrom}
-            </div>
-            <div className="w-32 p-1 pl-2 font-medium border-r border-black">
-              Storage Period To
-            </div>
-            <div className="w-32 p-1 pl-2">{storageTo}</div>
-          </div>
+          )}
         </div>
 
         {/* Payment Table */}
@@ -816,90 +801,106 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             </div>
             <div className="w-20 p-1 pl-2 text-right pr-2">Total</div>
           </div>
-          {invoiceDetails && invoiceDetails.length > 0 ? (
-            invoiceDetails.map((item, idx) => (
-              <div key={idx} className="flex border-b border-black min-h-[26px]">
-                <div className="w-24 p-1 pl-2 border-r border-black truncate">
-                  {idx === 0 ? invoiceDate : ''}
+          {(() => {
+            // Filter out inscription items — only show niche-related items (typically ItemId <= 7)
+            const nicheItems = invoiceDetails && invoiceDetails.length > 0
+              ? invoiceDetails.filter((item: any) => {
+                const name = (item.itemName || item.description || '').toLowerCase();
+                const code = (item.itemCode || '').toLowerCase();
+                // Exclude inscription items
+                const isInscription = name.includes('inscription') || name.includes('engrav') || code.includes('inscr') || code.includes('engr');
+                return !isInscription;
+              })
+              : [];
+
+            const nicheItemCount = nicheItems.length;
+
+            const nicheNetTotal = nicheItems.reduce((sum: any, item: any) => sum + (item.lineTotalAmount || item.lineNet || item.payingAmount || 0), 0);
+            const nicheTaxTotal = nicheItems.reduce((sum: any, item: any) => sum + (item.lineTaxAmount || item.taxAmount || 0), 0);
+            const nicheGrossTotal = nicheItems.reduce((sum: any, item: any) => sum + (item.totalPayingAmount || item.lineTotal || 0), 0);
+
+            // Build niche description: Chapel Name - Niche Code (count items)
+            const nicheDesc = `${chapelName || 'Niche Fee'}${(nicheNo) ? ` - ${nicheNo}` : ''}${nicheItemCount > 1 ? ` (${nicheItemCount} items)` : ''}`;
+
+            // Receipt payment description
+            const receiptDesc = [
+              paymentMethod,
+              (invoice?.paymentModeDocNo || (invoice as any)?.receipt?.receiptPaymentModeDocNo) ? `Ref: ${invoice?.paymentModeDocNo || (invoice as any).receipt.receiptPaymentModeDocNo}` : ''
+            ].filter(Boolean).join(' - ');
+
+            // Balance = invoice total - receipt amount
+            const invoiceTotal = nicheGrossTotal || totalAmount;
+            const receiptPaid = (invoice as any)?.receiptPayingAmount || (invoice as any)?.receiptAmount || (invoice as any)?.payingAmount || ((invoice as any)?.receipt?.receiptPayingAmount || 0);
+            const outstandingBalance = Math.max(0, invoiceTotal - receiptPaid);
+
+            return (
+              <>
+                {/* Invoice line — single consolidated row for niche items */}
+                <div className="flex border-b border-black min-h-[26px]">
+                  <div className="w-24 p-1 pl-2 border-r border-black truncate">
+                    {invoiceDate}
+                  </div>
+                  <div className="w-24 p-1 pl-2 border-r border-black truncate">
+                    {invoiceNo}
+                  </div>
+                  <div className="flex-1 p-1 pl-2 border-r border-black">
+                    {nicheDesc}
+                  </div>
+                  <div className="w-20 p-1 pl-2 border-r border-black text-right pr-2">
+                    $ {formatCurrency(nicheNetTotal || nicheAmount)}
+                  </div>
+                  <div className="w-16 p-1 pl-2 border-r border-black text-right pr-2">
+                    $ {formatCurrency(nicheTaxTotal || taxAmount)}
+                  </div>
+                  <div className="w-20 p-1 pl-2 text-right pr-2">
+                    $ {formatCurrency(nicheGrossTotal || totalAmount)}
+                  </div>
                 </div>
-                <div className="w-24 p-1 pl-2 border-r border-black truncate">
-                  {idx === 0 ? invoiceNo : ''}
+
+                {/* Receipt line */}
+                <div className="flex border-b border-black h-[26px]">
+                  <div className="w-24 p-1 pl-2 border-r border-black">
+                    {receiptDate}
+                  </div>
+                  <div className="w-24 p-1 pl-2 border-r border-black">
+                    {receiptNo}
+                  </div>
+                  <div className="flex-1 p-1 pl-2 border-r border-black">
+                    {receiptDesc || paymentMethod}
+                  </div>
+                  <div className="w-20 p-1 pl-2 border-r border-black bg-gray-100"></div>
+                  <div className="w-16 p-1 pl-2 border-r border-black text-center">
+                    -
+                  </div>
+                  <div className="w-20 p-1 pl-2 text-right pr-2">
+                    $ {formatCurrency(receiptPaid)}
+                  </div>
                 </div>
-                <div className="flex-1 p-1 pl-2 border-r border-black text-right pr-2">
-                  {idx === 0 && (niche?.code || niche?.number)
-                    ? `${item.itemName || item.description || 'Service Item'} - ${niche?.code || niche?.number}`
-                    : (item.itemName || item.description || 'Service Item')}
+
+                {/* Empty row */}
+                <div className="flex border-b border-black h-[26px]">
+                  <div className="w-24 border-r border-black"></div>
+                  <div className="w-24 border-r border-black"></div>
+                  <div className="flex-1 border-r border-black"></div>
+                  <div className="w-20 border-r border-black"></div>
+                  <div className="w-16 border-r border-black"></div>
+                  <div className="w-20"></div>
                 </div>
-                <div className="w-20 p-1 pl-2 border-r border-black text-right pr-2">
-                  $ {formatCurrency(item.lineNet)}
+
+                {/* Total row */}
+                <div className="flex h-[26px]">
+                  <div className="w-24"></div>
+                  <div className="w-24"></div>
+                  <div className="flex-1"></div>
+                  <div className="w-20"></div>
+                  <div className="w-16 p-1 pr-2 text-right font-medium">Total</div>
+                  <div className="w-20 p-1 pl-2 text-right pr-2 border-l border-black">
+                    $ {formatCurrency(outstandingBalance)}
+                  </div>
                 </div>
-                <div className="w-16 p-1 pl-2 border-r border-black text-right pr-2">
-                  $ {formatCurrency(item.taxAmount)}
-                </div>
-                <div className="w-20 p-1 pl-2 text-right pr-2">
-                  $ {formatCurrency(item.lineTotal)}
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="flex border-b border-black h-[26px]">
-              <div className="w-24 p-1 pl-2 border-r border-black">{invoiceDate}</div>
-              <div className="w-24 p-1 pl-2 border-r border-black">{invoiceNo}</div>
-              <div className="flex-1 p-1 pl-2 border-r border-black text-right pr-2">
-                Niche Fee {(niche?.code || niche?.number) ? `- ${niche?.code || niche?.number}` : ''}
-              </div>
-              <div className="w-20 p-1 pl-2 border-r border-black text-right pr-2">
-                $ {formatCurrency(nicheAmount)}
-              </div>
-              <div className="w-16 p-1 pl-2 border-r border-black text-right pr-2">
-                $ {formatCurrency(taxAmount)}
-              </div>
-              <div className="w-20 p-1 pl-2 text-right pr-2">
-                $ {formatCurrency(totalAmount)}
-              </div>
-            </div>
-          )}
-          <div className="flex border-b border-black h-[26px]">
-            <div className="w-24 p-1 pl-2 border-r border-black">
-              {receiptDate}
-            </div>
-            <div className="w-24 p-1 pl-2 border-r border-black">
-              {receiptNo}
-            </div>
-            <div className="flex-1 p-1 pl-2 border-r border-black text-right pr-2">
-              {paymentMethod}
-            </div>
-            <div className="w-20 p-1 pl-2 border-r border-black bg-gray-100"></div>
-            <div className="w-16 p-1 pl-2 border-r border-black text-center">
-              -
-            </div>
-            <div className="w-20 p-1 pl-2 text-right pr-2">
-              $ {formatCurrency(balance)}
-            </div>
-          </div>
-          {paymentMethod && (paymentMethod.includes('Cheque') || paymentMethod.includes('Bank') || paymentMethod.includes('Transfer')) && invoice?.paymentModeDocNo && (
-            <div className="px-2 py-0.5 text-[9px] text-gray-500 italic border-b border-black">
-              * Payment Ref: {paymentMethod} - {invoice.paymentModeDocNo}
-            </div>
-          )}
-          <div className="flex border-b border-black h-[26px]">
-            <div className="w-24 border-r border-black"></div>
-            <div className="w-24 border-r border-black"></div>
-            <div className="flex-1 border-r border-black"></div>
-            <div className="w-20 border-r border-black"></div>
-            <div className="w-16 border-r border-black"></div>
-            <div className="w-20"></div>
-          </div>
-          <div className="flex h-[26px]">
-            <div className="w-24"></div>
-            <div className="w-24"></div>
-            <div className="flex-1"></div>
-            <div className="w-20"></div>
-            <div className="w-16 p-1 pr-2 text-right font-medium">Total</div>
-            <div className="w-20 p-1 pl-2 text-right pr-2 border-l border-black">
-              $ {formatCurrency(totalAmount)}
-            </div>
-          </div>
+              </>
+            );
+          })()}
         </div>
 
         {/* Deceased Table */}
@@ -914,22 +915,22 @@ export const AgreementPdfTemplate: React.FC<AgreementPdfTemplateProps> = ({
             <div className="w-40 p-1 pl-2">Date of Deceased</div>
           </div>
           <div className="flex border-b border-black h-[26px]">
-            <div className="flex-1 p-1 pl-2 border-r border-black">
+            <div className="w-52 p-1 pl-2 border-r border-black font-bold">
               {firstDeceasedName}
             </div>
-            <div className="w-40 p-1 pl-2 border-r border-black">
+            <div className="w-40 p-1 pl-2 border-r border-black font-bold">
               {firstDeceasedDeathCert}
             </div>
-            <div className="w-40 p-1 pl-2">{firstDeceasedDate}</div>
+            <div className="w-40 p-1 pl-2 font-bold">{firstDeceasedDate}</div>
           </div>
           <div className="flex h-[26px]">
-            <div className="flex-1 p-1 pl-2 border-r border-black">
+            <div className="w-52 p-1 pl-2 border-r border-black font-bold">
               {secondDeceasedName}
             </div>
-            <div className="w-40 p-1 pl-2 border-r border-black">
+            <div className="w-40 p-1 pl-2 border-r border-black font-bold">
               {secondDeceasedDeathCert}
             </div>
-            <div className="w-40 p-1 pl-2">{secondDeceasedDate}</div>
+            <div className="w-40 p-1 pl-2 font-bold">{secondDeceasedDate}</div>
           </div>
         </div>
       </div>

@@ -821,7 +821,17 @@ class InvoiceRepository extends BaseRepository {
       }
 
       const candidateList = Array.from(codeCandidates);
+
+      // Specifically for inscriptions: if it starts with I-, add the stripped version as a candidate
+      // and if it looks like an inscription code without I-, add the prefixed version.
+      if (normalizedSearchCodeUpper.startsWith('I-')) {
+        candidateList.push(normalizedSearchCode.substring(2));
+      } else if (/^\d+-\d+$/.test(normalizedSearchCodeUpper)) {
+        candidateList.push('I-' + normalizedSearchCode);
+      }
+
       const codeConditions = candidateList
+        .filter(Boolean)
         .map((_, idx) => `i.Code = @code${idx}`)
         .join(' OR ');
 
@@ -879,23 +889,33 @@ class InvoiceRepository extends BaseRepository {
           }
         }
 
-        // 1) Detail-first search
+        const appCodeCandidates = [normalizedSearchCode, normalizedSearchCodeUpper];
+        if (normalizedSearchCodeUpper.startsWith('I-')) {
+          appCodeCandidates.push(normalizedSearchCode.substring(2));
+          appCodeCandidates.push(normalizedSearchCodeUpper.substring(2));
+        } else if (/^\d+-\d+$/.test(normalizedSearchCodeUpper)) {
+          appCodeCandidates.push('I-' + normalizedSearchCode);
+          appCodeCandidates.push('I-' + normalizedSearchCodeUpper);
+        }
+
+        const appCodeConditions = appCodeCandidates
+          .filter(Boolean)
+          .map((_, idx) => `id.RefDocNumber = @appCode${idx} OR i.RefDocNumber = @appCode${idx}`)
+          .join(' OR ');
+
         let appCodeQuery = `
           SELECT TOP 1
-      i.*
-        FROM InvoiceDetail id WITH(NOLOCK)
-          INNER JOIN Invoice i WITH(NOLOCK) ON id.InvoiceId = i.InvoiceId
-      WHERE(
-        id.RefDocNumber = @code
-            OR id.RefDocNumber = @codeUpper
-      )
-          AND i.Status > 0
+            i.*
+          FROM InvoiceDetail id WITH(NOLOCK)
+            INNER JOIN Invoice i WITH(NOLOCK) ON id.InvoiceId = i.InvoiceId
+          WHERE (${appCodeConditions})
+            AND i.Status > 0
         `;
 
-        const appParams = {
-          code: normalizedSearchCode,
-          codeUpper: normalizedSearchCodeUpper
-        };
+        const appParams = {};
+        appCodeCandidates.forEach((cand, idx) => {
+          appParams[`appCode${idx}`] = cand;
+        });
 
         if (refDocName) {
           appCodeQuery += ` AND(
@@ -1274,11 +1294,12 @@ ApplicantAddressNo,
         }
       }
 
-      // ENHANCEMENT: Check for inscription items only when missing in current invoice details.
+      // ENHANCEMENT: Check for inscription items ONLY when viewing application preview data (no InvoiceId yet).
+      // For existing invoices, we must only show what is stored in the database.
       const hasIncrDetails = (invoiceResponse.details || []).some(
         d => String(d.refDocName || '').toUpperCase() === 'INCR'
       );
-      if (invoiceResponse.refDocName === 'NAPP' && invoiceResponse.refDocNumber && !hasIncrDetails) {
+      if (invoiceResponse.refDocName === 'NAPP' && invoiceResponse.refDocNumber && !hasIncrDetails && !invoiceResponse.invoiceId) {
         try {
           logger.info(`[getInvoiceByCode] Checking for inscription items for NAPP: ${invoiceResponse.refDocNumber} `);
 
@@ -1393,6 +1414,11 @@ SELECT TOP 2
 
       const AddressUtils = require('../utils/AddressUtils');
       invoiceResponse.customerAddress = AddressUtils.formatAddress(invoiceResponse);
+
+      // Final normalization for address fields to fix duplication issues (e.g. both are "14")
+      if (invoiceResponse.addressNo && invoiceResponse.addressNo === invoiceResponse.address && /^\d+$/.test(String(invoiceResponse.addressNo).trim())) {
+        invoiceResponse.addressNo = 'No';
+      }
 
       return invoiceResponse;
     } catch (error) {

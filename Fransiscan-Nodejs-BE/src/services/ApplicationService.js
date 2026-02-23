@@ -353,9 +353,21 @@ class ApplicationService {
       mobile: applicationData.ApplicantMobileNo || applicationData.mobile || '',
       email: applicationData.ApplicantEmailID || applicationData.email || ''
     };
+
+    // Fix for duplicated address fields (e.g. both are "14")
+    let aNo = (applicationData.ApplicantAddressNo || applicationData.addressNo || '').trim();
+    let aLine1 = (applicationData.ApplicantAddressLine1 || applicationData.addressLine1 || '').trim();
+
+    if (aNo && aNo === aLine1 && /^\d+$/.test(aNo)) {
+      aNo = 'No';
+      // Also update the raw applicationData so the 'application' object in response is corrected
+      if (applicationData.ApplicantAddressNo) applicationData.ApplicantAddressNo = 'No';
+      if (applicationData.addressNo) applicationData.addressNo = 'No';
+    }
+
     const address = {
-      addressNo: applicationData.ApplicantAddressNo || applicationData.addressNo || '',
-      addressLine1: applicationData.ApplicantAddressLine1 || applicationData.addressLine1 || '',
+      addressNo: aNo,
+      addressLine1: aLine1,
       addressLine2: applicationData.ApplicantAddressLine2 || applicationData.addressLine2 || '',
       addressCity: applicationData.ApplicantAddressCity || applicationData.addressCity || '',
       addressState: applicationData.ApplicantAddressState || applicationData.addressState || '',

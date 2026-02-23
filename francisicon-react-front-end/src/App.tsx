@@ -1063,18 +1063,18 @@ The application list will be refreshed to show your new application.`);
                     {loading ? 'Loading...' : 'View'}
                   </Button>
                   {applicationNumber && (
-                  <Button
-                    variant="primary"
-                    onClick={() => {
-                      if (applicationNumber?.trim()) {
-                        navigate(`/niche/edit/${applicationNumber.trim()}`);
-                      }
-                    }}
-                    disabled={!applicationNumber?.trim()}
-                  >
-                    Edit Application
-                  </Button>
-                    )}
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        if (applicationNumber?.trim()) {
+                          navigate(`/niche/edit/${applicationNumber.trim()}`);
+                        }
+                      }}
+                      disabled={!applicationNumber?.trim()}
+                    >
+                      Edit Application
+                    </Button>
+                  )}
                   <Button
                     variant="secondary"
                     icon={<PrinterIcon className="w-4 h-4" />}
@@ -1333,7 +1333,7 @@ The application list will be refreshed to show your new application.`);
                     >
                       ← Previous Step
                     </Button>
-                 
+
                     <Button
                       variant="primary"
                       onClick={async () => {

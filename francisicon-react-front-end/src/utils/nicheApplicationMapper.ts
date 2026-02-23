@@ -879,7 +879,31 @@ export function generateOptimizedPayload(formData: Record<string, any>): any {
 function buildCleanNominees(formData: Record<string, any>): Array<Record<string, any>> {
   const nominees: Array<Record<string, any>> = [];
 
-  // Add first nominee if present - handle both flat and nested structures
+  // If nominees array exists in formData, use it exclusively (avoids phantom duplicates from stale flat fields)
+  if (Array.isArray(formData.nominees) && formData.nominees.length > 0) {
+    formData.nominees.forEach((nominee: any) => {
+      const name = nominee.fullName || nominee.name;
+      if (name) {
+        nominees.push({
+          id: nominee.id,
+          name: name,
+          email: nominee.email || '',
+          phone: nominee.contactNumber || nominee.phone || nominee.mobileNo || '',
+          homeTel: nominee.homeTelNo || nominee.homeTel || '',
+          officeTel: nominee.officeTelNo || nominee.officeTel || '',
+          idNo: nominee.nric || nominee.idNo || '',
+          relationship: nominee.relationship || '',
+          status: nominee.status || 'Active',
+          address: nominee.address && typeof nominee.address === 'object' ? nominee.address : {
+            no: '', line1: '', line2: '', city: '', state: '', country: nominee.country || 'Singapore'
+          }
+        });
+      }
+    });
+    return nominees;
+  }
+
+  // Fallback: Add first nominee if present - handle both flat and nested structures
   const nomineeName = formData.nomineeName || formData.nominee?.name;
   if (nomineeName) {
     nominees.push({
@@ -1274,6 +1298,68 @@ export function mapApiApplicationToFormData(apiData: any): Record<string, any> {
       relationship: apiData.nominee2.relationship || ''
     };
   }
+
+  // Build the nominees array so NomineeDetails useEffect can sync correctly.
+  // Without this, after an update replaces formData entirely, formData.nominees
+  // would be undefined and NomineeDetails would never re-sync local state.
+  const nomineesArray: any[] = [];
+  const buildNomineeEntry = (src: any, id: number) => {
+    const addrNo = src.addressNo || src.address?.no || '';
+    const isBlock = addrNo && String(addrNo).trim().toLowerCase() !== 'no';
+    const blockLabel = isBlock ? 'Block' : (addrNo ? 'No' : 'Block');
+    const blockNo = src.addressLine1 || src.address?.line1 || '';
+    const streetName = src.addressLine2 || src.address?.line2 || '';
+    const rawUnit = src.addressCity || src.address?.city || '';
+    const unitNo = rawUnit ? (String(rawUnit).startsWith('#') ? rawUnit : `#${rawUnit}`) : '';
+    const postalCode = src.addressState || src.address?.state || '';
+    const country = src.addressCountry || src.address?.country || 'Singapore';
+
+    // Build legacy address string
+    let legacyAddr = '';
+    if (typeof src.address === 'string' && src.address.trim()) {
+      legacyAddr = src.address;
+    } else if (blockNo || streetName) {
+      const parts: string[] = [];
+      if (blockNo && streetName) {
+        parts.push(`${blockLabel === 'Block' ? 'Blk' : 'No'} ${blockNo} ${streetName}`.trim());
+      } else if (blockNo) {
+        parts.push(blockNo);
+      } else if (streetName) {
+        parts.push(streetName);
+      }
+      if (unitNo) parts.push(unitNo);
+      if (postalCode) parts.push(`${country} ${postalCode}`);
+      legacyAddr = parts.join(' ');
+    }
+
+    return {
+      id,
+      fullName: src.name || '',
+      nric: src.idNo || '',
+      relationship: src.relationship || '',
+      dateOfBirth: '',
+      contactNumber: src.mobileNo || '',
+      address: legacyAddr,
+      block: blockLabel,
+      blockNo: String(blockNo || '').trim(),
+      streetName: String(streetName || '').trim(),
+      unitNo: String(unitNo || '').trim(),
+      postalCode: String(postalCode || '').trim(),
+      country: String(country || 'Singapore').trim(),
+      officeTelNo: src.officeTelNo || '',
+      homeTelNo: src.homeTelNo || '',
+      email: src.email || '',
+      status: src.status === 'Non-Active' || src.status === 'Inactive' ? 'Non-Active' : 'Active'
+    };
+  };
+
+  if (apiData.nominee && apiData.nominee.name) {
+    nomineesArray.push(buildNomineeEntry(apiData.nominee, 1));
+  }
+  if (apiData.nominee2 && apiData.nominee2.name) {
+    nomineesArray.push(buildNomineeEntry(apiData.nominee2, 2));
+  }
+  formData.nominees = nomineesArray;
 
   // Process beneficiaries to handle dateOfBirth and birthYear mapping
   if (apiData.beneficiaries && Array.isArray(apiData.beneficiaries)) {

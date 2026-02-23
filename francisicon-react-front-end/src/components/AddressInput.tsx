@@ -130,30 +130,14 @@ export function AddressInput({
   });
 
   const setAddressValue = (key: string, value: any) => {
-    setLocalAddressState(prev => {
-      const newState = {
-        ...prev,
-        [key]: value
-      };
-
-      // Trigger immediate address change callback for better responsiveness
-      if (onAddressChange) {
-        const componentFields = {
-          block: newState.block,
-          blockNo: newState.blockNo,
-          streetName: newState.streetName,
-          unitNo: newState.unitNo,
-          postalCode: newState.postalCode,
-          country: newState.country
-        };
-        const completeAddress = createCompleteAddressObject(componentFields);
-        console.log('AddressInput: Immediate onAddressChange triggered for field:', key, 'with value:', value);
-        console.log('AddressInput: Complete address data:', completeAddress);
-        onAddressChange(completeAddress);
-      }
-
-      return newState;
-    });
+    // Only update local state here — the backup sync useEffect will
+    // detect the change via localAddressState and call onAddressChange.
+    // Calling onAddressChange inside setLocalAddressState caused
+    // double-fire cascades that cleared other nominees' addresses.
+    setLocalAddressState(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
 
   // Get lookup state from Redux (for loading indicators)
@@ -168,6 +152,13 @@ export function AddressInput({
   const isInitializedRef = useRef(false);
   const lastSyncedValuesRef = useRef<string>('');
   const lastInitialValuesRef = useRef<string>('');
+
+  // Keep a ref to the latest onAddressChange callback. This prevents the
+  // sync useEffect from depending on onAddressChange (which is an inline
+  // function from NomineeDetails and creates a new ref every render),
+  // breaking the infinite re-render/re-fire feedback loop.
+  const onAddressChangeRef = useRef(onAddressChange);
+  onAddressChangeRef.current = onAddressChange;
 
   // Initialize address fields from initialValues or initialAddressString
   // This effect runs when initialValues or initialAddressString change (e.g., when loading data in edit mode)
@@ -204,15 +195,36 @@ export function AddressInput({
 
     if (hasMeaningfulValues) {
       console.log('AddressInput: Initializing with structured values:', initialValues);
-      setLocalAddressState(prev => ({
-        ...prev,
-        block: initialValues.block || '',
-        blockNo: initialValues.blockNo || '',
-        streetName: initialValues.streetName || '',
-        unitNo: initialValues.unitNo || '',
-        postalCode: initialValues.postalCode || '',
-        country: initialValues.country || 'Singapore'
-      }));
+      // Only update local state if the new values actually differ from current state
+      // This prevents clearing user input during cascading re-renders
+      setLocalAddressState(prev => {
+        const newBlock = initialValues.block || '';
+        const newBlockNo = initialValues.blockNo || '';
+        const newStreetName = initialValues.streetName || '';
+        const newUnitNo = initialValues.unitNo || '';
+        const newPostalCode = initialValues.postalCode || '';
+        const newCountry = initialValues.country || 'Singapore';
+        // Skip update if values haven't actually changed
+        if (
+          prev.block === newBlock &&
+          prev.blockNo === newBlockNo &&
+          prev.streetName === newStreetName &&
+          prev.unitNo === newUnitNo &&
+          prev.postalCode === newPostalCode &&
+          prev.country === newCountry
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          block: newBlock,
+          blockNo: newBlockNo,
+          streetName: newStreetName,
+          unitNo: newUnitNo,
+          postalCode: newPostalCode,
+          country: newCountry
+        };
+      });
       isInitializedRef.current = true;
       return;
     }
@@ -285,10 +297,14 @@ export function AddressInput({
     }
   }, [initialValues, initialAddressString]);
 
-  // Backup sync mechanism - should not be needed with the immediate approach above
+  // Primary sync mechanism — fires onAddressChange when localAddressState changes.
+  // Uses lastSyncedValuesRef to avoid duplicate calls.
+  // IMPORTANT: We depend ONLY on localAddressState, NOT onAddressChange.
+  // The callback is read from onAddressChangeRef to avoid re-triggering when
+  // the parent re-renders and passes a new inline function reference.
   useEffect(() => {
-    // This effect mainly serves as a backup/fallback mechanism
-    if (!onAddressChange) return;
+    const cb = onAddressChangeRef.current;
+    if (!cb) return;
 
     // Get current values
     const block = localAddressState.block;
@@ -308,7 +324,7 @@ export function AddressInput({
       country
     });
 
-    // Always call onAddressChange if values actually changed (regardless of autoSync)
+    // Only call if values actually changed
     if (currentValues !== lastSyncedValuesRef.current) {
       lastSyncedValuesRef.current = currentValues;
 
@@ -316,10 +332,10 @@ export function AddressInput({
       const componentFields = { block, blockNo, streetName, unitNo, postalCode, country };
       const completeAddress = createCompleteAddressObject(componentFields);
 
-      console.log('AddressInput: Backup useEffect triggering onAddressChange with:', completeAddress);
-      onAddressChange(completeAddress);
+      console.log('AddressInput: Sync useEffect triggering onAddressChange with:', completeAddress);
+      cb(completeAddress);
     }
-  }, [localAddressState, onAddressChange]);
+  }, [localAddressState]); // NOT depending on onAddressChange — read from ref
 
   // Handle postal code change with auto-fill (only when postal code changes)
   const handlePostalCodeChange = useCallback((value: string) => {

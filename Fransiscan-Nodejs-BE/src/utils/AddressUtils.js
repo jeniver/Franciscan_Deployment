@@ -71,13 +71,23 @@ class AddressUtils {
      * @returns {Object} Normalized address fields
      */
     static normalizeAddressFields(data = {}) {
+        let rawPrefix = (data.AddressNo || data.addressNo || data.ApplicantAddressNo || data.applicantAddressNo || '').trim();
+        const rawBlock = (data.Address || data.address || data.ApplicantAddressLine1 || data.applicantAddressLine1 || '').trim();
+
+        // Fix for duplicated number issue:
+        // if rawPrefix is same as rawBlock and it's a number, rawPrefix should be "No" 
+        // to provide a proper label instead of duplicating the number.
+        if (rawPrefix && rawPrefix === rawBlock && /^\d+$/.test(rawPrefix)) {
+            rawPrefix = 'No';
+        }
+
         const raw = {
-            prefix: (data.AddressNo || data.addressNo || '').trim(),
-            block: (data.Address || data.address || data.ApplicantAddressLine1 || '').trim(),
-            street: (data.Address2 || data.address2 || data.ApplicantAddressLine2 || '').trim(),
-            unit: (data.AddressCity || data.addressCity || '').trim(),
-            country: (data.Country || data.country || data.ApplicantAddressCountry || 'Singapore').trim(),
-            postal: (data.DistrictCode || data.districtCode || data.ApplicantAddressState || '').trim()
+            prefix: rawPrefix,
+            block: rawBlock,
+            street: (data.Address2 || data.address2 || data.ApplicantAddressLine2 || data.applicantAddressLine2 || '').trim(),
+            unit: (data.AddressCity || data.addressCity || data.ApplicantAddressCity || data.applicantAddressCity || '').trim(),
+            country: (data.Country || data.country || data.ApplicantAddressCountry || data.applicantAddressCountry || 'Singapore').trim(),
+            postal: (data.DistrictCode || data.districtCode || data.ApplicantAddressState || data.applicantAddressState || '').trim()
         };
 
         // Only use prefix if it is a recognised value (Blk, Block, No)

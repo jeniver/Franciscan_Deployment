@@ -22,6 +22,7 @@ import {
   ArchiveIcon,
   CrossIcon,
 } from 'lucide-react'
+import addressUtils from '../utils/addressUtils'
 interface NicheApplicationDetailsModalProps {
   isOpen: boolean
   onClose: () => void

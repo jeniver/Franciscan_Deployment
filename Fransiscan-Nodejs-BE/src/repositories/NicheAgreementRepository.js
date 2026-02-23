@@ -5,7 +5,7 @@ const NicheAgreement = require('../models/NicheAgreement');
 const NicheConcentForm = require('../models/NicheConcentForm');
 const AddressUtils = require('../utils/AddressUtils');
 
-// NOTE: Storage period is derived from 1st Interment Date only (StorageFrom = IntermentDate, StorageTo = IntermentDate + 30y + 30d). Not from NicheInscriptionRequest/NicheBooking.
+// NOTE: Storage period: StorageFrom = 1 Jan of the year after 1st Interment Date, StorageTo = 31 Dec of (StorageFromYear + 29). Example: Interment 24 Jun 2025 → StorageFrom = 1 Jan 2026, StorageTo = 31 Dec 2055.
 
 /**
  * Niche Agreement repository - ULTRA SIMPLIFIED VERSION
@@ -700,8 +700,8 @@ class NicheAgreementRepository extends BaseRepository {
 
   /**
    * Add deceased information from NicheInscriptionRequest.
-   * Storage period: StorageFrom = 1st Interment Date, StorageTo = 1st Interment Date + 30 years + 30 days.
-   * Do NOT use NicheInscriptionRequest.StorageFrom/StorageTo or NicheBooking.StorageFrom.
+   * Storage period: StorageFrom = 1 Jan of next year after 1st Interment Date,
+   * StorageTo = 31 Dec of (StorageFromYear + 29).
    */
   async addDeceasedAndStorageInfo(nicheApplicationId, nicheAgreement) {
     try {
@@ -770,22 +770,27 @@ class NicheAgreementRepository extends BaseRepository {
   }
 
   /**
-   * Set storageFrom = 1st Interment Date, storageTo = 1st Interment Date + 30 years + 30 days.
+   * Set storage period from 1st Interment Date:
+   * StorageFrom = 1 Jan of the NEXT year after interment date
+   * StorageTo = 31 Dec, 30 years from StorageFrom (i.e. StorageFromYear + 29)
+   * Example: Interment 24 June 2025 → StorageFrom = 1 Jan 2026, StorageTo = 31 Dec 2055
    */
   _setStorageFromIntermentDate(nicheAgreement) {
     const d = nicheAgreement.internmentDate1;
     if (!d) return;
-    nicheAgreement.storageFrom = d;
     try {
-      const fromDate = d instanceof Date ? d : new Date(d);
-      if (!isNaN(fromDate.getTime())) {
-        const toDate = new Date(fromDate);
-        toDate.setFullYear(toDate.getFullYear() + 30);
-        toDate.setDate(toDate.getDate() + 30);
-        nicheAgreement.storageTo = toDate.toISOString ? toDate.toISOString() : toDate;
+      const intermentDate = d instanceof Date ? d : new Date(d);
+      if (!isNaN(intermentDate.getTime())) {
+        // Jan 1st of the next year after interment
+        const storageFromDate = new Date(intermentDate.getFullYear() + 1, 0, 1);
+        nicheAgreement.storageFrom = storageFromDate.toISOString();
+
+        // Dec 31st, 30 years from StorageFrom (StorageFromYear + 29)
+        const storageToDate = new Date(storageFromDate.getFullYear() + 30 - 1, 11, 31);
+        nicheAgreement.storageTo = storageToDate.toISOString();
       }
     } catch (e) {
-      logger.warn('[addDeceasedAndStorageInfo] Could not calculate storageTo:', e?.message);
+      logger.warn('[_setStorageFromIntermentDate] Could not calculate storage dates:', e?.message);
     }
   }
 

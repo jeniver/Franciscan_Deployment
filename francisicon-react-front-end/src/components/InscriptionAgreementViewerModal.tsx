@@ -45,56 +45,55 @@ export function InscriptionAgreementViewerModal({
   const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!isOpen) return
-    setError(null)
-    setAgreementData(initialData || null)
-    if (initialData && skipFetchWhenDataProvided) setLoading(false)
-  }, [isOpen, inscriptionCode, initialData, skipFetchWhenDataProvided])
-
-  // Fetch inscription agreement data when modal opens.
-  // When skipFetchWhenDataProvided is true, never fetch - use initialData from parent (e.g. InscriptionAgreementPage).
-  useEffect(() => {
     if (!isOpen || !inscriptionCode) return
-    if (skipFetchWhenDataProvided) {
-      setAgreementData(initialData || null)
-      setLoading(!initialData)
-      return
-    }
-    const fetchAgreementData = async () => {
-        setLoading(true)
-        setError(null)
-        try {
-          const data = await inscriptionAgreementService.getPdfData(inscriptionCode)
 
-          // Try to enrich agreement view with real invoice/receipt details.
-          // Keep silent fallback so agreement still opens even if lookup fails.
-          let enrichedData: InscriptionAgreementData = data
+    const fetchAgreementData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        // Use initialData if provided and skipFetch is requested, otherwise fetch base agreement payload
+        let data: InscriptionAgreementData | null = (initialData && skipFetchWhenDataProvided) ? initialData : null
+
+        if (!data) {
+          data = await inscriptionAgreementService.getPdfData(inscriptionCode)
+        }
+
+        // Always try to enrich agreement view with real invoice/receipt details if not already present.
+        // We do this to ensure payments are shown even if core data was passed via props.
+        if (data && (!data.payments || data.payments.length === 0)) {
           try {
-            const invoiceData = await invoiceService.getInvoiceByCode(inscriptionCode, 'INCR')
+            // Strip I- if searching for invoice to be robust against prefix variations
+            const cleanCode = inscriptionCode.startsWith('I-') ? inscriptionCode.substring(2) : inscriptionCode
+            const invoiceData = await invoiceService.getInvoiceByCode(inscriptionCode, 'INCR') || await invoiceService.getInvoiceByCode(cleanCode, 'INCR')
+
             const hasInvoice = Boolean(invoiceData?.hasInvoice && invoiceData?.code)
-            // Receipt data may be nested under invoiceData.receipt or flat at top level
             const rcpt = invoiceData?.receipt
             const receiptCode = invoiceData?.receiptCode || rcpt?.receiptCode || ''
             const hasReceipt = Boolean(invoiceData?.hasReceipt && receiptCode)
 
             const fmtPaymentDate = (raw: any) => {
               if (!raw) return ''
-              const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+              const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
               const pad = (n: number) => String(n).padStart(2, '0')
               const d = new Date(raw)
               if (!isNaN(d.getTime())) return `${pad(d.getDate())}-${months[d.getMonth()]}-${d.getFullYear()}`
               return String(raw).trim()
             }
 
-            const paymentRows = []
+            const paymentRows: any[] = []
             if (hasInvoice) {
-              const invoiceSubtotal = Number(invoiceData?.summary?.subtotal ?? invoiceData?.totalAmount ?? 0)
+              const invoiceSubtotal = Number(invoiceData?.summary?.subtotal ?? invoiceData?.payingAmount ?? invoiceData?.totalAmount ?? 0)
               const invoiceTax = Number(invoiceData?.summary?.totalTax ?? invoiceData?.taxAmount ?? 0)
               const invoiceTotal = Number(invoiceData?.summary?.grandTotal ?? invoiceData?.totalAmount ?? 0)
+              const invoiceDetails = invoiceData?.details || []
+              const detailDescriptions = invoiceDetails
+                .map((d: any) => d.itemName || d.description || '')
+                .filter(Boolean)
+                .join(', ')
               paymentRows.push({
                 date: fmtPaymentDate(invoiceData?.transactionDate),
                 invReceipt: invoiceData?.code || '',
-                description: invoiceData?.refDocNumber || invoiceData?.applicationCode || inscriptionCode,
+                description: detailDescriptions || invoiceData?.refDocNumber || invoiceData?.applicationCode || inscriptionCode,
                 amount: Number.isFinite(invoiceSubtotal) ? invoiceSubtotal : 0,
                 gst: Number.isFinite(invoiceTax) ? `$ ${invoiceTax.toFixed(2)}` : '',
                 totalAmount: Number.isFinite(invoiceTotal) ? invoiceTotal : 0,
@@ -108,7 +107,7 @@ export function InscriptionAgreementViewerModal({
               const receiptAmount = Number(
                 rcpt?.receiptPayingAmount ?? invoiceData?.receiptPayingAmount
                 ?? rcpt?.receiptTotalAmount ?? invoiceData?.receiptTotalAmount
-                ?? 0
+                ?? invoiceData?.payingAmount ?? 0
               )
               const receiptDate = rcpt?.receiptDate ?? invoiceData?.receiptDate
               paymentRows.push({
@@ -121,28 +120,32 @@ export function InscriptionAgreementViewerModal({
               })
             }
 
-            enrichedData = {
-              ...data,
-              payments: paymentRows
+            if (data) {
+              data = {
+                ...data,
+                payments: paymentRows
+              }
             }
-          } catch {
-            // No-op: keep base agreement payload when invoice lookup is unavailable.
+          } catch (enrichErr) {
+            console.warn('Silent enrichment failure:', enrichErr)
           }
-
-          setAgreementData(enrichedData)
-        } catch (err: any) {
-          if (err instanceof InscriptionAgreementError) {
-            setError(err.message)
-          } else {
-            setError('Failed to load inscription agreement')
-          }
-          console.error('Error fetching inscription agreement:', err)
-        } finally {
-          setLoading(false)
         }
+
+        setAgreementData(data)
+      } catch (err: any) {
+        if (err instanceof InscriptionAgreementError) {
+          setError(err.message)
+        } else {
+          setError('Failed to load inscription agreement')
+        }
+        console.error('Error fetching inscription agreement:', err)
+      } finally {
+        setLoading(false)
       }
+    }
+
     fetchAgreementData()
-  }, [isOpen, inscriptionCode, skipFetchWhenDataProvided, initialData])
+  }, [isOpen, inscriptionCode, initialData])
 
   // Helper function to get all computed styles as inline styles
   const getComputedStylesAsString = (element: Element): string => {
@@ -205,7 +208,7 @@ export function InscriptionAgreementViewerModal({
         }
         @page {
           size: A4;
-          margin: 5mm;
+          margin: 10mm 8mm;
         }
       }
     `
@@ -385,7 +388,7 @@ export function InscriptionAgreementViewerModal({
   // Consistent date formatter: DD-Mon-YYYY (e.g. "19-Feb-2026") matching invoice/receipt
   const formatDate = (raw: string | undefined | null): string => {
     if (!raw) return ''
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     const pad = (n: number) => String(n).padStart(2, '0')
     const d = new Date(raw)
     if (!isNaN(d.getTime())) return `${pad(d.getDate())}-${months[d.getMonth()]}-${d.getFullYear()}`
@@ -396,8 +399,17 @@ export function InscriptionAgreementViewerModal({
   const mapAgreementDataToProps = (data: InscriptionAgreementData) => {
     if (!data) return null
 
-    // Build structured address lines using addressUtils (same as invoice/receipt)
-    const applicantAddressLines = addressUtils.buildAddressLines(data.applicant || {} as any)
+    // Build structured address lines using addressUtils (same format as AgreementPdfTemplate)
+    // Map inscription agreement fields to the AddressEntity format expected by buildAddressLines
+    const applicantAddressEntity = {
+      addressNo: data.applicant?.addressNo || '',
+      addressLine1: data.applicant?.addressLine1 || '',
+      addressLine2: data.applicant?.addressLine2 || '',
+      addressCity: data.applicant?.addressCity || '',
+      addressState: data.applicant?.addressState || '',
+      addressCountry: data.applicant?.addressCountry || '',
+    }
+    const applicantAddressLines = addressUtils.buildAddressLines(applicantAddressEntity)
 
     const mapDeceased = (deceased: typeof data.deceased[0] | undefined) => {
       if (!deceased) return { name: '', deathCertNo: '', dateBorn: '', dateDied: '' }
@@ -519,7 +531,7 @@ function InscriptionAgreementView({
   const safeAddressLines: string[] = Array.isArray(addressLines) ? addressLines : []
 
   return (
-    <div className="w-full max-w-[210mm] mx-auto bg-white p-12 shadow-lg text-black font-sans text-[11px] leading-tight print:shadow-none print:p-0">
+    <div className="w-full max-w-[210mm] mx-auto bg-white p-12 shadow-lg text-black font-sans text-[11px] leading-tight print:shadow-none print:p-6">
       {/* Header Section */}
       <div className="mb-4">
         <h1 className="font-bold text-[12px]">Franciscan Columbarium a ministry of</h1>
@@ -549,62 +561,62 @@ function InscriptionAgreementView({
       <div className="border border-black mb-4">
         <div className="flex border-b border-black">
           <div className="w-36 p-1 pl-2 border-r border-black">Name of Applicant</div>
-          <div className="flex-1 p-1 pl-2">{applicantName}</div>
+          <div className="flex-1 p-1 pl-2 font-bold">{applicantName}</div>
         </div>
         <div className="flex border-b border-black">
           <div className="w-36 p-1 pl-2 border-r border-black h-[78px]">Address</div>
           <div className="flex-1 flex flex-col">
-            <div className="flex-1 p-1 pl-2 border-b border-black">{safeAddressLines[0] || ''}</div>
-            <div className="flex-1 p-1 pl-2 border-b border-black">{safeAddressLines[1] || ''}</div>
-            <div className="flex-1 p-1 pl-2">{safeAddressLines[2] || ''}</div>
+            <div className="flex-1 p-1 pl-2 border-b border-black font-bold">{safeAddressLines[0] || ''}</div>
+            <div className="flex-1 p-1 pl-2 border-b border-black font-bold">{safeAddressLines[1] || ''}</div>
+            <div className="flex-1 p-1 pl-2 font-bold">{safeAddressLines[2] || ''}</div>
           </div>
         </div>
         <div className="flex">
           <div className="w-36 p-1 pl-2 border-r border-black">Tel(Off)</div>
-          <div className="w-40 p-1 pl-2 border-r border-black">{telOff}</div>
+          <div className="w-40 p-1 pl-2 border-r border-black font-bold">{telOff}</div>
           <div className="w-20 p-1 pl-2 border-r border-black">Tel(Res)</div>
-          <div className="w-40 p-1 pl-2 border-r border-black">{telRes}</div>
+          <div className="w-40 p-1 pl-2 border-r border-black font-bold">{telRes}</div>
           <div className="w-20 p-1 pl-2 border-r border-black">Tel(HP)</div>
-          <div className="flex-1 p-1 pl-2">{telHP}</div>
+          <div className="flex-1 p-1 pl-2 font-bold">{telHP}</div>
         </div>
       </div>
 
       {/* Deceased No. 1 */}
       <div className="border border-black mb-4">
         <div className="bg-[#f0f0f0] border-b border-black flex font-bold h-7 items-center px-2">
-          <div className="flex-1">Details of Deceased No.1</div>
-          <div className="w-64 font-normal">Cross Type : &nbsp;&nbsp; {crossType}</div>
+          <div className="flex-1 text-[#8b2828]">Details of Deceased No.1</div>
+          <div className="w-64 font-normal">Cross Type : &nbsp;&nbsp; <span className="font-bold">{crossType}</span></div>
         </div>
         <div className="flex border-b border-black">
           <div className="w-52 p-1 pl-2 border-r border-black">Name Of Deceased No.1</div>
-          <div className="flex-1 p-1 pl-2 border-r border-black">{deceased1.name}</div>
+          <div className="flex-1 p-1 pl-2 border-r border-black font-bold">{deceased1.name}</div>
           <div className="w-36 p-1 pl-2 border-r border-black">Death Cert No:</div>
-          <div className="w-48 p-1 pl-2">{deceased1.deathCertNo}</div>
+          <div className="w-48 p-1 pl-2 font-bold">{deceased1.deathCertNo}</div>
         </div>
         <div className="flex">
           <div className="w-52 p-1 pl-2 border-r border-black">Date Born</div>
-          <div className="flex-1 p-1 pl-2 border-r border-black">{deceased1.dateBorn}</div>
+          <div className="flex-1 p-1 pl-2 border-r border-black font-bold">{deceased1.dateBorn}</div>
           <div className="w-36 p-1 pl-2 border-r border-black">Date Died</div>
-          <div className="w-48 p-1 pl-2">{deceased1.dateDied}</div>
+          <div className="w-48 p-1 pl-2 font-bold">{deceased1.dateDied}</div>
         </div>
       </div>
 
       {/* Deceased No. 2 */}
       <div className="border border-black mb-4">
-        <div className="bg-[#f0f0f0] border-b border-black p-1 pl-2 font-bold h-7 flex items-center">
+        <div className="bg-[#f0f0f0] border-b border-black p-1 pl-2 font-bold h-7 flex items-center text-[#8b2828]">
           Details of Deceased No.2
         </div>
         <div className="flex border-b border-black">
           <div className="w-52 p-1 pl-2 border-r border-black">Name Of Deceased No.2</div>
-          <div className="flex-1 p-1 pl-2 border-r border-black">{deceased2.name}</div>
+          <div className="flex-1 p-1 pl-2 border-r border-black font-bold">{deceased2.name}</div>
           <div className="w-36 p-1 pl-2 border-r border-black">Death Cert No:</div>
-          <div className="w-48 p-1 pl-2">{deceased2.deathCertNo}</div>
+          <div className="w-48 p-1 pl-2 font-bold">{deceased2.deathCertNo}</div>
         </div>
         <div className="flex">
           <div className="w-52 p-1 pl-2 border-r border-black">Date Born</div>
-          <div className="flex-1 p-1 pl-2 border-r border-black">{deceased2.dateBorn}</div>
+          <div className="flex-1 p-1 pl-2 border-r border-black font-bold">{deceased2.dateBorn}</div>
           <div className="w-36 p-1 pl-2 border-r border-black">Date Died</div>
-          <div className="w-48 p-1 pl-2">{deceased2.dateDied}</div>
+          <div className="w-48 p-1 pl-2 font-bold">{deceased2.dateDied}</div>
         </div>
       </div>
 
@@ -632,13 +644,13 @@ function InscriptionAgreementView({
       <div className="border-b border-black italic pb-1 mb-2 min-h-[1.5rem] whitespace-pre-line">{bibleInscriptionText}</div>
 
       <p className="mt-4 mb-1">This is subject to the approval of our Franciscan Friars Custos</p>
- 
+
 
       {/* Payment Details */}
       <div className="border border-black mb-4">
         <div className="p-1 pl-2 border-b border-black font-bold text-[11px]">
           Payment Details: Cheque made payable to" The Order of Friars Minor (S) Ltd-Columbarium" <br />
-          (1st name = $400, 2nd name = $300, 2 names together = $550 <br />
+          (1st name = $400, 2nd name = $300, 2 names together = $650 <br />
           Prices subject to change without notice)
           Internet Banking Transfer: OFMS- Columbarium DBS 072-1185447-4
           PayNow: uen 201016236m2CO
@@ -649,9 +661,9 @@ function InscriptionAgreementView({
               <th className="border-r border-black p-1 text-left w-24">Date</th>
               <th className="border-r border-black p-1 text-left w-24">Inv/ Receipt</th>
               <th className="border-r border-black p-1 text-left">Description</th>
-              <th className="border-r border-black p-1 text-left w-24">Amount</th>
-              <th className="border-r border-black p-1 text-left w-20">GST</th>
-              <th className="p-1 text-right w-24">Amount</th>
+              <th className="border-r border-black p-1 text-right w-20 pr-2">Amount</th>
+              <th className="border-r border-black p-1 text-right w-16 pr-2">GST</th>
+              <th className="p-1 text-right w-24 pr-2">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -660,12 +672,12 @@ function InscriptionAgreementView({
               const totalAmount = Number(p?.totalAmount || 0)
               return (
                 <tr key={i} className="border-b border-black last:border-0 h-8">
-                  <td className="border-r border-black p-1 pl-2">{p?.date || ''}</td>
-                  <td className="border-r border-black p-1 pl-2">{p?.invReceipt || ''}</td>
-                  <td className="border-r border-black p-1 pl-2">{p?.description || ''}</td>
-                  <td className="border-r border-black p-1 pl-2">{Number.isFinite(amount) && amount !== 0 ? `$ ${amount.toFixed(2)}` : ''}</td>
-                  <td className="border-r border-black p-1 pl-2">{p?.gst || ''}</td>
-                  <td className="p-1 pr-2 text-right">{Number.isFinite(totalAmount) ? `$ ${totalAmount.toFixed(2)}` : ''}</td>
+                  <td className="border-r border-black p-1 pl-2 font-bold">{p?.date || ''}</td>
+                  <td className="border-r border-black p-1 pl-2 font-bold">{p?.invReceipt || ''}</td>
+                  <td className="border-r border-black p-1 pl-2 font-bold">{p?.description || ''}</td>
+                  <td className="border-r border-black p-1 pr-2 text-right font-bold w-20">{Number.isFinite(amount) && amount !== 0 ? `$ ${amount.toFixed(2)}` : ''}</td>
+                  <td className="border-r border-black p-1 pr-2 text-right font-bold w-16">{p?.gst || ''}</td>
+                  <td className="p-1 pr-2 text-right font-bold w-24">{Number.isFinite(totalAmount) ? `$ ${totalAmount.toFixed(2)}` : ''}</td>
                 </tr>
               )
             }) : (

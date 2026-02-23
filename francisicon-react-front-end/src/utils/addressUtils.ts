@@ -86,6 +86,17 @@ export const addressUtils = {
             }
         }
 
+        const otherFieldsPopulated = raw.no || raw.line1 || raw.line2 || raw.city || raw.state;
+        const isDefaultSingaporeOnly = !otherFieldsPopulated && (raw.country === '' || raw.country.toLowerCase() === 'singapore');
+
+        if (isDefaultSingaporeOnly) {
+            return ['', '', ''];
+        }
+
+        if (!otherFieldsPopulated && !raw.country) {
+            return ['', '', ''];
+        }
+
         if (unitValue) {
             if (!unitValue.startsWith('#')) {
                 const isRange = unitValue.includes('-') && /^\d+/.test(unitValue);
@@ -96,7 +107,11 @@ export const addressUtils = {
             line3Parts.push(unitValue);
         }
 
-        line3Parts.push(raw.country || 'Singapore');
+        const countryToShow = raw.country || (otherFieldsPopulated ? 'Singapore' : '');
+        if (countryToShow) {
+            line3Parts.push(countryToShow);
+        }
+
         if (postalValue) line3Parts.push(postalValue);
 
         lines.push(line3Parts.join(' '));
