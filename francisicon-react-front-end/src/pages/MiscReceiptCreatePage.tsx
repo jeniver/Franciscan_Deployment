@@ -33,6 +33,7 @@ import { PaymentModeSelector } from '../components/common/PaymentModeSelector';
 import { AddressInput } from '../components/AddressInput';
 import { receiptService } from '../services/receiptService';
 import { ReceiptDetailModal } from '../components/ReceiptDetailModal';
+import { nicheService } from '../services/nicheService';
 
 export function MiscReceiptCreatePage() {
     const navigate = useNavigate();
@@ -61,6 +62,7 @@ export function MiscReceiptCreatePage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [selectedApplicationCode, setSelectedApplicationCode] = useState('MISC');
+    const [nappResults, setNappResults] = useState<any[]>([]);
 
     const {
         searchResults,
@@ -69,19 +71,124 @@ export function MiscReceiptCreatePage() {
         clearResults
     } = useGlobalSearch();
 
+    // Helper to expand NAPP booking data into selectable result (Applicant, Nominee 1, Nominee 2)
+    const expandNappBooking = (booking: any) => {
+        const expanded = [];
+        const code = booking.nicheApplication?.code || booking.code || '';
+
+        // 1. Applicant (Contact Person)
+        if (booking.nicheApplication?.applicantName) {
+            expanded.push({
+                id: `napp-applicant-${booking.nicheBookingId}`,
+                name: booking.nicheApplication.applicantName,
+                entityType: 'application' as const, // Force type to match SearchResult
+                code: code,
+                role: 'Applicant',
+                addressNo: booking.nicheApplication.applicantAddressNo,
+                addressLine1: booking.nicheApplication.applicantAddressLine1,
+                addressLine2: booking.nicheApplication.applicantAddressLine2,
+                addressCity: booking.nicheApplication.applicantAddressCity,
+                addressState: booking.nicheApplication.applicantAddressState,
+                addressCountry: booking.nicheApplication.applicantAddressCountry
+            });
+        }
+
+        // 2. Nominee 1
+        if (booking.nicheApplication?.nomineeName) {
+            expanded.push({
+                id: `napp-nominee1-${booking.nicheBookingId}`,
+                name: booking.nicheApplication.nomineeName,
+                entityType: 'application' as const,
+                code: code,
+                role: 'Nominee 1',
+                addressNo: booking.nicheApplication.nomineeAddressNo,
+                addressLine1: booking.nicheApplication.nomineeAddressLine1,
+                addressLine2: booking.nicheApplication.nomineeAddressLine2,
+                addressCity: booking.nicheApplication.nomineeAddressCity,
+                addressState: booking.nicheApplication.nomineeAddressState,
+                addressCountry: booking.nicheApplication.nomineeAddressCountry
+            });
+        }
+
+        // 3. Nominee 2
+        if (booking.nicheApplication?.nomineeName2) {
+            expanded.push({
+                id: `napp-nominee2-${booking.nicheBookingId}`,
+                name: booking.nicheApplication.nomineeName2,
+                entityType: 'application' as const,
+                code: code,
+                role: 'Nominee 2',
+                addressNo: booking.nicheApplication.nomineeAddressNo2,
+                addressLine1: booking.nicheApplication.nomineeAddressLine12,
+                addressLine2: booking.nicheApplication.nomineeAddressLine22,
+                addressCity: booking.nicheApplication.nomineeAddressCity2,
+                addressState: booking.nicheApplication.nomineeAddressState2,
+                addressCountry: booking.nicheApplication.nomineeAddressCountry2
+            });
+        }
+
+        return expanded;
+    };
+
     // Auto-search when searchTerm changes
     useEffect(() => {
-        const timer = setTimeout(() => {
-            if (searchTerm.trim().length >= 2) {
-                performSearch(searchTerm, ['person', 'application', 'gates-of-life', 'inscription', 'wake-room']);
+        const timer = setTimeout(async () => {
+            const trimmedTerm = searchTerm.trim();
+            if (trimmedTerm.length >= 2) {
                 setShowSuggestions(true);
+
+                // Detect application code patterns (NAPP- prefixed or digits-digits)
+                const isAppCode = /^NAPP/i.test(trimmedTerm) || /^\d+-\d+/.test(trimmedTerm);
+                if (isAppCode) {
+                    try {
+                        const booking = await nicheService.getBookingByCode(trimmedTerm);
+                        if (booking) {
+                            setNappResults(expandNappBooking(booking));
+                        }
+                    } catch (e) {
+                        // Silent fail as global search might still find it
+                        console.debug('Direct NAPP fetch failed, relying on search:', e);
+                    }
+                }
+
+                // Always perform default global search
+                performSearch(trimmedTerm, ['person', 'application', 'gates-of-life', 'wake-room']);
             } else {
                 clearResults();
+                setNappResults([]);
                 setShowSuggestions(false);
             }
-        }, 500);
+        }, 400); // Slightly faster debounce
         return () => clearTimeout(timer);
     }, [searchTerm, performSearch, clearResults]);
+
+    // Watch searchResults to automatically expand any Niche Applications found by name/others
+    useEffect(() => {
+        const autoExpandSearchResults = async () => {
+            // Find application results that look like NAPP by their code
+            const nappApps = searchResults.filter(r =>
+                (r.entityType === ('application' as string) || r.entityType === ('niche-application' as string)) &&
+                r.code && (/^NAPP/i.test(r.code) || /^\d+-\d+/.test(r.code))
+            );
+
+            // If we found a NAPP result and we don't already have NAPP results for it
+            if (nappApps.length > 0 && nappResults.length === 0) {
+                try {
+                    const booking = await nicheService.getBookingByCode(nappApps[0].code!);
+                    if (booking) {
+                        setNappResults(expandNappBooking(booking));
+                    }
+                } catch (e) {
+                    console.error('Failed to auto-expand search result:', e);
+                }
+            } else if (nappApps.length === 0 && !/^NAPP/i.test(searchTerm.trim()) && !/^\d+-\d+/.test(searchTerm.trim())) {
+                // Only clear if not searching by application code directly
+                setNappResults([]);
+            }
+        };
+
+        autoExpandSearchResults();
+    }, [searchResults, searchTerm]);
 
     // Load items and last receipt number on mount
     useEffect(() => {
@@ -197,15 +304,21 @@ export function MiscReceiptCreatePage() {
         }
 
         // populate address fields if they exist in search result
-        // Note: Global search result structure might vary, trying common mappings
-        if (result.addressNo || result.addressLine1 || result.address) {
-            // Handle different field names from backend
-            const block = result.addressNo || 'No';
-            setAddressBlock(block === 'Blk' ? 'Block' : block);
-            setAddressNumber(result.addressLine1 || result.address || '');
-            setAddressStreet(result.addressLine2 || '');
-            setAddressUnit(result.addressCity || '');
-            setAddressPostalCode(result.addressState || result.districtCode || '');
+        if (result.addressNo || result.addressLine1 || result.address || result.addressLine2) {
+            // Smarter block/no detection
+            const rawAddressNo = String(result.addressNo || '');
+            const isBlockValue = /^Blk/i.test(rawAddressNo);
+            const cleanNo = rawAddressNo.replace(/^Blk\s*/i, '').replace(/^No\s*/i, '').trim();
+
+            setAddressBlock(isBlockValue ? 'Block' : (cleanNo ? 'No' : 'Block'));
+            setAddressNumber(cleanNo || '');
+
+            // Street calculation: if result.address exists (full string), use it, otherwise use line1
+            setAddressStreet(result.addressLine1 || result.address || '');
+            setAddressUnit(result.addressLine2 || result.addressCity || '');
+
+            // Postal/State/District
+            setAddressPostalCode(result.postalCode || result.addressState || result.districtCode || '');
             setAddressCountry(result.addressCountry || result.country || 'Singapore');
         }
     };
@@ -324,25 +437,78 @@ export function MiscReceiptCreatePage() {
                                         </div>
 
                                         {/* Suggestions Dropdown */}
-                                        {showSuggestions && (searchResults.length > 0 || isSearching) && (
+                                        {showSuggestions && (searchTerm.trim().length >= 2) && (
                                             <div className="absolute z-50 w-full mt-1 bg-white border border-gray-100 rounded-xl shadow-xl max-h-72 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
-                                                {isSearching && searchResults.length === 0 ? (
+                                                {isSearching && searchResults.length === 0 && nappResults.length === 0 ? (
                                                     <div className="p-8 text-center">
                                                         <LoaderIcon className="w-6 h-6 animate-spin text-teal-500 mx-auto mb-2" />
                                                         <p className="text-xs text-gray-400 font-medium">Searching database...</p>
+                                                    </div>
+                                                ) : searchResults.length === 0 && nappResults.length === 0 && !isSearching ? (
+                                                    <div className="p-8 text-center">
+                                                        <SearchIcon className="w-6 h-6 text-gray-200 mx-auto mb-2" />
+                                                        <p className="text-xs text-gray-400 font-medium">No matching recipients found</p>
                                                     </div>
                                                 ) : (
                                                     <div className="py-2">
                                                         <div className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50/50 flex justify-between items-center">
                                                             <span>Select a recipient</span>
-                                                            {selectedApplicationCode !== 'MISC' && (
+                                                            {(selectedApplicationCode !== 'MISC' || nappResults.length > 0) && (
                                                                 <span className="text-teal-600 lowercase bg-teal-50 px-1.5 py-0.5 rounded flex items-center gap-1">
                                                                     <HashIcon className="w-2.5 h-2.5" />
-                                                                    Linked: {selectedApplicationCode}
+                                                                    Linked: {nappResults.length > 0 ? nappResults[0].code : selectedApplicationCode}
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        {searchResults.map((result, idx) => (
+
+                                                        {/* NAPP Results (Applicants/Nominees) */}
+                                                        {nappResults.map((result, idx) => (
+                                                            <button
+                                                                key={`napp-${idx}`}
+                                                                onClick={() => handleSelectResult(result)}
+                                                                className="w-full px-4 py-3 text-left hover:bg-teal-50/50 transition-colors border-b border-gray-50 last:border-0 group"
+                                                            >
+                                                                <div className="flex items-start gap-3">
+                                                                    <div className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${result.role === 'Applicant' ? 'bg-indigo-50 text-indigo-600' : 'bg-teal-50 text-teal-600'
+                                                                        }`}>
+                                                                        {result.role === 'Applicant' ? <UserIcon className="w-4 h-4" /> : <HashIcon className="w-4 h-4" />}
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="flex items-center justify-between mb-0.5">
+                                                                            <p className="text-sm font-bold text-gray-900 truncate">
+                                                                                {result.name}
+                                                                            </p>
+                                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${result.role === 'Applicant' ? 'bg-indigo-100 text-indigo-700' : 'bg-teal-100 text-teal-700'
+                                                                                }`}>
+                                                                                {result.role}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 text-[11px] text-gray-500 font-medium">
+                                                                            <span className="text-gray-900 font-bold">{result.code}</span>
+                                                                            {result.addressLine1 && (
+                                                                                <>
+                                                                                    <span className="text-gray-300">•</span>
+                                                                                    <span className="truncate flex items-center gap-1">
+                                                                                        <MapPinIcon className="w-2.5 h-2.5 text-gray-400" />
+                                                                                        {result.addressLine1}
+                                                                                    </span>
+                                                                                </>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </button>
+                                                        ))}
+
+                                                        {/* Global Search Results (Filtered to exclude expanded applications) */}
+                                                        {searchResults.filter(r => {
+                                                            // If we have nappResults for this code, don't show the base application result
+                                                            if ((r.entityType === 'application' || r.entityType === 'niche-application') &&
+                                                                nappResults.some(nr => nr.code === r.code)) {
+                                                                return false;
+                                                            }
+                                                            return true;
+                                                        }).map((result, idx) => (
                                                             <button
                                                                 key={`${result.id}-${idx}`}
                                                                 onClick={() => handleSelectResult(result)}

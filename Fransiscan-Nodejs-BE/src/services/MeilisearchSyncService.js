@@ -21,18 +21,18 @@ class MeilisearchSyncService {
       // Update index settings for better search
       await this.index.updateSettings({
         searchableAttributes: [
-          'code', 
-          'primaryName', 
-          'names', 
-          'deceasedNames', 
-          'purpose', 
-          'remarks', 
-          'additionalPhrase', 
+          'code',
+          'primaryName',
+          'names',
+          'deceasedNames',
+          'purpose',
+          'remarks',
+          'additionalPhrase',
           'contactInfo',
           'searchableContent'
         ],
         filterableAttributes: [
-          'entityType', 
+          'entityType',
           'churchId',
           'dates'
         ],
@@ -95,6 +95,7 @@ class MeilisearchSyncService {
           na.Code,
           na.ApplicantName,
           na.NomineeName,
+          na.NomineeName2,
           na.ApplicantEmailID,
           na.ApplicantMobileNo,
           na.AppliedDate,
@@ -112,14 +113,14 @@ class MeilisearchSyncService {
       `;
 
       const queryParams = {};
-      
+
       if (lastSyncTime) {
         query += ` AND na.UpdatedAt >= @lastSyncTime`;
         queryParams.lastSyncTime = lastSyncTime;
       }
 
       const result = await pool.request().query(query);
-      const documents = result.recordset.map(record => 
+      const documents = result.recordset.map(record =>
         mapEntityToDocument({ ...record }, 'niche-application')
       );
 
@@ -163,7 +164,7 @@ class MeilisearchSyncService {
       `;
 
       const queryParams = {};
-      
+
       if (lastSyncTime) {
         query += ` AND ewa.UpdatedAt >= @lastSyncTime`;
         queryParams.lastSyncTime = lastSyncTime;
@@ -173,9 +174,9 @@ class MeilisearchSyncService {
       if (lastSyncTime) {
         request.input('lastSyncTime', lastSyncTime);
       }
-      
+
       const result = await request.query(query);
-      const documents = result.recordset.map(record => 
+      const documents = result.recordset.map(record =>
         mapEntityToDocument({ ...record }, 'gates-of-life')
       );
 
@@ -197,7 +198,7 @@ class MeilisearchSyncService {
   async syncNicheInscriptionRequests(lastSyncTime = null) {
     try {
       const pool = await getPool();
-      
+
       // First, get the inscription requests
       let query = `
         SELECT 
@@ -222,7 +223,7 @@ class MeilisearchSyncService {
       `;
 
       const queryParams = {};
-      
+
       if (lastSyncTime) {
         query += ` AND ir.UpdatedAt >= @lastSyncTime`;
         queryParams.lastSyncTime = lastSyncTime;
@@ -232,9 +233,9 @@ class MeilisearchSyncService {
       if (lastSyncTime) {
         request.input('lastSyncTime', lastSyncTime);
       }
-      
+
       const result = await request.query(query);
-      
+
       // Get deceased information for each inscription request
       const documents = [];
       for (const record of result.recordset) {
@@ -244,19 +245,19 @@ class MeilisearchSyncService {
           FROM NicheInscriptionRequestDecesed
           WHERE NicheInscriptionRequestId = @inscriptionId
         `;
-        
+
         const deceasedResults = await pool.request()
           .input('inscriptionId', record.id)
           .query(deceasedQuery);
-        
+
         const deceasedNames = deceasedResults.recordset.map(d => d.NameOfDeceased).filter(Boolean);
-        
+
         // Add deceased names to the record
         const enhancedRecord = {
           ...record,
           deceasedNames: deceasedNames
         };
-        
+
         documents.push(mapEntityToDocument(enhancedRecord, 'inscription'));
       }
 
@@ -301,7 +302,7 @@ class MeilisearchSyncService {
       `;
 
       const queryParams = {};
-      
+
       if (lastSyncTime) {
         query += ` AND wrb.UpdatedAt >= @lastSyncTime`;
         queryParams.lastSyncTime = lastSyncTime;
@@ -311,9 +312,9 @@ class MeilisearchSyncService {
       if (lastSyncTime) {
         request.input('lastSyncTime', lastSyncTime);
       }
-      
+
       const result = await request.query(query);
-      const documents = result.recordset.map(record => 
+      const documents = result.recordset.map(record =>
         mapEntityToDocument({ ...record }, 'wake-room-booking')
       );
 
@@ -349,13 +350,13 @@ class MeilisearchSyncService {
   async fullSync() {
     try {
       logger.info('Starting full Meilisearch sync');
-      
+
       // Clear existing index (optional - we can just upsert)
       // await this.index.deleteAllDocuments();
-      
+
       // Perform incremental sync from the beginning
       await this.incrementalSync(null);
-      
+
       logger.info('Full Meilisearch sync completed');
     } catch (error) {
       logger.error('Error during full Meilisearch sync:', error);

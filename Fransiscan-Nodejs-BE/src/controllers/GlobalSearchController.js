@@ -336,6 +336,7 @@ class GlobalSearchController {
       case 'niche-application':
         result.applicantName = hit.primaryName || '';
         result.nomineeName = (hit.names && hit.names.length > 1) ? hit.names[1] : '';
+        result.nomineeName2 = (hit.names && hit.names.length > 2) ? hit.names[2] : '';
         result.applicationDate = hit.dates && hit.dates.length > 0 ? hit.dates[0] : null;
         result.status = hit.status || 0;
         result.email = hit.contactInfo && hit.contactInfo.length > 0 ? hit.contactInfo[0] : '';
@@ -450,6 +451,7 @@ class GlobalSearchController {
         na.Code,
         na.ApplicantName,
         na.NomineeName,
+        na.NomineeName2,
         na.ApplicantIDNo,
         na.ApplicantEmailID,
         na.ApplicantMobileNo,
@@ -468,6 +470,7 @@ class GlobalSearchController {
             WHEN na.ApplicantName LIKE @exactMatch THEN 3
             WHEN na.ApplicantName LIKE @contains THEN 4
             WHEN na.NomineeName LIKE @contains THEN 5
+            WHEN na.NomineeName2 LIKE @contains THEN 5
             ELSE 6
           END,
           na.AppliedDate DESC
@@ -484,6 +487,7 @@ class GlobalSearchController {
           na.Code LIKE @searchPattern OR
           na.ApplicantName LIKE @searchPattern OR
           na.NomineeName LIKE @searchPattern OR
+          na.NomineeName2 LIKE @searchPattern OR
           na.ApplicantIDNo LIKE @searchPattern OR
           na.ApplicantEmailID LIKE @searchPattern
         )
@@ -553,6 +557,7 @@ class GlobalSearchController {
           code: record.Code,
           applicantName: record.ApplicantName,
           nomineeName: record.NomineeName,
+          nomineeName2: record.NomineeName2,
           applicationDate: record.AppliedDate,
           status: record.Status,
           nicheCode: record.NicheCode,
@@ -2358,11 +2363,18 @@ class GlobalSearchController {
         na.Code,
         na.ApplicantName,
         na.NomineeName,
+        na.NomineeName2,
         na.ApplicantIDNo,
         na.ApplicantEmailID,
         na.ApplicantMobileNo,
         na.AppliedDate,
         na.AgreementDate,
+        na.ApplicantAddressNo,
+        na.ApplicantAddressLine1,
+        na.ApplicantAddressLine2,
+        na.ApplicantAddressCity,
+        na.ApplicantAddressState,
+        na.ApplicantAddressCountry,
         na.Status,
         na.ChurchId,
         n.Code AS NicheCode,
@@ -2376,6 +2388,7 @@ class GlobalSearchController {
             WHEN na.ApplicantName LIKE @exactMatch THEN 3
             WHEN na.ApplicantName LIKE @contains THEN 4
             WHEN na.NomineeName LIKE @contains THEN 5
+            WHEN na.NomineeName2 LIKE @contains THEN 5
             ELSE 6
           END,
           na.AppliedDate DESC
@@ -2392,6 +2405,7 @@ class GlobalSearchController {
           na.Code LIKE @searchPattern OR
           na.ApplicantName LIKE @searchPattern OR
           na.NomineeName LIKE @searchPattern OR
+          na.NomineeName2 LIKE @searchPattern OR
           na.ApplicantIDNo LIKE @searchPattern OR
           na.ApplicantEmailID LIKE @searchPattern
         )
@@ -2406,6 +2420,8 @@ class GlobalSearchController {
           na.Code LIKE @searchPattern OR
           na.ApplicantName LIKE @searchPattern OR
           na.NomineeName LIKE @searchPattern OR
+          na.NomineeName2 LIKE @searchPattern OR
+          na.ApplicantAddressLine1 LIKE @searchPattern OR
           na.ApplicantIDNo LIKE @searchPattern OR
           na.ApplicantEmailID LIKE @searchPattern
         )
@@ -2461,6 +2477,7 @@ class GlobalSearchController {
           code: record.Code,
           applicantName: record.ApplicantName,
           nomineeName: record.NomineeName,
+          nomineeName2: record.NomineeName2,
           applicationDate: record.AppliedDate,
           status: record.Status,
           nicheCode: record.NicheCode,
@@ -2730,7 +2747,7 @@ class GlobalSearchController {
           relevance: this.calculateRelevance(record.relevanceRank, 'niche'),
           location: {
             nicheId: record.NicheId,
-            rowId: record.NicheRowlId,
+            rowId: record.NicheRowId,
             wallId: record.NicheWallId,
             chapelId: record.ChapelId
           }

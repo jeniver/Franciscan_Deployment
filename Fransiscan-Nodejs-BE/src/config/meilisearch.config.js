@@ -19,25 +19,25 @@ const DOCUMENT_SCHEMA = {
   entityType: 'string',            // Type of entity (e.g., niche-application, engrave-wall-application)
   churchId: 'number',              // Church identifier for filtering
   code: 'string',                  // Code of the entity (e.g., NAPP-1234, GOL-5678)
-  
+
   // Name-related fields
   primaryName: 'string',           // Primary name (ApplicantName, etc.)
   names: 'array',                  // Array of all relevant names
   deceasedNames: 'array',          // Names of deceased individuals (for inscriptions)
-  
+
   // Date-related fields
   dates: 'array',                  // Array of relevant dates in ISO format
   createdAt: 'string',             // Creation date
   updatedAt: 'string',             // Last update date
-  
+
   // Content fields
   purpose: 'string',               // Purpose of booking/request
   remarks: 'string',               // Additional remarks
   additionalPhrase: 'string',      // Additional inscription phrases
-  
+
   // Contact info (non-sensitive)
   contactInfo: 'array',            // Non-sensitive contact identifiers (emails, phone numbers)
-  
+
   // Additional searchable content
   searchableContent: 'string',     // Concatenated searchable text for broader matching
 };
@@ -67,61 +67,62 @@ const mapEntityToDocument = (entity, entityType) => {
       baseDocument.primaryName = entity.applicantName || entity.ApplicantName || entity.Applicant_Name || null;
       baseDocument.names = [
         entity.applicantName || entity.ApplicantName || entity.Applicant_Name,
-        entity.nomineeName || entity.NomineeName || entity.Nominee_Name
+        entity.nomineeName || entity.NomineeName || entity.Nominee_Name,
+        entity.nomineeName2 || entity.NomineeName2 || entity.Nominee_Name2
       ].filter(Boolean);
-      
+
       baseDocument.dates = [
         entity.appliedDate || entity.AppliedDate || entity.Applied_Date,
         entity.agreementDate || entity.AgreementDate || entity.Agreement_Date
       ].filter(Boolean).map(date => new Date(date).toISOString());
-      
+
       baseDocument.purpose = entity.purpose || entity.Purpose || null;
       baseDocument.remarks = entity.remarks || entity.Remarks || null;
-      
+
       baseDocument.contactInfo = [
         entity.email || entity.EmailID || entity.Email_ID,
         entity.mobile || entity.MobileNo || entity.Mobile_No,
         entity.homeTel || entity.HomeTelNo || entity.Home_Tel_No
       ].filter(Boolean);
-      
+
       break;
 
     case 'engrave-wall-application':
     case 'gates-of-life':
       baseDocument.primaryName = entity.applicantName || entity.ApplicantName || entity.Applicant_Name || null;
       baseDocument.names = [entity.applicantName || entity.ApplicantName || entity.Applicant_Name].filter(Boolean);
-      
+
       baseDocument.dates = [
         entity.bookingDate || entity.BookingDate || entity.Booking_Date
       ].filter(Boolean).map(date => new Date(date).toISOString());
-      
+
       baseDocument.contactInfo = [
         entity.email || entity.EmailID || entity.Email_ID,
         entity.mobile || entity.MobileNo || entity.Mobile_No,
         entity.homeTel || entity.HomeTelNo || entity.Home_Tel_No
       ].filter(Boolean);
-      
+
       break;
 
     case 'niche-inscription':
     case 'inscription':
       baseDocument.primaryName = entity.applicantName || entity.ApplicantName || entity.Applicant_Name || null;
       baseDocument.names = [entity.applicantName || entity.ApplicantName || entity.Applicant_Name].filter(Boolean);
-      
+
       baseDocument.deceasedNames = (entity.deceasedNames || entity.DeceasedNames || []).filter(Boolean);
-      
+
       baseDocument.dates = [
         entity.transactionDate || entity.TranscationDate || entity.Transaction_Date
       ].filter(Boolean).map(date => new Date(date).toISOString());
-      
+
       baseDocument.additionalPhrase = entity.inscriptionPhrase || entity.AdditionalInscriptionPhrase || null;
       baseDocument.purpose = entity.purpose || entity.Purpose || null;
-      
+
       baseDocument.contactInfo = [
         entity.email || entity.EmailID || entity.Email_ID,
         entity.mobile || entity.MobileNo || entity.Mobile_No
       ].filter(Boolean);
-      
+
       break;
 
     case 'wake-room-booking':
@@ -131,21 +132,21 @@ const mapEntityToDocument = (entity, entityType) => {
         entity.applicantName || entity.ApplicantName || entity.Applicant_Name,
         entity.nameOfDeceased || entity.NameOfDeceased || entity.Name_Of_Deceased
       ].filter(Boolean);
-      
+
       baseDocument.dates = [
         entity.usingDate || entity.UsingDate || entity.Using_Date,
         entity.transcationDate || entity.TranscationDate || entity.Transaction_Date
       ].filter(Boolean).map(date => new Date(date).toISOString());
-      
+
       baseDocument.purpose = entity.purpose || entity.Purpose || null;
       baseDocument.remarks = entity.remarks || entity.Remarks || null;
-      
+
       baseDocument.contactInfo = [
         entity.email || entity.EmailID || entity.Email_ID,
         entity.mobile || entity.MobileNo || entity.Mobile_No,
         entity.homeTel || entity.HomeTelNo || entity.Home_Tel_No
       ].filter(Boolean);
-      
+
       break;
   }
 

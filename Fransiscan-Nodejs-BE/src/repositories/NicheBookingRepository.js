@@ -36,7 +36,7 @@ class NicheBookingRepository {
     try {
       const query = `
         SELECT 
-          nb.*,
+          na.NicheApplicationId,
           na.Code AS ApplicationCode,
           na.ApplicantName,
           na.ApplicantIDNo,
@@ -49,8 +49,41 @@ class NicheBookingRepository {
           na.ApplicantAddressCity,
           na.ApplicantAddressState,
           na.ApplicantAddressCountry,
+          na.NomineeName,
+          na.NomineeIDNo,
+          na.NomineeEmailID,
+          na.NomineeMobileNo,
+          na.NomineeHomeTelNo,
+          na.NomineeOfficeTelNo,
+          na.NomineeRelationship,
+          na.NomineeIsCatholic,
+          na.NomineeAddressNo,
+          na.NomineeAddressLine1,
+          na.NomineeAddressLine2,
+          na.NomineeAddressCity,
+          na.NomineeAddressState,
+          na.NomineeAddressCountry,
+          na.NomineeName2,
+          na.NomineeIDNo2,
+          na.NomineeEmailID2,
+          na.NomineeMobileNo2,
+          na.NomineeHomeTelNo2,
+          na.NomineeOfficeTelNo2,
+          na.NomineeIsCatholic2,
+          na.NomineeRelationship2,
+          na.NomineeAddressNo2,
+          na.NomineeAddressLine12,
+          na.NomineeAddressLine22,
+          na.NomineeAddressCity2,
+          na.NomineeAddressState2,
+          na.NomineeAddressCountry2,
+          na.ChurchId,
+          nb.NicheBookingId,
+          nb.NicheId,
+          nb.BookedDate,
+          nb.BookingStatus,
+          nb.Remarks,
           n.Code AS NicheCode,
-          n.NicheId,
           c.ChapelId,
           c.Code AS ChapelCode,
           c.Name AS ChapelName,
@@ -62,18 +95,32 @@ class NicheBookingRepository {
           nominee.IDNo AS NomineeIDNo,
           nominee.MobileNo AS NomineeMobileNo,
           nominee.EmailID AS NomineeEmailID,
+          nominee.AddressNo AS NomineeAddressNo,
+          nominee.AddressLine1 AS NomineeAddressLine1,
+          nominee.AddressLine2 AS NomineeAddressLine2,
+          nominee.AddressCity AS NomineeAddressCity,
+          nominee.AddressState AS NomineeAddressState,
+          nominee.AddressCountry AS NomineeAddressCountry,
           nominee2.Name AS Nominee2Name,
-          nominee2.IDNo AS Nominee2IDNo
-        FROM NicheBooking nb WITH (NOLOCK)
-        INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
-        INNER JOIN Niche n WITH (NOLOCK) ON nb.NicheId = n.NicheId
-        INNER JOIN NicheRow nr WITH (NOLOCK) ON n.NicheRowId = nr.NicheRowId
-        INNER JOIN NicheWall nw WITH (NOLOCK) ON nr.NicheWallId = nw.NicheWallId
-        INNER JOIN Chapel c WITH (NOLOCK) ON nw.ChapelId = c.ChapelId
+          nominee2.IDNo AS Nominee2IDNo,
+          nominee2.MobileNo AS Nominee2MobileNo,
+          nominee2.EmailID AS Nominee2EmailID,
+          nominee2.AddressNo AS Nominee2AddressNo,
+          nominee2.AddressLine1 AS Nominee2AddressLine1,
+          nominee2.AddressLine2 AS Nominee2AddressLine2,
+          nominee2.AddressCity AS Nominee2AddressCity,
+          nominee2.AddressState AS Nominee2AddressState,
+          nominee2.AddressCountry AS Nominee2AddressCountry
+        FROM NicheApplication na WITH (NOLOCK)
+        LEFT JOIN NicheBooking nb WITH (NOLOCK) ON na.NicheApplicationId = nb.NicheApplicationId AND nb.BookingStatus > 0
+        LEFT JOIN Niche n WITH (NOLOCK) ON nb.NicheId = n.NicheId
+        LEFT JOIN NicheRow nr WITH (NOLOCK) ON n.NicheRowlId = nr.NicheRowlId
+        LEFT JOIN NicheWall nw WITH (NOLOCK) ON nr.NicheWallId = nw.NicheWallId
+        LEFT JOIN Chapel c WITH (NOLOCK) ON nw.ChapelId = c.ChapelId
         LEFT JOIN Person contact WITH (NOLOCK) ON nb.ContactPersonId = contact.PersonId
         LEFT JOIN Person nominee WITH (NOLOCK) ON nb.NomineeId = nominee.PersonId
         LEFT JOIN Person nominee2 WITH (NOLOCK) ON nb.NomineeId2 = nominee2.PersonId
-        WHERE na.Code = @code AND nb.BookingStatus > 0
+        WHERE na.Code = @code AND na.Status > 0
       `;
 
       const result = await executeQuery(query, { code: applicationCode });
@@ -87,54 +134,108 @@ class NicheBookingRepository {
       // Map to NicheBooking object
       const booking = new NicheBooking({
         ...row,
-        contact: {
+        contact: row.ContactName ? {
           name: row.ContactName,
           idNo: row.ContactIDNo,
           mobileNo: row.ContactMobileNo,
           emailID: row.ContactEmailID
-        },
-        nominee: {
+        } : null,
+        nominee: row.NomineeName ? {
           name: row.NomineeName,
           idNo: row.NomineeIDNo,
           mobileNo: row.NomineeMobileNo,
-          emailID: row.NomineeEmailID
-        },
-        nominee2: row.Nominee2Name
-          ? {
-            name: row.Nominee2Name,
-            idNo: row.Nominee2IDNo
-          }
-          : null,
+          emailID: row.NomineeEmailID,
+          addressNo: row.NomineeAddressNo,
+          addressLine1: row.NomineeAddressLine1,
+          addressLine2: row.NomineeAddressLine2,
+          addressCity: row.NomineeAddressCity,
+          addressState: row.NomineeAddressState,
+          addressCountry: row.NomineeAddressCountry
+        } : null,
+        nominee2: row.Nominee2Name ? {
+          name: row.Nominee2Name,
+          idNo: row.Nominee2IDNo,
+          mobileNo: row.Nominee2MobileNo,
+          emailID: row.Nominee2EmailID,
+          addressNo: row.Nominee2AddressNo,
+          addressLine1: row.Nominee2AddressLine1,
+          addressLine2: row.Nominee2AddressLine2,
+          addressCity: row.Nominee2AddressCity,
+          addressState: row.Nominee2AddressState,
+          addressCountry: row.Nominee2AddressCountry
+        } : null,
         nicheApplication: {
           code: row.ApplicationCode,
+          applicantId: row.NicheApplicationId,
           applicantName: row.ApplicantName,
           applicantIDNo: row.ApplicantIDNo,
-          niche: {
+          applicantEmailID: row.ApplicantEmailID,
+          applicantMobileNo: row.ApplicantMobileNo,
+          applicantHomeTelNo: row.ApplicantHomeTelNo,
+          applicantAddressNo: row.ApplicantAddressNo,
+          applicantAddressLine1: row.ApplicantAddressLine1,
+          applicantAddressLine2: row.ApplicantAddressLine2,
+          applicantAddressCity: row.ApplicantAddressCity,
+          applicantAddressState: row.ApplicantAddressState,
+          applicantAddressCountry: row.ApplicantAddressCountry,
+          nomineeName: row.NomineeName,
+          nomineeIDNo: row.NomineeIDNo,
+          nomineeEmailID: row.NomineeEmailID,
+          nomineeMobileNo: row.NomineeMobileNo,
+          nomineeHomeTelNo: row.NomineeHomeTelNo,
+          nomineeOfficeTelNo: row.NomineeOfficeTelNo,
+          nomineeRelationship: row.NomineeRelationship,
+          nomineeIsCatholic: row.NomineeIsCatholic,
+          nomineeAddressNo: row.NomineeAddressNo,
+          nomineeAddressLine1: row.NomineeAddressLine1,
+          nomineeAddressLine2: row.NomineeAddressLine2,
+          nomineeAddressCity: row.NomineeAddressCity,
+          nomineeAddressState: row.NomineeAddressState,
+          nomineeAddressCountry: row.NomineeAddressCountry,
+          nomineeName2: row.NomineeName2,
+          nomineeIDNo2: row.NomineeIDNo2,
+          nomineeEmailID2: row.NomineeEmailID2,
+          nomineeMobileNo2: row.NomineeMobileNo2,
+          nomineeHomeTelNo2: row.NomineeHomeTelNo2,
+          nomineeOfficeTelNo2: row.NomineeOfficeTelNo2,
+          nomineeRelationship2: row.NomineeRelationship2,
+          nomineeIsCatholic2: row.NomineeIsCatholic2,
+          nomineeAddressNo2: row.NomineeAddressNo2,
+          nomineeAddressLine12: row.NomineeAddressLine12,
+          nomineeAddressLine22: row.NomineeAddressLine22,
+          nomineeAddressCity2: row.NomineeAddressCity2,
+          nomineeAddressState2: row.NomineeAddressState2,
+          nomineeAddressCountry2: row.NomineeAddressCountry2,
+          niche: row.NicheCode ? {
             code: row.NicheCode,
             nicheId: row.NicheId
-          }
+          } : null
         },
-        chapel: {
+        chapel: row.ChapelId ? {
           chapelId: row.ChapelId,
           code: row.ChapelCode,
           name: row.ChapelName
-        }
+        } : null
       });
 
-      // Get beneficiaries
-      const beneficiariesQuery = `
-        SELECT * FROM NicheBookingBeneficiary WITH (NOLOCK)
-        WHERE NicheBookingId = @bookingId AND BeneficiaryStatus >= 0
-        ORDER BY NicheBookingBeneficiaryId
-      `;
+      // Get beneficiaries if booking exists
+      if (row.NicheBookingId) {
+        const beneficiariesQuery = `
+          SELECT * FROM NicheBookingBeneficiary WITH (NOLOCK)
+          WHERE NicheBookingId = @bookingId AND BeneficiaryStatus >= 0
+          ORDER BY NicheBookingBeneficiaryId
+        `;
 
-      const beneficiariesResult = await executeQuery(beneficiariesQuery, {
-        bookingId: row.NicheBookingId
-      });
+        const beneficiariesResult = await executeQuery(beneficiariesQuery, {
+          bookingId: row.NicheBookingId
+        });
 
-      booking.nicheBookingBeneficiaries = beneficiariesResult.recordset.map(b =>
-        new NicheBookingBeneficiary(b)
-      );
+        booking.nicheBookingBeneficiaries = beneficiariesResult.recordset.map(b =>
+          new NicheBookingBeneficiary(b)
+        );
+      } else {
+        booking.nicheBookingBeneficiaries = [];
+      }
 
       return booking;
     } catch (error) {
@@ -173,7 +274,7 @@ class NicheBookingRepository {
         FROM NicheBooking nb WITH (NOLOCK)
         INNER JOIN NicheApplication na WITH (NOLOCK) ON nb.NicheApplicationId = na.NicheApplicationId
         INNER JOIN Niche n WITH (NOLOCK) ON nb.NicheId = n.NicheId
-        INNER JOIN NicheRow nr WITH (NOLOCK) ON n.NicheRowId = nr.NicheRowId
+        INNER JOIN NicheRow nr WITH (NOLOCK) ON n.NicheRowlId = nr.NicheRowlId
         INNER JOIN NicheWall nw WITH (NOLOCK) ON nr.NicheWallId = nw.NicheWallId
         INNER JOIN Chapel c WITH (NOLOCK) ON nw.ChapelId = c.ChapelId
         LEFT JOIN Person contact WITH (NOLOCK) ON nb.ContactPersonId = contact.PersonId

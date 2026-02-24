@@ -249,6 +249,25 @@ export const nicheService = {
     }
   },
 
+  // Get niche booking by application code
+  getBookingByCode: async (code: string): Promise<any> => {
+    try {
+      if (!code) {
+        throw new NicheError('Application code is required', 'validation');
+      }
+
+      const response = await api.get(`/api/niche-bookings/${code}`);
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new NicheError(response.data.message || 'Failed to retrieve niche booking');
+      }
+    } catch (error: any) {
+      if (error instanceof NicheError) throw error;
+      throw new NicheError(error.response?.data?.message || 'Failed to fetch niche booking', 'server');
+    }
+  },
+
   // Clear cache function
   clearCache: () => {
     nicheCache.clear();

@@ -1,15 +1,16 @@
 import { useState, useCallback } from 'react';
 import api from '../services/api';
 
-interface SearchResult {
+export interface SearchResult {
   id: number | string;
   code?: string;
   name?: string;
   applicantName?: string;
   nomineeName?: string;
+  nomineeName2?: string;
   nameOfDeceased?: string;
   inscriptionPhrase?: string;
-  entityType: 'application' | 'person' | 'church' | 'niche' | 'date' | 'inscription' | 'wake-room' | 'invoice' | 'gates-of-life';
+  entityType: 'application' | 'niche-application' | 'person' | 'church' | 'niche' | 'date' | 'inscription' | 'wake-room' | 'invoice' | 'gates-of-life';
   relevance: string;
   applicationDate?: string;
   transactionDate?: string;
@@ -126,7 +127,7 @@ export function useGlobalSearch(): UseGlobalSearchReturn {
         }));
 
         setSearchResults(mappedResults);
-        
+
         // Update metadata
         setSearchMetadata({
           executionTime: response.data.data.executionTime || 0,

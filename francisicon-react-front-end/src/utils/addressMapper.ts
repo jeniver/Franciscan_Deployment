@@ -50,7 +50,7 @@ export function mapComponentToBackendFields(componentFields: ComponentAddressFie
   const isBlock = normalizedBlock === 'block' || normalizedBlock === 'blk';
   const addressNo = isBlock ? 'Blk' : 'No';
 
-  let normalizedUnitNo = unitNo?.trim() || '';
+  let normalizedUnitNo = unitNo?.toString().trim() || '';
   if (normalizedUnitNo && !normalizedUnitNo.startsWith('#')) {
     const isPostal = /^\d{6}$/.test(normalizedUnitNo.replace(/[^0-9]/g, ''));
     const isRange = normalizedUnitNo.includes('-') && /^\d+/.test(normalizedUnitNo);
@@ -137,7 +137,7 @@ export function formatAddress(fields: ComponentAddressFields): string {
   const blockPrefix = block ? (block === 'Block' || block === 'Blk' ? 'Blk' : 'No') : '';
   const blockPart = blockPrefix && blockNo ? `${blockPrefix} ${blockNo}` : (blockNo || blockPrefix);
 
-  let unitPart = unitNo || '';
+  let unitPart = unitNo?.toString() || '';
   if (unitPart && !unitPart.startsWith('#')) {
     const isPostal = /^\d{6}$/.test(unitPart.replace(/[^0-9]/g, ''));
     const isRange = unitPart.includes('-') && /^\d+/.test(unitPart);

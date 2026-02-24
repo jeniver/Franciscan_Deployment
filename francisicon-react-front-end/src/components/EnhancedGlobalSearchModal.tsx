@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, X, Grid, List, Filter, Hash, User, Home, MapPin, Calendar, Church, Clock, Database, BarChart3 } from 'lucide-react';
-import { useGlobalSearch } from '../hooks/useGlobalSearch';
+import { Search, X, Grid, List, Filter, Hash, User, Home, MapPin, Calendar, Church, Clock, Database } from 'lucide-react';
+import { useGlobalSearch, SearchResult } from '../hooks/useGlobalSearch';
 import { Button } from './common/Button';
 import { LoadingSpinner } from './common/LoadingSpinner';
 
@@ -10,49 +10,16 @@ interface GlobalSearchModalProps {
   onClose: () => void;
 }
 
-interface SearchResult {
-  id: number | string;
-  code?: string;
-  name?: string;
-  applicantName?: string;
-  nomineeName?: string;
-  nameOfDeceased?: string;
-  entityType: 'application' | 'person' | 'church' | 'niche' | 'date' | 'inscription' | 'wake-room' | 'invoice' | 'gates-of-life';
-  relevance: string;
-  applicationDate?: string;
-  transactionDate?: string;
-  usingDate?: string;
-  status?: number | string;
-  statusText?: string;
-  isAvailable?: boolean;
-  nicheCode?: string;
-  chapelName?: string;
-  churchName?: string;
-  wakeRoomName?: string;
-  email?: string;
-  mobile?: string;
-  address?: string;
-  amount?: number;
-  totalAmount?: number;
-  description?: string;
-  matchType?: string;
-  dateDied?: string;
-  dateOfBirth?: string;
-  deathCertificateNo?: string;
-  customerName?: string;
-  paymentMode?: string;
-  bookingDate?: string;
-  [key: string]: any;
-}
+// SearchResult interface is now imported from ../hooks/useGlobalSearch
 
 export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [selectedEntityTypes, setSelectedEntityTypes] = useState<string[]>([
+  const selectedEntityTypes = [
     'application', 'person', 'church', 'niche', 'date',
     'inscription', 'wake-room', 'invoice', 'gates-of-life'
-  ]);
+  ];
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const {
@@ -88,13 +55,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
     }
   };
 
-  const toggleEntityType = (type: string) => {
-    setSelectedEntityTypes(prev =>
-      prev.includes(type)
-        ? prev.filter(t => t !== type)
-        : [...prev, type]
-    );
-  };
+  // toggleEntityType was unused and has been removed
 
   const getEntityTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
@@ -395,9 +356,9 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                           </span>
                         </div>
                         <span className={`px-2 py-1 rounded text-xs font-medium ${result.relevance === 'Very High' ? 'bg-green-100 text-green-800' :
-                            result.relevance === 'High' ? 'bg-blue-100 text-blue-800' :
-                              result.relevance === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-gray-100 text-gray-800'
+                          result.relevance === 'High' ? 'bg-blue-100 text-blue-800' :
+                            result.relevance === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
                           }`}>
                           {result.relevance}
                         </span>
@@ -517,9 +478,9 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                               {getEntityTypeLabel(result.entityType)}
                             </span>
                             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${result.relevance === 'Very High' ? 'bg-green-100 text-green-800' :
-                                result.relevance === 'High' ? 'bg-blue-100 text-blue-800' :
-                                  result.relevance === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-gray-100 text-gray-800'
+                              result.relevance === 'High' ? 'bg-blue-100 text-blue-800' :
+                                result.relevance === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-gray-100 text-gray-800'
                               }`}>
                               {result.relevance} relevance
                             </span>
