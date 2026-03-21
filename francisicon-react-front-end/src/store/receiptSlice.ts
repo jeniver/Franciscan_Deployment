@@ -6,7 +6,6 @@ import receiptService, {
   CreateIndividualReceiptRequest,
   ReceiptReport,
   MonthlyList,
-  ReceiptListResponse,
   ReceiptSummary,
   Invoice,
   ReceiptError,
@@ -533,6 +532,7 @@ export const receiptSlice = createSlice({
         state.loading = true;
         state.error = null;
         state.lastErrorType = null;
+        state.selectedReceipt = null; // Clear stale receipt
       })
       .addCase(fetchReceiptByCode.fulfilled, (state, action) => {
         state.loading = false;
@@ -758,6 +758,7 @@ export const receiptSlice = createSlice({
         state.loading = true;
         state.error = null;
         state.lastErrorType = null;
+        state.selectedInvoice = null; // Clear stale invoice
       })
       .addCase(fetchInvoiceByCode.fulfilled, (state, action) => {
         state.loading = false;

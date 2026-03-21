@@ -668,14 +668,14 @@ export function GateOfLifeApplication({ }: GateOfLifeApplicationProps = {}) {
                   View Gate of Life Application
                 </Button>
 
-                <Button
+                {/*<Button
                   variant="primary"
                   icon={<ReceiptIcon className="w-4 h-4" />}
                   onClick={() => handleInvoiceReceipt(reduxApplicationCode)}
                   disabled={!reduxApplicationCode}
                 >
                   Invoice
-                </Button>
+                </Button>*/}
 
                 {isViewRoute && (
                   <Button

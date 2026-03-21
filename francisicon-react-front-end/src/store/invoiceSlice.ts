@@ -367,6 +367,10 @@ const invoiceSlice = createSlice({
       state.loading = true;
       state.error = null;
       state.currentData = null; // Clear previous data
+      state.createInvoiceSuccess = false;
+      state.createReceiptSuccess = false;
+      state.lastCreatedInvoiceCode = null;
+      state.lastCreatedReceiptCode = null;
     });
     builder.addCase(fetchInvoiceOrApplication.fulfilled, (state, action) => {
       state.loading = false;

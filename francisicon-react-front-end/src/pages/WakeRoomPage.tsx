@@ -91,14 +91,14 @@ export function WakeRoomPage() {
                     View
                   </Button>
 
-                  <Button
+                  {/*<Button
                     variant="secondary"
                     icon={<PrinterIcon className="w-4 h-4" />}
                     onClick={() => setIsAgreementModalOpen(true)}
                     disabled={!bookingCode}
                   >
                     Print Wake Room Application
-                  </Button>
+                  </Button>*/}
 
                   <Button
                     variant="primary"

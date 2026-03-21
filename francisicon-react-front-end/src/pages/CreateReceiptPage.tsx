@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { Layout } from '../components/Layout';
@@ -55,6 +55,7 @@ export function CreateReceiptPage() {
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [isPdfLoading, setIsPdfLoading] = useState(false);
     const [refDocType, setRefDocType] = useState('NAPP');
+    const lastSyncedCodeRef = useRef<string | null>(null);
 
     // Initial data fetch
     useEffect(() => {
@@ -75,6 +76,7 @@ export function CreateReceiptPage() {
             setItems([]);
             setRefDocumentNo('');
             setRefDocType('NAPP');
+            lastSyncedCodeRef.current = null;
         }
         fetchReceiptItems('567', true);
         fetchLastReceiptNumber();
@@ -82,6 +84,17 @@ export function CreateReceiptPage() {
 
     const handleLookup = async (code: string) => {
         if (!code.trim()) return;
+
+        // Explicitly clear form data before lookup to avoid stale data showing during fetch
+        setItems([]);
+        lastSyncedCodeRef.current = null;
+        setPayeeName('');
+        setAddressBlock('Block');
+        setAddressNumber('');
+        setAddressStreet('');
+        setAddressUnit('');
+        setAddressPostalCode('');
+        setAddressCountry('Singapore');
 
         const normalizedCode = code.trim().toUpperCase();
 
@@ -152,7 +165,7 @@ export function CreateReceiptPage() {
             setPaymentMode(selectedInvoice.paymentMode || (selectedInvoice as any).PaymentMode || 'Cash');
             setRefDocumentNo((selectedInvoice as any).paymentModeDocNo || (selectedInvoice as any).PaymentModeDocNo || '');
 
-            if (selectedInvoice.invoiceDetails && selectedInvoice.invoiceDetails.length > 0 && items.length === 0) {
+            if (selectedInvoice.invoiceDetails && selectedInvoice.invoiceDetails.length > 0) {
                 const mappedItems: InvoiceItem[] = selectedInvoice.invoiceDetails.map((detail: any) => ({
                     id: Math.random().toString(36).substr(2, 9),
                     selectItem: detail.itemName || detail.description || 'Other',
@@ -165,10 +178,29 @@ export function CreateReceiptPage() {
                     taxAmount: detail.lineTaxAmount || 0,
                     totalAmount: (detail.lineTotalAmount || detail.amount || 0) + (detail.lineTaxAmount || 0),
                 }));
-                setItems(mappedItems);
+
+                if (lastSyncedCodeRef.current !== selectedInvoice.invoiceCode) {
+                    setItems(mappedItems);
+                    lastSyncedCodeRef.current = selectedInvoice.invoiceCode;
+                }
+            } else {
+                if (lastSyncedCodeRef.current !== selectedInvoice.invoiceCode) {
+                    setItems([]);
+                    lastSyncedCodeRef.current = selectedInvoice.invoiceCode;
+                }
             }
+        } else if (!applicationData) {
+            // Clear form when both are null
+            setItems([]);
+            setPayeeName('');
+            setAddressBlock('Block');
+            setAddressNumber('');
+            setAddressStreet('');
+            setAddressUnit('');
+            setAddressPostalCode('');
+            setAddressCountry('Singapore');
         }
-    }, [selectedInvoice, items.length]);
+    }, [selectedInvoice, applicationData]);
 
     // Update form when applicationData changes
     useEffect(() => {
@@ -198,7 +230,7 @@ export function CreateReceiptPage() {
             setAddressPostalCode(rawPostal);
             setAddressCountry(rawCountry);
 
-            if (applicationData.details && applicationData.details.length > 0 && items.length === 0) {
+            if (applicationData.details && applicationData.details.length > 0) {
                 const mappedItems: InvoiceItem[] = applicationData.details.map((detail: any) => ({
                     id: Math.random().toString(36).substr(2, 9),
                     selectItem: detail.itemName || detail.ItemName || 'Other',
@@ -211,19 +243,33 @@ export function CreateReceiptPage() {
                     taxAmount: detail.lineTaxAmount || detail.LineTaxAmount || 0,
                     totalAmount: (detail.lineTotalAmount || detail.LineTotalAmount || 0) + (detail.lineTaxAmount || detail.LineTaxAmount || 0),
                 }));
-                setItems(mappedItems);
+
+                const appCode = applicationData.applicationCode || applicationData.code;
+                if (lastSyncedCodeRef.current !== appCode) {
+                    setItems(mappedItems);
+                    lastSyncedCodeRef.current = appCode;
+                }
+            } else {
+                const appCode = applicationData.applicationCode || applicationData.code;
+                if (lastSyncedCodeRef.current !== appCode) {
+                    setItems([]);
+                    lastSyncedCodeRef.current = appCode;
+                }
             }
 
             // If application has a receipt, try to fetch it
             if (applicationData.hasReceipt) {
-                // Try to find receipt code from application data if available
                 const rCode = (applicationData as any).receiptCode || (applicationData as any).receipt?.code;
                 if (rCode) {
                     dispatch(fetchReceiptByCode(rCode));
                 }
             }
+        } else if (!selectedInvoice) {
+            // Clear form when both are null
+            setItems([]);
+            setPayeeName('');
         }
-    }, [applicationData, selectedInvoice, dispatch, items.length]);
+    }, [applicationData, selectedInvoice, dispatch]);
 
     const availableItems = useMemo(() =>
         receiptItems.length > 0

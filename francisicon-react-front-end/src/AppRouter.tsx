@@ -14,7 +14,6 @@ import { NichesReportPage } from './pages/NichesReportPage';
 import { MiscReceiptPage } from './pages/MiscReceiptPage';
 import { MiscReceiptCreatePage } from './pages/MiscReceiptCreatePage';
 import { MiscInvoicePage } from './pages/MiscInvoicePage';
-import { InvoiceAndReceiptPage } from './pages/InvoiceAndReceiptPage';
 import { CreateInvoicePage } from './pages/CreateInvoicePage';
 import { CreateReceiptPage } from './pages/CreateReceiptPage';
 import { InvoiceAndReceiptManagementPage } from './pages/InvoiceAndReceiptManagementPage';
@@ -64,39 +63,10 @@ export function AppRouter() {
             <InvoiceAndReceiptManagementPage />
           </ProtectedRoute>
         } />
-        <Route path="/invoice-receipt" element={
-          <ProtectedRoute>
-            <CreateInvoicePage />
-          </ProtectedRoute>
-        } />
-        <Route path="/invoice-receipt/:code" element={
-          <ProtectedRoute>
-            <CreateInvoicePage />
-          </ProtectedRoute>
-        } />
-        <Route path="/legacy-invoice-receipt" element={
-          <ProtectedRoute>
-            <InvoiceAndReceiptPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/legacy-invoice-receipt/:invoiceCode" element={
-          <ProtectedRoute>
-            <InvoiceAndReceiptPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/:churchId/invoice-receipt" element={
-          <ProtectedRoute>
-            <CreateInvoicePage />
-          </ProtectedRoute>
-        } />
-        <Route path="/:churchId/invoice-receipt/:code" element={
-          <ProtectedRoute>
-            <CreateInvoicePage />
-          </ProtectedRoute>
-        } />
+        {/* Standardized Invoice & Receipt Routes */}
         <Route path="/create-invoice" element={
           <ProtectedRoute>
-            <CreateInvoicePage />
+            <CreateInvoicePage key="new-invoice" />
           </ProtectedRoute>
         } />
         <Route path="/create-invoice/:code" element={
@@ -104,9 +74,16 @@ export function AppRouter() {
             <CreateInvoicePage />
           </ProtectedRoute>
         } />
+
+        {/* Aliases for backward compatibility */}
+        <Route path="/invoice-receipt" element={<Navigate to="/create-invoice" replace />} />
+        <Route path="/invoice-receipt/:code" element={<Navigate to="/create-invoice/:code" replace />} />
+        <Route path="/:churchId/invoice-receipt" element={<Navigate to="/create-invoice" replace />} />
+        <Route path="/:churchId/invoice-receipt/:code" element={<Navigate to="/create-invoice/:code" replace />} />
+
         <Route path="/create-receipt" element={
           <ProtectedRoute>
-            <CreateReceiptPage />
+            <CreateReceiptPage key="new-receipt" />
           </ProtectedRoute>
         } />
         <Route path="/create-receipt/:code" element={

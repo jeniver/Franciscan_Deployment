@@ -340,14 +340,14 @@ export function WakeRoomBooking({ }: WakeRoomBookingProps = {}) {
                 >
                   Print Agreement
                 </Button>
-                <Button
+                {/*<Button
                   variant="primary"
                   icon={<HashIcon className="w-4 h-4" />}
                   onClick={() => navigate(`/create-invoice/${bookingNumber}?type=WAPP`)}
                   disabled={!bookingNumber.trim() && !contactData.name.trim()}
                 >
                   Go to Invoice
-                </Button>
+                </Button>*/}
               </div>
             </div>
 

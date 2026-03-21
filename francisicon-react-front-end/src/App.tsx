@@ -1083,14 +1083,14 @@ The application list will be refreshed to show your new application.`);
                   >
                     Print Agreement
                   </Button>
-                  <Button
+                  {/* <Button
                     variant="primary"
                     iconPosition="right"
                     onClick={handleGoToInvoiceWithFeedback}
                     disabled={!applicationNumber.trim()}
                   >
                     Invoice
-                  </Button>
+                  </Button>*/}
                   {applicationNumber && (
                     <Button
                       variant="secondary"

@@ -5,7 +5,7 @@ import { Layout } from '../components/Layout';
 import { useToast } from '../contexts/ToastContext';
 import { useApplicationItems } from '../hooks/useApplicationItems';
 import { useReceipt } from '../hooks/useReceipt';
-import { EyeIcon, LoaderIcon, AlertTriangle, CheckCircle, SaveIcon, PrinterIcon, FileTextIcon, CreditCardIcon } from 'lucide-react';
+import { EyeIcon, LoaderIcon, AlertTriangle, CheckCircle, SaveIcon, PrinterIcon, FileTextIcon } from 'lucide-react';
 import { InvoiceViewerModal } from '../components/InvoiceViewerModal';
 import { AgreementViewerModal } from '../components/AgreementViewerModal';
 import { InvoiceTemplateData } from '../services/invoiceTemplateService';
@@ -46,6 +46,7 @@ export function CreateInvoicePage() {
         applicationItems,
         fetchApplicationItems,
         getItemsByType,
+        loading: applicationLoading,
     } = useApplicationItems();
 
     const [applicationNumber, setApplicationNumber] = useState(routeCode || '');
@@ -56,7 +57,7 @@ export function CreateInvoicePage() {
     const [addressUnit, setAddressUnit] = useState('');
     const [addressPostalCode, setAddressPostalCode] = useState('');
     const [addressCountry, setAddressCountry] = useState('Singapore');
-    const [paymentMode, setPaymentMode] = useState('Cash');
+    const [paymentMode,] = useState('Cash');
     const [refDocumentNo, setRefDocumentNo] = useState('');
     const [items, setItems] = useState<InvoiceItem[]>([]);
 
@@ -77,6 +78,7 @@ export function CreateInvoicePage() {
 
     const [refDocType, setRefDocType] = useState(normalizeRefDocType(typeParam) || 'NAPP');
     const initialLookupKeyRef = useRef<string | null>(null);
+    const lastSyncedCodeRef = useRef<string | null>(null);
 
     // Update refDocType if URL param changes
     useEffect(() => {
@@ -141,6 +143,7 @@ export function CreateInvoicePage() {
             setAddressCountry('Singapore');
             setRefDocumentNo('');
             setItems([]);
+            lastSyncedCodeRef.current = null;
         }
 
         // Single call for receipt items - moved out of dependencies that change often
@@ -212,57 +215,62 @@ export function CreateInvoicePage() {
             // Map Items
             let invoiceDetails = currentData.details || currentDataAny.Details || [];
 
-            // Fallbacks for Wake Room / Gate of Life
-            if (invoiceDetails.length === 0 && (currentDataAny.booking || currentDataAny.wakeRoomId)) {
-                const subtotal = currentDataAny.financial?.donationAmount || 0;
-                const taxAmount = (subtotal * 9) / 100;
-                invoiceDetails = [{
-                    itemName: currentDataAny.wakeRoom?.name ? `Wake Room Rental - ${currentDataAny.wakeRoom.name}` : 'Wake Room Rental',
-                    itemId: 1, // Default ID
-                    itemCode: 'WRR',
-                    itemPrice: currentDataAny.financial?.defaultDonationAmount || 0,
-                    unitAmount: currentDataAny.financial?.defaultDonationAmount || 0,
-                    payingAmount: subtotal,
-                    quantity: currentDataAny.booking?.noOfDays || 1,
-                    lineTotalAmount: subtotal,
-                    lineTaxPercent: 9,
-                    lineTaxAmount: taxAmount,
-                    totalPayingAmount: subtotal + taxAmount,
-                    refDocNumber: currentData.applicationCode || '',
-                    invoiceDetailId: null,
-                    invoiceId: null,
-                    refDocName: 'WAPP',
-                    refType: 'WAPP'
-                }];
-            } else if (invoiceDetails.length === 0 && currentDataAny.applicationCode?.startsWith('GOL')) {
-                const personCount = Math.max(
-                    Number(currentDataAny?.application?.NameCount || currentDataAny?.application?.nameCount || 0),
-                    1
-                );
-                const subtotal = currentDataAny.donationAmount || 0;
-                const unitAmount = subtotal > 0 ? Number((subtotal / personCount).toFixed(2)) : 300;
-                const taxAmount = (subtotal * 9) / 100;
-                invoiceDetails = [{
-                    itemName: 'Gate of Life Donation',
-                    itemId: 10,
-                    itemCode: 'GOL',
-                    itemPrice: unitAmount,
-                    unitAmount: unitAmount,
-                    payingAmount: unitAmount,
-                    quantity: personCount,
-                    lineTotalAmount: subtotal,
-                    lineTaxPercent: 9,
-                    lineTaxAmount: taxAmount,
-                    totalPayingAmount: subtotal + taxAmount,
-                    refDocNumber: currentDataAny.applicationCode || '',
-                    invoiceDetailId: null,
-                    invoiceId: null,
-                    refDocName: 'GOLA',
-                    refType: 'GOLA'
-                }];
+            // Fallbacks for Wake Room / Gate of Life - ONLY if we don't have applicationItems loading
+            // This prevents the "flash" of a single item before details load.
+            const hasAppItemsLoading = applicationLoading || (applicationItems && applicationItems.applicationCode.toUpperCase() === routeOrInputCode);
+
+            if (invoiceDetails.length === 0 && !hasAppItemsLoading) {
+                if (currentDataAny.booking || currentDataAny.wakeRoomId) {
+                    const subtotal = currentDataAny.financial?.donationAmount || 0;
+                    const taxAmount = (subtotal * 9) / 100;
+                    invoiceDetails = [{
+                        itemName: currentDataAny.wakeRoom?.name ? `Wake Room Rental - ${currentDataAny.wakeRoom.name}` : 'Wake Room Rental',
+                        itemId: 1, // Default ID
+                        itemCode: 'WRR',
+                        itemPrice: currentDataAny.financial?.defaultDonationAmount || 0,
+                        unitAmount: currentDataAny.financial?.defaultDonationAmount || 0,
+                        payingAmount: subtotal,
+                        quantity: currentDataAny.booking?.noOfDays || 1,
+                        lineTotalAmount: subtotal,
+                        lineTaxPercent: 9,
+                        lineTaxAmount: taxAmount,
+                        totalPayingAmount: subtotal + taxAmount,
+                        refDocNumber: currentData.applicationCode || '',
+                        invoiceDetailId: null,
+                        invoiceId: null,
+                        refDocName: 'WAPP',
+                        refType: 'WAPP'
+                    }];
+                } else if (currentDataAny.applicationCode?.startsWith('GOL')) {
+                    const personCount = Math.max(
+                        Number(currentDataAny?.application?.NameCount || currentDataAny?.application?.nameCount || 0),
+                        1
+                    );
+                    const subtotal = currentDataAny.donationAmount || 0;
+                    const unitAmount = subtotal > 0 ? Number((subtotal / personCount).toFixed(2)) : 300;
+                    const taxAmount = (subtotal * 9) / 100;
+                    invoiceDetails = [{
+                        itemName: 'Gate of Life Donation',
+                        itemId: 10,
+                        itemCode: 'GOL',
+                        itemPrice: unitAmount,
+                        unitAmount: unitAmount,
+                        payingAmount: unitAmount,
+                        quantity: personCount,
+                        lineTotalAmount: subtotal,
+                        lineTaxPercent: 9,
+                        lineTaxAmount: taxAmount,
+                        totalPayingAmount: subtotal + taxAmount,
+                        refDocNumber: currentDataAny.applicationCode || '',
+                        invoiceDetailId: null,
+                        invoiceId: null,
+                        refDocName: 'GOLA',
+                        refType: 'GOLA'
+                    }];
+                }
             }
 
-            if (invoiceDetails.length > 0 && items.length === 0) {
+            if (invoiceDetails.length > 0) {
                 const mappedItems: InvoiceItem[] = invoiceDetails.map((detail: any) => ({
                     id: Math.random().toString(36).substr(2, 9),
                     itemId: detail.itemId || detail.ItemId || undefined,
@@ -276,20 +284,51 @@ export function CreateInvoicePage() {
                     taxAmount: detail.lineTaxAmount || detail.LineTaxAmount || detail.taxAmount || detail.TaxAmount || 0,
                     totalAmount: (detail.lineTotalAmount || detail.LineTotalAmount || detail.lineNet || 0) + (detail.lineTaxAmount || detail.LineTaxAmount || detail.taxAmount || 0),
                 }));
-                setItems(mappedItems);
+
+                // ONLY update items if this is a NEW code we haven't synced yet
+                // This prevents clearing manual edits when currentData updates after creation
+                if (lastSyncedCodeRef.current !== currentCode) {
+                    setItems(mappedItems);
+                    lastSyncedCodeRef.current = currentCode;
+                }
+            } else {
+                // If it's a new code and has no items, clear the table
+                if (lastSyncedCodeRef.current !== currentCode) {
+                    setItems([]);
+                    lastSyncedCodeRef.current = currentCode;
+                }
             }
 
             // Set Agreement Data if available
             setAgreementData(currentData);
+        } else {
+            // OPTIONAL: Clear form if currentData becomes null (e.g. while loading new lookup)
+            // But be careful not to trigger this if we just want to keep the UI steady during fetch.
+            // However, the user EXPLICITLY asked to clear previous data.
+            setPayeeName('');
+            setItems([]);
+            setAgreementData(null);
+            lastSyncedCodeRef.current = null;
         }
-    }, [currentData, typeParam, routeCode, applicationNumber, refDocType, items.length]);
+    }, [currentData, typeParam, routeCode, applicationNumber, refDocType]);
 
     // Fallback: if backend returned application items but currentData.details is empty,
     // use applicationItems (from useApplicationItems) to pre-populate invoice lines.
     // This is especially important for inscription / Gate of Life / Wake Room flows.
     useEffect(() => {
-        // Do not override items if we already have some (from currentData or manual addition)
-        if (items.length > 0) return;
+        // High priority: use detailed items from applicationItems if available
+        // We override if we have fresh items from the current lookup
+        const currentCode = (routeCode || applicationNumber || '').trim().toUpperCase();
+        const isFromCurrentApp = applicationItems && applicationItems.applicationCode.toUpperCase() === currentCode;
+
+        // If we have existing items that are just a single fallback, we allow override
+        const isSingleFallback = items.length === 1 && (
+            items[0].selectItem.includes('Rental') ||
+            items[0].selectItem.includes('Donation') ||
+            items[0].selectItem === 'Item'
+        );
+
+        if (items.length > 0 && !isSingleFallback && !isFromCurrentApp) return;
 
         if (!applicationItems || !applicationItems.items || applicationItems.items.length === 0) {
             return;
@@ -326,7 +365,7 @@ export function CreateInvoicePage() {
         if (mappedItems.length > 0) {
             setItems(mappedItems);
         }
-    }, [applicationItems, getItemsByType, items.length, refDocType]);
+    }, [applicationItems, getItemsByType, refDocType]);
 
     const availableItems = useMemo(() =>
         receiptItems.length > 0
@@ -337,6 +376,11 @@ export function CreateInvoicePage() {
 
     const handleLookup = () => {
         if (!applicationNumber.trim()) return;
+        // Explicitly clear table before lookup to avoid showing stale data during fetch
+        setItems([]);
+        lastSyncedCodeRef.current = null;
+        dispatch(clearCurrentData());
+
         // Pass the selected type (refDocType) to the lookup functions explicitly
         // This ensures the backend knows exactly what we are looking for (e.g. INCR vs NAPP)
         dispatch(fetchInvoiceOrApplication({ code: applicationNumber.trim(), type: refDocType }));
@@ -489,6 +533,7 @@ export function CreateInvoicePage() {
                                         setAddressPostalCode('');
                                         setAddressCountry('Singapore');
                                         setItems([]);
+                                        lastSyncedCodeRef.current = null;
                                         // Keep applicationNumber so user can click Look Up with new type
                                     }}
                                     className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/10 focus:border-teal-500 outline-none font-semibold text-gray-700 transition-all text-sm"
@@ -518,6 +563,7 @@ export function CreateInvoicePage() {
                                                 setAddressPostalCode('');
                                                 setAddressCountry('Singapore');
                                                 setItems([]);
+                                                lastSyncedCodeRef.current = null;
                                             }
                                         }}
                                         onKeyPress={(e) => e.key === 'Enter' && handleLookup()}
